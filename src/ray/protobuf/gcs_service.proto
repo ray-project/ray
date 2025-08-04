@@ -19,6 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/pubsub.proto";
+import "src/ray/protobuf/events_event_aggregator_service.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -180,7 +181,8 @@ message ReportActorOutOfScopeReply {
 service ActorInfoGcsService {
   // Register actor to gcs service.
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
-  rpc RestartActor(RestartActorRequest) returns (RestartActorReply);
+  rpc RestartActorForLineageReconstruction(RestartActorForLineageReconstructionRequest)
+      returns (RestartActorForLineageReconstructionReply);
   // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
@@ -251,7 +253,7 @@ message GetAllNodeInfoReply {
 }
 
 message CheckAliveRequest {
-  repeated string raylet_address = 1;
+  repeated bytes node_ids = 1;
 }
 
 message CheckAliveReply {
@@ -398,13 +400,14 @@ message RegisterActorReply {
   GcsStatus status = 1;
 }
 
-message RestartActorRequest {
+message RestartActorForLineageReconstructionRequest {
   bytes actor_id = 1;
-  // The target number of restarts.
-  uint64 num_restarts = 2;
+  // The target number of restarts due to lineage reconstructions.
+  // This is used to filter out stale message.
+  uint64 num_restarts_due_to_lineage_reconstruction = 2;
 }
 
-message RestartActorReply {
+message RestartActorForLineageReconstructionReply {
   GcsStatus status = 1;
 }
 
@@ -861,6 +864,12 @@ service TaskInfoGcsService {
 
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
+// Service for recording the unified ray events.
+service RayEventExportGcsService {
+  // Add OneEvent task data to GCS.
+  rpc AddEvents(events.AddEventsRequest) returns (events.AddEventsReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

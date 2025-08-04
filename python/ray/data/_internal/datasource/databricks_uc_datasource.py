@@ -131,7 +131,6 @@ class DatabricksUCDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 size_bytes=size_bytes,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )

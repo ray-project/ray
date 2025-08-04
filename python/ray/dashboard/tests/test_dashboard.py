@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
@@ -24,7 +25,11 @@ import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
 from ray._common.utils import get_or_create_event_loop
-from ray._private import ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
@@ -35,7 +40,6 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
-    wait_for_condition,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
@@ -1134,8 +1138,8 @@ async def test_dashboard_module_load(tmpdir):
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
         temp_dir=str(tmpdir),
         session_dir=str(tmpdir),
         minimal=False,

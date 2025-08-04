@@ -1,9 +1,13 @@
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
+import pyarrow.fs
+
 from ray.air.config import (
+    CheckpointConfig,
     FailureConfig as FailureConfigV1,
-    RunConfig as RunConfigV1,
     ScalingConfig as ScalingConfigV1,
 )
 from ray.runtime_env import RuntimeEnv
@@ -13,9 +17,13 @@ from ray.train.v2._internal.migration_utils import (
     TRAINER_RESOURCES_DEPRECATION_MESSAGE,
 )
 from ray.train.v2._internal.util import date_str
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -82,13 +90,17 @@ class FailureConfig(FailureConfigV1):
     """Configuration related to failure handling of each training run.
 
     Args:
-        max_failures: Tries to recover a run at least this many times.
+        max_failures: Tries to recover a run from training worker errors at least this many times.
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
+        controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
+            Setting to -1 will lead to infinite controller retries.
+            Setting to 0 will disable controller retries. Defaults to -1.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
+    controller_failure_limit: int = -1
 
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.
@@ -97,7 +109,8 @@ class FailureConfig(FailureConfigV1):
 
 
 @dataclass
-class RunConfig(RunConfigV1):
+@PublicAPI(stability="stable")
+class RunConfig:
     """Runtime configuration for training runs.
 
     Args:
@@ -119,6 +132,11 @@ class RunConfig(RunConfigV1):
             for all Ray Train worker actors.
     """
 
+    name: Optional[str] = None
+    storage_path: Optional[str] = None
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
+    failure_config: Optional[FailureConfig] = None
+    checkpoint_config: Optional[CheckpointConfig] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
 
@@ -129,7 +147,19 @@ class RunConfig(RunConfigV1):
     log_to_file: str = _DEPRECATED
 
     def __post_init__(self):
-        super().__post_init__()
+        from ray.train.constants import DEFAULT_STORAGE_PATH
+
+        if self.storage_path is None:
+            self.storage_path = DEFAULT_STORAGE_PATH
+
+        if not self.failure_config:
+            self.failure_config = FailureConfig()
+
+        if not self.checkpoint_config:
+            self.checkpoint_config = CheckpointConfig()
+
+        if isinstance(self.storage_path, Path):
+            self.storage_path = self.storage_path.as_posix()
 
         # TODO(justinvyu): Add link to migration guide.
         run_config_deprecation_message = (

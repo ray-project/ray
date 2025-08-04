@@ -59,6 +59,7 @@ steps:
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
       - linux_wheels
+      - release_wheels
       - oss
     instance_type: medium-arm64
     commands:
@@ -75,6 +76,7 @@ steps:
     job_env: forge-aarch64
 
   - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
+    key: ray_images_aarch64
     tags:
       - python_dependencies
       - docker

@@ -20,7 +20,7 @@ if [[ -n "${SKIP_DEP_RES}" ]]; then
   if [ "$(uname -m)" = "arm64" ]; then
     curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
   else
-    curl -o- https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh | bash
+    curl -sSL -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh | bash
   fi
 
   conda init bash
@@ -60,7 +60,6 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
 
   # NOTE: We expect conda to set the PATH properly.
   PIP_CMD=pip
-  PYTHON_EXE=python
 
   $PIP_CMD install --upgrade pip
 
@@ -69,12 +68,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   fi
 
   pushd python
-    # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
-    # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
-    $PIP_CMD install --upgrade setuptools==69.5.1
-    $PIP_CMD install -q cython==0.29.37
-    # Install wheel to avoid the error "invalid command 'bdist_wheel'".
-    $PIP_CMD install -q wheel
+    $PIP_CMD install -q setuptools==80.9.0 cython==3.0.12 wheel
     # Set the commit SHA in _version.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       echo "TRAVIS_COMMIT variable detected. ray.__commit__ will be set to $TRAVIS_COMMIT"
@@ -88,9 +82,9 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     # build ray wheel
-    $PYTHON_EXE setup.py bdist_wheel
+    $PIP_CMD wheel -q -w dist . --no-deps
     # build ray-cpp wheel
-    RAY_INSTALL_CPP=1 $PYTHON_EXE setup.py bdist_wheel
+    RAY_INSTALL_CPP=1 $PIP_CMD wheel -q -w dist . --no-deps
     mv dist/*.whl ../.whl/
   popd
 

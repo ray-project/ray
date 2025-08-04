@@ -17,6 +17,7 @@ kind load docker-image ray-ci:kuberay-test
 # python python/ray/tests/kuberay/setup/setup_kuberay.py
 
 bash python/ray/autoscaler/kuberay/init-config.sh
+kubectl create namespace kuberay-system
 kubectl create -k python/ray/autoscaler/kuberay/config/default
 
 echo "--- Test ray cluster creation"

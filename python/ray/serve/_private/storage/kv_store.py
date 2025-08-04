@@ -3,11 +3,12 @@ from typing import Optional
 
 import ray
 import ray.serve._private.constants as serve_constants
-from ray._private import ray_constants
 from ray._raylet import GcsClient
 from ray.serve._private.storage.kv_store_base import KVStoreBase
 
 logger = logging.getLogger(serve_constants.SERVE_LOGGER_NAME)
+
+SERVE_INTERNAL_KV_NAMESPACE = b"serve"
 
 
 def get_storage_key(namespace: str, storage_key: str) -> str:
@@ -60,7 +61,7 @@ class RayInternalKVStore(KVStoreBase):
                 self.get_storage_key(key).encode(),
                 val,
                 overwrite=True,
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                namespace=SERVE_INTERNAL_KV_NAMESPACE,
                 timeout=self.timeout,
             )
         except ray.exceptions.RpcError as e:
@@ -81,7 +82,7 @@ class RayInternalKVStore(KVStoreBase):
         try:
             return self.gcs_client.internal_kv_get(
                 self.get_storage_key(key).encode(),
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                namespace=SERVE_INTERNAL_KV_NAMESPACE,
                 timeout=self.timeout,
             )
         except ray.exceptions.RpcError as e:
@@ -101,7 +102,7 @@ class RayInternalKVStore(KVStoreBase):
             return self.gcs_client.internal_kv_del(
                 self.get_storage_key(key).encode(),
                 False,
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                namespace=SERVE_INTERNAL_KV_NAMESPACE,
                 timeout=self.timeout,
             )
         except ray.exceptions.RpcError as e:

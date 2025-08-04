@@ -381,6 +381,58 @@ DEFAULT_GRAFANA_PANELS = [
         ],
     ),
     Panel(
+        id=50,
+        title="Node TPU Tensorcore Utilization (Percentage)",
+        description="Percentage of tensorcore utilization for the TPUs on this node. Computed by dividing the number of tensorcore operations by the maximum supported number of operations during the sample period.",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_tpu_tensorcore_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology)',
+                legend="{{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=51,
+        title="Node TPU High Bandwidth Memory Utilization (Percentage)",
+        description="Percentage of bandwidth memory utilization for the TPUs on this node. Computed by dividing the memory bandwidth used by the maximum supported memory bandwidth limit during the sample period.",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_tpu_memory_bandwidth_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology)',
+                legend="{{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=52,
+        title="Node TPU Duty Cycle (Percentage)",
+        description="Percentage of time over the sample period during which the TPU is actively processing.",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_tpu_duty_cycle{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology) or vector(0)',
+                legend="{{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=53,
+        title="Node TPU Memory Used",
+        description="Total memory used/allocated for the TPUs on this node.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_tpu_memory_used{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology) or vector(0)',
+                legend="Memory Used: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+            ),
+            Target(
+                expr='sum(ray_tpu_memory_total{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology) or vector(0)',
+                legend="Memory Total: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+            ),
+        ],
+    ),
+    Panel(
         id=20,
         title="Node Network",
         description="Network speed per node",
@@ -455,6 +507,34 @@ DEFAULT_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
+    ),
+    Panel(
+        id=45,
+        title="Node GPU by Component",
+        description="The physical (hardware) GPU usage across the cluster, broken down by component. This reports the summed GPU usage per Ray component.",
+        unit="GPUs",
+        targets=[
+            Target(
+                expr="sum(ray_component_gpu_percentage{{{global_filters}}} / 100) by (Component)",
+                legend="{{Component}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=46,
+        title="Node GPU Memory by Component",
+        description="The physical (hardware) GPU memory usage across the cluster, broken down by component. This reports the summed GPU memory usage per Ray component.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}}) by (Component)",
+                legend="{{Component}}",
+            ),
+            Target(
+                expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}))*1024*1024',
+                legend="MAX",
+            ),
+        ],
     ),
 ]
 

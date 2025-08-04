@@ -1,16 +1,18 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 
+import numpy as np
 from pydantic import BaseModel
 import torch
 import torch.distributed as torch_dist
 
+from ray.data.collate_fn import CollateFn, NumpyBatchCollateFn
 import ray.train
 import ray.train.torch
 
 from constants import DatasetKey
 from config import DataloaderType, BenchmarkConfig
-from factory import BenchmarkFactory
+from benchmark_factory import BenchmarkFactory
 from dataloader_factory import (
     BaseDataLoaderFactory,
 )
@@ -48,8 +50,14 @@ class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
             DatasetKey.VALID: ds,
         }
 
-    def collate_fn(self, batch):
-        return convert_to_torchrec_batch_format(batch)
+    def _get_collate_fn(self) -> Optional[CollateFn]:
+        from torchrec.datasets.utils import Batch
+
+        class TorchRecCollateFn(NumpyBatchCollateFn):
+            def __call__(self, batch: Dict[str, np.ndarray]) -> Batch:
+                return convert_to_torchrec_batch_format(batch)
+
+        return TorchRecCollateFn()
 
 
 class TorchRecConfig(BaseModel):

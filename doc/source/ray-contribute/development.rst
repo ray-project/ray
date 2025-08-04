@@ -228,7 +228,7 @@ directory will take effect without reinstalling the package.
   The ``build --disk_cache=~/bazel-cache`` option can be useful to speed up repeated builds too.
 
 .. note::
-  Warning: If you run into an error building protobuf, switching from miniconda to anaconda might help.
+  Warning: If you run into an error building protobuf, switching from miniforge to anaconda might help.
 
 .. _NodeJS: https://nodejs.org
 
@@ -242,7 +242,7 @@ The following links were correct during the writing of this section. In case the
 - Bazel 6.5.0 (https://github.com/bazelbuild/bazel/releases/tag/6.5.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
-- Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
+- Miniforge 3 (https://github.com/conda-forge/miniforge/blob/main/README.md)
 - git for Windows, version 2.31.1 or later (https://git-scm.com/download/win)
 
 You can also use the included script to install Bazel:
@@ -263,11 +263,11 @@ You can also use the included script to install Bazel:
    3. Go to "For Developers" on the left pane;
    4. Turn on "Developer mode".
 
-2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users, the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
+2. Add the following Miniforge subdirectories to PATH. If Miniforge was installed for all users, the following paths are correct. If Miniforge is installed for a single user, adjust the paths accordingly.
 
-   - ``C:\ProgramData\Miniconda3``
-   - ``C:\ProgramData\Miniconda3\Scripts``
-   - ``C:\ProgramData\Miniconda3\Library\bin``
+   - ``C:\ProgramData\miniforge3``
+   - ``C:\ProgramData\miniforge3\Scripts``
+   - ``C:\ProgramData\miniforge3\Library\bin``
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
@@ -367,11 +367,11 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
 
 .. code-block:: shell
 
- bazel build -c fastbuild //:ray_pkg
+ bazel run -c fastbuild //:gen_ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use ``"//:all"`` instead of
-``//:ray_pkg``.
+If you need to build all targets, you can use ``bazel build //:all`` instead of
+``bazel run //:gen_ray_pkg``.
 
 To make this change permanent, you can add an option such as the following
 line to your user-level ``~/.bazelrc`` file (not to be confused with the
@@ -448,4 +448,4 @@ Then you should run the following commands:
 .. code-block:: bash
 
   rm -rf python/ray/thirdparty_files/
-  python3 -m pip install setproctitle
+  python3 -m pip install psutil

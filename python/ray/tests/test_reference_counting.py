@@ -8,6 +8,7 @@ import copy
 import logging
 import os
 import sys
+import gc
 import time
 
 import numpy as np
@@ -15,15 +16,20 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     kill_actor_and_wait_for_failure,
     put_object,
-    wait_for_condition,
-    skip_flaky_core_test_premerge,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def check_refcounts_empty():
+    """Verify that all tests leave the ref counter empty."""
+    yield
+    check_refcounts({})
 
 
 @pytest.fixture(scope="module")
@@ -70,6 +76,7 @@ def check_refcounts(expected, timeout=10):
     start = time.time()
     while True:
         try:
+            gc.collect()
             _check_refcounts(expected)
             break
         except AssertionError as e:
@@ -230,11 +237,10 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
-@pytest.mark.parametrize(
-    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
-)
+@pytest.mark.parametrize("use_ray_put", [False, True])
+@pytest.mark.parametrize("failure", [False, True])
 def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
-    @ray.remote(max_retries=1)
+    @ray.remote(max_retries=0)
     def pending(ref, dep):
         ray.get(ref[0])
         if failure:
@@ -320,7 +326,6 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
 def test_actor_holding_serialized_reference(
     one_cpu_100MiB_shared, use_ray_put, failure
 ):

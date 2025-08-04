@@ -8,8 +8,8 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import get_http_session_to_module
 from ray.util.annotations import DeveloperAPI
 

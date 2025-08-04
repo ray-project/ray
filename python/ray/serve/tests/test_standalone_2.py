@@ -3,14 +3,13 @@ import subprocess
 import sys
 from contextlib import contextmanager
 
+import httpx
 import pytest
-import requests
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
@@ -49,7 +48,7 @@ def start_and_shutdown_ray_cli_function():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:8265/api/ray/version")
+        httpx.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -112,7 +111,7 @@ def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
         for actor in actors:
             ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
 
-        assert requests.get("http://localhost:8000/f").text == "got f"
+        assert httpx.get("http://localhost:8000/f").text == "got f"
 
 
 def test_update_num_replicas(shutdown_ray_and_serve):
@@ -207,7 +206,7 @@ def test_controller_deserialization_deployment_def(
         from ray._common.utils import import_attr
 
         # Import and build the graph
-        graph = import_attr("test_config_files.pizza.serve_dag")
+        graph = import_attr("ray.serve.tests.test_config_files.pizza.serve_dag")
 
         # Run the graph locally on the cluster
         serve.run(graph)
@@ -230,7 +229,7 @@ def test_controller_deserialization_deployment_def(
     )
     ray.get(run_graph.remote())
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -271,7 +270,7 @@ def test_controller_deserialization_args_and_kwargs(shutdown_ray_and_serve):
 
     serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
 
-    assert requests.get("http://localhost:8000/Echo").text == "hello world!"
+    assert httpx.get("http://localhost:8000/Echo").text == "hello world!"
 
 
 def test_controller_recover_and_delete(shutdown_ray_and_serve):

@@ -230,6 +230,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of input blocks received by operator.",
         metrics_group=MetricsGroup.INPUTS,
     )
+    num_row_inputs_received: int = metric_field(
+        default=0,
+        description="Number of input rows received by operator.",
+        metrics_group=MetricsGroup.INPUTS,
+    )
     bytes_inputs_received: int = metric_field(
         default=0,
         description="Byte size of input blocks received by operator.",
@@ -358,6 +363,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent in task submission backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
+    task_output_backpressure_time: float = metric_field(
+        default=0,
+        description="Time spent in task output backpressure.",
+        metrics_group=MetricsGroup.TASKS,
+    )
     histogram_buckets_s = [
         0.1,
         0.25,
@@ -446,6 +456,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+        # Start time of current pause due to task output backpressure
+        self._task_output_backpressure_start_time = -1
 
         self._internal_inqueue = create_bundle_queue()
         self._internal_outqueue = create_bundle_queue()
@@ -456,6 +468,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
         self._cum_max_uss_bytes: Optional[int] = None
+        self._issue_detector_hanging = 0
+        self._issue_detector_high_memory = 0
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -570,7 +584,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
+        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
+        # estimate – just bail out.
         if bytes_per_output is None:
+            if context.target_max_block_size is None:
+                return None
             bytes_per_output = context.target_max_block_size
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
@@ -619,9 +637,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
             return self._cum_max_uss_bytes / self.num_task_outputs_generated
 
+    @metric_property(
+        description="Indicates if the operator is hanging.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    def issue_detector_hanging(self) -> int:
+        return self._issue_detector_hanging
+
+    @metric_property(
+        description="Indicates if the operator is using high memory.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    def issue_detector_high_memory(self) -> int:
+        return self._issue_detector_high_memory
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
+        self.num_row_inputs_received += input.num_rows() or 0
         self.bytes_inputs_received += input.size_bytes()
 
     def on_input_queued(self, input: RefBundle):
@@ -666,6 +701,17 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 time.perf_counter() - self._task_submission_backpressure_start_time
             )
             self._task_submission_backpressure_start_time = -1
+
+    def on_toggle_task_output_backpressure(self, in_backpressure):
+        if in_backpressure and self._task_output_backpressure_start_time == -1:
+            # backpressure starting, start timer
+            self._task_output_backpressure_start_time = time.perf_counter()
+        elif self._task_output_backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            self.task_output_backpressure_time += (
+                time.perf_counter() - self._task_output_backpressure_start_time
+            )
+            self._task_output_backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""

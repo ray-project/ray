@@ -9,8 +9,8 @@ from ray.llm._internal.serve.config_generator.utils.constants import (
     TEMPLATE_DIR,
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
-    GPUType,
     DEFAULT_MODEL_ID_TO_GPU,
+    GPUType,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionModelConfig,

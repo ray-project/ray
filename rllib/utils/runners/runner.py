@@ -33,7 +33,7 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
         self.metrics: MetricsLogger = MetricsLogger()
 
         # Initialize the `FaultAwareApply`.
-        super().__init__(**kwargs)
+        super().__init__()
 
     @abc.abstractmethod
     def assert_healthy(self):

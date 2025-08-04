@@ -353,7 +353,7 @@ fi
 check_docstyle
 
 # Ensure import ordering
-# Make sure that for every import psutil; import setproctitle
+# Make sure that for every import psutil
 # There's a import ray above it.
 
 PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-python}

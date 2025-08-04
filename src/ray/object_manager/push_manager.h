@@ -15,7 +15,6 @@
 #pragma once
 
 #include <list>
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -53,18 +52,18 @@ class PushManager {
 
   /// Called every time a chunk completes to trigger additional sends.
   /// TODO(ekl) maybe we should cancel the entire push on error.
-  void OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id);
+  void OnChunkComplete();
 
-  /// Return the number of chunks currently in flight. For testing only.
+  /// Cancel all pushes that have not yet been sent to the removed node.
+  void HandleNodeRemoved(const NodeID &node_id);
+
+  /// Return the number of chunks currently in flight. For metrics and testing.
   int64_t NumChunksInFlight() const { return chunks_in_flight_; };
 
-  /// Return the number of chunks remaining. For testing only.
+  /// Return the number of chunks remaining. For metrics and testing.
   int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
-  /// Return the number of pushes currently in flight. For testing only.
-  int64_t NumPushesInFlight() const { return push_info_.size(); };
-
-  /// Return the number of push requests with remaining chunks. For testing only.
+  /// Return the number of push requests with remaining chunks. For metrics and testing.
   int64_t NumPushRequestsWithChunksToSend() const {
     return push_requests_with_chunks_to_send_.size();
   };
@@ -76,65 +75,52 @@ class PushManager {
 
  private:
   FRIEND_TEST(TestPushManager, TestPushState);
+  FRIEND_TEST(TestPushManager, TestNodeRemoved);
+
   /// Tracks the state of an active object push to another node.
   struct PushState {
+    NodeID node_id;
+    ObjectID object_id;
+
     /// total number of chunks of this object.
-    const int64_t num_chunks;
+    int64_t num_chunks;
     /// The function to send chunks with.
     std::function<void(int64_t)> chunk_send_fn;
     /// The index of the next chunk to send.
-    int64_t next_chunk_id;
-    /// The number of chunks pending completion.
-    int64_t num_chunks_inflight;
+    int64_t next_chunk_id = 0;
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
-    PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
-        : num_chunks(num_chunks),
-          chunk_send_fn(chunk_send_fn),
-          next_chunk_id(0),
-          num_chunks_inflight(0),
+    PushState(NodeID node_id,
+              ObjectID object_id,
+              int64_t num_chunks,
+              std::function<void(int64_t)> chunk_send_fn)
+        : node_id(node_id),
+          object_id(object_id),
+          num_chunks(num_chunks),
+          chunk_send_fn(std::move(chunk_send_fn)),
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks and returns how many more chunks will be sent.
     int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
-      chunk_send_fn = send_fn;
+      chunk_send_fn = std::move(send_fn);
       int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
       num_chunks_to_send = num_chunks;
       return additional_chunks_to_send;
     }
 
-    /// whether all the chunks have been sent.
-    bool NoChunksToSend() { return num_chunks_to_send == 0; }
-
     /// Send one chunk. Return true if a new chunk is sent, false if no more chunk to
     /// send.
-    bool SendOneChunk() {
-      if (NoChunksToSend()) {
-        return false;
-      }
+    void SendOneChunk() {
       num_chunks_to_send--;
-      num_chunks_inflight++;
       // Send the next chunk for this push.
       chunk_send_fn(next_chunk_id);
       next_chunk_id = (next_chunk_id + 1) % num_chunks;
-      return true;
-    }
-
-    /// Notify that a chunk is successfully sent.
-    void OnChunkComplete() { --num_chunks_inflight; }
-
-    /// Whether all chunks are successfully sent.
-    bool AllChunksComplete() {
-      return num_chunks_inflight <= 0 && num_chunks_to_send <= 0;
     }
   };
 
   /// Called on completion events to trigger additional pushes.
   void ScheduleRemainingPushes();
-
-  /// Pair of (destination, object_id).
-  typedef std::pair<NodeID, ObjectID> PushID;
 
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
@@ -146,13 +132,12 @@ class PushManager {
   int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  /// Note: the lifecycle of PushState's pointer in `push_info_` is longer than
-  /// that in `push_requests_with_chunks_to_send_`. Please ensure this, otherwise
-  /// pointers in `push_requests_with_chunks_to_send_` may become dangling.
-  absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
+  absl::flat_hash_map<NodeID,
+                      absl::flat_hash_map<ObjectID, std::list<PushState>::iterator>>
+      push_state_map_;
 
   /// The list of push requests with chunks waiting to be sent.
-  std::list<std::pair<PushID, PushState *>> push_requests_with_chunks_to_send_;
+  std::list<PushState> push_requests_with_chunks_to_send_;
 };
 
 }  // namespace ray

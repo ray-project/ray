@@ -14,6 +14,19 @@ steps:
       - oss-ci-base_test
       - forge
     tags: tools
+  - label: ":coral: reef: raydepsets tests"
+    key: raydepsets-tests
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+          //ci/raydepsets/... ci
+          --cache-test-results
+          --build-name oss-ci-base_test
+          --build-type skip
+    instance_type: small
+    depends_on:
+      - oss-ci-base_test
+      - forge
+    tags: tools
   - label: ":coral: reef: privileged container tests"
     commands:
       - bazel run //ci/ray_ci:test_in_docker --

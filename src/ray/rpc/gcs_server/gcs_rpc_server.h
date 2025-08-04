@@ -22,10 +22,16 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
+// Most of our RPC templates, if not all, expect messages in the ray::rpc protobuf
+// namespace.  Since the following two messages are defined under the rpc::events
+// namespace, we treat them as if they were part of ray::rpc for compatibility.
+using ray::rpc::events::AddEventsReply;
+using ray::rpc::events::AddEventsRequest;
 namespace autoscaler {
 
 #define AUTOSCALER_STATE_SERVICE_RPC_HANDLER(HANDLER) \
@@ -124,6 +130,11 @@ namespace rpc {
 #define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(TaskInfoGcsService,      \
                       HANDLER,                 \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+
+#define RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(RayEventExportGcsService,       \
+                      HANDLER,                        \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
@@ -229,9 +240,10 @@ class ActorInfoGcsServiceHandler {
                                    RegisterActorReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRestartActor(RestartActorRequest request,
-                                  RestartActorReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRestartActorForLineageReconstruction(
+      RestartActorForLineageReconstructionRequest request,
+      RestartActorForLineageReconstructionReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCreateActor(CreateActorRequest request,
                                  CreateActorReply *reply,
@@ -282,7 +294,7 @@ class ActorInfoGrpcService : public GrpcService {
     /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
     /// distributed deadlock.
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RestartActor, -1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RestartActorForLineageReconstruction, -1);
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1);
 
     /// Others need back pressure.
@@ -644,9 +656,9 @@ class TaskInfoGcsServiceHandler {
                                       AddTaskEventDataReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
-                                   rpc::GetTaskEventsReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetTaskEvents(GetTaskEventsRequest request,
+                                   GetTaskEventsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.
@@ -676,6 +688,37 @@ class TaskInfoGrpcService : public GrpcService {
   TaskInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   TaskInfoGcsServiceHandler &service_handler_;
+};
+
+class RayEventExportGcsServiceHandler {
+ public:
+  virtual ~RayEventExportGcsServiceHandler() = default;
+  virtual void HandleAddEvents(AddEventsRequest request,
+                               AddEventsReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `RayEventExportGcsService`.
+class RayEventExportGrpcService : public GrpcService {
+ public:
+  explicit RayEventExportGrpcService(instrumented_io_context &io_service,
+                                     RayEventExportGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {
+    RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvents);
+  }
+
+ private:
+  /// The grpc async service object.
+  RayEventExportGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  RayEventExportGcsServiceHandler &service_handler_;
 };
 
 class InternalPubSubGcsServiceHandler {
@@ -732,6 +775,7 @@ using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
+using RayEventExportHandler = RayEventExportGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

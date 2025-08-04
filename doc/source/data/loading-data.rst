@@ -482,7 +482,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_, call
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
         :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
         by your Daft query.
 

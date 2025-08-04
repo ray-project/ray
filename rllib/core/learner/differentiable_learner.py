@@ -44,6 +44,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchRayDataIterator,
 )
 from ray.rllib.utils.typing import (
+    DeviceType,
     ModuleID,
     NamedParamDict,
     ResultDict,
@@ -96,6 +97,8 @@ class DifferentiableLearner(Checkpointable):
         self.learner_config: "DifferentiableLearnerConfig" = learner_config
         # The reference to the caller's module.
         self._module: Optional[MultiRLModule] = module
+        # The reference to the caller's device.
+        self._device: Optional[DeviceType] = None
         # A counter for functional weight updates.
         self._weights_seq_no: int = 0
 
@@ -116,17 +119,21 @@ class DifferentiableLearner(Checkpointable):
         self.iterator: MiniBatchRayDataIterator = None
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self) -> None:
+    def build(self, device: Optional[DeviceType] = None) -> None:
 
         if self._is_built:
             logger.debug("DifferentiableLearner already built. Skipping built.")
+
+        # If a dvice was passed, set the `DifferentiableLearner`'s device.
+        if device:
+            self._device = device
 
         # TODO (simon): Move the `build_learner_connector` to the
         # `DifferentiableLearnerConfig`.
         self._learner_connector = self.learner_config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
-            device=None,
+            device=self._device,
         )
 
         # This instance is now ready for use.
@@ -623,9 +630,13 @@ class DifferentiableLearner(Checkpointable):
         elif (
             isinstance(training_data.batch, MultiAgentBatch)
             and training_data.batch.policy_batches
-            and isinstance(
-                next(iter(training_data.batch.policy_batches.values()))["obs"],
-                numpy.ndarray,
+            and (
+                isinstance(
+                    next(iter(training_data.batch.policy_batches.values()))["obs"],
+                    numpy.ndarray,
+                )
+                or next(iter(training_data.batch.policy_batches.values()))["obs"].device
+                != self._device
             )
         ):
             batch = self._convert_batch_type(training_data.batch)

@@ -1,0 +1,27 @@
+depsets:
+  - name: subset_general_depset
+    operation: subset
+    source_depset: general_depset
+    requirements:
+      - python/requirements/cloud-requirements.txt
+    output: ci/raydepsets/test/requirements_compiled_subset_general_py311_cpu.txt
+  - name: ray_base_test_depset
+    requirements:
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
+    constraints:
+      - python/requirements_compiled_ray_test_py311_cpu.txt
+    output: ci/raydepsets/test/requirements_compiled_ray_test_py311_cpu.txt
+    operation: compile
+  - name: general_depset
+    operation: compile
+    requirements:
+      - python/requirements.txt
+    output: python/test/requirements_compiled_general_py311_cpu.txt
+  - name: subset_general_depset
+    operation: subset
+    source_depset: general_depset
+    requirements:
+      - ci/raydepsets/cloud-requirements.txt
+    output: python/test/requirements_compiled_subset_general_py311_cpu.txt

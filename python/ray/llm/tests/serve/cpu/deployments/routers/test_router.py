@@ -1,20 +1,20 @@
-import pytest
 import sys
-
 from typing import Optional
+from unittest.mock import AsyncMock, MagicMock
 
+import openai
+import pytest
+
+from ray import serve
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
-from ray import serve
-import openai
 
 
 @pytest.fixture(name="llm_config")
@@ -86,7 +86,7 @@ class TestRouter:
             role = response.choices[0].message.role
 
         assert role == "assistant"
-        assert text == "".join([f"test_{i} " for i in range(n_tokens)])
+        assert text.strip() == " ".join([f"test_{i}" for i in range(n_tokens)])
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
@@ -112,8 +112,8 @@ class TestRouter:
             text = response.choices[0].text
 
         # The mock engine produces "test_0 test_1 test_2 ..." pattern
-        expected_text = "".join([f"test_{i} " for i in range(n_tokens)])
-        assert text == expected_text
+        expected_text = " ".join([f"test_{i}" for i in range(n_tokens)])
+        assert text.strip() == expected_text
 
     def test_router_with_num_router_replicas_config(self):
         """Test the router with num_router_replicas config."""
@@ -155,6 +155,20 @@ class TestRouter:
         assert autoscaling_config.min_replicas == 5
         assert autoscaling_config.initial_replicas == 5
         assert autoscaling_config.max_replicas == 5
+
+    @pytest.mark.asyncio
+    async def test_check_health(self, llm_config: LLMConfig):
+        """Test health check functionality."""
+
+        server = MagicMock()
+        server.llm_config = MagicMock()
+        server.llm_config.remote = AsyncMock(return_value=llm_config)
+        server.check_health = MagicMock()
+        server.check_health.remote = AsyncMock()
+
+        router = LLMRouter(llm_deployments=[server])
+
+        await router.check_health()
 
 
 if __name__ == "__main__":

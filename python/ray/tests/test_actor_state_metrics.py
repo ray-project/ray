@@ -7,12 +7,12 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.utils import hex_to_binary
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import hex_to_binary
 
 from ray.util.state import list_actors
 from ray._private.test_utils import (
     raw_metrics,
-    wait_for_condition,
     run_string_as_driver,
 )
 from ray._private.worker import RayContext
