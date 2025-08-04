@@ -136,9 +136,9 @@ def test_generation_model(gpu_type, model_opt_125m):
     assert all("resp" in out for out in outs)
 
 
-def test_embedding_model(gpu_type, model_opt_125m):
+def test_embedding_model(gpu_type, model_smolvlm_256m):
     processor_config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source=model_smolvlm_256m,
         task_type="embed",
         engine_kwargs=dict(
             enable_prefix_caching=False,
@@ -151,7 +151,7 @@ def test_embedding_model(gpu_type, model_opt_125m):
         accelerator_type=gpu_type,
         concurrency=1,
         apply_chat_template=True,
-        chat_template="",
+        chat_template=None,
         tokenize=True,
         detokenize=False,
     )
