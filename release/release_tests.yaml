@@ -253,6 +253,11 @@
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_kuberay.yaml
 
   alert: default
 
@@ -1917,6 +1922,11 @@
       frequency: manual
       cluster:
         cluster_compute: rte_gce_small.yaml
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: rte_kuberay_small.yaml
 
 
 - name: runtime_env_wheel_urls
@@ -2865,6 +2875,11 @@
       frequency: manual
       cluster:
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: decision_tree/autoscaling_compute_kuberay.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
