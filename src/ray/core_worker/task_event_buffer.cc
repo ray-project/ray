@@ -501,8 +501,8 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   if (status_events_.empty() && dropped_task_attempts_unreported_.empty()) {
     return;
 
-  // Get data loss info.
-  size_t num_dropped_task_attempts_to_send = 0;
+    // Get data loss info.
+    size_t num_dropped_task_attempts_to_send = 0;
     // reached the batch size limit, we take the first one.
     auto itr = dropped_task_attempts_unreported_.begin();
     dropped_task_attempts_to_send->insert(*itr);

@@ -78,6 +78,9 @@ class MockEventAggregatorAddEvents
   rpc::events::AddEventsReply reply_;
 };
 
+// TODO(mengjin) => look at how to verify the configuration for whether to turn on task
+// event buffer & export api
+
 class TaskEventBufferTest : public ::testing::Test {
  public:
   TaskEventBufferTest() {
