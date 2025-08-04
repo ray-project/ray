@@ -382,6 +382,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                       const std::vector<rpc::ObjectReference> &object_refs,
                       bool is_get_request);
 
+  /// Cancel all ongoing get requests from the client.
+  ///
+  /// This does *not* cancel ongoing wait requests.
+  ///
+  /// \param client The client whose get requests will be canceled.
+  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client);
+
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   ///

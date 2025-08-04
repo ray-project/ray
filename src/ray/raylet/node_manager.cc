@@ -1044,10 +1044,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     HandleDirectCallTaskUnblocked(registered_worker);
   } break;
   case protocol::MessageType::CancelGetRequest: {
-    auto worker = registered_worker != nullptr ? registered_worker
-                                               : worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
-    dependency_manager_.CancelGetRequest(worker->WorkerId());
+    CancelGetRequest(client);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -2094,6 +2091,16 @@ void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client
   } else {
     dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
   }
+}
+
+void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client) {
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  RAY_CHECK(worker);
+
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker) {
