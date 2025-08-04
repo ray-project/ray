@@ -18,8 +18,8 @@ class Depset:
     requirements: List[str]
     constraints: List[str]
     output: str
-    override_flags: List[str]
-    append_flags: List[str]
+    override_flags: List[str] = field(default_factory=list)
+    append_flags: List[str] = field(default_factory=list)
     source_depset: Optional[str] = None
     config_args: ConfigArgs = None
     depsets: Optional[List[str]] = None
