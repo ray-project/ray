@@ -33,6 +33,7 @@
 #include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/telemetry/ray_job_event_recorder.h"
 #include "ray/util/event.h"
 #include "ray/util/thread_checker.h"
 

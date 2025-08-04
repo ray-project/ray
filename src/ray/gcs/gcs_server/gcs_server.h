@@ -44,6 +44,7 @@
 #include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/telemetry/ray_job_event_recorder.h"
 #include "ray/util/throttler.h"
 
 namespace ray {

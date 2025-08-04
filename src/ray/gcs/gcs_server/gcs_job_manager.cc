@@ -170,7 +170,6 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
     }
     function_manager_.RemoveJobReference(job_id);
-
     WriteDriverJobExportEvent(job_table_data,
                               rpc::events::DriverJobExecutionEvent::SUCCESS);
 

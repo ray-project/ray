@@ -200,6 +200,7 @@ ray_cc_library(
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
+        "//src/ray/telemetry:ray_job_event_recorder",
         "//src/ray/util:event",
         "//src/ray/util:thread_checker",
         "@com_google_absl//absl/container:flat_hash_map",
