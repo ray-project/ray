@@ -104,7 +104,6 @@ ray_cc_library(
         "//src/ray/common:runtime_env",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/rpc:gcs_service_rpc",
-        "//src/ray/rpc:node_manager_rpc",
         "//src/ray/util:thread_checker",
     ],
 )
@@ -251,7 +250,7 @@ ray_cc_library(
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_rpc",
         "//src/ray/rpc:gcs_service_rpc",
-        "//src/ray/rpc:node_manager_rpc",
+        "//src/ray/rpc:node_manager_client",
         "//src/ray/util:counter_map",
         "//src/ray/util:thread_checker",
         "//src/ray/util:throttler",

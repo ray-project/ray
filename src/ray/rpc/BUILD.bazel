@@ -3,18 +3,8 @@ load("//bazel:ray.bzl", "ray_cc_library")
 # TODO(eoakes): break up this dependency.
 ray_cc_library(
     name = "grpc_common_lib",
-    # TODO(core): Both two header files are not needed, keep them there because of circular dependency between raylet and node rpc.
-    hdrs = [
-        "//src/ray/raylet_client:raylet_client.h",
-        "//src/ray/raylet_client:raylet_connection.h",
-    ],
     visibility = ["//visibility:public"],
-    # TODO(core): These three dependencies come from raylet client, should be able to remove after we split node rpc and raylet client into smaller targets.
     deps = [
-        "//src/ray/common:network",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
-    ] + [
         ":common",
         ":event_aggregator_client",
         ":grpc_client",
@@ -148,19 +138,41 @@ ray_cc_library(
 # TODO(edoakes): split client and server targets for each of the below.
 
 ray_cc_library(
-    name = "node_manager_rpc",
+    name = "node_manager_client",
     srcs = ["node_manager/raylet_client_pool.cc"],
     hdrs = [
         "node_manager/node_manager_client.h",
         "node_manager/node_manager_server.h",
         "node_manager/raylet_client_pool.h",
+    ] + [
+        # TODO(eoakes): these are needed due to a circular dependency:
+        # raylet_client_pool.cc -> raylet_client.h -> node_manager_client.h
+        "//src/ray/raylet_client:raylet_client.h",
+        "//src/ray/raylet_client:raylet_connection.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":grpc_common_lib",
-        "//src/ray/common:asio",
+        ":client_call",
+        ":grpc_client",
         "//src/ray/common:id",
-        "//src/ray/common:status",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+    ] + [
+        # TODO(eoakes): these three come from raylet_client.h, remove after breaking the circular dependency.
+        "//src/ray/common:network",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
+    ],
+)
+
+ray_cc_library(
+    name = "node_manager_server",
+    hdrs = [
+        "node_manager/node_manager_server.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_server",
+        ":server_call",
         "//src/ray/protobuf:node_manager_cc_grpc",
         "@com_github_grpc_grpc//:grpc++",
     ],
