@@ -40,6 +40,13 @@ class GcsRayEventConverter {
   /// \param task_event The output TaskEvents to populate.
   void ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
                            rpc::TaskEvents &task_event);
+
+  /// Convert ProfileEvents to a TaskEvents.
+  ///
+  /// \param event TaskProfileEvents object to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event,
+                           rpc::TaskEvents &task_event);
 };
 
 }  // namespace gcs
