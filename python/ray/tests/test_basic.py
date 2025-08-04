@@ -7,7 +7,6 @@ import random
 import re
 import sys
 import time
-import subprocess
 
 import pytest
 
@@ -234,11 +233,13 @@ def test_default_worker_import_dependency(shutdown_only):
     ray.get(f.remote())
 
 
-# This test will fail if the number of threads spawned by a worker process
-# increases. If you find that a patch is now causing this test to fail,
-# consider if this thread count change is expected and adjust the test
-# (or your patch) accordingly!
 def test_worker_thread_count(monkeypatch, shutdown_only):
+    """This test will fail if the number of threads spawned by a worker process
+    increases. If you find that a patch is now causing this test to fail,
+    consider if this thread count change is expected and adjust the test
+    (or your patch) accordingly!
+    """
+
     @ray.remote
     class Actor:
         def get_thread_count(self):
@@ -248,17 +249,20 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
             except ImportError:
                 return None
 
-    with monkeypatch.context() as m:
-        # Set the environment variable used by the raylet
-        m.setenv("RAY_worker_num_grpc_internal_threads", "1")
-        ray.init()
-        ray_actor = Actor.remote()
-        # Invoke the actor a few times to shake out any lazy initializations
-        for _ in range(5):
-            ray.get(ray_actor.get_thread_count.remote())
-        # Lowering these numbers should be celebrated, increasing these numbers
-        # should be scrutinized
-        assert (ray.get(ray_actor.get_thread_count.remote()) == 28  or ray.get(ray_actor.get_thread_count.remote()) == 27)
+    # Set the environment variable used by the raylet
+    monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
+
+    # TODO: The for loop and the 'assert ... in {..,..}' complicates this
+    # test unnecessarily. We should only need to call the assert after
+    # a single call to the worker.  However, because the thread count
+    # per worker today isn't entirely static, we need to allow for this
+    # flexibility.  https://github.com/ray-project/ray/issues/55215
+    ray_actor = Actor.remote()
+    for _ in range(5):
+        ray.get(ray_actor.get_thread_count.remote())
+    # Lowering these numbers in this assert should be celebrated,
+    # increasing these numbers should be scrutinized
+    assert ray.get(ray_actor.get_thread_count.remote()) in {27, 28}
 
 
 # https://github.com/ray-project/ray/issues/7287
