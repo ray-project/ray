@@ -125,9 +125,6 @@ python/ray/_private/resource_isolation_config.py
     DOC103: Method `ResourceIsolationConfig.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cgroup_path: Optional[str], enable_resource_isolation: bool, system_reserved_cpu: Optional[float], system_reserved_memory: Optional[int]].
     DOC201: Method `ResourceIsolationConfig._validate_and_get_system_reserved_cpu` does not have a return section in docstring
 --------------------
-python/ray/_private/resource_spec.py
-    DOC201: Method `ResourceSpec.resolve` does not have a return section in docstring
---------------------
 python/ray/_private/runtime_env/agent/runtime_env_agent.py
     DOC101: Method `RuntimeEnvAgent.__init__`: Docstring contains fewer arguments than in function signature.
     DOC107: Method `RuntimeEnvAgent.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -2100,9 +2097,6 @@ python/ray/train/v2/torch/train_loop_utils.py
 python/ray/train/v2/xgboost/xgboost_trainer.py
     DOC101: Method `XGBoostTrainer.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `XGBoostTrainer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [label_column: Optional[str], num_boost_round: Optional[int], params: Optional[Dict[str, Any]]].
---------------------
-python/ray/train/xgboost/_xgboost_utils.py
-    DOC201: Method `RayTrainReportCallback.get_model` does not have a return section in docstring
 --------------------
 python/ray/train/xgboost/v2.py
     DOC104: Method `XGBoostTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
