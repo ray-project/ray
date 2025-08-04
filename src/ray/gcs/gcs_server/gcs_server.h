@@ -267,6 +267,12 @@ class GcsServer {
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
+  // The Ray event aggregator client that is used to export events to the event
+  // aggregator. This is shared by various GCS managers (job, actor, node, etc.)
+  // This is a unique_ptr because the GcsServer outlives all of the GCS managers.
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
+  /// The Ray job event recorder that is used to record job events.
+  std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

@@ -57,7 +57,8 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
                          GCSFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
-                         rpc::CoreWorkerClientPool &worker_client_pool)
+                         rpc::CoreWorkerClientPool &worker_client_pool,
+                         observability::RayEventRecorderInterface &ray_event_recorder)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
@@ -65,6 +66,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         internal_kv_(internal_kv),
         io_context_(io_context),
         worker_client_pool_(worker_client_pool),
+        ray_event_recorder_(ray_event_recorder),
         export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
@@ -99,7 +101,8 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
-  void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
+  void WriteDriverJobExportEvent(rpc::JobTableData job_data,
+                                 rpc::events::DriverJobExecutionEvent::State state) const;
 
   // Verify if export events should be written for EXPORT_DRIVER_JOB source types
   bool IsExportAPIEnabledDriverJob() const {
@@ -145,6 +148,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
   rpc::CoreWorkerClientPool &worker_client_pool_;
+  observability::RayEventRecorderInterface &ray_event_recorder_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;
