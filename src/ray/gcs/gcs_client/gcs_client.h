@@ -266,10 +266,10 @@ Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms);
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info);
 
-std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+std::unordered_map<std::string, double> PythonGetResourcesAvailable(
     const rpc::GcsNodeInfo &node_info);
 
-std::unordered_map<std::string, double> PythonGetResourcesAvailable(
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
     const rpc::GcsNodeInfo &node_info);
 
 }  // namespace gcs
