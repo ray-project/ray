@@ -4683,7 +4683,7 @@ py_test(
 
 py_test(
     name = "examples/metrics/custom_metrics_in_algorithm_training_step",
-    size = "small",
+    size = "medium",
     srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
     main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
     tags = [
