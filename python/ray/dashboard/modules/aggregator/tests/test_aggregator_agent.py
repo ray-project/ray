@@ -154,6 +154,7 @@ def test_aggregator_agent_receive_event_full(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
+
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
