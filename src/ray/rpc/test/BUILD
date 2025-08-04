@@ -36,7 +36,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/rpc:core_worker_rpc",
+        "//src/ray/rpc:core_worker_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
