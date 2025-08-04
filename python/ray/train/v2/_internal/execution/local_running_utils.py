@@ -206,6 +206,6 @@ def launched_by_torchrun() -> bool:
 def local_running_get_devices() -> List[torch.device]:
     """Return a list of devices to use for training."""
     if torch.cuda.is_available():
-        return [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
+        return [torch.device(f"cuda:{torch.cuda.current_device()}")]
     else:
         return [torch.device("cpu")]

@@ -240,20 +240,22 @@ class TorchTrainer(DataParallelTrainer):
         self._set_local_running_train_context()
         train_fn = self._get_train_func()
         train_fn()
+        if launched_by_torchrun():
+            torch.distributed.destroy_process_group()
         return Result(metrics={}, checkpoint=None, error=None, path=None)
 
     async def _set_local_running_train_context_and_data_shard(
         self, world_size: int, world_rank: int
     ) -> Dict[str, DataIterator]:
         if self.datasets is None or len(self.datasets) == 0:
-            return
+            return {}
         datasets = {k: v() if callable(v) else v for k, v in self.datasets.items()}
         self.data_provider_actor = await maybe_start_local_running_data_provider(
             world_size=world_size, dataset=datasets, local_rank=world_rank
         )
         return await get_dataset_shard(self.data_provider_actor, world_rank)
 
-    def _set_local_running_train_context(self) -> None:
+    def _set_local_running_train_context(self):
         import torch.distributed as torch_dist
 
         if launched_by_torchrun():
@@ -262,6 +264,7 @@ class TorchTrainer(DataParallelTrainer):
             )
             world_size = torch_dist.get_world_size()
             world_rank = torch_dist.get_rank()
+            torch.cuda.set_device(world_rank)
         else:
             world_size = 1
             world_rank = 0
