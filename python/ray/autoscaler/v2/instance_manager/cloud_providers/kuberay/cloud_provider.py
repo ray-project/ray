@@ -724,7 +724,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         ippr_group_spec = self._ippr_spec.get("groups", {}).get(
             labels[KUBERAY_LABEL_KEY_TYPE]
         )
-        if ippr_group_spec:
+        if ippr_group_spec and KubeRayProvider._is_running(pod):
             # get pod's resource requests and limits
             container_status = None
             for status in pod["status"]["containerStatuses"]:
