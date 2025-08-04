@@ -3,7 +3,7 @@ load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 ray_cc_library(
     name = "util",
     hdrs = ["util.h"],
-    # NOTE(edoakes): scheduling/ tests use this, should be broken.
+    # NOTE(edoakes): scheduling/ tests use this; the dependency should be broken.
     visibility = ["//visibility:public"],
     deps = [
         "//src/ray/raylet:worker",
@@ -89,6 +89,7 @@ ray_cc_test(
         "//src/ray/raylet:runtime_env_agent_client",
         "@boost//:asio",
         "@boost//:beast",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -179,6 +180,7 @@ ray_cc_test(
         "//:ray_fakes",
         "//:ray_mock",
         "//src/ray/common:ray_object",
+        "//src/ray/raylet:node_manager",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/raylet:local_object_manager_interface",
         "//src/ray/raylet/scheduling:cluster_task_manager",
