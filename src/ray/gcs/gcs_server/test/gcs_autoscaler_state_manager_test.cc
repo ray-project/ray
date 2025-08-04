@@ -82,9 +82,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [](const std::string &, std::function<void(bool)>) {});
     gcs_actor_manager_ =
         std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
-    gcs_resource_manager_ =
-          std::make_shared<MockGcsResourceManager>(*cluster_resource_manager_,
-                                                    *gcs_node_manager_);
+    gcs_resource_manager_ = std::make_shared<MockGcsResourceManager>(
+        *cluster_resource_manager_, *gcs_node_manager_);
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);

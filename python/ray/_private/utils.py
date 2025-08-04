@@ -45,7 +45,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 from ray.core.generated.common_pb2 import Language
-from ray._private.services import get_ray_native_library_dir
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -1965,6 +1964,20 @@ def try_update_ld_library_path(
 ):
     all_library_paths = ""
     if language == Language.CPP:
+
+        def get_ray_native_library_dir():
+            """Return a directory where all ray-related native libraries and
+            their dependencies are located."""
+            current_dir = RAY_PATH
+            native_library_dir = os.path.abspath(os.path.join(current_dir, "cpp/lib"))
+            if not os.path.exists(native_library_dir):
+                raise RuntimeError(
+                    "Ray native libraries is not packaged into ray. "
+                    "Please install ray with option [cpp] "
+                    '(pip install "ray[cpp]")'
+                )
+            return native_library_dir
+
         all_library_paths += get_ray_native_library_dir()
     if native_libraries.get("lib_path", []):
         all_library_paths += ":"

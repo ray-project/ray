@@ -43,7 +43,6 @@ from ray._private.utils import (
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
-from ray._private.gcs_aio_client import GcsAioClient
 from ray._private.gcs_utils import GcsChannel
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
@@ -3049,11 +3048,11 @@ def list(
 
     async def run(address):
         address = services.canonicalize_bootstrap_address_or_die(address)
-        gcs_aio_client = GcsAioClient(address=address)
+        gcs_client = ray._raylet.GcsClient(address=address)
         gcs_channel = GcsChannel(gcs_address=address, aio=True)
         gcs_channel.connect()
         state_api_data_source_client = StateDataSourceClient(
-            gcs_channel.channel(), gcs_aio_client
+            gcs_channel.channel(), gcs_client
         )
         state_api_manager = StateAPIManager(
             state_api_data_source_client,

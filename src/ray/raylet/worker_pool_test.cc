@@ -119,11 +119,12 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     }
   };
 
-  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback callback,
-                                  const WorkerID &worker_id,
-                                  const JobID &job_id,
-                                  const std::string &serialized_allocated_instances) override {
+  void DeleteRuntimeEnvIfPossible(
+      const std::string &serialized_runtime_env,
+      DeleteRuntimeEnvIfPossibleCallback callback,
+      const WorkerID &worker_id,
+      const JobID &job_id,
+      const std::string &serialized_allocated_instances) override {
     auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
     runtime_env_reference[serialized_runtime_env] -= 1;

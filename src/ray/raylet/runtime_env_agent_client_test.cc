@@ -237,8 +237,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                callback,
+                                WorkerID::Nil(),
+                                serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -292,8 +296,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                callback,
+                                WorkerID::Nil(),
+                                serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -352,8 +360,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                callback,
+                                WorkerID::Nil(),
+                                serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -396,8 +408,11 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                     callback,
+                                     WorkerID::Nil(),
+                                     JobID::Nil(),
+                                     "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -441,8 +456,11 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                     callback,
+                                     WorkerID::Nil(),
+                                     JobID::Nil(),
+                                     "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -491,8 +509,11 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                     callback,
+                                     WorkerID::Nil(),
+                                     JobID::Nil(),
+                                     "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -596,8 +617,11 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   };
 
   for (int i = 0; i < 100; ++i) {
-    client->DeleteRuntimeEnvIfPossible(
-        "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                       callback,
+                                       WorkerID::Nil(),
+                                       JobID::Nil(),
+                                       "serialized_allocated_instances");
   }
 
   ioc.run();

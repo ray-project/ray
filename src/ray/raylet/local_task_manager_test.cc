@@ -42,20 +42,19 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback, 
-                 const std::string &serialized_allocated_instances = "{}") override  {
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
   void PopWorker(const TaskSpecification &task_spec,
-                     const PopWorkerCallback &callback,
-                     const std::string &resource_spec) override {
-        PopWorker(task_spec, callback);
+                 const PopWorkerCallback &callback,
+                 const std::string &resource_spec) override {
+    PopWorker(task_spec, callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 

@@ -4,7 +4,7 @@ import logging
 import aiohttp.web
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.node.datacenter import DataSource
 from ray._private.test_utils import get_resource_usage
 from ray.dashboard.utils import async_loop_forever
 import ray._private.ray_constants as ray_constants
@@ -309,7 +309,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                 message=f"Error proxying request to insight monitor: {str(e)}",
             )
 
-    async def run(self, server):
+    async def run(self):
         pass
 
     @staticmethod

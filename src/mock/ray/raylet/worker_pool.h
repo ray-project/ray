@@ -22,7 +22,8 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MOCK_METHOD(void,
               PopWorker,
-              (const TaskSpecification &task_spec, const PopWorkerCallback &callback, 
+              (const TaskSpecification &task_spec,
+               const PopWorkerCallback &callback,
                const std::string &serialized_allocated_instances),
               (override));
   MOCK_METHOD(void,

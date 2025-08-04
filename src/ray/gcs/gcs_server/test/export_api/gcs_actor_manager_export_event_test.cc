@@ -158,10 +158,10 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
     auto actor_scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = actor_scheduler.get();
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ =
-        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
-            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(actor_scheduler),
         gcs_table_storage_.get(),

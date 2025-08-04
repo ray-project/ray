@@ -60,6 +60,9 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash 
   npm run build
 )
 
+echo "--- Install Ray dependency packages"
+pip install -r python/requirements.txt
+
 echo "--- Install Ray with -e"
 
 if [[ "$BUILD_TYPE" == "debug" ]]; then

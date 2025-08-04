@@ -46,12 +46,16 @@ class GcsActorSchedulerMockTest : public Test {
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
     actor_table = std::make_unique<GcsActorTable>(store_client);
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ =
-        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
-            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
-    gcs_node_manager = std::make_unique<GcsNodeManager>(
-        nullptr, nullptr, io_context, nullptr, ClusterID::Nil(),*gcs_virtual_cluster_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    gcs_node_manager = std::make_unique<GcsNodeManager>(nullptr,
+                                                        nullptr,
+                                                        io_context,
+                                                        nullptr,
+                                                        ClusterID::Nil(),
+                                                        *gcs_virtual_cluster_manager_);
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::NodeManagerClientPool>(

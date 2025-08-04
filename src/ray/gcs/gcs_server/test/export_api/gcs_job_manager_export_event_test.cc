@@ -56,10 +56,10 @@ class GcsJobManagerTest : public ::testing::Test {
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ =
-        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
-            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is

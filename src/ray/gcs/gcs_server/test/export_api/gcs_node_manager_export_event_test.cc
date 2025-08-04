@@ -53,10 +53,10 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ =
-        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
-            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
 
     RayConfig::instance().initialize(
         R"(
@@ -98,7 +98,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
-                                    *gcs_virtual_cluster_manager_);
+                                   *gcs_virtual_cluster_manager_);
   auto node = Mocker::GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -124,7 +124,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
-                                  *gcs_virtual_cluster_manager_);
+                                   *gcs_virtual_cluster_manager_);
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);

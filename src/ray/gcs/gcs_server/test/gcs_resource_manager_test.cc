@@ -20,10 +20,10 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 
 namespace ray {
 
@@ -35,10 +35,12 @@ class GcsResourceManagerTest : public ::testing::Test {
       : cluster_resource_manager_(io_service_),
         gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>()) {
     gcs_resource_manager_ = std::make_shared<gcs::MockGcsResourceManager>(
-       cluster_resource_manager_, *gcs_node_manager_);
+        cluster_resource_manager_, *gcs_node_manager_);
     ON_CALL(*gcs_resource_manager_, HandleGetAllResourceUsage)
-        .WillByDefault([&](auto&&... args) {
-            return this->gcs_resource_manager_->GcsResourceManager::HandleGetAllResourceUsage(std::forward<decltype(args)>(args)...);
+        .WillByDefault([&](auto &&...args) {
+          return this->gcs_resource_manager_
+              ->GcsResourceManager::HandleGetAllResourceUsage(
+                  std::forward<decltype(args)>(args)...);
         });
   }
 

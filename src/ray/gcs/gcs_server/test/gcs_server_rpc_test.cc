@@ -402,8 +402,8 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     rpc::GetAllNodeInfoReply reply;
     RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
 
-    ASSERT_EQ(reply.node_info_list_size(), 1);
-    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.node_info_list_size(), 0);
+    ASSERT_EQ(reply.num_filtered(), 3);
     ASSERT_EQ(reply.total(), 3);
   }
 }

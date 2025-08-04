@@ -214,7 +214,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     RAY_CHECK(virtual_cluster_accessor_ != nullptr);
     return *virtual_cluster_accessor_;
   }
-  
+
   PublisherAccessor &Publisher() {
     RAY_CHECK(publisher_accessor_ != nullptr);
     return *publisher_accessor_;

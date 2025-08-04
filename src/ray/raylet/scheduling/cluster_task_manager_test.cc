@@ -48,8 +48,9 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback, 
-                 const std::string &serialized_allocated_instances = "{}") override  {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback,
+                 const std::string &serialized_allocated_instances = "{}") override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
@@ -147,13 +148,25 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
   static instrumented_io_context io_context;
+  const absl::flat_hash_map<std::string, std::string> local_node_labels = {};
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
       io_context,
       scheduling::NodeID(id),
       local_node_resources,
-      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
+      /*is_node_available_fn*/
+      [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
-      });
+      },
+      /*get_used_object_store_memory*/
+      []() -> int64_t { return 0; },
+      /*get_pull_manager_at_capacity*/
+      []() -> bool { return false; },
+      /*shutdown_raylet_gracefully*/
+      [](const rpc::NodeDeathInfo &) {},
+      /*local_node_labels*/
+      local_node_labels,
+      /*is_node_schedulable_fn*/
+      [](scheduling::NodeID, const SchedulingContext *) -> bool { return true; });
 
   return scheduler;
 }
@@ -1626,7 +1639,9 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
-  // Test the case when the task owner (worker or node) dies, the task is cancelled.
+  /*
+    Test the case when the task owner (worker or node) dies, the task is cancelled.
+   */
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;

@@ -61,17 +61,17 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ = std::make_unique<gcs::GcsVirtualClusterManager>(io_service_,
-                                                                                  *gcs_table_storage_,
-                                                                                  *gcs_publisher_,
-                                                                                  *cluster_resource_manager_);
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
-                                                              gcs_table_storage_.get(),
-                                                              io_service_,
-                                                              raylet_client_pool_.get(),
-                                                              ClusterID::Nil(),
-                                                              *gcs_virtual_cluster_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    gcs_node_manager_ =
+        std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
+                                              gcs_table_storage_.get(),
+                                              io_service_,
+                                              raylet_client_pool_.get(),
+                                              ClusterID::Nil(),
+                                              *gcs_virtual_cluster_manager_);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
