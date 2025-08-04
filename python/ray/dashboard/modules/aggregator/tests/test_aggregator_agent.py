@@ -385,6 +385,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
+
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
