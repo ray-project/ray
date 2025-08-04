@@ -1,3 +1,4 @@
+import logging
 import os
 import stat
 import subprocess
@@ -17,6 +18,8 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -68,13 +71,18 @@ class FootsiesBinary:
         self.full_extract_dir = config.extract_dir.resolve()
         self.renamed_path = ""
 
+    @staticmethod
+    def _add_executable_permission(binary_path: Path) -> None:
+        binary_path.chmod(binary_path.stat().st_mode | stat.S_IXUSR)
+
     def _download_game_binary(self):
         chunk_size = 1024 * 1024  # 1MB
 
         if Path(self.full_download_path).exists():
-            print(
+            logger.info(
                 f"Game binary already exists at {self.full_download_path}, skipping download."
             )
+
         else:
             try:
                 with requests.get(self.url, stream=True) as response:
@@ -84,18 +92,18 @@ class FootsiesBinary:
                         for chunk in response.iter_content(chunk_size=chunk_size):
                             if chunk:
                                 f.write(chunk)
-                print(
+                logger.info(
                     f"Downloaded game binary to {self.full_download_path}\n"
                     f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
                 )
             except requests.exceptions.RequestException as e:
-                print(f"Failed to download binary from {self.url}: {e}")
+                logger.error(f"Failed to download binary from {self.url}: {e}")
 
     def _unzip_game_binary(self):
         self.renamed_path = self.full_extract_dir / "footsies_binaries"
 
         if Path(self.renamed_path).exists():
-            print(
+            logger.info(
                 f"Game binary already extracted at {self.renamed_path}, skipping extraction."
             )
         else:
@@ -107,7 +115,7 @@ class FootsiesBinary:
                 self.full_download_path.with_suffix(".app").rename(self.renamed_path)
             else:
                 self.full_download_path.with_suffix("").rename(self.renamed_path)
-            print(f"Extracted game binary to {self.renamed_path}")
+            logger.info(f"Extracted game binary to {self.renamed_path}")
 
     def start_game_server(self, port: int) -> None:
         self._download_game_binary()
@@ -123,10 +131,12 @@ class FootsiesBinary:
             game_binary_path = Path(self.renamed_path) / "footsies.x86_64"
 
         if os.access(game_binary_path, os.X_OK):
-            print(f"Game binary has an executable permission: {game_binary_path}")
+            logger.info(
+                f"Game binary has an 'executable' permission: {game_binary_path}"
+            )
         else:
             self._add_executable_permission(game_binary_path)
-        print(f"Game binary path: {game_binary_path}")
+        logger.info(f"Game binary path: {game_binary_path}")
 
         if (
             self.target_binary == "linux_server"
@@ -155,17 +165,13 @@ class FootsiesBinary:
             stub.StartGame(footsies_pb2.Empty())
             ready = stub.IsReady(footsies_pb2.Empty()).value
             while not ready and time.time() - _t0 < _timeout_duration:
+                logger.info("Game not ready...")
                 time.sleep(1)
                 ready = stub.IsReady(footsies_pb2.Empty()).value
                 if time.time() - _t0 > _timeout_duration:
                     raise TimeoutError(
                         f"Game server did not become ready within {_timeout_duration} seconds."
                     )
-                print("Game not ready...")
-            print("Game ready!")
+            logger.info("Game ready!")
         finally:
             channel.close()
-
-    @staticmethod
-    def _add_executable_permission(binary_path: Path) -> None:
-        binary_path.chmod(binary_path.stat().st_mode | stat.S_IXUSR)

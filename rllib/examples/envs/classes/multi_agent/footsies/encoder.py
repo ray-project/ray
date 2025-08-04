@@ -10,20 +10,8 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
 )
 
 
-class EncoderMethods:
-    @staticmethod
-    def one_hot(
-        value: int | float | str, collection: list[int | float | str]
-    ) -> np.ndarray:
-        vector = np.zeros(len(collection), dtype=np.float32)
-        vector[collection.index(value)] = 1
-        return vector
-
-
 class FootsiesEncoder:
     """Encoder class to generate observations from the game state"""
-
-    observation_size: int = 81
 
     def __init__(self, observation_delay: int):
         self._encoding_history = {
@@ -34,26 +22,49 @@ class FootsiesEncoder:
         self._last_common_state: np.ndarray | None = None
         self._action_id_values = list(constants.FOOTSIES_ACTION_IDS.values())
 
-    def reset(self):
-        self._encoding_history = {
-            agent_id: collections.deque(maxlen=int(self.observation_delay))
-            for agent_id in ["p1", "p2"]
-        }
+    @staticmethod
+    def encode_common_state(game_state: footsies_pb2.GameState) -> np.ndarray:
+        p1_state, p2_state = game_state.player1, game_state.player2
+
+        dist_x = np.abs(p1_state.player_position_x - p2_state.player_position_x) / 8.0
+
+        return np.array(
+            [
+                dist_x,
+            ],
+            dtype=np.float32,
+        )
+
+    @staticmethod
+    def _encode_input_buffer(
+        input_buffer: list[int], last_n: int | None = None
+    ) -> np.ndarray:
+        """Encodes the input buffer into a one-hot vector.
+
+        :param input_buffer: The input buffer to encode
+        :type input_buffer: list[int]
+        :return: The encoded one-hot vector
+        :rtype: np.ndarray
+        """
+
+        if last_n is not None:
+            input_buffer = input_buffer[last_n:]
+
+        ib_encoding = []
+        for action_id in input_buffer:
+            arr = [0] * (len(constants.ACTION_TO_BITS) + 1)
+            arr[action_id] = 1
+            ib_encoding.extend(arr)
+
+        input_buffer_vector = np.asarray(ib_encoding, dtype=np.float32)
+
+        return input_buffer_vector
 
     def encode(
         self,
         game_state: footsies_pb2.GameState,
-        **kwargs,
     ) -> dict[str, Any]:
         """Encodes the game state into observations for all agents.
-
-        kwargs can be used to pass in additional features that
-        are added directly to the observation, keyed by the agent
-        IDs, e.g.,
-            kwargs = {
-                "p1": {"p1_feature": 1},
-                "p2": {"p2_feature": 2},
-            }
 
         :param game_state: The game state to encode
         :type game_state: footsies_pb2.GameState
@@ -61,12 +72,8 @@ class FootsiesEncoder:
         :rtype: dict[str, Any]
         """
         common_state = self.encode_common_state(game_state)
-        p1_encoding = self.encode_player_state(
-            game_state.player1, **kwargs.get("p1", {})
-        )
-        p2_encoding = self.encode_player_state(
-            game_state.player2, **kwargs.get("p2", {})
-        )
+        p1_encoding = self.encode_player_state(game_state.player1)
+        p2_encoding = self.encode_player_state(game_state.player2)
 
         observation_delay = min(
             self.observation_delay, len(self._encoding_history["p1"])
@@ -116,40 +123,12 @@ class FootsiesEncoder:
 
         return {"p1": p1_centric_observation, "p2": p2_centric_observation}
 
-    def get_last_encoding(self) -> dict[str, np.ndarray] | None:
-        if self._last_common_state is None:
-            return None
-
-        return {
-            "common_state": self._last_common_state.reshape(-1),
-            "p1": np.hstack(
-                list(self._encoding_history["p1"][-1].values()),
-                dtype=np.float32,
-            ),
-            "p2": np.hstack(
-                list(self._encoding_history["p2"][-1].values()),
-                dtype=np.float32,
-            ),
-        }
-
-    def encode_common_state(self, game_state: footsies_pb2.GameState) -> np.ndarray:
-        p1_state, p2_state = game_state.player1, game_state.player2
-
-        dist_x = np.abs(p1_state.player_position_x - p2_state.player_position_x) / 8.0
-
-        return np.array(
-            [
-                dist_x,
-            ],
-            dtype=np.float32,
-        )
-
     def encode_player_state(
         self,
         player_state: footsies_pb2.PlayerState,
-        **kwargs,
     ) -> dict[str, int | float | list | np.ndarray]:
         """Encodes the player state into observations.
+
         :param player_state: The player state to encode
         :type player_state: footsies_pb2.PlayerState
         :return: The encoded observations for the player
@@ -162,9 +141,7 @@ class FootsiesEncoder:
             / constants.FeatureDictNormalizers.VELOCITY_X,
             "is_dead": int(player_state.is_dead),
             "vital_health": player_state.vital_health,
-            "guard_health": EncoderMethods.one_hot(
-                player_state.guard_health, [0, 1, 2, 3]
-            ),
+            "guard_health": one_hot_encoder(player_state.guard_health, [0, 1, 2, 3]),
             "current_action_id": self._encode_action_id(player_state.current_action_id),
             "current_action_frame": player_state.current_action_frame
             / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME,
@@ -197,10 +174,29 @@ class FootsiesEncoder:
             "special_attack_progress": min(player_state.special_attack_progress, 1.0),
         }
 
-        if kwargs:
-            feature_dict.update(kwargs)
-
         return feature_dict
+
+    def get_last_encoding(self) -> dict[str, np.ndarray] | None:
+        if self._last_common_state is None:
+            return None
+
+        return {
+            "common_state": self._last_common_state.reshape(-1),
+            "p1": np.hstack(
+                list(self._encoding_history["p1"][-1].values()),
+                dtype=np.float32,
+            ),
+            "p2": np.hstack(
+                list(self._encoding_history["p2"][-1].values()),
+                dtype=np.float32,
+            ),
+        }
+
+    def reset(self):
+        self._encoding_history = {
+            agent_id: collections.deque(maxlen=int(self.observation_delay))
+            for agent_id in ["p1", "p2"]
+        }
 
     def _encode_action_id(self, action_id: int) -> np.ndarray:
         """Encodes the action id into a one-hot vector.
@@ -221,26 +217,10 @@ class FootsiesEncoder:
 
         return action_vector
 
-    def _encode_input_buffer(
-        self, input_buffer: list[int], last_n: int | None = None
-    ) -> np.ndarray:
-        """Encodes the input buffer into a one-hot vector.
 
-        :param input_buffer: The input buffer to encode
-        :type input_buffer: list[int]
-        :return: The encoded one-hot vector
-        :rtype: np.ndarray
-        """
-
-        if last_n is not None:
-            input_buffer = input_buffer[last_n:]
-
-        ib_encoding = []
-        for action_id in input_buffer:
-            arr = [0] * (len(constants.ACTION_TO_BITS) + 1)
-            arr[action_id] = 1
-            ib_encoding.extend(arr)
-
-        input_buffer_vector = np.asarray(ib_encoding, dtype=np.float32)
-
-        return input_buffer_vector
+def one_hot_encoder(
+    value: int | float | str, collection: list[int | float | str]
+) -> np.ndarray:
+    vector = np.zeros(len(collection), dtype=np.float32)
+    vector[collection.index(value)] = 1
+    return vector

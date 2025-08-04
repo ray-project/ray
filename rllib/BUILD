@@ -4772,7 +4772,6 @@ py_test(
     size = "large",
     srcs = ["examples/multi_agent/multi_agent_footsies.py"],
     args = [
-        "--num-agents=2",
         "--as-test",
         "--framework=torch",
         "--num-cpus=4",

@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
-from ray.rllib import env
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
@@ -16,7 +16,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 )
 
 
-class FootsiesEnv(env.MultiAgentEnv):
+class FootsiesEnv(MultiAgentEnv):
     metadata = {"render.modes": ["human"]}
     SPECIAL_CHARGE_FRAMES = 60
     GUARD_BREAK_REWARD = 0.3
@@ -26,7 +26,7 @@ class FootsiesEnv(env.MultiAgentEnv):
             agent: spaces.Box(
                 low=-np.inf,
                 high=np.inf,
-                shape=(FootsiesEncoder.observation_size,),
+                shape=(constants.OBSERVATION_SPACE_SIZE,),
             )
             for agent in ["p1", "p2"]
         }
@@ -55,12 +55,11 @@ class FootsiesEnv(env.MultiAgentEnv):
     )
 
     def __init__(self, config: dict[Any, Any] = None):
-        super(FootsiesEnv, self).__init__()
+        super().__init__()
 
         if config is None:
             config = {}
         self.config = config
-        self.use_build_encoding = config.get("use_build_encoding", False)
         self.agents: list[AgentID] = ["p1", "p2"]
         self.possible_agents: list[AgentID] = self.agents.copy()
         self._agent_ids: set[AgentID] = set(self.agents)
@@ -91,16 +90,20 @@ class FootsiesEnv(env.MultiAgentEnv):
             "p2": -1,
         }
 
-    def get_obs(self, game_state):
-        if self.use_build_encoding:
-            encoded_state = self.game.get_encoded_state()
-            encoded_state_dict = {
-                "p1": np.asarray(encoded_state.player1_encoding, dtype=np.float32),
-                "p2": np.asarray(encoded_state.player2_encoding, dtype=np.float32),
-            }
-            return encoded_state_dict
+    @staticmethod
+    def _convert_to_charge_action(action: int) -> int:
+        if action == constants.EnvActions.BACK:
+            return constants.EnvActions.BACK_ATTACK
+        elif action == constants.EnvActions.FORWARD:
+            return constants.EnvActions.FORWARD_ATTACK
         else:
-            return self.encoder.encode(game_state)
+            return constants.EnvActions.ATTACK
+
+    def get_infos(self):
+        return {agent: {} for agent in self.agents}
+
+    def get_obs(self, game_state):
+        return self.encoder.encode(game_state)
 
     def reset(
         self,
@@ -119,9 +122,7 @@ class FootsiesEnv(env.MultiAgentEnv):
         self.game.start_game()
 
         self.encoder.reset()
-
-        if not self.use_build_encoding:
-            self.last_game_state = self.game.get_state()
+        self.last_game_state = self.game.get_state()
 
         observations = self.get_obs(self.last_game_state)
 
@@ -207,19 +208,7 @@ class FootsiesEnv(env.MultiAgentEnv):
 
         return observations, rewards, terminateds, truncateds, self.get_infos()
 
-    def get_infos(self):
-        return {agent: {} for agent in self.agents}
-
     def _build_charged_special_queue(self):
         assert self.SPECIAL_CHARGE_FRAMES % self.frame_skip == 0
         steps_to_apply_attack = int(self.SPECIAL_CHARGE_FRAMES // self.frame_skip)
         return steps_to_apply_attack
-
-    @staticmethod
-    def _convert_to_charge_action(action: int) -> int:
-        if action == constants.EnvActions.BACK:
-            return constants.EnvActions.BACK_ATTACK
-        elif action == constants.EnvActions.FORWARD:
-            return constants.EnvActions.FORWARD_ATTACK
-        else:
-            return constants.EnvActions.ATTACK

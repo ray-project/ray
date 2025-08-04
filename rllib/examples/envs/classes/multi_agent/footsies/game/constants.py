@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+OBSERVATION_SPACE_SIZE: int = 81
+
 
 @dataclass
 class EnvActions:
