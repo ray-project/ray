@@ -46,7 +46,7 @@ def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
                     break
         manager.execute_single(manager.get_depset(name, build_arg_set_obj))
     else:
-        manager.execute_all()
+        manager.execute()
 
 
 class DependencySetManager:
