@@ -1,4 +1,3 @@
-import shutil
 import sys
 import os
 import logging
@@ -167,16 +166,15 @@ def test_vllm_llama_lora():
     assert all("resp" in out for out in outs)
 
 
-@ray.remote(num_gpus=1)
-def delete_torch_compile_cache_on_worker():
-    """Delete torch compile cache on worker.
-    Avoids AssertionError due to torch compile cache corruption
-    TODO(seiji): check if this is still needed after https://github.com/vllm-project/vllm/issues/18851 is fixed
-    """
-    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
-    if os.path.exists(torch_compile_cache_path):
-        shutil.rmtree(torch_compile_cache_path)
-        logger.warning(f"Deleted torch compile cache at {torch_compile_cache_path}")
+@pytest.fixture
+def vllm_disable_compile_cache_env(monkeypatch):
+    old_val = os.environ.get("VLLM_DISABLE_COMPILE_CACHE")
+    monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", "1")
+    yield
+    if old_val is not None:
+        monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", old_val)
+    else:
+        monkeypatch.delenv("VLLM_DISABLE_COMPILE_CACHE", raising=False)
 
 
 @pytest.mark.parametrize(
@@ -189,16 +187,21 @@ def delete_torch_compile_cache_on_worker():
     ],
 )
 def test_vllm_vision_language_models(
-    model_source, tp_size, pp_size, concurrency, sample_size
+    model_source,
+    tp_size,
+    pp_size,
+    concurrency,
+    sample_size,
+    vllm_disable_compile_cache_env,
 ):
     """Test vLLM with vision language models using different configurations."""
 
-    # todo(seiji): Commenting out due to https://github.com/ray-project/ray/issues/53824
+    # todo(seiji): Commenting out due to https://github.com/vllm-project/vllm/issues/18851
     # Need to follow up once torch_compile_cache issue is fixed or PyTorch 2.8
-    if model_source == "mistral-community/pixtral-12b":
-        pytest.skip("Skipping test due to torch_compile_cache issue")
-
-    ray.get(delete_torch_compile_cache_on_worker.remote())
+    if vllm_disable_compile_cache_env:
+        pytest.warning(
+            "Disabling torch compile cache due to https://github.com/vllm-project/vllm/issues/18851"
+        )
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
