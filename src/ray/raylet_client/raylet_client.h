@@ -374,28 +374,28 @@ class RayletClient : public RayletClientInterface {
   /// \param disconnect_type The reason why this worker process is disconnected.
   /// \param disconnect_detail The detailed reason for a given exit.
   /// \return ray::Status.
-  ray::Status Disconnect(
-      const rpc::WorkerExitType &exit_type,
-      const std::string &exit_detail,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+  ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
+                         const std::string &exit_detail,
+                         const std::shared_ptr<LocalMemoryBuffer>
+                             &creation_task_exception_pb_bytes) override;
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
   /// \param port The port.
   /// \return ray::Status.
-  Status AnnounceWorkerPortForWorker(int port);
+  Status AnnounceWorkerPortForWorker(int port) override;
 
   /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
   ///
   /// \param port The port.
   /// \param entrypoint The entrypoint of the driver's job.
   /// \return ray::Status.
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint);
+  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override;
 
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
-  ray::Status ActorCreationTaskDone();
+  ray::Status ActorCreationTaskDone() override;
 
   /// Tell the raylet to reconstruct or fetch objects.
   ///
@@ -407,25 +407,25 @@ class RayletClient : public RayletClientInterface {
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
                                  bool fetch_only,
-                                 const TaskID &current_task_id);
+                                 const TaskID &current_task_id) override;
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
+  ray::Status NotifyUnblocked(const TaskID &current_task_id) override;
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked();
+  ray::Status NotifyDirectCallTaskBlocked() override;
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
   ///
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskUnblocked();
+  ray::Status NotifyDirectCallTaskUnblocked() override;
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -444,7 +444,7 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
       int64_t timeout_milliseconds,
-      const TaskID &current_task_id);
+      const TaskID &current_task_id) override;
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
