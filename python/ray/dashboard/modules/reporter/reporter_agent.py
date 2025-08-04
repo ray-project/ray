@@ -1319,10 +1319,10 @@ class ReporterAgent(
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
-        is_head_node = str(self._is_head_node).lower()
+        ray_node_type = "head" if self._is_head_node else "worker"
 
         # Common tags for node-level metrics
-        node_tags = {"ip": ip, "IsHeadNode": is_head_node}
+        node_tags = {"ip": ip, "RayNodeType": ray_node_type}
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node

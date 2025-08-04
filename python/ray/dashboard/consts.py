@@ -65,7 +65,7 @@ RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR = "RAY_JOB_START_TIMEOUT_SECONDS"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 
-NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode"]
+NODE_TAG_KEYS = ["ip", "Version", "SessionName", "RayNodeType"]
 GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex"]
 
 # TpuDeviceName and TpuIndex are expected to be equal to the number of TPU
