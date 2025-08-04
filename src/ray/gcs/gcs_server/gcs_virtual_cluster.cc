@@ -735,10 +735,10 @@ void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
       auto virtual_cluster = LoadLogicalCluster(virtual_cluster_data.id(),
                                                 virtual_cluster_data.divisible(),
                                                 std::move(replica_instances));
-      virtual_cluster->UpdateAutoscalingConfig(
+      RAY_UNUSED(virtual_cluster->UpdateAutoscalingConfig(
           MapFromProtobuf(virtual_cluster_data.min_replica_sets()),
           MapFromProtobuf(virtual_cluster_data.max_replica_sets()),
-          virtual_cluster_data.max_nodes());
+          virtual_cluster_data.max_nodes()));
     }
   }
 
@@ -1006,9 +1006,10 @@ Status PrimaryCluster::UpdateVirtualClusterAutoscalingConfig(
     auto message = ostr.str();
     return Status::NotFound(message);
   }
-  logical_cluster->UpdateAutoscalingConfig(MapFromProtobuf(request.min_replica_sets()),
-                                           MapFromProtobuf(request.max_replica_sets()),
-                                           request.max_nodes());
+  RAY_UNUSED(logical_cluster->UpdateAutoscalingConfig(
+      MapFromProtobuf(request.min_replica_sets()),
+      MapFromProtobuf(request.max_replica_sets()),
+      request.max_nodes()));
   return async_data_flusher_(logical_cluster->ToProto(), std::move(callback));
 }
 
