@@ -433,6 +433,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
+  friend class FakePublisher;
 
   /// Testing only.
   Publisher() : publish_batch_size_(-1) {}

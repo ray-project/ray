@@ -16,7 +16,6 @@
 
 #include <algorithm>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -279,12 +278,12 @@ CoreWorker::CoreWorker(
     std::shared_ptr<ReferenceCounter> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
     std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-    std::shared_ptr<experimental::MutableObjectProvider>
+    std::shared_ptr<experimental::MutableObjectProviderInterface>
         experimental_mutable_object_provider,
     std::unique_ptr<FutureResolver> future_resolver,
-    std::shared_ptr<TaskManager> task_manager,
+    std::shared_ptr<TaskManagerInterface> task_manager,
     std::shared_ptr<ActorCreatorInterface> actor_creator,
-    std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+    std::unique_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
     std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
     std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
     std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
@@ -482,9 +481,7 @@ CoreWorker::CoreWorker(
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
-  RAY_LOG(ERROR) << "ConnectToRayletInternal";
   ConnectToRayletInternal();
-  RAY_LOG(ERROR) << "ConnectToRayletInternal done";
 }  // NOLINT(readability/fn_size)
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
@@ -541,16 +538,12 @@ void CoreWorker::ConnectToRayletInternal() {
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
   if (options_.worker_type == WorkerType::DRIVER) {
-    RAY_LOG(ERROR) << "AnnounceWorkerPortForDriver";
     Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
         core_worker_server_->GetPort(), options_.entrypoint);
-    RAY_LOG(ERROR) << "AnnounceWorkerPortForDriver done";
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
-    RAY_LOG(ERROR) << "AnnounceWorkerPortForWorker:" << core_worker_server_->GetPort();
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
-    RAY_LOG(ERROR) << "AnnounceWorkerPortForWorker done";
     RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";
   }
 }

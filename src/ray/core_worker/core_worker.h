@@ -184,12 +184,12 @@ class CoreWorker {
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-             std::shared_ptr<experimental::MutableObjectProvider>
+             std::shared_ptr<experimental::MutableObjectProviderInterface>
                  experimental_mutable_object_provider,
              std::unique_ptr<FutureResolver> future_resolver,
-             std::shared_ptr<TaskManager> task_manager,
+             std::shared_ptr<TaskManagerInterface> task_manager,
              std::shared_ptr<ActorCreatorInterface> actor_creator,
-             std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+             std::unique_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
              std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
              std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
              std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
@@ -1772,7 +1772,7 @@ class CoreWorker {
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// Manages mutable objects that must be transferred across nodes.
-  std::shared_ptr<experimental::MutableObjectProvider>
+  std::shared_ptr<experimental::MutableObjectProviderInterface>
       experimental_mutable_object_provider_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
@@ -1782,13 +1782,13 @@ class CoreWorker {
   ///
 
   // Tracks the currently pending tasks.
-  std::shared_ptr<TaskManager> task_manager_;
+  std::shared_ptr<TaskManagerInterface> task_manager_;
 
   // A class for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
-  std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
+  std::unique_ptr<ActorTaskSubmitterInterface> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
   std::unique_ptr<pubsub::PublisherInterface> object_info_publisher_;

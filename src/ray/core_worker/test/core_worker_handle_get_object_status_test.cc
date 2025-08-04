@@ -20,24 +20,21 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <vector>
-#include <utility>
-#include <iostream>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
-#include "mock/ray/core_worker/actor_creator.h"
-#include "mock/ray/core_worker/experimental_mutable_object_provider.h"
-#include "mock/ray/core_worker/lease_policy.h"
-#include "mock/ray/core_worker/task_manager_interface.h"
+#include "fakes/ray/core_worker/actor_creator.h"
+#include "fakes/ray/core_worker/actor_task_submitter.h"
+#include "fakes/ray/core_worker/experimental_mutable_object_provider.h"
+#include "fakes/ray/core_worker/lease_policy.h"
+#include "fakes/ray/core_worker/task_event_buffer.h"
+#include "fakes/ray/core_worker/task_manager.h"
+#include "fakes/ray/pubsub/publisher.h"
+#include "fakes/ray/pubsub/subscriber.h"
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
-#include "mock/ray/object_manager/plasma/client.h"
-#include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
-#include "mock/ray/raylet_client/raylet_client.h"
-#include "mock/ray/rpc/worker/core_worker_client.h"
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/test_util.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -47,7 +44,6 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/actor_task_submitter.h"
 #include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -59,86 +55,16 @@ using ::testing::_;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 
-namespace {
-
-class MockTaskEventBuffer : public worker::TaskEventBuffer {
- public:
-  void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {
-    task_events.emplace_back(std::move(task_event));
-  }
-
-  void FlushEvents(bool forced) override {}
-
-  Status Start(bool auto_flush = true) override { return Status::OK(); }
-
-  void Stop() override {}
-
-  bool Enabled() const override { return true; }
-
-  std::string DebugString() override { return ""; }
-
-  std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
-};
-
-class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
- public:
-  MockActorTaskSubmitter() : ActorTaskSubmitterInterface() {}
-  MOCK_METHOD5(AddActorQueueIfNotExists,
-               void(const ActorID &actor_id,
-                    int32_t max_pending_calls,
-                    bool execute_out_of_order,
-                    bool fail_if_actor_unreachable,
-                    bool owned));
-  MOCK_METHOD3(ConnectActor,
-               void(const ActorID &actor_id,
-                    const rpc::Address &address,
-                    int64_t num_restarts));
-  MOCK_METHOD5(DisconnectActor,
-               void(const ActorID &actor_id,
-                    int64_t num_restarts,
-                    bool dead,
-                    const rpc::ActorDeathCause &death_cause,
-                    bool is_restartable));
-
-  MOCK_METHOD0(CheckTimeoutTasks, void());
-
-  MOCK_METHOD(void, SetPreempted, (const ActorID &actor_id), (override));
-
-  virtual ~MockActorTaskSubmitter() {}
-};
-
-}  // namespace
-
 class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
  public:
   CoreWorkerHandleGetObjectStatusTest()
       : io_work_(io_service_.get_executor()),
-        task_execution_service_work_(task_execution_service_.get_executor()),
-        core_worker_client_pool_(
-            std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
-              return std::make_shared<rpc::MockCoreWorkerClientInterface>();
-            })),
-        raylet_client_pool_(
-            std::make_shared<rpc::RayletClientPool>([](const rpc::Address &) {
-              return std::make_shared<MockRayletClientInterface>();
-            })) {}
-
-  void SetUp() override {
+        task_execution_service_work_(task_execution_service_.get_executor()) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
-    options.store_socket = "/tmp/plasma_socket_test";
-    options.raylet_socket = "/tmp/raylet_socket_test";
-    options.job_id = job_id_;
-    // gcs_options uses default constructor
-    options.enable_logging = false;
-    options.log_dir = "";
-    options.install_failure_signal_handler = false;
-    options.interactive = false;
     options.node_ip_address = "127.0.0.1";
-    options.node_manager_port = 12345;
     options.raylet_ip_address = "127.0.0.1";
-    options.driver_name = "test_driver";
     options.task_execution_callback =
         [](const rpc::Address &caller_address,
            TaskType task_type,
@@ -162,162 +88,158 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
            const rpc::TensorTransport &tensor_transport) -> Status {
-      // Dummy task execution callback for testing - just return OK
       return Status::OK();
     };
-    options.free_actor_object_callback = nullptr;
-    options.check_signals = nullptr;
-    options.initialize_thread_callback = nullptr;
-    options.gc_collect = nullptr;
-    options.spill_objects = nullptr;
-    options.restore_spilled_objects = nullptr;
-    options.delete_spilled_objects = nullptr;
-    options.unhandled_exception_handler = nullptr;
-    options.get_lang_stack = nullptr;
-    options.kill_main = nullptr;
-    options.cancel_async_actor_task = nullptr;
-    options.is_local_mode = false;
-    options.terminate_asyncio_thread = nullptr;
-    options.serialized_job_config = "{}";
-    options.metrics_agent_port = -1;
-    options.runtime_env_hash = 123456;
-    options.startup_token = StartupToken{0};
-    options.cluster_id = ClusterID::FromHex("0123456789abcdef0123456789abcdef01234567");
-    options.object_allocator = nullptr;
-    options.session_name = "test_session";
-    options.entrypoint = "test_entrypoint";
-    options.worker_launch_time_ms = 1000;
-    options.worker_launched_time_ms = 2000;
-    options.debug_source = "test_debug_source";
-    options.enable_resource_isolation = false;
 
-    worker_id_ = WorkerID::FromRandom();
-    job_id_ = JobID::FromInt(1);
-    object_id_ = ObjectID::FromRandom();
-    service_handler_ = std::make_unique<CoreWorkerServiceHandlerProxy>();
-    worker_context_ =
-        std::make_unique<WorkerContext>(WorkerType::WORKER, worker_id_, job_id_);
-    core_worker_server_ = std::make_unique<rpc::GrpcServer>(
-        WorkerTypeString(options.worker_type), 0, options.node_ip_address == "127.0.0.1");
-    // Start RPC server after all the task receivers are properly initialized and we have
-    // our assigned port from the raylet.
-    core_worker_server_->RegisterService(
-        std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler_),
+    auto core_worker_client_pool =
+        std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
+          return std::make_shared<rpc::CoreWorkerClientInterface>();
+        });
+
+    auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
+        [](const rpc::Address &) { return std::make_shared<FakeRayletClient>(); });
+
+    auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
+
+    auto fake_local_raylet_client = std::make_shared<FakeRayletClient>();
+
+    auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
+    auto worker_context = std::make_unique<WorkerContext>(
+        WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
+    auto core_worker_server =
+        std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type), 0, true);
+    core_worker_server->RegisterService(
+        std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler),
         false /* token_auth */);
-    core_worker_server_->Run();
-    // Create other mock dependencies
-    rpc_address_.set_ip_address(options.node_ip_address);
-    rpc_address_.set_port(core_worker_server_->GetPort());
-    rpc_address_.set_raylet_id(NodeID::FromRandom().Binary());
-    rpc_address_.set_worker_id(worker_context_->GetWorkerID().Binary());
-    mock_gcs_client_ = std::make_shared<gcs::MockGcsClient>();
-    // mock_task_manager_ = std::make_shared<MockTaskManagerInterface>();
-    mock_actor_creator_ = std::make_shared<MockActorCreatorInterface>();
-    mock_lease_policy_ = std::make_shared<MockLeasePolicyInterface>();
-    // mock_experimental_mutable_object_provider_ =
-    //     std::make_shared<experimental::MockMutableObjectProvider>();
-    mock_plasma_client_ = std::make_shared<plasma::MockPlasmaClient>();
-    mock_object_info_publisher_ = std::make_unique<pubsub::MockPublisher>();
-    mock_object_info_subscriber_ = std::make_unique<pubsub::MockSubscriber>();
-    mock_local_raylet_client_ = std::make_shared<MockRayletClientInterface>();
+    core_worker_server->Run();
 
-    // Create submitters
-    lease_request_rate_limiter_ = std::make_shared<StaticLeaseRequestRateLimiter>(10);
+    rpc::Address rpc_address;
+    rpc_address.set_ip_address(options.node_ip_address);
+    rpc_address.set_port(core_worker_server->GetPort());
+    rpc_address.set_raylet_id(NodeID::FromRandom().Binary());
+    rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
 
-    // mock_actor_task_submitter_ = std::make_unique<MockActorTaskSubmitter>();
+    auto fake_object_info_publisher = std::make_unique<pubsub::FakePublisher>();
+    auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
 
-    // Create other required objects
-    periodical_runner_ = std::make_shared<FakePeriodicalRunner>();
-
-    // plasma_store_provider_ = std::make_shared<CoreWorkerPlasmaStoreProvider>(
-    //     mock_plasma_client_, nullptr, io_service_, false);
-
-    auto report_locality_data_callback = [](const ObjectID &object_id,
-                                            const absl::flat_hash_set<NodeID> &locations,
-                                            uint64_t object_size) {};
-
-    // Create real reference counter and memory store (as per requirements)
     reference_counter_ = std::make_shared<ReferenceCounter>(
-        rpc_address_,
-        mock_object_info_publisher_.get(),
-        mock_object_info_subscriber_.get(),
+        rpc_address,
+        fake_object_info_publisher.get(),
+        fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
         false);
+
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
         io_service_, reference_counter_.get(), nullptr);
 
-    future_resolver_ =
-        std::make_unique<FutureResolver>(memory_store_,
-                                         reference_counter_,
-                                         std::move(report_locality_data_callback),
-                                         core_worker_client_pool_,
-                                         rpc_address_);
+    auto future_resolver = std::make_unique<FutureResolver>(
+        memory_store_,
+        reference_counter_,
+        [](const ObjectID &object_id,
+           const absl::flat_hash_set<NodeID> &locations,
+           uint64_t object_size) {},
+        core_worker_client_pool,
+        rpc_address);
 
-    // object_recovery_manager_ = std::make_shared<ObjectRecoveryManager>(
-    //     rpc_address_, raylet_client_pool_, core_worker_client_pool_);
+    auto fake_task_manager = std::make_shared<FakeTaskManager>();
 
-    // actor_manager_ = std::make_unique<ActorManager>(
-    //     mock_gcs_client_, *mock_actor_task_submitter_, *reference_counter_);
+    auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
+        rpc_address,
+        raylet_client_pool,
+        fake_local_raylet_client,
+        [](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+          return Status::OK();
+        },
+        *fake_task_manager,
+        *reference_counter_,
+        *memory_store_,
+        [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {});
 
-    task_event_buffer_ = std::make_unique<MockTaskEventBuffer>();
+    auto lease_policy = std::make_unique<FakeLeasePolicy>();
 
-    client_call_manager_ =
-        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+    auto lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(10);
 
-    // mock_normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>();
+    auto fake_actor_creator = std::make_shared<FakeActorCreator>();
 
-    // Start the io_thread to run the io_service
+    auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
+        rpc_address,
+        fake_local_raylet_client,
+        core_worker_client_pool,
+        raylet_client_pool,
+        std::move(lease_policy),
+        memory_store_,
+        *fake_task_manager,
+        NodeID::Nil(),
+        WorkerType::WORKER,
+        10000,
+        fake_actor_creator,
+        JobID::Nil(),
+        lease_request_rate_limiter,
+        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        boost::asio::steady_timer(io_service_));
+
+    auto fake_actor_task_submitter = std::make_unique<FakeActorTaskSubmitter>();
+
+    auto actor_manager = std::make_unique<ActorManager>(
+        mock_gcs_client, *fake_actor_task_submitter, *reference_counter_);
+
+    auto fake_task_event_buffer = std::make_unique<FakeTaskEventBuffer>();
+
     io_thread_ = boost::thread([this]() { io_service_.run(); });
 
-    // Create CoreWorker with dependency injection
-    CreateCoreWorker(options);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    auto client_call_manager =
+        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+
+    auto fake_experimental_mutable_object_provider =
+        std::make_shared<experimental::FakeMutableObjectProvider>();
+
+    auto periodical_runner = std::make_shared<FakePeriodicalRunner>();
+
+    EXPECT_CALL(*mock_gcs_client->mock_worker_accessor, AsyncAdd(_, _)).Times(1);
+    EXPECT_CALL(*mock_gcs_client->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+        .Times(1);
+    // Create CoreWorker
+    core_worker_ =
+        std::make_shared<CoreWorker>(std::move(options),
+                                     std::move(worker_context),
+                                     io_service_,
+                                     std::move(client_call_manager),
+                                     std::move(core_worker_client_pool),
+                                     std::move(raylet_client_pool),
+                                     std::move(periodical_runner),
+                                     std::move(core_worker_server),
+                                     std::move(rpc_address),
+                                     std::move(mock_gcs_client),
+                                     std::move(fake_local_raylet_client),
+                                     io_thread_,
+                                     reference_counter_,
+                                     memory_store_,
+                                     nullptr,  // plasma_store_provider_
+                                     std::move(fake_experimental_mutable_object_provider),
+                                     std::move(future_resolver),
+                                     std::move(fake_task_manager),
+                                     std::move(fake_actor_creator),
+                                     std::move(fake_actor_task_submitter),
+                                     std::move(fake_object_info_publisher),
+                                     std::move(fake_object_info_subscriber),
+                                     std::move(lease_request_rate_limiter),
+                                     std::move(normal_task_submitter),
+                                     std::move(object_recovery_manager),
+                                     std::move(actor_manager),
+                                     task_execution_service_,
+                                     std::move(fake_task_event_buffer),
+                                     getpid());
   }
 
   void TearDown() override {
-    // Clean up the CoreWorker first
-    core_worker_.reset();
-
-    // Stop the io_service and join the thread
     io_service_.stop();
     if (io_thread_.joinable()) {
       io_thread_.join();
     }
   }
 
-  void CreateCoreWorker(CoreWorkerOptions options) {
-    core_worker_ = std::make_shared<CoreWorker>(std::move(options),
-                                                std::move(worker_context_),
-                                                io_service_,
-                                                std::move(client_call_manager_),
-                                                core_worker_client_pool_,
-                                                raylet_client_pool_,
-                                                periodical_runner_,
-                                                std::move(core_worker_server_),
-                                                rpc_address_,
-                                                mock_gcs_client_,
-                                                std::move(mock_local_raylet_client_),
-                                                io_thread_,
-                                                reference_counter_,
-                                                memory_store_,
-                                                nullptr,
-                                                nullptr,
-                                                std::move(future_resolver_),
-                                                nullptr,
-                                                nullptr,
-                                                nullptr,
-                                                std::move(mock_object_info_publisher_),
-                                                std::move(mock_object_info_subscriber_),
-                                                lease_request_rate_limiter_,
-                                                nullptr,
-                                                nullptr,
-                                                nullptr,
-                                                task_execution_service_,
-                                                std::move(task_event_buffer_),
-                                                getpid());
-  }
-
  protected:
+  // Core io contexts (must be first)
   instrumented_io_context io_service_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
   instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false,
@@ -326,147 +248,69 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
   boost::thread io_thread_;
-  WorkerID worker_id_;
-  JobID job_id_;
-  ObjectID object_id_;
-  rpc::Address rpc_address_;
 
-  // Real dependencies (as per requirements)
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
-
-  // Mock dependencies
-  std::unique_ptr<WorkerContext> worker_context_;
-  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  std::shared_ptr<MockTaskManagerInterface> mock_task_manager_;
-  std::shared_ptr<MockActorCreatorInterface> mock_actor_creator_;
-  std::shared_ptr<MockLeasePolicyInterface> mock_lease_policy_;
-  std::shared_ptr<experimental::MockMutableObjectProvider>
-      mock_experimental_mutable_object_provider_;
-  std::shared_ptr<plasma::MockPlasmaClient> mock_plasma_client_;
-  std::unique_ptr<pubsub::PublisherInterface> mock_object_info_publisher_;
-  std::unique_ptr<pubsub::SubscriberInterface> mock_object_info_subscriber_;
-  std::shared_ptr<MockRayletClientInterface> mock_local_raylet_client_;
-
-  // Other dependencies
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
-  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
-  std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
-  std::unique_ptr<MockActorTaskSubmitter> mock_actor_task_submitter_;
-  std::unique_ptr<NormalTaskSubmitter> mock_normal_task_submitter_;
-  std::shared_ptr<FakePeriodicalRunner> periodical_runner_;
-  std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
-  std::unique_ptr<FutureResolver> future_resolver_;
-  std::shared_ptr<ObjectRecoveryManager> object_recovery_manager_;
-  std::unique_ptr<ActorManager> actor_manager_;
-  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_;
-  std::unique_ptr<rpc::GrpcServer> core_worker_server_;
-  std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
   std::shared_ptr<CoreWorker> core_worker_;
 };
 
 TEST_F(CoreWorkerHandleGetObjectStatusTest, IdempotencyTest) {
-  // Set up object in memory store
+  auto object_id = ObjectID::FromRandom();
+  std::string data_str = "test_data";
+  std::string metadata_str = "meta";
   auto data = std::make_shared<LocalMemoryBuffer>(
-      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>("test_data")), 9, true);
+      reinterpret_cast<uint8_t *>(data_str.data()), data_str.size(), true);
   auto metadata = std::make_shared<LocalMemoryBuffer>(
-      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>("meta")), 4, true);
+      reinterpret_cast<uint8_t *>(metadata_str.data()), metadata_str.size(), true);
   auto ray_object =
       std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
 
-  // Add ownership information to reference counter first (required for memory store)
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id_, {}, owner_address, "", 0, false, true);
-
-  // Add object to memory store
-  ASSERT_TRUE(memory_store_->Put(*ray_object, object_id_));
-
-  // First call to HandleGetObjectStatus
+  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  ASSERT_TRUE(memory_store_->Put(*ray_object, object_id));
   rpc::GetObjectStatusRequest request1;
-  request1.set_object_id(object_id_.Binary());
+  request1.set_object_id(object_id.Binary());
   request1.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
 
   rpc::GetObjectStatusReply reply1;
-  bool callback_called1 = false;
-  Status status1;
   std::mutex callback_mutex1;
   std::condition_variable callback_cv1;
-
-  std::cout << "Calling HandleGetObjectStatus with object_id: " << object_id_.Hex()
-            << " and worker_id: " << core_worker_->GetWorkerID().Hex() << std::endl;
-
+  bool callback_called1 = false;
   core_worker_->HandleGetObjectStatus(
       request1,
       &reply1,
       [&](Status s, std::function<void()> success, std::function<void()> failure) {
         std::lock_guard<std::mutex> lock(callback_mutex1);
-        std::cout << "Callback invoked with status: " << s.ToString() << std::endl;
-        status1 = s;
         callback_called1 = true;
         callback_cv1.notify_one();
       });
 
-  // Wait for async operation to complete
-  {
-    std::unique_lock<std::mutex> lock(callback_mutex1);
-    callback_cv1.wait_for(
-        lock, std::chrono::milliseconds(1000), [&] { return callback_called1; });
-  }
-
-  std::cout << "Callback called: " << callback_called1 << std::endl;
-  if (callback_called1) {
-    std::cout << "Reply status: " << reply1.status() << std::endl;
-    std::cout << "Reply has object: " << reply1.has_object() << std::endl;
-  }
-
-  EXPECT_TRUE(callback_called1);
-  EXPECT_TRUE(status1.ok());
-  EXPECT_EQ(reply1.status(), rpc::GetObjectStatusReply::CREATED);
-  EXPECT_TRUE(reply1.has_object());
-  EXPECT_EQ(reply1.object().data(), "test_data");
-  EXPECT_EQ(reply1.object().metadata(), "meta");
-
-  // Second call to HandleGetObjectStatus (idempotency test)
-  rpc::GetObjectStatusRequest request2;
-  request2.set_object_id(object_id_.Binary());
-  request2.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
-
   rpc::GetObjectStatusReply reply2;
-  bool callback_called2 = false;
-  Status status2;
   std::mutex callback_mutex2;
   std::condition_variable callback_cv2;
-
+  bool callback_called2 = false;
   core_worker_->HandleGetObjectStatus(
-      request2,
+      request1,
       &reply2,
       [&](Status s, std::function<void()> success, std::function<void()> failure) {
         std::lock_guard<std::mutex> lock(callback_mutex2);
-        status2 = s;
         callback_called2 = true;
         callback_cv2.notify_one();
       });
 
-  // Wait for async operation to complete
-  {
-    std::unique_lock<std::mutex> lock(callback_mutex2);
-    callback_cv2.wait_for(
-        lock, std::chrono::milliseconds(1000), [&] { return callback_called2; });
-  }
-
-  EXPECT_TRUE(callback_called2);
-  EXPECT_TRUE(status2.ok());
-  EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::CREATED);
-  EXPECT_TRUE(reply2.has_object());
-  EXPECT_EQ(reply2.object().data(), "test_data");
-  EXPECT_EQ(reply2.object().metadata(), "meta");
+  std::unique_lock<std::mutex> lock1(callback_mutex1);
+  callback_cv1.wait(lock1, [&] { return callback_called1; });
+  std::unique_lock<std::mutex> lock2(callback_mutex2);
+  callback_cv2.wait(lock2, [&] { return callback_called2; });
 
   // Verify both replies are identical (idempotency)
-  EXPECT_EQ(reply1.status(), reply2.status());
-  EXPECT_EQ(reply1.object().data(), reply2.object().data());
-  EXPECT_EQ(reply1.object().metadata(), reply2.object().metadata());
+  EXPECT_EQ(reply1.status(), rpc::GetObjectStatusReply::CREATED);
+  EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::CREATED);
+  EXPECT_EQ("test_data", reply1.object().data());
+  EXPECT_EQ("test_data", reply2.object().data());
+  EXPECT_EQ("meta", reply1.object().metadata());
+  EXPECT_EQ("meta", reply2.object().metadata());
 }
 
 }  // namespace core

@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -28,6 +31,9 @@
 
 namespace ray {
 namespace core {
+
+// Forward declarations
+class ActorManager;
 
 class TaskManagerInterface {
  public:
@@ -180,6 +186,109 @@ class TaskManagerInterface {
   /// object recovery comes back from the executing worker. We mark the attempt as failed
   /// and resubmit it, so we can recover the intermediate return.
   virtual void MarkGeneratorFailedAndResubmit(const TaskID &task_id) = 0;
+
+  /// Wait for all pending tasks to finish, and then shutdown.
+  ///
+  /// \param shutdown The shutdown callback to call.
+  virtual void DrainAndShutdown(std::function<void()> shutdown) = 0;
+
+  /// Record OCL metrics.
+  virtual void RecordMetrics() = 0;
+
+  /// Return specs for pending children tasks of the given parent task.
+  virtual std::vector<TaskID> GetPendingChildrenTasks(
+      const TaskID &parent_task_id) const = 0;
+
+  /// Delete the object ref stream. The caller must guarantee that the
+  /// generator ref and all returned refs have been deleted from the reference
+  /// counter (all lineage out of scope) before calling this method.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return Whether the task metadata and stream metadata were successfully
+  /// erased.
+  virtual bool TryDelObjectRefStream(const ObjectID &generator_id) = 0;
+
+  /// Read object reference of the next index from the
+  /// object stream of a generator_id.
+  ///
+  /// \param[out] object_id_out The next object ID from the stream.
+  /// Nil ID is returned if the next index hasn't been written.
+  /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
+  virtual Status TryReadObjectRefStream(const ObjectID &generator_id,
+                                        ObjectID *object_id_out) = 0;
+
+  /// Returns true if there are no more objects to read from the streaming
+  /// generator task.
+  ///
+  /// \param[in] generator_id The ObjectRef ID returned by the streaming
+  /// generator task.
+  /// \return True if there are no more objects to read from the generator.
+  virtual bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const = 0;
+
+  /// Read the next index of a ObjectRefStream of generator_id without
+  /// consuming an index.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return A object reference of the next index and if the object is already ready
+  /// (meaning if the object's value if retrievable).
+  /// It should not be nil.
+  virtual std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id) = 0;
+
+  /// Handle the generator task return so that it will be accessible
+  /// via TryReadObjectRefStream.
+  ///
+  /// \param[in] request The request that contains reported objects.
+  /// \param[in] execution_signal_callback Note: this callback is NOT GUARANTEED
+  /// to run in the same thread as the caller.
+  /// \return True if a task return is registered. False otherwise.
+  virtual bool HandleReportGeneratorItemReturns(
+      const rpc::ReportGeneratorItemReturnsRequest &request,
+      const std::function<void(Status, int64_t)> &execution_signal_callback) = 0;
+
+  /// Return true if the object ref stream exists.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  virtual bool ObjectRefStreamExists(const ObjectID &generator_id) = 0;
+
+  /// Temporarily register a given generator return reference.
+  ///
+  /// \param object_id The object ID to temporarily owns.
+  /// \param generator_id The return ref ID of a generator task.
+  /// \return True if we temporarily owned the reference. False otherwise.
+  virtual bool TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
+                                                        const ObjectID &generator_id) = 0;
+
+  /// Returns the generator ID that contains the dynamically allocated
+  /// ObjectRefs, if the task is dynamic. Else, returns Nil.
+  virtual ObjectID TaskGeneratorId(const TaskID &task_id) const = 0;
+
+  /// Return the ongoing retry tasks triggered by lineage reconstruction.
+  /// Key is the lineage reconstruction task info.
+  /// Value is the number of ongoing lineage reconstruction tasks of this type.
+  virtual std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+  GetOngoingLineageReconstructionTasks(const ActorManager &actor_manager) const = 0;
+
+  /// Return the number of submissible tasks. This includes both tasks that are
+  /// pending execution and tasks that have finished but that may be
+  /// re-executed to recover from a failure.
+  virtual size_t NumSubmissibleTasks() const = 0;
+
+  /// Add debug information about the current task status for the ObjectRefs
+  /// included in the given stats.
+  ///
+  /// \param[out] stats Will be populated with objects' current task status, if
+  /// any.
+  virtual void AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const = 0;
+
+  /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
+  virtual void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
+                            const int64_t limit) const = 0;
+
+  /// Return the number of pending tasks.
+  virtual size_t NumPendingTasks() const = 0;
 };
 
 }  // namespace core

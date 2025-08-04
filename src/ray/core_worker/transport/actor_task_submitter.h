@@ -68,6 +68,37 @@ class ActorTaskSubmitterInterface {
   /// If called, preempted = true will be set in the death cause upon actor death.
   virtual void SetPreempted(const ActorID &actor_id) = 0;
 
+  /// Submit a task to an actor for execution.
+  virtual Status SubmitTask(TaskSpecification task_spec) = 0;
+
+  /// Submit an actor creation task.
+  virtual Status SubmitActorCreationTask(TaskSpecification task_spec) = 0;
+
+  /// Get the address of an actor.
+  virtual std::optional<rpc::Address> GetActorAddress(const ActorID &actor_id) const = 0;
+
+  /// Check if an actor exists.
+  virtual bool CheckActorExists(const ActorID &actor_id) const = 0;
+
+  /// Check if pending tasks are full for an actor.
+  virtual bool PendingTasksFull(const ActorID &actor_id) const = 0;
+
+  /// Get debug string for an actor.
+  virtual std::string DebugString(const ActorID &actor_id) const = 0;
+
+  /// Get the number of pending tasks for an actor.
+  virtual size_t NumPendingTasks(const ActorID &actor_id) const = 0;
+
+  /// Cancel a task.
+  virtual Status CancelTask(TaskSpecification task_spec, bool recursive) = 0;
+
+  /// Get the local actor state.
+  virtual std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
+      const ActorID &actor_id) const = 0;
+
+  /// Queue a generator for resubmit.
+  virtual bool QueueGeneratorForResubmit(const TaskSpecification &spec) = 0;
+
   virtual ~ActorTaskSubmitterInterface() {}
 };
 
