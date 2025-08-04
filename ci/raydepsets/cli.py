@@ -30,7 +30,7 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
+@click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
 def load(config_path: str, workspace_dir: str, name: str):
@@ -45,7 +45,7 @@ def load(config_path: str, workspace_dir: str, name: str):
 class DependencySetManager:
     def __init__(
         self,
-        config_path: Path = Path(__file__).parent / "depset.config.yaml",
+        config_path: Path = Path(__file__).parent / "ray.depsets.yaml",
         workspace_dir: str = None,
     ):
         self.workspace = Workspace(workspace_dir)
