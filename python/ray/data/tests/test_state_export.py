@@ -312,7 +312,7 @@ class BasicObject:
             100,
         ),
         # Objects that can be converted to string
-        (BasicObject("test"), '"BasicObject(test)"', 100),  # JSON serialized
+        (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
         # Objects that can't be JSON serialized but can be stringified
         ({1, 2, 3}, "{1, 2, 3}", 100),  # Falls back to str()
         # Objects that can't be serialized or stringified
