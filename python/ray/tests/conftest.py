@@ -787,11 +787,18 @@ def call_ray_start_context(request):
         parameter = parameter.get("cmd", default_cmd)
 
     command_args = parameter.split(" ")
-
     try:
         out = ray._common.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
+    # If the exit code is non-zero subprocess.check_output raises a CalledProcessError
+    except subprocess.CalledProcessError as e:
+        print("Ray start cmd failed!")
+        print(f"Command: {' '.join(e.cmd)}")
+        print(f"Exit code: {e.returncode}")
+        if e.output:
+            print(f"Output:\n{e.output.decode()}")
+        raise
     except Exception as e:
         print(type(e), e)
         raise
