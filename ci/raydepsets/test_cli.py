@@ -16,10 +16,10 @@ from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
 from networkx import topological_sort
-import platform
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
+
 
 class TestCli(unittest.TestCase):
     def test_workspace_init(self):
@@ -407,7 +407,7 @@ depsets:
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
-    def test_env_substitution(self):
+    def test_var_substitution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
@@ -421,7 +421,7 @@ depsets:
                 ).output
             )
 
-    def test_bad_env_substitution(self):
+    def test_bad_var_substitution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             _replace_in_file(
@@ -470,6 +470,7 @@ def _save_file_as(input_file, output_file):
 def _append_to_file(filepath, new):
     with open(filepath, "a") as f:
         f.write(new + "\n")
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
