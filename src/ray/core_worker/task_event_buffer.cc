@@ -358,8 +358,8 @@ void TaskProfileEvent::PopulateRpcRayEventBaseFields(
 void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
   auto &[task_profile_Event, null_event] = ray_events_pair;
   // Second element of the RayEventsPair will always be empty for TaskProfileEvent
-  null_event = std::nullopt; 
-  
+  null_event = std::nullopt;
+
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
