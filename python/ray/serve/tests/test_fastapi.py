@@ -310,7 +310,10 @@ def test_fastapi_features(serve_instance):
         "db",
         "app.state",
     ]
-    assert open(resp.json()["file_path"]).read() == "hello"
+    wait_for_condition(
+        lambda: open(resp.json()["file_path"]).read() == "hello",
+        timeout=10,
+    )
 
     resp = httpx.request(
         "GET",
@@ -727,15 +730,16 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])
+@pytest.mark.parametrize("docs_url", ["/docs", None])
 def test_two_fastapi_in_one_application(
-    serve_instance: ServeControllerClient, two_fastapi
+    serve_instance: ServeControllerClient, two_fastapi, docs_url
 ):
     """
     Check that a deployment graph that would normally work, will not deploy
     successfully if there are two FastAPI deployments.
     """
-    app1 = FastAPI()
-    app2 = FastAPI()
+    app1 = FastAPI(docs_url=docs_url)
+    app2 = FastAPI(docs_url=docs_url)
 
     class SubModel:
         def add(self, a: int):

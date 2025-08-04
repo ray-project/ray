@@ -133,7 +133,7 @@ step_count = 0
 print("\nAgent trajectory:")
 positions = [float(obs[0])]  # Track positions for visualization
 
-while not terminated and not truncated:
+while not terminated and not truncated and step_count < 1000:
     # Compute an action given the current observation
     action_logits = rl_module.forward_inference(
         {"obs": torch.from_numpy(obs).unsqueeze(0)}
@@ -165,4 +165,6 @@ print(f"  Final position: {obs[0]:.1f}")
 # Verify the agent has learned the optimal policy
 if total_reward > -0.5 and obs[0] >= 9.0:
     print("  Success! The agent has learned the optimal policy (always move right).")
+else:
+    print("  Failure! The agent didn't reach the goal within 1000 timesteps.")
 # __quick_start_end__

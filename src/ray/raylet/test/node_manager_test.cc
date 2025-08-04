@@ -14,12 +14,14 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -30,6 +32,9 @@
 #include "mock/ray/raylet/local_task_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/common/buffer.h"
+#include "ray/object_manager/plasma/client.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/test/util.h"
 
@@ -38,6 +43,145 @@ using ::testing::_;
 using ::testing::Return;
 
 namespace {
+
+class FakeLocalObjectManager : public LocalObjectManagerInterface {
+ public:
+  FakeLocalObjectManager(
+      std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion)
+      : objects_pending_deletion_(objects_pending_deletion) {}
+
+  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
+                                std::vector<std::unique_ptr<RayObject>> &&objects,
+                                const rpc::Address &owner_address,
+                                const ObjectID &generator_id = ObjectID::Nil()) override {
+  }
+
+  // NOOP
+  void SpillObjectUptoMaxThroughput() override {}
+
+  void SpillObjects(const std::vector<ObjectID> &objects_ids,
+                    std::function<void(const ray::Status &)> callback) override {}
+
+  void AsyncRestoreSpilledObject(
+      const ObjectID &object_id,
+      int64_t object_size,
+      const std::string &object_url,
+      std::function<void(const ray::Status &)> callback) override {}
+
+  void FlushFreeObjects() override{};
+
+  bool ObjectPendingDeletion(const ObjectID &object_id) override {
+    return objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end();
+  }
+
+  void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) override {}
+
+  bool IsSpillingInProgress() override { return false; }
+
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const override {}
+
+  void RecordMetrics() const override {}
+
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id) override { return ""; }
+
+  int64_t GetPrimaryBytes() const override { return 0; }
+
+  bool HasLocallySpilledObjects() const override { return false; }
+
+  std::string DebugString() const override { return ""; }
+
+ private:
+  std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
+};
+
+class FakePlasmaClient : public plasma::PlasmaClientInterface {
+ public:
+  Status Connect(const std::string &store_socket_name,
+                 const std::string &manager_socket_name = "",
+                 int num_retries = -1) override {
+    return Status::OK();
+  };
+
+  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
+                                const ray::rpc::Address &owner_address,
+                                bool is_mutable,
+                                int64_t data_size,
+                                const uint8_t *metadata,
+                                int64_t metadata_size,
+                                std::shared_ptr<Buffer> *data,
+                                plasma::flatbuf::ObjectSource source,
+                                int device_num = 0) override {
+    return TryCreateImmediately(
+        object_id, owner_address, data_size, metadata, metadata_size, data, source);
+  }
+
+  Status TryCreateImmediately(const ObjectID &object_id,
+                              const ray::rpc::Address &owner_address,
+                              int64_t data_size,
+                              const uint8_t *metadata,
+                              int64_t metadata_size,
+                              std::shared_ptr<Buffer> *data,
+                              plasma::flatbuf::ObjectSource source,
+                              int device_num = 0) override {
+    objects_ids_in_plasma_.emplace(object_id);
+    objects_in_plasma_.emplace(
+        object_id, std::make_pair(std::vector<uint8_t>{}, std::vector<uint8_t>{}));
+    return Status::OK();
+  }
+
+  Status Get(const std::vector<ObjectID> &object_ids,
+             int64_t timeout_ms,
+             std::vector<plasma::ObjectBuffer> *object_buffers,
+             bool is_from_worker) override {
+    for (const auto &id : object_ids) {
+      auto &buffers = objects_in_plasma_[id];
+      plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
+                                          buffers.first.data(), buffers.first.size()),
+                                      std::make_shared<SharedMemoryBuffer>(
+                                          buffers.second.data(), buffers.second.size())};
+      object_buffers->emplace_back(shm_buffer);
+    }
+    return Status::OK();
+  }
+
+  Status GetExperimentalMutableObject(
+      const ObjectID &object_id,
+      std::unique_ptr<plasma::MutableObject> *mutable_object) override {
+    return Status::OK();
+  }
+
+  Status Release(const ObjectID &object_id) override {
+    objects_ids_in_plasma_.erase(object_id);
+    return Status::OK();
+  }
+
+  Status Contains(const ObjectID &object_id, bool *has_object) override {
+    *has_object = objects_ids_in_plasma_.find(object_id) != objects_ids_in_plasma_.end();
+    return Status::OK();
+  }
+
+  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
+
+  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
+
+  Status Delete(const std::vector<ObjectID> &object_ids) override {
+    for (const auto &id : object_ids) {
+      objects_ids_in_plasma_.erase(id);
+    }
+    return Status::OK();
+  }
+
+  Status Disconnect() override { return Status::OK(); };
+
+  std::string DebugString() { return ""; }
+
+  int64_t store_capacity() { return 1; }
+
+ private:
+  absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
+  absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
+      objects_in_plasma_;
+};
 
 TaskSpecification BuildTaskSpec(
     const std::unordered_map<std::string, double> &resources) {
@@ -237,10 +381,11 @@ class NodeManagerTest : public ::testing::Test {
       : client_call_manager_(io_service_, /*record_stats=*/false),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
-        }) {
+        }),
+        raylet_client_pool_(
+            [](const auto &) { return std::make_shared<FakeRayletClient>(); }) {
     RayConfig::instance().initialize(R"({
-      "raylet_liveness_self_check_interval_ms": 100,
-      "kill_worker_timeout_milliseconds": 10
+      "raylet_liveness_self_check_interval_ms": 100
     })");
 
     NodeManagerConfig node_manager_config{};
@@ -252,9 +397,6 @@ class NodeManagerTest : public ::testing::Test {
     mock_object_manager_ = std::make_unique<MockObjectManager>();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
-
-    EXPECT_CALL(mock_store_client_, Connect(node_manager_config.store_socket_name, _, _))
-        .WillOnce(Return(Status::OK()));
 
     auto mutable_object_provider =
         std::make_unique<core::experimental::MockMutableObjectProvider>();
@@ -272,30 +414,10 @@ class NodeManagerTest : public ::testing::Test {
 
     raylet_node_id_ = NodeID::FromRandom();
 
-    local_object_manager_ = std::make_unique<LocalObjectManager>(
-        raylet_node_id_,
-        node_manager_config.node_manager_address,
-        node_manager_config.node_manager_port,
-        io_service_,
-        RayConfig::instance().free_objects_batch_size(),
-        RayConfig::instance().free_objects_period_milliseconds(),
-        mock_worker_pool_,
-        worker_rpc_pool_,
-        /*max_io_workers*/ node_manager_config.max_io_workers,
-        /*is_external_storage_type_fs*/
-        RayConfig::instance().is_external_storage_type_fs(),
-        /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
-        /*on_objects_freed*/
-        [&](const std::vector<ObjectID> &object_ids) {
-          mock_object_manager_->FreeObjects(object_ids,
-                                            /*local_only=*/false);
-        },
-        /*is_plasma_object_spillable*/
-        [&](const ObjectID &object_id) {
-          return mock_object_manager_->IsPlasmaObjectSpillable(object_id);
-        },
-        core_worker_subscriber_.get(),
-        mock_object_directory_.get());
+    objects_pending_deletion_ = std::make_shared<absl::flat_hash_set<ObjectID>>();
+
+    local_object_manager_ =
+        std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
     dependency_manager_ = std::make_unique<DependencyManager>(*mock_object_manager_);
 
@@ -364,6 +486,7 @@ class NodeManagerTest : public ::testing::Test {
                                                   *mock_gcs_client_,
                                                   client_call_manager_,
                                                   worker_rpc_pool_,
+                                                  raylet_client_pool_,
                                                   *core_worker_subscriber_,
                                                   *cluster_resource_scheduler_,
                                                   *local_task_manager_,
@@ -374,7 +497,7 @@ class NodeManagerTest : public ::testing::Test {
                                                   *dependency_manager_,
                                                   mock_worker_pool_,
                                                   leased_workers_,
-                                                  mock_store_client_,
+                                                  *mock_store_client_,
                                                   std::move(mutable_object_provider),
                                                   /*shutdown_raylet_gracefully=*/
                                                   [](const auto &) {});
@@ -383,29 +506,32 @@ class NodeManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   rpc::ClientCallManager client_call_manager_;
   rpc::CoreWorkerClientPool worker_rpc_pool_;
+  rpc::RayletClientPool raylet_client_pool_;
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::MockSubscriber> core_worker_subscriber_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalTaskManager> local_task_manager_;
   std::unique_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
-  std::unique_ptr<LocalObjectManager> local_object_manager_;
+  std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
   std::unique_ptr<DependencyManager> dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<MockObjectManager> mock_object_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
-  plasma::MockPlasmaClient mock_store_client_;
+  std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
+      std::make_shared<FakePlasmaClient>();
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce(Return(Status::OK()));
+      .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
               AsyncSubscribeToWorkerFailures(_, _))
       .WillOnce(Return(Status::OK()));
@@ -419,11 +545,8 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillOnce([&promise](const auto &, const auto &) {
-        promise.set_value();
-        return Status::OK();
-      });
-  RAY_CHECK_OK(node_manager_->RegisterGcs());
+      .WillOnce([&promise](const auto &, const auto &) { promise.set_value(); });
+  node_manager_->RegisterGcs();
   std::thread thread{[this] {
     // Run the io_service in a separate thread to avoid blocking the main thread.
     auto work_guard = boost::asio::make_work_guard(io_service_);
@@ -437,11 +560,9 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce(Return(Status::OK()));
+      .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
@@ -469,7 +590,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       });
 
   // Invoke RegisterGcs and wait until publish_worker_failure_callback is set.
-  RAY_CHECK_OK(node_manager_->RegisterGcs());
+  node_manager_->RegisterGcs();
   while (!publish_worker_failure_callback) {
     io_service_.run_one();
   }
@@ -496,13 +617,8 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
         promise.set_value(status);
       });
 
-  // Prepare a mock worker with a real process so that we can check if the process is
-  // alive later.
+  // Prepare a mock worker and check if it is not killed later.
   const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  auto [proc, spawn_error] =
-      Process::Spawn(std::vector<std::string>{"sleep", "1000"}, true);
-  EXPECT_FALSE(spawn_error);
-  worker->SetProcess(proc);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback(worker, PopWorkerStatus::OK, "");
   EXPECT_TRUE(promise.get_future().get().ok());
@@ -513,13 +629,9 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   rpc::WorkerDeltaData delta_data;
   delta_data.set_worker_id(owner_worker_id.Binary());
   publish_worker_failure_callback(std::move(delta_data));
-  // Wait for more than kill_worker_timeout_milliseconds.
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  // The process should still be alive because it should not be killed by
+  // The worker should still be alive because it should not be killed by
   // publish_worker_failure_callback.
-  EXPECT_TRUE(proc.IsAlive());
-  // clean up.
-  proc.Kill();
+  EXPECT_FALSE(worker->IsKilled());
 }
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
@@ -530,8 +642,6 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
@@ -555,11 +665,10 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
-        return Status::OK();
       });
 
   // Invoke RegisterGcs and wait until publish_node_change_callback is set.
-  RAY_CHECK_OK(node_manager_->RegisterGcs());
+  node_manager_->RegisterGcs();
   while (!publish_node_change_callback) {
     io_service_.run_one();
   }
@@ -586,13 +695,8 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
         promise.set_value(status);
       });
 
-  // Prepare a mock worker with a real process so that we can check if the process is
-  // alive later.
+  // Prepare a mock worker and check if it is not killed later.
   const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  auto [proc, spawn_error] =
-      Process::Spawn(std::vector<std::string>{"sleep", "1000"}, true);
-  EXPECT_FALSE(spawn_error);
-  worker->SetProcess(proc);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback(worker, PopWorkerStatus::OK, "");
   EXPECT_TRUE(promise.get_future().get().ok());
@@ -603,13 +707,45 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   GcsNodeInfo node_info;
   node_info.set_state(GcsNodeInfo::DEAD);
   publish_node_change_callback(owner_node_id, std::move(node_info));
-  // Wait for more than kill_worker_timeout_milliseconds.
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  // The process should still be alive because it should not be killed by
+  // The worker should still be alive because it should not be killed by
   // publish_node_change_callback.
-  EXPECT_TRUE(proc.IsAlive());
-  // clean up.
-  proc.Kill();
+  EXPECT_FALSE(worker->IsKilled());
+}
+
+TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
+  // Object needs to be created in plasma before it can be pinned.
+  rpc::Address owner_addr;
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  ObjectID id = ObjectID::FromRandom();
+
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+  rpc::PinObjectIDsReply successful_pin_reply;
+
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &successful_pin_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  EXPECT_EQ(successful_pin_reply.successes_size(), 1);
+  EXPECT_TRUE(successful_pin_reply.successes(0));
+
+  // TODO(irabbani): This is a hack to mark object for pending deletion in the
+  // FakeLocalObjectManager. Follow up in CORE-1677 to remove this and
+  // integrate with a Fake SubscriberInterface.
+  objects_pending_deletion_->emplace(id);
+
+  rpc::PinObjectIDsReply failed_pin_reply;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &failed_pin_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  EXPECT_EQ(failed_pin_reply.successes_size(), 1);
+  EXPECT_FALSE(failed_pin_reply.successes(0));
 }
 
 }  // namespace ray::raylet

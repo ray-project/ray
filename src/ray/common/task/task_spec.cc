@@ -109,6 +109,10 @@ void TaskSpecification::ComputeResources() {
         new ResourceSet(MapFromProtobuf(required_placement_resources)));
   }
 
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
+
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
@@ -121,17 +125,17 @@ void TaskSpecification::ComputeResources() {
             : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc = SchedulingClassDescriptor(
-        resource_set, function_descriptor, depth, GetSchedulingStrategy());
+    auto label_selector = GetLabelSelector();
+    auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                    label_selector,
+                                                    function_descriptor,
+                                                    depth,
+                                                    GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
-
-  // Set LabelSelector required for scheduling if specified. Parses string map
-  // from proto to LabelSelector data type.
-  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 }
 
 // Task specification getter methods.
@@ -314,6 +318,13 @@ std::string TaskSpecification::ArgObjectIdBinary(size_t arg_index) const {
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
+}
+
+rpc::TensorTransport TaskSpecification::ArgTensorTransport(size_t arg_index) const {
+  if (message_->args(arg_index).has_tensor_transport()) {
+    return message_->args(arg_index).tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {

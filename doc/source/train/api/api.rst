@@ -147,6 +147,14 @@ Ray Train Utilities
     ~train.get_dataset_shard
     ~train.report
 
+**Collective**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.collective.barrier
+    ~train.collective.broadcast_from_rank_zero
 
 Ray Train Output
 ----------------
@@ -166,7 +174,8 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.v2.api.exceptions.TrainingFailedError
+    ~train.v2.api.exceptions.ControllerError
+    ~train.v2.api.exceptions.WorkerGroupError
 
 Ray Tune Integration Utilities
 ------------------------------

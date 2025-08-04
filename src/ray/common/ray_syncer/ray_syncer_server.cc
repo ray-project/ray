@@ -14,6 +14,9 @@
 
 #include "ray/common/ray_syncer/ray_syncer_server.h"
 
+#include <string>
+#include <utility>
+
 namespace ray::syncer {
 
 namespace {

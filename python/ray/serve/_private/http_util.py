@@ -333,7 +333,8 @@ class ASGIReceiveProxy:
         receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
-        self._queue = asyncio.Queue()
+        # Lazy init the queue to ensure it is created in the user code event loop.
+        self._queue = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
@@ -356,6 +357,13 @@ class ASGIReceiveProxy:
         else:
             return {"type": "http.disconnect"}
 
+    @property
+    def queue(self) -> asyncio.Queue:
+        if self._queue is None:
+            self._queue = asyncio.Queue()
+
+        return self._queue
+
     async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
 
@@ -369,17 +377,8 @@ class ASGIReceiveProxy:
                 pickled_messages = await self._receive_asgi_messages(
                     self._request_metadata
                 )
-                if isinstance(pickled_messages, bytes):
-                    messages = pickle.loads(pickled_messages)
-                else:
-                    messages = (
-                        pickled_messages
-                        if isinstance(pickled_messages, list)
-                        else [pickled_messages]
-                    )
-
-                for message in messages:
-                    self._queue.put_nowait(message)
+                for message in pickle.loads(pickled_messages):
+                    self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
@@ -389,12 +388,12 @@ class ASGIReceiveProxy:
                 # (i.e., the user disconnects). This is expected behavior and we should
                 # not log an error: https://github.com/ray-project/ray/issues/43290.
                 message = self._get_default_disconnect_message()
-                self._queue.put_nowait(message)
+                self.queue.put_nowait(message)
                 self._disconnect_message = message
                 return
             except Exception as e:
                 # Raise unexpected exceptions in the next `__call__`.
-                self._queue.put_nowait(e)
+                self.queue.put_nowait(e)
                 return
 
     async def __call__(self) -> Message:
@@ -402,10 +401,10 @@ class ASGIReceiveProxy:
 
         This will repeatedly return a disconnect message once it's been received.
         """
-        if self._queue.empty() and self._disconnect_message is not None:
+        if self.queue.empty() and self._disconnect_message is not None:
             return self._disconnect_message
 
-        message = await self._queue.get()
+        message = await self.queue.get()
         if isinstance(message, Exception):
             raise message
 
@@ -554,7 +553,17 @@ class ASGIAppReplicaWrapper:
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
-        self._serve_asgi_lifespan = LifespanOn(Config(self._asgi_app, lifespan="on"))
+        # If log_config is not None, uvicorn will use the default logger.
+        # and that interferes with our logging setup.
+        self._serve_asgi_lifespan = LifespanOn(
+            Config(
+                self._asgi_app,
+                lifespan="on",
+                log_level=None,
+                log_config=None,
+                access_log=False,
+            )
+        )
 
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
@@ -639,11 +648,11 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         headers = MutableHeaders(scope=scope)
-        if SERVE_HTTP_REQUEST_ID_HEADER not in headers:
+        request_id = headers.get(SERVE_HTTP_REQUEST_ID_HEADER)
+
+        if request_id is None:
             request_id = generate_request_id()
             headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
-        elif SERVE_HTTP_REQUEST_ID_HEADER in headers:
-            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
@@ -700,6 +709,11 @@ async def start_asgi_http_server(
             f"Failed to bind to address '{http_options.host}:{http_options.port}'."
         ) from e
 
+    # Even though we set log_level=None, uvicorn adds MessageLoggerMiddleware
+    # if log level for uvicorn.error is not set. And MessageLoggerMiddleware
+    # has no use to us.
+    logging.getLogger("uvicorn.error").level = logging.CRITICAL
+
     # NOTE: We have to use lower level uvicorn Config and Server
     # class because we want to run the server as a coroutine. The only
     # alternative is to call uvicorn.run which is blocking.
@@ -714,7 +728,8 @@ async def start_asgi_http_server(
             loop=event_loop,
             lifespan="off",
             access_log=False,
-            log_level="warning",
+            log_level=None,
+            log_config=None,
         )
     )
 
@@ -785,11 +800,18 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
         http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
     # TODO: Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
+    if http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S:
+        http_options.request_timeout_s = (
+            http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+        )
 
     http_options.middlewares = http_options.middlewares or []
+
+    return http_options
+
+
+def configure_http_middlewares(http_options: HTTPOptions) -> HTTPOptions:
+    http_options = deepcopy(http_options)
 
     # Add environment variable middleware
     if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:

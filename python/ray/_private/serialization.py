@@ -2,7 +2,7 @@ import io
 import logging
 import threading
 import traceback
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
@@ -20,6 +20,7 @@ from ray._raylet import (
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
+    SerializedRayObject,
     split_buffer,
     unpack_pickle5_buffers,
 )
@@ -130,6 +131,12 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
+        # This flag is to mark whether the custom serializer for torch.Tensor has
+        # been registered. If the method is decorated with
+        # `@ray.method(tensor_transport="xxx")`, it will use external transport
+        # (e.g. gloo, nccl, etc.) for tensor communication between actors,
+        # instead of the normal serialize -> object store -> deserialize codepath.
+        self._torch_custom_serializer_registered = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -255,18 +262,17 @@ class SerializationContext:
                 )
 
     def _deserialize_pickle5_data(
-        self, data: Any, object_id: Optional[str] = None
+        self,
+        data: Any,
+        out_of_band_tensors: Optional[List["torch.Tensor"]],
     ) -> Any:
         """
-        If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
-        out-of-band instead of through the object store. In this case, we need to retrieve
-        the tensors from the in-actor object store. Then, we deserialize `data` with the
-        retrieved tensors in the serialization context.
 
         Args:
             data: The data to deserialize.
-            object_id: The object ID to use as the key for the in-actor object store
-                to retrieve tensors.
+            out_of_band_tensors: Tensors that were sent out-of-band. If this is
+                not None, then the serialized data will contain placeholders
+                that need to be replaced with these tensors.
 
         Returns:
             Any: The deserialized object.
@@ -274,20 +280,9 @@ class SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        worker = ray._private.worker.global_worker
-
-        gpu_object_manager = worker.gpu_object_manager
-        enable_gpu_objects = gpu_object_manager.has_gpu_object(
-            object_id
-        ) or gpu_object_manager.is_managed_gpu_object(object_id)
+        enable_gpu_objects = out_of_band_tensors is not None
         if enable_gpu_objects:
-            if gpu_object_manager.is_managed_gpu_object(object_id):
-                gpu_object_manager.fetch_gpu_object(object_id)
-            tensors = gpu_object_manager.get_gpu_object(object_id)
-            ctx.reset_out_of_band_tensors(tensors)
-            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
-            # is naive. We garbage collect each object after it is consumed once.
-            gpu_object_manager.remove_gpu_object(object_id)
+            ctx.reset_out_of_band_tensors(out_of_band_tensors)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -304,12 +299,17 @@ class SerializationContext:
         return obj
 
     def _deserialize_msgpack_data(
-        self, data, metadata_fields, object_id: Optional[str] = None
+        self,
+        data,
+        metadata_fields,
+        out_of_band_tensors: Optional[List["torch.Tensor"]] = None,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data, object_id)
+            python_objects = self._deserialize_pickle5_data(
+                pickle5_data, out_of_band_tensors
+            )
         else:
             python_objects = []
 
@@ -347,7 +347,13 @@ class SerializationContext:
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
-    def _deserialize_object(self, data, metadata, object_ref):
+    def _deserialize_object(
+        self,
+        data,
+        metadata,
+        object_ref,
+        out_of_band_tensors: Optional[List["torch.Tensor"]],
+    ):
         if metadata:
             metadata_fields = metadata.split(b",")
             if metadata_fields[0] in [
@@ -355,7 +361,7 @@ class SerializationContext:
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
                 return self._deserialize_msgpack_data(
-                    data, metadata_fields, object_ref.hex()
+                    data, metadata_fields, out_of_band_tensors
                 )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
@@ -363,7 +369,9 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(data, metadata_fields)
+                obj = self._deserialize_msgpack_data(
+                    data, metadata_fields, out_of_band_tensors
+                )
                 # The last character is a 1 if weak_ref=True and 0 else.
                 serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
                 return _actor_handle_deserializer(serialized, weak_ref)
@@ -380,7 +388,9 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(data, metadata_fields)
+                obj = self._deserialize_msgpack_data(
+                    data, metadata_fields, out_of_band_tensors
+                )
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
@@ -403,7 +413,9 @@ class SerializationContext:
                 except google.protobuf.message.DecodeError:
                     # Deserialization from Python. The TaskCancelledError is
                     # serialized and returned directly.
-                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    obj = self._deserialize_msgpack_data(
+                        data, metadata_fields, out_of_band_tensors
+                    )
                     return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
@@ -488,18 +500,33 @@ class SerializationContext:
             # throws an exception.
             return PlasmaObjectNotAvailable
 
-    def deserialize_objects(self, data_metadata_pairs, object_refs):
-        assert len(data_metadata_pairs) == len(object_refs)
+    def deserialize_objects(
+        self,
+        serialized_ray_objects: List[SerializedRayObject],
+        object_refs,
+        out_of_band_tensors: Dict[str, List["torch.Tensor"]],
+    ):
+        assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata) in zip(object_refs, data_metadata_pairs):
+        for object_ref, (data, metadata, transport) in zip(
+            object_refs, serialized_ray_objects
+        ):
             try:
                 # Push the object ref to the stack, so the object under
                 # the object ref knows where it comes from.
                 self._thread_local.object_ref_stack.append(object_ref)
-                obj = self._deserialize_object(data, metadata, object_ref)
+                object_tensors = None
+                if object_ref is not None:
+                    object_tensors = out_of_band_tensors.pop(object_ref.hex(), None)
+                obj = self._deserialize_object(
+                    data,
+                    metadata,
+                    object_ref,
+                    object_tensors,
+                )
             except Exception as e:
                 logger.exception(e)
                 obj = RaySystemError(e, traceback.format_exc())
@@ -601,12 +628,25 @@ class SerializationContext:
         assert (
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
+        if not self._torch_custom_serializer_registered:
+            # Register a custom serializer for torch.Tensor. If the method is
+            # decorated with `@ray.method(tensor_transport="xxx")`, it will
+            # use external transport (e.g. gloo, nccl, etc.) for tensor
+            # communication between actors, instead of the normal serialize ->
+            # object store -> deserialize codepath.
+            from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+            TorchTensorType().register_custom_serializer()
+            self._torch_custom_serializer_registered = True
+
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
         if tensors:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
             gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object(obj_id, tensors)
+            gpu_object_manager.gpu_object_store.add_object(
+                obj_id, tensors, is_primary=True
+            )
 
         return serialized_val
 
