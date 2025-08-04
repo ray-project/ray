@@ -101,7 +101,8 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Start the RLlibGateway and dummy (external) simulation.
+    # Start the dummy CartPole "simulation", which uses a (python) RLlibGateway
+    # instance.
     if not args.no_gateway:
         rllib_gateway = RLlibGateway(
             address="localhost",
