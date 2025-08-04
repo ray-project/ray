@@ -31,7 +31,7 @@ class TestCli(unittest.TestCase):
         result = CliRunner().invoke(
             load,
             [
-                "fake_path/test.config.yaml",
+                "fake_path/test.depsets.yaml",
                 "--workspace-dir",
                 "/ci/raydepsets/test_data",
             ],
@@ -44,7 +44,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             assert manager is not None
@@ -61,7 +61,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
@@ -96,7 +96,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
@@ -124,7 +124,7 @@ class TestCli(unittest.TestCase):
             )
             shutil.copy(compiled_file, output_file)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
@@ -146,7 +146,7 @@ class TestCli(unittest.TestCase):
             result = CliRunner().invoke(
                 load,
                 [
-                    "test.config.yaml",
+                    "test.depsets.yaml",
                     "--workspace-dir",
                     tmpdir,
                     "--name",
@@ -172,7 +172,7 @@ class TestCli(unittest.TestCase):
                 ["six==1.16.0"],
             )
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             # Compile general_depset with requirements_test.txt and requirements_test_subset.txt
@@ -207,7 +207,7 @@ class TestCli(unittest.TestCase):
                 ["six==1.16.0"],
             )
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
@@ -231,7 +231,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             source_depset = Depset(
@@ -251,7 +251,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(RuntimeError):
@@ -267,7 +267,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             assert (
@@ -279,7 +279,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             assert manager.build_graph is not None
@@ -303,7 +303,7 @@ class TestCli(unittest.TestCase):
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
-            with open(Path(tmpdir) / "test.config.yaml", "w") as f:
+            with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
                 f.write(
                     """
 depsets:
@@ -316,7 +316,7 @@ depsets:
                 )
             with self.assertRaises(ValueError):
                 DependencySetManager(
-                    config_path="test.config.yaml",
+                    config_path="test.depsets.yaml",
                     workspace_dir=tmpdir,
                 )
 
@@ -340,7 +340,7 @@ depsets:
                 "six==1.17.0",
             )
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
@@ -387,7 +387,7 @@ depsets:
                 "six==1.17.0",
             )
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
