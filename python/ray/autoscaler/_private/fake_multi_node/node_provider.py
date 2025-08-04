@@ -13,6 +13,7 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.network_utils import build_address
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -193,9 +194,9 @@ def create_node_spec(
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)
         # Expose ports so we can connect to the cluster from outside
         node_spec["ports"] = [
-            f"{host_gcs_port}:{ray_constants.DEFAULT_PORT}",
-            f"{host_object_manager_port}:8076",
-            f"{host_client_port}:10001",
+            build_address(host_gcs_port, ray_constants.DEFAULT_PORT),
+            build_address(host_object_manager_port, 8076),
+            build_address(host_client_port, 10001),
         ]
         # Mount status and config files for the head node
         node_spec["volumes"] += [
@@ -359,13 +360,13 @@ class FakeMultiNodeProvider(NodeProvider):
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
                 labels=labels,
-                redis_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()
+                redis_address=build_address(
+                    ray._private.services.get_node_ip_address(), 6379
                 )
                 if not self._gcs_address
                 else self._gcs_address,
-                gcs_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()
+                gcs_address=build_address(
+                    ray._private.services.get_node_ip_address(), 6379
                 )
                 if not self._gcs_address
                 else self._gcs_address,

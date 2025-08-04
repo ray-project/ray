@@ -22,6 +22,8 @@
 
 #include <algorithm>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <cctype>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -34,8 +36,10 @@
 #include <boost/asio/ip/tcp.hpp>
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/string_utils.h"
 

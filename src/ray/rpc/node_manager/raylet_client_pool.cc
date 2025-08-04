@@ -17,6 +17,8 @@
 #include <memory>
 #include <string>
 
+#include "ray/util/util.h"
+
 namespace ray {
 namespace rpc {
 
@@ -33,8 +35,8 @@ std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddr
   auto connection = client_factory_(address);
   client_map_[raylet_id] = connection;
 
-  RAY_LOG(DEBUG) << "Connected to raylet " << raylet_id << " at " << address.ip_address()
-                 << ":" << address.port();
+  RAY_LOG(DEBUG) << "Connected to raylet " << raylet_id << " at "
+                 << BuildAddress(address.ip_address(), address.port());
   RAY_CHECK(connection != nullptr);
   return connection;
 }

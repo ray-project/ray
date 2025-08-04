@@ -214,6 +214,16 @@ ray_cc_library(
     ],
 )
 
+ray_cc_library(
+    name = "network_util",
+    srcs = ["network_util.cc"],
+    hdrs = ["network_util.h"],
+    deps = [
+        "@boost//:asio",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
 # TODO(hjiang): Split URL related functions into a separate util target.
 ray_cc_library(
     name = "util",
@@ -223,11 +233,13 @@ ray_cc_library(
         ":filesystem",
         ":logging",
         ":macros",
+        ":network_util",
         ":process",
         ":string_utils",
         "//src/ray/thirdparty:sha256",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

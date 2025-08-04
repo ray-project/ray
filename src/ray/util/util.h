@@ -43,10 +43,12 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/network_util.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows

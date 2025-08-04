@@ -70,7 +70,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
 
   bool CheckHealth() {
     auto channel =
-        grpc::CreateChannel(absl::StrCat("127.0.0.1:", config_.grpc_server_port),
+        grpc::CreateChannel(BuildAddress("127.0.0.1", config_.grpc_server_port),
                             grpc::InsecureChannelCredentials());
     auto stub = grpc::health::v1::Health::NewStub(channel);
     grpc::ClientContext context;

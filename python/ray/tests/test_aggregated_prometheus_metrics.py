@@ -11,6 +11,7 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_assertion,
 )
+from ray._private.network_utils import build_address
 from ray._private.metrics_agent import WORKER_ID_TAG_KEY
 
 
@@ -59,7 +60,9 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     prom_addresses = []
     for node_info in node_info_list:
         prom_addresses.append(
-            f"{node_info['NodeManagerAddress']}:{node_info['MetricsExportPort']}"
+            build_address(
+                node_info["NodeManagerAddress"], node_info["MetricsExportPort"]
+            )
         )
     yield prom_addresses
 

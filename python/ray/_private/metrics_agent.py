@@ -35,6 +35,7 @@ from prometheus_client.core import (
 )
 
 import ray
+from ray._private.network_utils import build_address
 from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL, env_bool
 from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
@@ -804,7 +805,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
+            build_address(node["NodeManagerAddress"], node["MetricsExportPort"])
             for node in nodes
             if node["alive"] is True
         ]
