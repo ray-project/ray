@@ -134,7 +134,9 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
             },
         },
     ],
@@ -289,7 +291,9 @@ def test_aggregator_agent_receive_multiple_events(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
             },
         },
     ],
@@ -367,6 +371,70 @@ def test_aggregator_agent_receive_empty_events(
 
 
 @_with_aggregator_port
+def test_aggregator_agent_profile_events_not_exposed(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    """Test that profile events are not sent when not in exposable event types."""
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    now = time.time_ns()
+    seconds, nanos = divmod(now, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                _create_profile_event_request(),
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="event1",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+
+    # Wait for exactly one event to be received (the TASK_DEFINITION_EVENT)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    # Verify that only the TASK_DEFINITION_EVENT was sent, not the profile event
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+
+    assert len(req_json) == 1
+    assert req_json[0]["message"] == "event1"
+    assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
+            },
+        },
+    ],
+    indirect=True,
+)
 def test_aggregator_agent_receive_profile_events(
     ray_start_cluster_head_with_env_vars, httpserver
 ):
@@ -377,40 +445,9 @@ def test_aggregator_agent_receive_profile_events(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    test_time = 1751302230130457542
-    seconds, nanos = (test_time // 10**9, test_time % 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
-
     request = AddEventsRequest(
         events_data=RayEventsData(
-            events=[
-                RayEvent(
-                    event_id=b"1",
-                    source_type=RayEvent.SourceType.CORE_WORKER,
-                    event_type=RayEvent.EventType.TASK_PROFILE_EVENT,
-                    timestamp=timestamp,
-                    severity=RayEvent.Severity.INFO,
-                    message="profile event test",
-                    task_profile_events=TaskProfileEvents(
-                        task_id=b"100",
-                        attempt_number=3,
-                        job_id=b"200",
-                        profile_events=ProfileEvents(
-                            component_type="worker",
-                            component_id=b"worker_123",
-                            node_ip_address="127.0.0.1",
-                            events=[
-                                ProfileEventEntry(
-                                    start_time=1751302230130000000,
-                                    end_time=1751302230131000000,
-                                    event_name="task_execution",
-                                    extra_data='{"cpu_usage": 0.8}',
-                                )
-                            ],
-                        ),
-                    ),
-                ),
-            ],
+            events=[_create_profile_event_request()],
             task_events_metadata=TaskEventsMetadata(
                 dropped_task_attempts=[],
             ),
@@ -426,6 +463,45 @@ def test_aggregator_agent_receive_profile_events(
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
 
+    _verify_profile_event_json(req_json)
+
+
+def _create_profile_event_request():
+    """Helper function to create a profile event request."""
+    test_time = 1751302230130457542
+    seconds, nanos = (test_time // 10**9, test_time % 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+
+    return RayEvent(
+        event_id=b"1",
+        source_type=RayEvent.SourceType.CORE_WORKER,
+        event_type=RayEvent.EventType.TASK_PROFILE_EVENT,
+        timestamp=timestamp,
+        severity=RayEvent.Severity.INFO,
+        message="profile event test",
+        task_profile_events=TaskProfileEvents(
+            task_id=b"100",
+            attempt_number=3,
+            job_id=b"200",
+            profile_events=ProfileEvents(
+                component_type="worker",
+                component_id=b"worker_123",
+                node_ip_address="127.0.0.1",
+                events=[
+                    ProfileEventEntry(
+                        start_time=1751302230130000000,
+                        end_time=1751302230131000000,
+                        event_name="task_execution",
+                        extra_data='{"cpu_usage": 0.8}',
+                    )
+                ],
+            ),
+        ),
+    )
+
+
+def _verify_profile_event_json(req_json):
+    """Helper function to verify profile event JSON structure."""
     assert len(req_json) == 1
     assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
     assert req_json[0]["sourceType"] == "CORE_WORKER"
