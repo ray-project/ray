@@ -176,15 +176,6 @@ class _StatsActor:
         # a dataset's metrics to 0 after each finishes execution.
         op_tags_keys = ("dataset", "operator")
 
-        # TODO(scottjlee): move these overvie metrics as fields in a
-        # separate dataclass, similar to OpRuntimeMetrics.
-        self.spilled_bytes = Gauge(
-            "data_spilled_bytes",
-            description="""Bytes spilled by dataset operators.
-                DataContext.enable_get_object_locations_for_metrics
-                must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
         self.freed_bytes = Gauge(
             "data_freed_bytes",
             description="Bytes freed by dataset operators",
@@ -398,7 +389,6 @@ class _StatsActor:
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
-            self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
@@ -893,7 +883,6 @@ class DatasetStats:
         # Memory usage stats
         self.global_bytes_spilled: int = 0
         self.global_bytes_restored: int = 0
-        self.dataset_bytes_spilled: int = 0
 
         # Streaming split coordinator stats (dataset level)
         self.streaming_split_coordinator_s: Timer = Timer()
@@ -957,7 +946,6 @@ class DatasetStats:
             self.extra_metrics,
             self.global_bytes_spilled,
             self.global_bytes_restored,
-            self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
         )
 
@@ -983,7 +971,6 @@ class DatasetStatsSummary:
     extra_metrics: Dict[str, Any]
     global_bytes_spilled: int
     global_bytes_restored: int
-    dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
 
     def to_string(
@@ -1060,11 +1047,6 @@ class DatasetStatsSummary:
                 out += "\nCluster memory:\n"
                 out += "* Spilled to disk: {}MB\n".format(mb_spilled)
                 out += "* Restored from disk: {}MB\n".format(mb_restored)
-
-            dataset_mb_spilled = round(self.dataset_bytes_spilled / 1e6)
-            if dataset_mb_spilled:
-                out += "\nDataset memory:\n"
-                out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
 
             # For throughput, we compute both an observed Ray Data dataset throughput
             # and an estimated single node dataset throughput.
@@ -1166,7 +1148,6 @@ class DatasetStatsSummary:
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
             f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
             f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
-            f"{indent}   dataset_bytes_spilled={self.dataset_bytes_spilled / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
@@ -1662,13 +1643,12 @@ class IterStatsSummary:
                     fmt(self.finalize_batch_time.avg()),
                     fmt(self.finalize_batch_time.get()),
                 )
-            if DataContext.get_current().enable_get_object_locations_for_metrics:
-                out += "Block locations:\n"
-                out += "    * Num blocks local: {}\n".format(self.iter_blocks_local)
-                out += "    * Num blocks remote: {}\n".format(self.iter_blocks_remote)
-                out += "    * Num blocks unknown location: {}\n".format(
-                    self.iter_unknown_location
-                )
+            out += "Block locations:\n"
+            out += "    * Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "    * Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "    * Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
+            )
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"

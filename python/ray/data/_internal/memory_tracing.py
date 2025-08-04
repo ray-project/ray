@@ -69,7 +69,7 @@ class _MemActor:
     def trace_alloc(self, ref: List[ray.ObjectRef], loc: str):
         ref = ref[0]  # Avoid Ray materializing the ref.
         if ref not in self.allocated:
-            meta = ray.experimental.get_object_locations([ref])
+            meta = ray.experimental.get_local_object_locations([ref])
             size_bytes = meta.get("object_size", 0)
             if not size_bytes:
                 size_bytes = -1

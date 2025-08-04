@@ -137,8 +137,6 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
-DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
-
 
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
@@ -350,8 +348,6 @@ class DataContext:
         enable_progress_bar_name_truncation: If True, the name of the progress bar
             (often the operator name) will be truncated if it exceeds
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
-        enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -481,9 +477,6 @@ class DataContext:
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
-    enable_get_object_locations_for_metrics: bool = (
-        DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
-    )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
     actor_task_retry_on_errors: Union[
@@ -571,6 +564,12 @@ class DataContext:
             warnings.warn(
                 "`use_push_based_shuffle` is deprecated, please configure "
                 "`shuffle_strategy` instead.",
+                DeprecationWarning,
+            )
+        elif name == "enable_get_object_locations_for_metrics":
+            warnings.warn(
+                "`enable_get_object_locations_for_metrics` is deprecated "
+                "and has no effect",
                 DeprecationWarning,
             )
 

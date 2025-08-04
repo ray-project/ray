@@ -6,14 +6,13 @@ from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
 import pyarrow
 
 import ray
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import unify_ref_bundles_schema
+from ray.data._internal.util import _get_global_bytes_spilled, unify_ref_bundles_schema
 from ray.data.block import BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
@@ -528,34 +527,12 @@ class ExecutionPlan:
                     logger.info(stats_summary_string)
 
             # Retrieve memory-related stats from ray.
-            try:
-                reply = get_memory_info_reply(
-                    get_state_from_address(ray.get_runtime_context().gcs_address)
-                )
-                if reply.store_stats.spill_time_total_s > 0:
-                    stats.global_bytes_spilled = int(
-                        reply.store_stats.spilled_bytes_total
-                    )
-                if reply.store_stats.restore_time_total_s > 0:
-                    stats.global_bytes_restored = int(
-                        reply.store_stats.restored_bytes_total
-                    )
-            except Exception as e:
-                logger.debug(
-                    "Skipping recording memory spilled and restored statistics due to "
-                    f"exception: {e}"
-                )
+            global_bytes_spilled, global_bytes_restored = _get_global_bytes_spilled()
 
-            stats.dataset_bytes_spilled = 0
-
-            def collect_stats(cur_stats):
-                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
-                    "obj_store_mem_spilled", 0
-                )
-                for parent in cur_stats.parents:
-                    collect_stats(parent)
-
-            collect_stats(stats)
+            if global_bytes_spilled is not None:
+                stats.global_bytes_spilled = global_bytes_spilled
+            if global_bytes_restored is not None:
+                stats.global_bytes_restored = global_bytes_restored
 
             # Set the snapshot to the output of the final operator.
             self._snapshot_bundle = bundle

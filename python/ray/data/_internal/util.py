@@ -33,6 +33,7 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil
@@ -1728,6 +1729,29 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
         the input list.
     """
     return tuple(map(list, zip(*data)))
+
+
+def _get_global_bytes_spilled() -> Tuple[Optional[int], Optional[int]]:
+    spilled, restored = None, None
+
+    try:
+        reply = get_memory_info_reply(
+            get_state_from_address(ray.get_runtime_context().gcs_address)
+        )
+
+        if reply.store_stats.spill_time_total_s > 0:
+            spilled = int(reply.store_stats.spilled_bytes_total)
+
+        if reply.store_stats.restore_time_total_s > 0:
+            restored = int(reply.store_stats.restored_bytes_total)
+
+    except Exception as e:
+        logger.debug(
+            "Skipping recording memory spilled and restored statistics due to "
+            f"exception: {e}"
+        )
+
+    return spilled, restored
 
 
 def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:

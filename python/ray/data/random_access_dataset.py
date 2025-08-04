@@ -111,7 +111,7 @@ class RandomAccessDataset:
         locs = ray.get([w.ping.remote() for w in self._workers])
         for i, loc in enumerate(locs):
             loc_to_workers[loc].append(self._workers[i])
-        block_locs = ray.experimental.get_object_locations(self._non_empty_blocks)
+        block_locs = ray.experimental.get_local_object_locations(self._non_empty_blocks)
 
         # First, try to assign all blocks to all workers at its location.
         for block_idx, block in enumerate(self._non_empty_blocks):

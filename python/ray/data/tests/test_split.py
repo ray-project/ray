@@ -392,7 +392,7 @@ def test_split_hints(ray_start_regular_shared):
         blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
-        with patch("ray.experimental.get_object_locations") as location_mock:
+        with patch("ray.experimental.get_local_object_locations") as location_mock:
             with patch("ray._private.state.actors") as state_mock:
                 block_locations = {}
                 for i, node_id in enumerate(block_node_ids):
