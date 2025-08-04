@@ -12,6 +12,7 @@ from ray.data import DataIterator, Dataset
 from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
+from ray.train.v2._internal.callbacks.datasets import DatasetManager
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
@@ -93,7 +94,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
-    dataset_manager: Optional[ActorHandle] = None
+    dataset_manager: Optional[ActorHandle[DatasetManager]] = None
     checkpoint: Optional[Checkpoint] = None
 
     @_copy_doc(session.get_experiment_name)
