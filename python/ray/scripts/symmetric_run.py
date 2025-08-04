@@ -201,6 +201,10 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
 
     except subprocess.CalledProcessError as e:
         click.echo(f"Failed to start Ray: {e}", err=True)
+        if e.stdout:
+            click.echo(f"stdout:\n{e.stdout.decode()}", err=True)
+        if e.stderr:
+            click.echo(f"stderr:\n{e.stderr.decode()}", err=True)
     except KeyboardInterrupt:
         # This can be triggered by ctrl-c on the user's side.
         click.echo("Interrupted by user.")
