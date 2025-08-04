@@ -1,0 +1,12 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "wait_manager_test",
+    size = "small",
+    srcs = ["wait_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/raylet:wait_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
