@@ -1,8 +1,7 @@
+import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
-
-import orjson
 
 from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
 from ray._private.ray_constants import LOGGER_FORMAT
@@ -100,7 +99,7 @@ class JSONFormatter(AbstractFormatter):
         record_format_attrs = self.generate_record_format_attrs(
             record, exclude_default_standard_attrs=False
         )
-        return orjson.dumps(record_format_attrs).decode("utf-8")
+        return json.dumps(record_format_attrs)
 
 
 class TextFormatter(AbstractFormatter):
