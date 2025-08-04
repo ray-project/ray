@@ -5,7 +5,7 @@ import tree
 from ray.rllib.core import Columns, DEFAULT_POLICY_ID
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.torch_distributions import (
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchMultiCategorical,

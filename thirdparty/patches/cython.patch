@@ -1,0 +1,10 @@
+diff --git cython.py cython.py
+index 9283c4d..cae9864 100755
+--- cython.py
++++ cython.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env python
++#!/usr/bin/env python3
+
+ #
+ #   Cython -- Main Program, generic

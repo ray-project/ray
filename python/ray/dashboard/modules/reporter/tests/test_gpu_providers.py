@@ -20,10 +20,13 @@ class TestProcessGPUInfo(unittest.TestCase):
 
     def test_creation(self):
         """Test ProcessGPUInfo creation."""
-        process_info = ProcessGPUInfo(pid=1234, gpu_memory_usage=256)
+        process_info = ProcessGPUInfo(
+            pid=1234, gpu_memory_usage=256, gpu_utilization=None
+        )
 
         self.assertEqual(process_info["pid"], 1234)
         self.assertEqual(process_info["gpu_memory_usage"], 256)
+        self.assertIsNone(process_info["gpu_utilization"])
 
 
 class TestGpuUtilizationInfo(unittest.TestCase):
@@ -31,8 +34,8 @@ class TestGpuUtilizationInfo(unittest.TestCase):
 
     def test_creation_with_processes(self):
         """Test GpuUtilizationInfo with process information."""
-        process1 = ProcessGPUInfo(pid=1234, gpu_memory_usage=256)
-        process2 = ProcessGPUInfo(pid=5678, gpu_memory_usage=512)
+        process1 = ProcessGPUInfo(pid=1234, gpu_memory_usage=256, gpu_utilization=None)
+        process2 = ProcessGPUInfo(pid=5678, gpu_memory_usage=512, gpu_utilization=None)
 
         gpu_info = GpuUtilizationInfo(
             index=0,
@@ -41,7 +44,7 @@ class TestGpuUtilizationInfo(unittest.TestCase):
             utilization_gpu=75,
             memory_used=8192,
             memory_total=10240,
-            processes_pids=[process1, process2],
+            processes_pids={1234: process1, 5678: process2},
         )
 
         self.assertEqual(gpu_info["index"], 0)
@@ -51,6 +54,12 @@ class TestGpuUtilizationInfo(unittest.TestCase):
         self.assertEqual(gpu_info["memory_used"], 8192)
         self.assertEqual(gpu_info["memory_total"], 10240)
         self.assertEqual(len(gpu_info["processes_pids"]), 2)
+        self.assertIn(1234, gpu_info["processes_pids"])
+        self.assertIn(5678, gpu_info["processes_pids"])
+        self.assertEqual(gpu_info["processes_pids"][1234]["pid"], 1234)
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 256)
+        self.assertEqual(gpu_info["processes_pids"][5678]["pid"], 5678)
+        self.assertEqual(gpu_info["processes_pids"][5678]["gpu_memory_usage"], 512)
 
     def test_creation_without_processes(self):
         """Test GpuUtilizationInfo without process information."""
@@ -263,8 +272,8 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["memory_used"], 8 * 1024)  # 8GB in MB
         self.assertEqual(gpu_info["memory_total"], 12 * 1024)  # 12GB in MB
         self.assertEqual(len(gpu_info["processes_pids"]), 1)
-        self.assertEqual(gpu_info["processes_pids"][0]["pid"], 1234)
-        self.assertEqual(gpu_info["processes_pids"][0]["gpu_memory_usage"], 256)
+        self.assertEqual(gpu_info["processes_pids"][1234]["pid"], 1234)
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 256)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_errors(self, mock_pynvml):
@@ -313,8 +322,8 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["name"], "NVIDIA Tesla V100")
         self.assertEqual(gpu_info["utilization_gpu"], -1)  # Should be -1 due to error
         self.assertEqual(
-            gpu_info["processes_pids"], []
-        )  # Should be empty list due to error
+            gpu_info["processes_pids"], {}
+        )  # Should be empty dict due to error
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_mig(self, mock_pynvml):
@@ -378,7 +387,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["utilization_gpu"], 80)
         self.assertEqual(gpu_info["memory_used"], 2 * 1024)  # 2GB in MB
         self.assertEqual(gpu_info["memory_total"], 4 * 1024)  # 4GB in MB
-        self.assertEqual(gpu_info["processes_pids"], [])
+        self.assertEqual(gpu_info["processes_pids"], {})
 
 
 class TestAmdGpuProvider(unittest.TestCase):
@@ -456,8 +465,8 @@ class TestAmdGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["memory_used"], 6 * 1024)  # 6GB in MB
         self.assertEqual(gpu_info["memory_total"], 16 * 1024)  # 16GB in MB
         self.assertEqual(len(gpu_info["processes_pids"]), 1)
-        self.assertEqual(gpu_info["processes_pids"][0]["pid"], 5678)
-        self.assertEqual(gpu_info["processes_pids"][0]["gpu_memory_usage"], 512)
+        self.assertEqual(gpu_info["processes_pids"][5678]["pid"], 5678)
+        self.assertEqual(gpu_info["processes_pids"][5678]["gpu_memory_usage"], 512)
 
 
 class TestGpuMetricProvider(unittest.TestCase):
@@ -576,7 +585,11 @@ class TestGpuMetricProvider(unittest.TestCase):
                 utilization_gpu=50,
                 memory_used=1024,
                 memory_total=2048,
-                processes_pids=None,
+                processes_pids={
+                    1234: ProcessGPUInfo(
+                        pid=1234, gpu_memory_usage=1024, gpu_utilization=None
+                    )
+                },
             )
         ]
         mock_detect.return_value = mock_provider

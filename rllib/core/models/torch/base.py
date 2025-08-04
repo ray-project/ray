@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 class TorchModel(nn.Module, Model, abc.ABC):
     """Base class for RLlib's PyTorch models.
 
-    This class defines the interface for RLlib's PyTorch models and checks
-    whether inputs and outputs of forward are checked with `check_input_specs()` and
-    `check_output_specs()` respectively.
+    This class defines the interface for RLlib's PyTorch models.
 
     Example usage for a single Flattening layer:
 

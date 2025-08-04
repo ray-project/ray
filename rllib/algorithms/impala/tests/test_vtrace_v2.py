@@ -11,7 +11,7 @@ from ray.rllib.algorithms.impala.tests.test_vtrace_old_api_stack import (
     _ground_truth_vtrace_calculation,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.core.distribution.torch.torch_distribution import TorchCategorical
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
 

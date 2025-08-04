@@ -1127,10 +1127,10 @@ TEST_F(GcsAutoscalerStateManagerTest,
   ASSERT_EQ(requests.size(), 1);
 
   const auto &req = requests.Get(0);
-  ASSERT_EQ(req.bundle_selectors_size(), 2);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
 
   const auto &r1 = req.bundle_selectors(0).resource_requests(0);
-  const auto &r2 = req.bundle_selectors(1).resource_requests(0);
+  const auto &r2 = req.bundle_selectors(0).resource_requests(1);
 
   ASSERT_EQ(r1.label_selectors_size(), 1);
   ASSERT_EQ(r2.label_selectors_size(), 1);

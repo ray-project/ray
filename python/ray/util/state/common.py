@@ -512,6 +512,10 @@ class ActorState(StateSchema):
     num_restarts_due_to_lineage_reconstruction: int = state_column(
         filterable=False, detail=True
     )
+    #: Number of times this actor is restarted due to node preemption.
+    num_restarts_due_to_node_preemption: int = state_column(
+        filterable=False, detail=True
+    )
     #: The call site of the actor creation.
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the actor.

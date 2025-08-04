@@ -11,7 +11,6 @@ ray_cc_library(
         "gcs_client.h",
     ],
     deps = [
-        "//:gcs_service_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/gcs:gcs_pb_util",
@@ -19,6 +18,7 @@ ray_cc_library(
         "//src/ray/gcs/store_client:gcs_redis_store_client",
         "//src/ray/protobuf:usage_cc_proto",
         "//src/ray/pubsub:pubsub_lib",
+        "//src/ray/rpc:gcs_service_rpc",
         "//src/ray/util:container_util",
         "//src/ray/util:sequencer",
     ],
