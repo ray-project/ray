@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -31,11 +32,10 @@ class WorkerGroupPollStatus:
         )
 
     def get_error_string(self) -> str:
-        error_to_rank = {}
+        error_to_rank = defaultdict(list)
         for world_rank, error in self.errors.items():
-            if error not in error_to_rank:
-                error_to_rank[error] = []
-            error_to_rank[error].append(str(world_rank))
+            error_str = str(error)
+            error_to_rank[error_str].append(str(world_rank))
 
         for error, ranks in error_to_rank.items():
             error_to_rank[error] = ", ".join(ranks)

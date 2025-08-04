@@ -19,9 +19,5 @@ def test_get_error_string_basic():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    import pdb
-
-    pdb.set_trace()
-
     expected_error_str = "[Rank 0, 3]: \nTest error 1\n[Rank 2]: \nTest error 2"
     assert error_str == expected_error_str
