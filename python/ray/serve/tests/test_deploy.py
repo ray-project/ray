@@ -154,13 +154,11 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     name = "test"
 
     @ray.remote
-    def call(check_app_is_running=True):
+    def call():
         if use_handle:
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            if check_app_is_running:
-                wait_for_condition(check_running, app_name="app", timeout=15)
             url = get_application_url("HTTP", app_name="app")
             return httpx.get(f"{url}/", timeout=None).json()
 
@@ -187,7 +185,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             return await self.handler()
 
     serve.run(V1.bind(), name="app")
-
+    wait_for_condition(check_running, app_name="app", timeout=15)
     # Send unblocked signal first to get pid of running replica
     signal.send.remote()
     val1, pid1 = ray.get(call.remote())
@@ -204,8 +202,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     start = time.time()
     while time.time() - start < 30:
         # The app is not supposed to be in RUNNING state here as V1 replica stopping
-        # V2 replica running makes the app to be in DEPLOYING state.
-        ready, _ = ray.wait([call.remote(check_app_is_running=False)], timeout=2)
+        # V2 replica running makes the app to be in DEPLOYING state so we don't check
+        # if the app is in RUNNING state.
+        ready, _ = ray.wait([call.remote()], timeout=2)
         # If the request doesn't block, it must be V2 which doesn't wait
         # for signal. Otherwise, it must have been sent to V1 which
         # waits on signal The request might have been sent to V1 if the
@@ -294,13 +293,11 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     name = "test"
 
     @ray.remote(num_cpus=0)
-    def call(check_app_is_running=True):
+    def call():
         if use_handle:
             handle = serve.get_deployment_handle(name, "app")
             ret = handle.handler.remote().result()
         else:
-            if check_app_is_running:
-                wait_for_condition(check_running, app_name="app", timeout=15)
             url = get_application_url("HTTP", app_name="app")
             ret = httpx.get(url).text
         return ret.split("|")[0], ret.split("|")[1]
@@ -327,15 +324,13 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         async def __call__(self, request):
             return await self.handler()
 
-    def make_nonblocking_calls(
-        expected, expect_blocking=False, check_app_is_running=True
-    ):
+    def make_nonblocking_calls(expected, expect_blocking=False):
         # Returns dict[val, set(pid)].
         blocking = []
         responses = defaultdict(set)
         start = time.time()
         while time.time() - start < 30:
-            refs = [call.remote(check_app_is_running) for _ in range(10)]
+            refs = [call.remote() for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=10)
             for ref in ready:
                 val, pid = ray.get(ref)
@@ -353,6 +348,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         return responses, blocking
 
     serve.run(V1.options(user_config={"test": "1"}).bind(), name="app")
+    wait_for_condition(check_running, app_name="app", timeout=15)
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -362,10 +358,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
     )
     # The app is not supposed to be in RUNNING state here as one of the replicas among the two
-    # is updating with user_config. This makes the app to be in DEPLOYING state.
-    responses2, blocking2 = make_nonblocking_calls(
-        {"1": 1}, expect_blocking=True, check_app_is_running=False
-    )
+    # is updating with user_config. This makes the app to be in DEPLOYING state so we don't check
+    # if the app is in RUNNING state.
+    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Signal reconfigure to finish. Now the goal should complete and both
