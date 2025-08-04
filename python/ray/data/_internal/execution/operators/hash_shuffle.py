@@ -1131,9 +1131,6 @@ class AggregatorPool:
             self._aggregator_partition_map,
         )
 
-        # Issue detector actor
-        self._issue_detector: Optional[ActorHandle] = None
-
     def start(self):
         # Check cluster resources before starting aggregators
         self._check_cluster_resources()
@@ -1276,18 +1273,6 @@ class AggregatorPool:
         return finalized_remote_args
 
     def shutdown(self, force: bool):
-        # Stop health monitoring actor
-        if self._issue_detector is not None:
-            try:
-                # Tell the actor to stop monitoring
-                ray.wait(self._issue_detector.stop_monitoring.remote())
-            except Exception:
-                pass  # Actor might already be dead
-
-            if force:
-                ray.kill(self._issue_detector)
-            self._issue_detector = None
-
         # Shutdown aggregators
         if force:
             for actor in self._aggregators:
