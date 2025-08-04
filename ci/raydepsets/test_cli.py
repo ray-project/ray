@@ -543,14 +543,6 @@ def _append_to_file(filepath, new):
         f.write(new + "\n")
 
 
-def _copy_data_to_tmpdir(tmpdir):
-    shutil.copytree(
-        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
-        tmpdir,
-        dirs_exist_ok=True,
-    )
-
-
 def _replace_in_file(filepath, old, new):
     with open(filepath, "r") as f:
         contents = f.read()
