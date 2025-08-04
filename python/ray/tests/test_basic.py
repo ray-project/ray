@@ -257,12 +257,12 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     # a single call to the worker.  However, because the thread count
     # per worker today isn't entirely static, we need to allow for this
     # flexibility.  https://github.com/ray-project/ray/issues/55215
-    ray_actor = Actor.remote()
+    actor = Actor.remote()
     for _ in range(5):
-        ray.get(ray_actor.get_thread_count.remote())
+        ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(ray_actor.get_thread_count.remote()) in {27, 28}
+    assert ray.get(actor.get_thread_count.remote()) in {27, 28}
 
 
 # https://github.com/ray-project/ray/issues/7287
