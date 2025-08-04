@@ -788,9 +788,16 @@ cdef int prepare_label_selector(
 
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+            raise ValueError(f"Label selector key type must be string, but got {type(key)}")
         if not isinstance(value, str):
             raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        if key == "":
+            raise ValueError("Label selector key must be a non-empty string.")
+        if (value.startswith("in(") and value.endswith(")")) or \
+           (value.startswith("!in(") and value.endswith(")")):
+            inner = value[value.index("(")+1:-1].strip()
+            if not inner:
+                raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
         label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
