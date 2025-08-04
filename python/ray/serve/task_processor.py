@@ -26,13 +26,23 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
-    async def enqueue_task(
+    def enqueue_task_sync(
         self, task_name, args=None, kwargs=None, **options
     ) -> TaskResult:
         pass
 
     @abstractmethod
-    async def get_task_status(self, task_id) -> TaskResult:
+    async def enqueue_task_async(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
+        pass
+
+    @abstractmethod
+    def get_task_status_sync(self, task_id) -> TaskResult:
+        pass
+
+    @abstractmethod
+    async def get_task_status_async(self, task_id) -> TaskResult:
         pass
 
     @abstractmethod
@@ -107,7 +117,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         else:
             self._app.task(func)
 
-    async def enqueue_task(
+    def enqueue_task_sync(
         self, task_name, args=None, kwargs=None, **options
     ) -> TaskResult:
         task_response = self._app.send_task(
@@ -125,13 +135,21 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             result=task_response.result,
         )
 
-    async def get_task_status(self, task_id) -> TaskResult:
+    async def enqueue_task_async(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
+        raise NotImplementedError("Async task enqueue is not supported for Celery yet")
+
+    def get_task_status_sync(self, task_id) -> TaskResult:
         task_details = self._app.AsyncResult(task_id)
         return TaskResult(
             id=task_details.id,
             result=task_details.result,
             status=task_details.status,
         )
+
+    async def get_task_status_async(self, task_id) -> TaskResult:
+        raise NotImplementedError("Async task status is not supported for Celery yet")
 
     async def cancel_task(self, task_id) -> bool:
         return self._app.AsyncResult(task_id).cancel()

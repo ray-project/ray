@@ -27,12 +27,20 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     def register_task_handle(self, func, name=None):
         self.register_task_handle_mock(func, name=name)
 
-    async def enqueue_task(
+    def enqueue_task_sync(
         self, task_name, args=None, kwargs=None, **options
     ) -> TaskResult:
         pass
 
-    async def get_task_status(self, task_id) -> TaskResult:
+    async def enqueue_task_async(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
+        pass
+
+    def get_task_status_sync(self, task_id) -> TaskResult:
+        pass
+
+    async def get_task_status_async(self, task_id) -> TaskResult:
         pass
 
     async def cancel_task(self, task_id) -> bool:
@@ -116,7 +124,8 @@ class TestTaskHandlerDecorator:
     def test_task_handler_decorator_invalid_name(self, invalid_name):
         """Test various invalid task names."""
         with pytest.raises(
-            ValueError, match="Task name must be a non-empty string when provided"
+            ValueError,
+            match=f"Task name must be a non-empty string, got {invalid_name}",
         ):
 
             @task_handler(name=invalid_name)

@@ -1,4 +1,3 @@
-import asyncio
 import sys
 import tempfile
 from pathlib import Path
@@ -96,9 +95,7 @@ class TestTaskConsumerWithRayServe:
         @ray.remote
         def send_request_to_queue(data):
             celery_adapter = get_task_adapter(config=processor_config)
-            result = asyncio.run(
-                celery_adapter.enqueue_task("process_request", args=[data])
-            )
+            result = celery_adapter.enqueue_task_sync("process_request", args=[data])
             assert result.id is not None
             return result.id
 
@@ -167,7 +164,7 @@ class TestTaskConsumerWithRayServe:
         @ray.remote
         def get_task_status(task_id):
             celery_adapter = get_task_adapter(config=processor_config)
-            return asyncio.run(celery_adapter.get_task_status(task_id))
+            return celery_adapter.get_task_status_sync(task_id)
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)

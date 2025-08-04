@@ -114,7 +114,7 @@ def task_handler(
 
     # Validate name parameter if provided
     if name is not None and (not isinstance(name, str) or not name.strip()):
-        raise ValueError("Task name must be a non-empty string when provided")
+        raise ValueError(f"Task name must be a non-empty string, got {name}")
 
     def decorator(f):
         # async functions are not supported yet in celery `threads` worker pool
