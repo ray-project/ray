@@ -4,8 +4,9 @@ How to run this script
 ----------------------
 `python [script file name].py --num-agents=2`
 
-Control the number of agents and policies (RLModules) via --num-agents and
---num-policies. --encoder-emb-dim sets the encoder output dimension.
+Control the number of agents and policies (RLModules) via --num-agents.
+--encoder-emb-dim sets the encoder output dimension, and --no-shared-encoder
+runs the experiment with independent encoders.
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -96,8 +97,6 @@ if __name__ == "__main__":
         "CartPole-v1"
     )  # To allow instantiation of shared encoder
 
-    # TODO (MCW): delete this line
-    print(f"args.no_shared_encoder = {args.no_shared_encoder}")
     EMBEDDING_DIM = args.encoder_emb_dim  # encoder output dim
     if args.no_shared_encoder:
         print("Running experiment without shared encoder")
