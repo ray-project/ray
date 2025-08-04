@@ -47,19 +47,19 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert (
         repr(r2)
-        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r3)
-        == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=0.0, gpu=1, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r4)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=100.0MB, memory=0.0B)"
     )
     assert (
         repr(r5)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=1.0GB, memory=64.0MB)"
     )
     assert (
         repr(unlimited)
