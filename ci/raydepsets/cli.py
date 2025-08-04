@@ -40,7 +40,7 @@ def load(config_path: str, workspace_dir: str, name: str, build_args: str):
     build_arg_set = None
     if name:
         if build_args:
-            for build_arg_set in manager.config.build_args_sets:
+            for build_arg_set in manager.config.build_arg_sets:
                 if build_arg_set.name == build_args:
                     build_arg_set = build_arg_set
                     break

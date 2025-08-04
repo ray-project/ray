@@ -1,4 +1,4 @@
-configs:
+build_args_sets:
   - name: py311_cpu
     build_args:
       CUDA_VERSION: cpu
