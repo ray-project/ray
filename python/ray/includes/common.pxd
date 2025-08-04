@@ -455,7 +455,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
             int64_t timeout_ms,
-            optional[CNodeID] node_id)
+            c_vector[CNodeID] node_ids)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(

@@ -226,21 +226,24 @@ message UnregisterNodeReply {
 }
 
 message GetAllNodeInfoRequest {
-  // Filter object where predicates are AND together.
-  message Filters {
-    optional bytes node_id = 1;
-    optional GcsNodeInfo.GcsNodeState state = 2;
-    optional string node_name = 3;
-    optional string node_ip_address = 4;
+  message NodeSelector {
+    oneof node_selector {
+      bytes node_id = 1;
+      string node_name = 2;
+      string node_ip_address = 3;
+    }
   }
 
   // Maximum number to return.
-  // If set, the exact `limit` returned do not have any ordering or selection
+  // If set, the exact `limit` returned does not have any ordering or selection
   // guarantee.
-  optional int64 limit = 3;
+  optional int64 limit = 1;
 
-  // Filters to apply to the get query.
-  optional Filters filters = 4;
+  // Filters out specific nodes.
+  repeated NodeSelector node_selectors = 2;
+
+  // Filter out for a specific state.
+  optional GcsNodeInfo.GcsNodeState state_filter = 3;
 }
 
 message GetAllNodeInfoReply {
