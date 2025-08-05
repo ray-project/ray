@@ -92,7 +92,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .reporting(
-            min_time_s_per_iteration=45,
+            min_time_s_per_iteration=60,
         )
         .environment(
             env="FootsiesEnv",
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             env_runner_cls=MultiAgentEnvRunner,
-            num_env_runners=20,
+            num_env_runners=25,
             num_cpus_per_env_runner=0.2,
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
@@ -124,7 +124,7 @@ if __name__ == "__main__":
             episodes_to_numpy=False,
         )
         .training(
-            train_batch_size_per_learner=256 * 20,
+            train_batch_size_per_learner=256 * 25,
             lr=3e-4,
             entropy_coeff=0.01,
         )
@@ -134,7 +134,7 @@ if __name__ == "__main__":
                 "random",
             },
             policy_mapping_fn=Matchmaker(
-                [Matchup("lstm", "lstm", 1.0)]
+                [Matchup("lstm", "random", 1.0)]
             ).policy_mapping_fn,
             policies_to_train=["lstm"],
         )
@@ -144,9 +144,9 @@ if __name__ == "__main__":
                     "lstm": RLModuleSpec(
                         module_class=LSTMContainingRLModule,
                         model_config={
-                            "lstm_cell_size": 32,
+                            "lstm_cell_size": 128,
                             "dense_layers": [128, 128],
-                            "max_seq_len": 32,
+                            "max_seq_len": 64,
                         },
                     ),
                     "random": RLModuleSpec(module_class=RandomRLModule),
@@ -154,11 +154,11 @@ if __name__ == "__main__":
             )
         )
         .evaluation(
-            evaluation_num_env_runners=1,
+            evaluation_num_env_runners=2,
             evaluation_interval=1,
             evaluation_duration="auto",
-            evaluation_duration_unit="timesteps",
             evaluation_parallel_to_training=True,
+            evaluation_force_reset_envs_before_iteration=True,
             evaluation_config={
                 "env_config": {"evaluation": True},
                 "multiagent": {
