@@ -3881,6 +3881,7 @@ def read_unity_catalog(
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
+    version: Optional[int] = None,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
@@ -3905,6 +3906,7 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
+        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -3969,7 +3971,7 @@ def read_delta(
         raise ValueError("Only a single Delta Lake table path is supported.")
 
     # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path).file_uris()
+    paths = DeltaTable(path, version=version).file_uris()
     file_extensions = ["parquet"]
 
     return read_parquet(
