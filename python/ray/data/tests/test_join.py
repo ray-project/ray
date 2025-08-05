@@ -551,10 +551,16 @@ def test_left_anti_join_multi_key(
 
     # Calculate expected result using pandas
     merged = left_pd.merge(right_pd, on=["key1", "key2"], how="left", indicator=True)
-    expected_pd = merged[merged["_merge"] == "left_only"][["key1", "key2", "value_left"]]
-    expected_pd_sorted = expected_pd.sort_values(by=["key1", "key2", "value_left"]).reset_index(drop=True)
+    expected_pd = merged[merged["_merge"] == "left_only"][
+        ["key1", "key2", "value_left"]
+    ]
+    expected_pd_sorted = expected_pd.sort_values(
+        by=["key1", "key2", "value_left"]
+    ).reset_index(drop=True)
 
-    joined_pd_sorted = joined_pd.sort_values(by=["key1", "key2", "value_left"]).reset_index(drop=True)
+    joined_pd_sorted = joined_pd.sort_values(
+        by=["key1", "key2", "value_left"]
+    ).reset_index(drop=True)
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
