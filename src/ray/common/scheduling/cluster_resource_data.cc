@@ -21,7 +21,6 @@
 #include "ray/common/scheduling/resource_set.h"
 
 namespace ray {
-using namespace ::ray::scheduling;  // NOLINT
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
