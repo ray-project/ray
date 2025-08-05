@@ -764,7 +764,7 @@ def decode_options(options: ray_client_pb2.TaskOptions) -> Optional[Dict[str, An
     return opts
 
 
-def serve(connection_str, ray_connect_handler=None):
+def serve(host: str, port: int, ray_connect_handler=None):
     def default_connect_handler(
         job_config: JobConfig = None, **ray_init_kwargs: Dict[str, Any]
     ):
@@ -786,7 +786,9 @@ def serve(connection_str, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    add_port_to_grpc_server(server, connection_str)
+    if host != "127.0.0.1" and host != "localhost":
+        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
+    add_port_to_grpc_server(server, f"{host}:{port}")
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
@@ -797,7 +799,7 @@ def serve(connection_str, ray_connect_handler=None):
     return current_handle
 
 
-def init_and_serve(connection_str, *args, **kwargs):
+def init_and_serve(host: str, port: int, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
@@ -810,7 +812,7 @@ def init_and_serve(connection_str, *args, **kwargs):
         else:
             return ray.init(job_config=job_config, *args, **kwargs)
 
-    server_handle = serve(connection_str, ray_connect_handler=ray_connect_handler)
+    server_handle = serve(host, port, ray_connect_handler=ray_connect_handler)
     return (server_handle, info)
 
 
@@ -898,14 +900,15 @@ def main():
     logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
-            hostport,
+            args.host,
+            args.port,
             args.address,
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
         )
     else:
-        server = serve(hostport, ray_connect_handler)
+        server = serve(args.host, args.port, ray_connect_handler)
 
     try:
         idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
