@@ -80,30 +80,6 @@ void SetFdCloseOnExec(int fd) {
   RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
   RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
 }
-
-// A helper function to robustly read a specific number of bytes from a file descriptor.
-// This handles partial reads and interruptions by signals.
-static inline ssize_t ReadBytesFromFd(int fd, void *buffer, size_t count) {
-  ssize_t total_bytes_read = 0;
-  while (total_bytes_read < (ssize_t)count) {
-    ssize_t bytes_read = read(fd,
-                              reinterpret_cast<char *>(buffer) + total_bytes_read,
-                              count - total_bytes_read);
-    if (bytes_read == 0) {
-      // EOF reached before all bytes were read.
-      return total_bytes_read;
-    }
-    if (bytes_read == -1) {
-      if (errno == EINTR) {
-        continue;  // Interrupted by signal, retry.
-      } else {
-        return -1;  // A real read error occurred.
-      }
-    }
-    total_bytes_read += bytes_read;
-  }
-  return total_bytes_read;
-}
 #endif
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
@@ -214,6 +190,8 @@ class ProcessFD {
     char **envp = &new_env_ptrs[0];
 
     intptr_t fd = -1;
+
+#if defined(__linux__)
     // Pipe for getting startup status (PID and potential errno) from the child.
     int status_pipe[2];
     if (pipe(status_pipe) == -1) {
@@ -265,21 +243,11 @@ class ProcessFD {
         close(parent_lifetime_pipe[0]);
       }
 
-#if defined(__APPLE__)
-      // On macOS, the FD_CLOEXEC mechanism can be unreliable with the execvpe shim.
-      // To avoid hangs, we always send the PID back to the parent before exec-ing,
-      // similar to the decoupled case.
-      pid_t my_pid = getpid();
-      if (write(status_pipe[1], &my_pid, sizeof(my_pid)) != sizeof(my_pid)) {
-        _exit(errno);
-      }
-#else
       // If execve succeeds, this FD will be closed automatically.
       if (!decouple) {
         // Only set FD_CLOEXEC in the non-decouple case
         SetFdCloseOnExec(status_pipe[1]);
       }
-#endif
 
       if (decouple) {
         pid_t my_pid = getpid();
@@ -302,49 +270,6 @@ class ProcessFD {
         close(parent_lifetime_pipe[0]);  // Parent only writes to the lifetime pipe.
       }
 
-#if defined(__APPLE__)
-      // On macOS, we mirror the decouple logic for all cases to avoid hangs.
-      // First, wait for the intermediate process to exit.
-      if (decouple) {
-        while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
-          continue;
-        }
-      }
-
-      // Read the actual child/grandchild's PID from the pipe.
-      pid_t child_pid;
-      ssize_t bytes_read_pid =
-          ReadBytesFromFd(status_pipe[0], &child_pid, sizeof(child_pid));
-      if (bytes_read_pid != sizeof(child_pid)) {
-        // If we can't get the PID, it's a startup failure.
-        ec = std::error_code(ECHILD, std::system_category());
-        pid = -1;
-      } else {
-        pid = child_pid;
-        // We got the PID. Now, do a NON-BLOCKING read to check for an exec error.
-        int flags = fcntl(status_pipe[0], F_GETFL, 0);
-        fcntl(status_pipe[0], F_SETFL, flags | O_NONBLOCK);
-        int exec_errno = 0;
-        ssize_t bytes_read_errno = read(status_pipe[0], &exec_errno, sizeof(exec_errno));
-        fcntl(status_pipe[0], F_SETFL, flags);  // Restore original flags.
-
-        if (bytes_read_errno == sizeof(exec_errno)) {
-          // We got an error code back. Launch failed.
-          ec = std::error_code(exec_errno, std::system_category());
-          pid = -1;
-        } else {
-          // No error code was present. Launch was successful.
-          ec = std::error_code();
-        }
-      }
-      // The status pipe is no longer needed for non-decoupled processes after this point.
-      // For decoupled, it's used for lifetime tracking.
-      if (decouple) {
-        fd = status_pipe[0];
-      } else {
-        close(status_pipe[0]);
-      }
-#else
       if (!decouple) {
         // Simple case for non-decoupled process
         int err_from_child;
@@ -412,7 +337,6 @@ class ProcessFD {
           }
         }
       }
-#endif
     } else {
       // --- Fork Failed ---
       ec = std::error_code(errno, std::system_category());
@@ -423,7 +347,98 @@ class ProcessFD {
         close(parent_lifetime_pipe[1]);
       }
     }
-#endif
+#else  // macOS and other non-Linux POSIX
+    // --- Start of old logic for macOS ---
+    int pipefds[2];  // Create pipe to get PID & track lifetime
+    int parent_lifetime_pipe[2];
+
+    // Create pipes to health check parent <> child.
+    // pipefds is used for parent to check child's health.
+    if (pipe(pipefds) == -1) {
+      pipefds[0] = pipefds[1] = -1;
+    }
+    // parent_lifetime_pipe is used for child to check parent's health.
+    if (pipe_to_stdin) {
+      if (pipe(parent_lifetime_pipe) == -1) {
+        parent_lifetime_pipe[0] = parent_lifetime_pipe[1] = -1;
+      }
+    }
+
+    pid = pipefds[1] != -1 ? fork() : -1;
+
+    // If we don't pipe to stdin close pipes that are not needed.
+    if (pid <= 0 && pipefds[0] != -1) {
+      close(pipefds[0]);  // not the parent, so close the read end of the pipe
+      pipefds[0] = -1;
+    }
+    if (pid != 0 && pipefds[1] != -1) {
+      close(pipefds[1]);  // not the child, so close the write end of the pipe
+      pipefds[1] = -1;
+      // make sure the read end of the pipe is closed on exec
+      SetFdCloseOnExec(pipefds[0]);
+    }
+
+    // Create a pipe and redirect the read pipe to a child's stdin.
+    // Child can use it to detect the parent's lifetime.
+    if (pipe_to_stdin) {
+      if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
+        // Child. Close the write end of the pipe from child.
+        close(parent_lifetime_pipe[1]);
+        parent_lifetime_pipe[1] = -1;
+        SetFdCloseOnExec(parent_lifetime_pipe[0]);
+      }
+      if (pid != 0 && parent_lifetime_pipe[0] != -1) {
+        // Parent. Close the read end of the pipe.
+        close(parent_lifetime_pipe[0]);
+        parent_lifetime_pipe[0] = -1;
+        // Make sure the write end of the pipe is closed on exec.
+        SetFdCloseOnExec(parent_lifetime_pipe[1]);
+      }
+    } else {
+      // parent_lifetime_pipe pipes are not used.
+      parent_lifetime_pipe[0] = -1;
+      parent_lifetime_pipe[1] = -1;
+    }
+
+    if (pid == 0) {
+      // Child process case. Reset the SIGCHLD handler.
+      signal(SIGCHLD, SIG_DFL);
+      // If process needs to be decoupled, double-fork to avoid zombies.
+      if (pid_t pid2 = decouple ? fork() : 0) {
+        _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
+      }
+
+      // Redirect the read pipe to stdin so that child can track the
+      // parent lifetime.
+      if (parent_lifetime_pipe[0] != -1) {
+        dup2(parent_lifetime_pipe[0], STDIN_FILENO);
+      }
+
+      // This is the spawned process. Any intermediate parent is now dead.
+      pid_t my_pid = getpid();
+      if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
+        execvpe(
+            argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
+      }
+      _exit(errno);  // fork() succeeded and exec() failed, so abort the child
+    }
+    if (pid > 0) {
+      // Parent process case
+      if (decouple) {
+        int s;
+        (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return
+        int r = read(pipefds[0], &pid, sizeof(pid));
+        (void)r;  // can't do much if this fails, so ignore return value
+      }
+    }
+    // Use pipe to track process lifetime. (The pipe closes when process terminates.)
+    fd = pipefds[0];
+    if (pid == -1) {
+      ec = std::error_code(errno, std::system_category());
+    }
+    // --- End of old logic for macOS ---
+#endif  // defined(__linux__)
+#endif  // _WIN32
     return ProcessFD(pid, fd);
   }
 };
