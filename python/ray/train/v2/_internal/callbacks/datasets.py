@@ -153,6 +153,11 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         world_size = len(workers)
         worker_node_ids = [worker.metadata.node_id for worker in workers]
 
+        total_train_resources = self.get_train_total_resources(self._scaling_config)
+        self._data_config.set_train_total_resources(
+            total_train_resources.get("CPU", 0), total_train_resources.get("GPU", 0)
+        )
+
         dataset_manager = (
             ray.remote(DatasetManager)
             .options(

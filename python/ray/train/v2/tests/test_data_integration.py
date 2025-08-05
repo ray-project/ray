@@ -7,7 +7,10 @@ import ray.train
 from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import (
+    DatasetShardMetadata,
+    DatasetsSetupCallback,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -87,13 +90,31 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         data_config=data_config,
         scaling_config=scaling_config,
     )
-    dataset_shards = callback.before_init_train_context(worker_group.get_workers())[
-        "dataset_shards"
-    ]
-    assert len(dataset_shards) == NUM_WORKERS
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_manager"]
+    assert len(dataset_manager_for_each_worker) == NUM_WORKERS
 
-    processed_train_ds = dataset_shards[0]["train"]
-    processed_valid_ds = dataset_shards[0]["valid"]
+    # We should send the same dataset manager to all workers.
+    dataset_manager = dataset_manager_for_each_worker[0]
+    assert all(
+        manager == dataset_manager for manager in dataset_manager_for_each_worker
+    )
+
+    def get_rank_0_shard(dataset_name: str):
+        for i in range(1, NUM_WORKERS):
+            dataset_manager.get_dataset_shard.remote(
+                DatasetShardMetadata(dataset_name=dataset_name, world_rank=i)
+            )
+
+        return ray.get(
+            dataset_manager.get_dataset_shard.remote(
+                DatasetShardMetadata(dataset_name=dataset_name, world_rank=0)
+            )
+        )
+
+    processed_train_ds = get_rank_0_shard("train")
+    processed_valid_ds = get_rank_0_shard("valid")
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
     assert not isinstance(processed_valid_ds, StreamSplitDataIterator)
