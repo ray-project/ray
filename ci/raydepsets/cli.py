@@ -91,6 +91,10 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            elif depset.operation == "build_wheel":
+                self.build_graph.add_node(
+                    depset.name, operation="build_wheel", depset=depset
+                )
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
 
@@ -147,6 +151,12 @@ class DependencySetManager:
                 name=depset.name,
                 output=depset.output,
                 build_arg_set=depset.build_arg_set,
+            )
+        elif depset.operation == "build_wheel":
+            self.build_wheel(
+                setup_path=depset.setup_path,
+                output=depset.output,
+                append_flags=depset.append_flags,
             )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -228,17 +238,18 @@ class DependencySetManager:
     def build_wheel(
         self,
         setup_path: str,
-        output_dir: str,
-        python_version: str,
+        output: str,
+        append_flags: Optional[List[str]] = None,
     ):
         args = []
+        print(f"Building wheel with setup path: {setup_path}")
         if setup_path:
             args.extend(["--directory", setup_path])
-        if python_version:
-            args.extend(["--python-version", python_version])
-        if output_dir:
-            args.extend(["-o", output_dir])
-
+        if append_flags:
+            args.extend(append_flags)
+        if output:
+            args.extend(["-o", output])
+        print(f"Building wheel with args: {args}")
         self.exec_uv_cmd(["build"], ["--wheel", *args])
 
     def get_path(self, path: str) -> str:

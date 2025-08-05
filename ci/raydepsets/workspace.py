@@ -23,6 +23,7 @@ class Depset:
     source_depset: Optional[str] = None
     build_arg_set: BuildArgSet = None
     depsets: Optional[List[str]] = None
+    setup_path: Optional[str] = None
 
 
 @dataclass
@@ -80,6 +81,7 @@ class Config:
             build_arg_set=build_arg_set,
             override_flags=depset.get("override_flags", []),
             append_flags=depset.get("append_flags", []),
+            setup_path=depset.get("setup_path"),
         )
 
     def substitute_build_args(depset, build_arg_set: BuildArgSet):

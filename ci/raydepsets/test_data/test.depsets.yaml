@@ -3,6 +3,7 @@ build_arg_sets:
     build_args:
       CUDA_VERSION: cpu
       PYTHON_VERSION: py311
+      PY_VER: 311
 
 depsets:
   - name: ray_base_test_depset
@@ -47,4 +48,6 @@ depsets:
     operation: build_wheel
     setup_path: python
     output_dir: dist/
-    python_version: ${PYTHON_VERSION}
+    python_version: ${PY_VER}
+    build_arg_sets:
+      - py311_cpu

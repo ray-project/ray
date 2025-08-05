@@ -1,0 +1,31 @@
+build_arg_sets:
+  - name: py312
+    build_args:
+      PY_VER: 312
+  - name: py311
+    build_args:
+      PY_VER: 311
+  - name: py310
+    build_args:
+      PY_VER: 310
+  - name: py39
+    build_args:
+      PY_VER: 39
+  - name: py38
+    build_args:
+      PY_VER: 38
+
+depsets:
+  - name: build_wheel_depset_${PY_VER}
+    operation: build_wheel
+    setup_path: python/
+    output: dist/
+    append_flags:
+      - --python
+      - ${PY_VER}
+    build_arg_sets:
+      - py312
+      - py311
+      - py310
+      - py39
+      - py38
