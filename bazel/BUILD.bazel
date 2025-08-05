@@ -1,0 +1,22 @@
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+exports_files([
+    "pytest_wrapper.py",
+    "default_doctest_pytest_plugin.py",
+])
+
+py_binary(
+    name = "pyzip",
+    srcs = ["pyzip.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "gen_extract",
+    srcs = ["gen_extract.py"],
+    deps = [
+        ci_require("bazel-runfiles"),
+    ],
+    visibility = ["//visibility:public"],
+)
