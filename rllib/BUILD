@@ -90,6 +90,7 @@ doctest(
             "algorithms/r2d2/r2d2.py",
             "algorithms/sac/rnnsac.py",
             "algorithms/simple_q/simple_q.py",
+            "core/distribution/torch/torch_distribution.py",
             "core/models/base.py",
             "core/models/specs/specs_base.py",
             "core/models/specs/specs_dict.py",
@@ -104,9 +105,7 @@ doctest(
             "models/catalog.py",
             "models/preprocessors.py",
             "models/repeated_values.py",
-            "models/tf/tf_distributions.py",
             "models/torch/model.py",
-            "models/torch/torch_distributions.py",
             "policy/rnn_sequencing.py",
             "utils/actor_manager.py",
             "utils/filter.py",
@@ -1914,6 +1913,17 @@ py_test(
 )
 
 py_test(
+    name = "test_algorithm_save_load_checkpoint_connectors",
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_connectors.py"],
+    tags = [
+        "algorithms_dir",
+        "algorithms_dir_generic",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "test_algorithm_rl_module_restore",
     size = "large",
     srcs = ["algorithms/tests/test_algorithm_rl_module_restore.py"],
@@ -2459,16 +2469,6 @@ py_test(
 #    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
 #    args = ["TestRLModuleGPU"],
 # )
-
-py_test(
-    name = "test_tf_rl_module",
-    size = "medium",
-    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"],
-    tags = [
-        "core",
-        "team:rllib",
-    ],
-)
 
 py_test(
     name = "test_multi_rl_module",
@@ -4683,7 +4683,7 @@ py_test(
 
 py_test(
     name = "examples/metrics/custom_metrics_in_algorithm_training_step",
-    size = "small",
+    size = "medium",
     srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
     main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
     tags = [

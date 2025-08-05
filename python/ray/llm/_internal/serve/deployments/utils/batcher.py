@@ -36,6 +36,9 @@ class Batcher(Generic[T]):
         else:
             self.interval_s = interval_ms / 1000
 
+        if interval_ms == 0:
+            return
+
         self.done_event: asyncio.Event = asyncio.Event()
 
         # We are okay with this task getting cancelled (to propagate cancellations)
@@ -46,6 +49,13 @@ class Batcher(Generic[T]):
 
     async def stream(self) -> AsyncGenerator[Iterable[T], None]:
         """Drain from the queue every interval_ms and yield the merged results"""
+
+        if self.interval_s == 0:
+            async for item in self.generator:
+                yield [item]
+
+            return
+
         try:
             while True:
                 # Wait for the interval or until we finish, whichever is faster.
