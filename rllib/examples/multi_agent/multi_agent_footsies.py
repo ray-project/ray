@@ -75,14 +75,12 @@ def env_creator(env_config: EnvContext) -> FootsiesEnv:
             + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
             + env_config.get("vector_index", 0)
         )
-        print(f"port for evaluation is {port=}\n XXXXXXXXXXXXXXXXXXXXXX")
     else:
         port = (
             env_config["start_port"]
             + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
             + env_config.get("vector_index", 0)
         )
-        print(f"port for training is {port=}\n XXXXXXXXXXXXXXXXXXXXXX")
     return FootsiesEnv(config=env_config, port=port)
 
 
