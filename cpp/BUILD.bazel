@@ -60,7 +60,11 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//:ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:constants",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/util",
