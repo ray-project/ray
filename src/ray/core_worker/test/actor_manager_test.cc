@@ -102,26 +102,55 @@ class MockGcsClient : public gcs::GcsClient {
 class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
   MockActorTaskSubmitter() : ActorTaskSubmitterInterface() {}
-  MOCK_METHOD5(AddActorQueueIfNotExists,
-               void(const ActorID &actor_id,
-                    int32_t max_pending_calls,
-                    bool execute_out_of_order,
-                    bool fail_if_actor_unreachable,
-                    bool owned));
-  MOCK_METHOD3(ConnectActor,
-               void(const ActorID &actor_id,
-                    const rpc::Address &address,
-                    int64_t num_restarts));
-  MOCK_METHOD5(DisconnectActor,
-               void(const ActorID &actor_id,
-                    int64_t num_restarts,
-                    bool dead,
-                    const rpc::ActorDeathCause &death_cause,
-                    bool is_restartable));
+  MOCK_METHOD(void,
+              AddActorQueueIfNotExists,
+              (const ActorID &actor_id,
+               int32_t max_pending_calls,
+               bool execute_out_of_order,
+               bool fail_if_actor_unreachable,
+               bool owned),
+              (override));
+  MOCK_METHOD(void,
+              ConnectActor,
+              (const ActorID &actor_id,
+               const rpc::Address &address,
+               int64_t num_restarts),
+              (override));
+  MOCK_METHOD(void,
+              DisconnectActor,
+              (const ActorID &actor_id,
+               int64_t num_restarts,
+               bool dead,
+               const rpc::ActorDeathCause &death_cause,
+               bool is_restartable),
+              (override));
 
-  MOCK_METHOD0(CheckTimeoutTasks, void());
+  MOCK_METHOD(void, CheckTimeoutTasks, (), (override));
 
   MOCK_METHOD(void, SetPreempted, (const ActorID &actor_id), (override));
+
+  MOCK_METHOD(Status, SubmitTask, (TaskSpecification task_spec), (override));
+  MOCK_METHOD(Status, SubmitActorCreationTask, (TaskSpecification task_spec), (override));
+  MOCK_METHOD((std::optional<rpc::Address>),
+              GetActorAddress,
+              (const ActorID &actor_id),
+              (const, override));
+  MOCK_METHOD(bool, CheckActorExists, (const ActorID &actor_id), (const, override));
+  MOCK_METHOD(bool, PendingTasksFull, (const ActorID &actor_id), (const, override));
+  MOCK_METHOD(std::string, DebugString, (const ActorID &actor_id), (const, override));
+  MOCK_METHOD(size_t, NumPendingTasks, (const ActorID &actor_id), (const, override));
+  MOCK_METHOD(Status,
+              CancelTask,
+              (TaskSpecification task_spec, bool recursive),
+              (override));
+  MOCK_METHOD((std::optional<rpc::ActorTableData::ActorState>),
+              GetLocalActorState,
+              (const ActorID &actor_id),
+              (const, override));
+  MOCK_METHOD(bool,
+              QueueGeneratorForResubmit,
+              (const TaskSpecification &spec),
+              (override));
 
   virtual ~MockActorTaskSubmitter() {}
 };

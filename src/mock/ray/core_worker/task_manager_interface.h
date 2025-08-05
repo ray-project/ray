@@ -104,7 +104,7 @@ class MockTaskManagerInterface : public TaskManagerInterface {
               (const ObjectID &generator_id),
               (const, override));
 
-  MOCK_METHOD(std::pair<ObjectID, bool>,
+  MOCK_METHOD((std::pair<ObjectID, bool>),
               PeekObjectRefStream,
               (const ObjectID &generator_id),
               (override));
