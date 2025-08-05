@@ -60,42 +60,32 @@ class Config:
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_name} not found")
 
-                    depset_str = yaml.dump(depset)
-                    substituted_depset = Template(depset_str).substitute(
-                        build_arg_set.build_args
-                    )
-                    depset_yaml = yaml.safe_load(substituted_depset)
-                    depsets.append(
-                        Depset(
-                            name=depset_yaml.get("name"),
-                            requirements=depset_yaml.get("requirements", []),
-                            constraints=depset_yaml.get("constraints", []),
-                            operation=depset_yaml.get("operation", None),
-                            output=depset_yaml.get("output"),
-                            source_depset=depset_yaml.get("source_depset"),
-                            depsets=depset_yaml.get("depsets", []),
-                            build_arg_set=build_arg_set,
-                            override_flags=depset_yaml.get("override_flags", []),
-                            append_flags=depset_yaml.get("append_flags", []),
-                        )
-                    )
+                    depset_yaml = Config.substitute_build_args(depset, build_arg_set)
+
+                    depsets.append(Config.dict_to_depset(depset_yaml, build_arg_set))
             else:
-                depsets.append(
-                    Depset(
-                        name=depset.get("name"),
-                        requirements=depset.get("requirements", []),
-                        constraints=depset.get("constraints", []),
-                        operation=depset.get("operation", None),
-                        output=depset.get("output"),
-                        source_depset=depset.get("source_depset"),
-                        depsets=depset.get("depsets", []),
-                        build_arg_set=None,
-                        override_flags=depset.get("override_flags", []),
-                        append_flags=depset.get("append_flags", []),
-                    )
-                )
+                depsets.append(Config.dict_to_depset(depset))
 
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
+
+    def dict_to_depset(depset: dict, build_arg_set: BuildArgSet = None) -> Depset:
+        return Depset(
+            name=depset.get("name"),
+            requirements=depset.get("requirements", []),
+            constraints=depset.get("constraints", []),
+            operation=depset.get("operation", None),
+            output=depset.get("output"),
+            source_depset=depset.get("source_depset"),
+            depsets=depset.get("depsets", []),
+            build_arg_set=build_arg_set,
+            override_flags=depset.get("override_flags", []),
+            append_flags=depset.get("append_flags", []),
+        )
+
+    def substitute_build_args(depset: dict, build_arg_set: BuildArgSet) -> dict:
+        depset_str = yaml.dump(depset)
+        substituted_depset = Template(depset_str).substitute(build_arg_set.build_args)
+        return yaml.safe_load(substituted_depset)
 
 
 class Workspace:
