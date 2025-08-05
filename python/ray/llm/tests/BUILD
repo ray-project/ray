@@ -43,8 +43,12 @@ py_test_module_list(
     },
     files = glob(
         ["batch/gpu/**/test_*.py"],
-        # TODO(ray-llm): fix this test: https://github.com/ray-project/ray/issues/52074
-        exclude = ["batch/gpu/processor/test_vllm_engine_proc.py"],
+        exclude = [
+            # TODO(ray-llm): https://github.com/ray-project/ray/issues/52074
+            "batch/gpu/processor/test_vllm_engine_proc.py",
+            # TODO(ray-llm): https://github.com/ray-project/ray/issues/52075
+            "batch/gpu/stages/test_vllm_engine_stage.py",
+        ],
     ),
     tags = [
         "exclusive",
