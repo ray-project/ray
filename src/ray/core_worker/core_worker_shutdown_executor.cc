@@ -265,7 +265,8 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         core_worker_->worker_context_->GetCurrentJobID(),
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
-        /* timestamp */ absl::GetCurrentTimeNanos());
+        /* timestamp */ absl::GetCurrentTimeNanos(),
+        /*is_actor_task_event=*/ core_worker_->worker_context_->GetCurrentActorID().IsNil());
     core_worker_->task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
