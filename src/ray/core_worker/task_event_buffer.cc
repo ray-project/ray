@@ -295,11 +295,13 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
   }
 
   // Populate the task execution event
-  PopulateRpcRayEventBaseFields(
-      ray_events.second.has_value() ? *ray_events.second : ray_events.second.emplace(),
-      false,
-      timestamp);
-  auto task_execution_event = ray_events.second.value().mutable_task_execution_event();
+  PopulateRpcRayEventBaseFields(task_execution_event_rpc.has_value()
+                                    ? task_execution_event_rpc.value()
+                                    : task_execution_event_rpc.emplace(),
+                                false,
+                                timestamp);
+  auto task_execution_event =
+      task_execution_event_rpc.value().mutable_task_execution_event();
   PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
 }
 
@@ -345,29 +347,6 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
   // to the new ray event format.
 }
 
-TaskEventBufferImpl::TaskEventBufferImpl(
-    std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
-    std::string session_name)
-    : work_guard_(boost::asio::make_work_guard(io_service_)),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)),
-      gcs_client_(std::move(gcs_client)),
-      event_aggregator_exporter_(
-          std::make_unique<EventAggregatorExporter>(std::move(event_aggregator_client))),
-      session_name_(session_name) {}
-
-TaskEventBufferImpl::TaskEventBufferImpl(
-    std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter,
-    std::string session_name)
-    : work_guard_(boost::asio::make_work_guard(io_service_)),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)),
-      gcs_client_(std::move(gcs_client)),
-      event_aggregator_exporter_(std::move(event_aggregator_exporter)),
-      session_name_(session_name) {}
-
-TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
-
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
     const TaskID &task_id,
     const JobID &job_id,
@@ -400,7 +379,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
 
 TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
+    std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     std::string session_name)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
@@ -521,9 +500,17 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   // No data to send.
   if (status_events_.empty() && dropped_task_attempts_unreported_.empty()) {
     return;
+  }
 
-    // Get data loss info.
-    size_t num_dropped_task_attempts_to_send = 0;
+  // Get data loss info.
+  size_t num_dropped_task_attempts_to_send = 0;
+  auto num_batch_size =
+      RayConfig::instance().task_events_dropped_task_attempt_batch_size();
+  // Iterate and erase task attempt dropped being tracked in buffer.
+  while ((num_batch_size < 0 ||
+          num_dropped_task_attempts_to_send < static_cast<size_t>(num_batch_size)) &&
+         !dropped_task_attempts_unreported_.empty()) {
+    // If there's more dropped task status events we are tracking, and we have not
     // reached the batch size limit, we take the first one.
     auto itr = dropped_task_attempts_unreported_.begin();
     dropped_task_attempts_to_send->insert(*itr);

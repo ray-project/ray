@@ -169,6 +169,8 @@ class TaskStatusEvent : public TaskEvent {
   ///
   /// \param[out] ray_events The pair of rpc::events::RayEvent protobuf messages to be
   /// filled.
+  void ToRpcRayEvents(RayEventsPair &ray_events) override;
+
   bool IsProfileEvent() const override { return false; }
 
  private:
@@ -229,7 +231,12 @@ class TaskProfileEvent : public TaskEvent {
  private:
   /// The below fields mirror rpc::ProfileEvent
   std::string component_type_;
+  std::string component_id_;
   std::string node_ip_address_;
+  std::string event_name_;
+  int64_t start_time_{};
+  int64_t end_time_{};
+  std::string extra_data_;
 };
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
