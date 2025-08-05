@@ -80,6 +80,9 @@ def pass_by_reference(object_ref: "ray.ObjectRef") -> _ObjectRefWrapper:
     Args:
         object_ref: The ObjectRef to pass by reference.
 
+    Returns:
+        A wrapper that can be used to pass an ObjectRef by reference.
+
     Example:
 
         .. code-block:: python
