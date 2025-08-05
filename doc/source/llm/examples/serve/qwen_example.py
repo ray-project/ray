@@ -55,11 +55,7 @@ llm_config = LLMConfig(
     engine_kwargs={
         "tensor_parallel_size": 2,
     },
-    runtime_env={
-        "env_vars": {
-            "VLLM_USE_V1": "1"
-        }
-    }
+    runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})

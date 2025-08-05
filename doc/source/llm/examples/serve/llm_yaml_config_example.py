@@ -43,19 +43,23 @@ status = ApplicationStatus.NOT_STARTED
 start_time = time.time()
 timeout_seconds = 300
 
-while status != ApplicationStatus.RUNNING and time.time() - start_time < timeout_seconds:
+while (
+    status != ApplicationStatus.RUNNING and time.time() - start_time < timeout_seconds
+):
     # Check if subprocess failed early
     if process.poll() is not None and process.returncode != 0:
         stdout, stderr = process.communicate()
         print(f"Subprocess failed:\n{stdout}\n{stderr}")
-        raise AssertionError(f"Serve subprocess failed with exit code: {process.returncode}")
-    
+        raise AssertionError(
+            f"Serve subprocess failed with exit code: {process.returncode}"
+        )
+
     # Print subprocess output when it completes
     if process.poll() is not None and process.returncode == 0:
         stdout, stderr = process.communicate()
         if stdout:
             print(f"Serve output:\n{stdout}")
-    
+
     # Check deployment status
     serve_status = serve.status()
     if app_name in serve_status.applications:
@@ -63,7 +67,7 @@ while status != ApplicationStatus.RUNNING and time.time() - start_time < timeout
         if new_status != status:
             print(f"Status: {new_status}")
             status = new_status
-        
+
         if status in [ApplicationStatus.DEPLOY_FAILED, ApplicationStatus.UNHEALTHY]:
             raise AssertionError(f"Deployment failed with status: {status}")
 
