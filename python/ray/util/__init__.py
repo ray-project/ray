@@ -9,7 +9,7 @@ from ray.util import rpdb as pdb
 from ray.util import debugpy as ray_debugpy
 from ray.util.actor_pool import ActorPool
 from ray.util import accelerators
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.check_serialize import inspect_serializability
 from ray.util.client_connect import connect, disconnect
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
@@ -47,6 +47,46 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
         return [{"name": name, "namespace": namespace} for namespace, name in actors]
     else:
         return [name for _, name in actors]
+
+class _ObjectRefWrapper:
+    """Utility class to implement ray.util.pass_by_reference.
+
+    When serialized, it wraps the ObjectRef in a tuple so it won't be passed by value.
+    When deserialized, it resolves itself to the wrapped reference.
+
+    *NOT* a public API.
+    """
+    def __init__(self, o: "ray.ObjectRef"):
+        self._o = o
+
+    def __reduce__(self):
+        return lambda o: o, (self._o,)
+
+@PublicAPI(stability="alpha")
+def pass_by_reference(o: "ray.ObjectRef") -> _ObjectRefWrapper:
+    """Utility to pass the provided ObjectRef to another task by reference.
+
+    This is an advanced utility. In most cases, you should pass the ObjectRef directly.
+
+    Example:
+
+        .. code-block:: python
+
+            import ray
+
+            @ray.remote
+            def f(obj_ref: ray.ObjectRef) -> str:
+                return ray.get(obj_ref)
+            
+            obj_ref = ray.put("Hello!")
+
+            # Normally, if you pass obj_ref to a downstream task, it will be
+            # automatically resolved to its value ("Hello!" in this case).
+            # Here, we use ray.util.pass_by_reference to provide the downstream task
+            # with the ObjectRef instead.
+            assert ray.get(f.remote(ray.util.pass_by_reference(obj_ref))) == "Hello!"
+    """
+    return _ObjectRefWrapper(o)
 
 
 __all__ = [
