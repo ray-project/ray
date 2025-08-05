@@ -217,9 +217,7 @@ def update_ray_start_cmd(
     default=None,
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
-@click.argument(
-    "execute-on-head", nargs=-1, type=str, help="The command to run on the head node."
-)
+@click.argument("execute-on-head", nargs=-1, type=str)
 def symmetric_run(
     address: str,
     wait_for_nnodes: int,

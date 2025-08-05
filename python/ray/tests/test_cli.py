@@ -634,6 +634,143 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
         worker_proc.kill()
 
 
+def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
+    """Test basic symmetric_run interface with minimal arguments."""
+    import socket
+    import ray.scripts.symmetric_run as symmetric_run
+
+    # Mock subprocess.run to avoid actually starting Ray
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+
+        # Mock socket.getaddrinfo to return a valid IP
+        with patch("socket.getaddrinfo") as mock_getaddrinfo:
+            mock_getaddrinfo.return_value = [("", "", "", "", ("127.0.0.1", 6379))]
+
+            # Mock psutil.net_if_addrs to return localhost IP
+            with patch("psutil.net_if_addrs") as mock_net_if_addrs:
+                mock_net_if_addrs.return_value = {
+                    "lo": [
+                        type(
+                            "addr",
+                            (),
+                            {"family": socket.AF_INET, "address": "127.0.0.1"},
+                        )()
+                    ]
+                }
+
+                # Test basic symmetric_run call
+                symmetric_run.symmetric_run(
+                    address="127.0.0.1:6379",
+                    wait_for_nnodes=None,
+                    execute_on_head=("echo", "test"),
+                    num_cpus=None,
+                    num_gpus=None,
+                    disable_usage_stats=False,
+                    resources="{}",
+                    min_worker_port=None,
+                    max_worker_port=None,
+                    node_manager_port=0,
+                    object_manager_port=None,
+                    runtime_env_agent_port=None,
+                    dashboard_agent_grpc_port=None,
+                    dashboard_agent_listen_port=None,
+                    metrics_export_port=None,
+                )
+
+                # Verify that subprocess.run was called for ray start
+                assert mock_run.called
+                calls = mock_run.call_args_list
+
+                # Should have called ray start with --head
+                ray_start_calls = [
+                    call
+                    for call in calls
+                    if "ray" in str(call) and "start" in str(call)
+                ]
+                assert len(ray_start_calls) > 0
+
+                # Should have called ray stop
+                ray_stop_calls = [
+                    call for call in calls if "ray" in str(call) and "stop" in str(call)
+                ]
+                assert len(ray_stop_calls) > 0
+
+
+def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
+    """Test symmetric_run behavior when not on the head node."""
+    import socket
+    import ray.scripts.symmetric_run as symmetric_run
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+
+        with patch("socket.getaddrinfo") as mock_getaddrinfo:
+            # Mock as if we're connecting to a different IP (worker node)
+            mock_getaddrinfo.return_value = [("", "", "", "", ("192.168.1.100", 6379))]
+
+            with patch("psutil.net_if_addrs") as mock_net_if_addrs:
+                # Mock local IPs that don't match the head node
+                mock_net_if_addrs.return_value = {
+                    "eth0": [
+                        type(
+                            "addr",
+                            (),
+                            {
+                                "family": socket.AF_INET,
+                                "address": "192.168.1.101",  # Different from head node
+                            },
+                        )()
+                    ]
+                }
+
+                # Mock socket connection check to simulate head node ready
+                with patch("socket.socket") as mock_socket:
+                    mock_socket_instance = MagicMock()
+                    mock_socket_instance.connect_ex.return_value = 0
+                    mock_socket.return_value.__enter__.return_value = (
+                        mock_socket_instance
+                    )
+
+                    # Test worker node behavior
+                    symmetric_run.symmetric_run(
+                        address="192.168.1.100:6379",
+                        wait_for_nnodes=None,
+                        execute_on_head=(),  # No command to execute on worker
+                        num_cpus=None,
+                        num_gpus=None,
+                        disable_usage_stats=False,
+                        resources="{}",
+                        min_worker_port=None,
+                        max_worker_port=None,
+                        node_manager_port=0,
+                        object_manager_port=None,
+                        runtime_env_agent_port=None,
+                        dashboard_agent_grpc_port=None,
+                        dashboard_agent_listen_port=None,
+                        metrics_export_port=None,
+                    )
+
+                    # Verify that subprocess.run was called
+                    assert mock_run.called
+                    calls = mock_run.call_args_list
+
+                    # Should have called ray start with --address (worker mode)
+                    ray_start_calls = [
+                        call
+                        for call in calls
+                        if "ray" in str(call) and "start" in str(call)
+                    ]
+                    assert len(ray_start_calls) > 0
+
+                    # Check that it's in worker mode (--address instead of --head)
+                    start_call = ray_start_calls[0]
+                    start_args = start_call[0][0]
+                    assert "--address" in start_args
+                    assert "192.168.1.100:6379" in start_args
+                    assert "--block" in start_args  # Worker nodes should block
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
