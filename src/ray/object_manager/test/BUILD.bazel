@@ -63,6 +63,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:raylet_lib",
+        "//src/ray/util:path_utils",
         "@boost//:endian",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",

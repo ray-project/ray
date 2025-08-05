@@ -80,6 +80,7 @@ ray_cc_library(
         "gcs_server_test_util.h",
     ],
     deps = [
+        "//:ray_fakes",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
     ],
 )
@@ -96,6 +97,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )

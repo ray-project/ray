@@ -178,13 +178,6 @@ class MockWorkerPool : public WorkerPoolInterface {
     return Status::Invalid("Not used.");
   }
 
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                        pid_t pid,
-                        StartupToken worker_startup_token) override {
-    RAY_CHECK(false) << "Not used.";
-    return Status::Invalid("Not used.");
-  }
-
   boost::optional<const rpc::JobConfig &> GetJobConfig(
       const JobID &job_id) const override {
     RAY_CHECK(false) << "Not used.";

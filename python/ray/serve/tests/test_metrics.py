@@ -401,8 +401,8 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
-    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
+    httpx.get(f"{get_application_url()}/A/", timeout=None)
+    httpx.get(f"{get_application_url()}/A/", timeout=None)
     channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
@@ -461,7 +461,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
     # Should generate 404 responses
-    broken_url = "http://127.0.0.1:8000/fake_route"
+    broken_url = f"{get_application_url()}/fake_route"
     _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
 
