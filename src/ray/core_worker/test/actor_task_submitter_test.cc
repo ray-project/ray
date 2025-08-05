@@ -123,14 +123,14 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
 };
 
 TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
 
@@ -162,14 +162,14 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -200,14 +200,14 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestDependencies) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -247,14 +247,14 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -278,7 +278,7 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
-  if (execute_out_of_order) {
+  if (allow_out_of_order_execution) {
     // Put the dependencies in the store in the opposite order of task
     // submission.
     auto data = GenerateRandomObject();
@@ -307,14 +307,14 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorDead) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -349,14 +349,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorDead) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -406,14 +406,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -477,14 +477,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -535,14 +535,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -623,14 +623,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
-  const auto execute_out_of_order = GetParam();
+  const auto allow_out_of_order_execution = GetParam();
   const auto caller_worker_id = WorkerID::FromRandom();
   rpc::Address actor_addr1;
   actor_addr1.set_worker_id(WorkerID::FromRandom().Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ false,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, actor_addr1, 0);
@@ -735,14 +735,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -773,7 +773,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   int32_t max_pending_calls = 10;
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -781,7 +781,7 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       max_pending_calls,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -823,14 +823,14 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartResubmit) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
 
@@ -846,7 +846,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartResubmit) {
   worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK());
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecuteOutOfOrder,
+INSTANTIATE_TEST_SUITE_P(AllowOutOfOrderExecution,
                          ActorTaskSubmitterTest,
                          ::testing::Values(true, false));
 

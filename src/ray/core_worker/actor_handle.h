@@ -48,7 +48,7 @@ class ActorHandle {
               const std::string &name,
               const std::string &ray_namespace,
               int32_t max_pending_calls,
-              bool execute_out_of_order = false,
+              bool allow_out_of_order_execution = false,
               std::optional<bool> enable_task_events = absl::nullopt,
               const std::unordered_map<std::string, std::string> &labels = {});
 
@@ -108,7 +108,7 @@ class ActorHandle {
 
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
-  bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+  bool AllowOutOfOrderExecution() const { return inner_.allow_out_of_order_execution(); }
 
   const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
     return inner_.labels();

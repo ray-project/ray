@@ -160,7 +160,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   actor_task_submitter_.AddActorQueueIfNotExists(
       actor_id,
       actor_handle->MaxPendingCalls(),
-      actor_handle->ExecuteOutOfOrder(),
+      actor_handle->AllowOutOfOrderExecution(),
       /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0,
       owned);
   bool inserted = false;

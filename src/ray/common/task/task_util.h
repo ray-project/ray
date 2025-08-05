@@ -246,7 +246,7 @@ class TaskSpecBuilder {
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      bool execute_out_of_order = false,
+      bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
@@ -273,7 +273,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
-    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
+    actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
