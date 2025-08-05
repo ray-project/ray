@@ -22,7 +22,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "gtest/gtest_prod.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"

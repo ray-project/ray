@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "absl/synchronization/notification.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"

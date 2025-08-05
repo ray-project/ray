@@ -23,7 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"

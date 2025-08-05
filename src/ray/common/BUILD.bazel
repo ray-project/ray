@@ -15,8 +15,8 @@ ray_cc_library(
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
+        ":asio",
         ":id",
-        ":network",
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
@@ -104,24 +104,6 @@ ray_cc_library(
         ":id",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "network",
-    srcs = [
-        "client_connection.cc",
-        "network_util.cc",
-    ],
-    hdrs = [
-        "client_connection.h",
-        "network_util.h",
-    ],
-    deps = [
-        ":asio",
-        ":id",
-        ":status",
-        "//:node_manager_fbs",
     ],
 )
 

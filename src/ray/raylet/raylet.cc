@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"

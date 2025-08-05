@@ -31,7 +31,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/memory_monitor.h"
