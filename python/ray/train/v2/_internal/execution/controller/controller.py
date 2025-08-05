@@ -9,7 +9,9 @@ import pandas as pd
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.train.v2._internal.callbacks import create_placement_group_with_spmd
+from ray.train.v2._internal.callbacks.accelerators import (
+    create_placement_group_with_spmd,
+)
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -283,6 +285,7 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         placement_group_specs = None
         backend_config = self._train_run_context.backend_config
+        run_config = self._train_run_context.run_config
 
         if getattr(backend_config, "use_tpu", False):
             try:
@@ -290,6 +293,7 @@ class TrainController:
                     num_workers=num_workers,
                     resources_per_worker=resources_per_worker,
                     backend_config=backend_config,
+                    run_config=run_config,
                 )
                 if placement_group_specs is None:
                     raise RuntimeError("Failed to create placement group specs.")

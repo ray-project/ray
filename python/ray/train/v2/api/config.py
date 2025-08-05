@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import pyarrow.fs
 
@@ -21,7 +21,9 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+    from ray.tune.search.sample import Domain
 
+SampleRange = Union["Domain", Dict[str, List]]
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +83,8 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
+    use_tpu: Union[bool, SampleRange] = False
+    topology: Optional[str] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
@@ -115,7 +119,7 @@ class ScalingConfig(ScalingConfigV1):
             if self.use_tpu:
                 return {"TPU": 1}
 
-        super()._resources_per_worker_not_none()
+        return super()._resources_per_worker_not_none
 
     @property
     def _trainer_resources_not_none(self):

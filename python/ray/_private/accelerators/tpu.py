@@ -128,7 +128,7 @@ def infer_tpu_pod_type_from_topology(
         return None
 
 
-def fetch_tpu_slice_name_from_pg(pg):
+def fetch_tpu_slice_name_from_pg(pg, env_vars=None):
     @ray.remote
     def _get_tpu_slice_name():
         import ray
@@ -137,9 +137,13 @@ def fetch_tpu_slice_name_from_pg(pg):
             ray._private.accelerators.TPUAcceleratorManager.get_current_node_tpu_name()
         )
 
-    tpu_name_ref = _get_tpu_slice_name.options(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
-    ).remote()
+    options = {
+        "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=pg)
+    }
+    if env_vars:
+        options["runtime_env"] = {"env_vars": env_vars}
+
+    tpu_name_ref = _get_tpu_slice_name.options(**options).remote()
 
     return ray.get(tpu_name_ref)
 

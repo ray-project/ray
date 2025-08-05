@@ -2,27 +2,28 @@ import logging
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
-from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.jax.config import JaxConfig
+from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
+from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.jax.config import JaxConfig
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
+    pass
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
 class JaxTrainer(DataParallelTrainer):
-    """A Trainer for data parallel Jax training on TPUs only.
+    """A Trainer for Single-Program Multi-Data (SPMD) JAX training.
+    Currently only supports TPUs. GPUs will be supported in a future version.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. These actors are expected to be scheduled on TPU VMs with
-    properly configured interconnects. The ``train_loop_per_worker`` function
-    is expected to take in either 0 or 1 arguments:
+    Actors. These actors are expected to be scheduled on TPU VMs within the same
+    TPU slice, connected via inter-chip interconnects (ICI). The ``train_loop_per_worker``
+    function is expected to take in either 0 or 1 arguments:
 
     .. code-block:: python
 
@@ -59,7 +60,6 @@ class JaxTrainer(DataParallelTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training dataset.
-        preprocessor: Optional preprocessor to apply to datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -70,10 +70,9 @@ class JaxTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         jax_config: Optional[JaxConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[Dict[str, DataConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         if not jax_config:
@@ -90,7 +89,6 @@ class JaxTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 

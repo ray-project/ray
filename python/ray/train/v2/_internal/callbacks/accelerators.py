@@ -19,7 +19,7 @@ from ray.train.constants import (
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2._internal.util import ray_get_safe
-from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.util.placement_group import (
     PlacementGroup,
 )
@@ -167,6 +167,7 @@ def create_placement_group_with_spmd(
     num_workers: int,
     resources_per_worker: dict,
     backend_config: BackendConfig,
+    run_config: RunConfig,
 ) -> Optional[List[Tuple[PlacementGroup, range]]]:
     """Creates SPMD-aware heterogeneous placement groups. This currently only
     supports TPU with JaxTrainer.
@@ -174,6 +175,14 @@ def create_placement_group_with_spmd(
     This creates one head PG (for index 0) and one slice PG (for index 1..N-1)
     by reserving the head node of a multi-host slice, retrieving unique slice
     information, and atomically scheduling the remaining workers to that slice.
+
+    Args:
+        num_workers: Total number of workers to launch (must be >= 1).
+        resources_per_worker: Resource requirements per bundle (e.g., {"CPU": 4}).
+        backend_config: BackendConfig instance, expected to have TPU fields
+            like `use_tpu`, `topology`, and `accelerator_type`.
+        run_config: RunConfig instance that may include runtime env overrides
+            such as `worker_runtime_env`.
 
     Returns:
         List of (PlacementGroup, worker_index_range) tuples.
@@ -209,26 +218,40 @@ def create_placement_group_with_spmd(
 
     if not ready:
         raise TimeoutError(
-            f"Failed to reserve TPU head for slice with shape: {pod_type}."
-            "Ensure your cluster has sufficient resources. Current "
-            "resources: {}".format(ray.available_resources())
+            "Failed to reserve TPU head for slice with shape: {}."
+            "Ensure your cluster has sufficient resources. Requesting TPU "
+            "head node with labels: {}. Current resources: {}".format(
+                pod_type, head_label_selector, ray.available_resources()
+            )
         )
 
     if num_workers == 1:
         logger.debug("Reserved single-host TPU placement group.")
         return (head_placement_group, range(0, 1))
 
+    # If specified, set runtime env vars on reserved multi-host nodes.
+    worker_runtime_env = getattr(run_config, "worker_runtime_env", None)
+    env_vars = worker_runtime_env.get("env_vars", None)
+
     # Retrieve the unique slice ID.
-    slice_name = fetch_tpu_slice_name_from_pg(head_placement_group)
+    slice_name = fetch_tpu_slice_name_from_pg(head_placement_group, env_vars)
+    if slice_name is None:
+        raise RuntimeError(
+            "Failed to retrieve TPU slice name after reserving head placement group. "
+            "Ensure that TPU slice metadata is available and correctly configured on multi-host nodes."
+        )
     slice_label_selector = {
         "ray.io/tpu-slice-name": slice_name,
     }
+    slice_bundle_label_selector = [
+        slice_label_selector.copy() for _ in range(num_workers - 1)
+    ]
 
     # Schedule the remaining multi-host workers together with the head bundle.
     slice_placement_group = ray.util.placement_group(
         bundles=[resources_per_worker] * (num_workers - 1),
         strategy="STRICT_SPREAD",
-        bundle_label_selector=[slice_label_selector] * (num_workers - 1),
+        bundle_label_selector=slice_bundle_label_selector,
     )
     logger.debug("Waiting for multi-host slice placement group to start.")
     timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
@@ -243,8 +266,10 @@ def create_placement_group_with_spmd(
             "autoscaling cluster. Ensure your cluster has multi-host nodes "
             "available for SPMD scheduling."
             "Current resources available: {}, resources requested by the "
-            "placement groups: {}".format(
-                ray.available_resources(), [resources_per_worker] * num_workers
+            "placement groups: {} with labels {}".format(
+                ray.available_resources(),
+                [resources_per_worker] * num_workers,
+                slice_label_selector,
             )
         )
 
