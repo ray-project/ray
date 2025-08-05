@@ -48,7 +48,7 @@ def test_pass_to_actor(ray_start_regular_shared):
 
         def method(self, arg: ray.ObjectRef) -> str:
             assert arg == method_obj_ref
-            return ray.get(method_obj_ref)
+            return ray.get(arg)
 
     a = A.remote(ray.util.pass_by_reference(constructor_obj_ref))
     assert ray.get(a.get_constructor_ref.remote()) == "Hello constructor!"
