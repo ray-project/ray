@@ -111,7 +111,28 @@ You can also specify the input argument for `train_func` as a dictionary via the
 
          trainer = ray.train.lightgbm.LightGBMTrainer(train_func, train_loop_config=config, ...)
 
-Ray Train automatically performs the worker communication setup that is needed to do distributed LightGBM training.
+
+Configure distributed training parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To enable distributed LightGBM training, add network communication parameters to your training configuration using :func:`ray.train.lightgbm.get_network_params`. 
+This function automatically configures the necessary network settings for worker communication:
+
+.. code-block:: diff
+
+     def train_func():
+         ...
+         params = {
+             # Your LightGBM training parameters here
+             ...
+    +        **ray.train.lightgbm.get_network_params(),
+         }
+         
+         model = lightgbm.train(
+             params,
+             ...
+         )
+         ...
 
 Report metrics and save checkpoints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
