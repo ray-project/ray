@@ -58,7 +58,6 @@ def test_pass_to_actor(ray_start_regular_shared):
     )
 
 
-
 def test_pass_inside_object(ray_start_regular_shared):
     obj_ref = ray.put("Hello world!")
 
