@@ -1519,7 +1519,7 @@ def test_per_node_metrics_toggle(
     ctx.enable_per_node_metrics = enable_metrics
 
     with patch(
-        "ray.data._internal.stats.StatsManager._get_stats_actor"
+        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
     ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
