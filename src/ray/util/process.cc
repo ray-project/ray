@@ -347,7 +347,7 @@ class ProcessFD {
         close(parent_lifetime_pipe[1]);
       }
     }
-#else  // macOS and other non-Linux POSIX
+#else   // macOS and other non-Linux POSIX
     // --- Start of old logic for macOS ---
     int pipefds[2];  // Create pipe to get PID & track lifetime
     int parent_lifetime_pipe[2];
