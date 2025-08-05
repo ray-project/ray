@@ -89,6 +89,10 @@ def test_simple_inner_join(
     [
         "left_outer",
         "right_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
     ],
 )
 @pytest.mark.parametrize(
@@ -102,7 +106,7 @@ def test_simple_inner_join(
         (32, 1),
     ],
 )
-def test_simple_left_right_outer_join(
+def test_simple_left_right_outer_semi_anti_join(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
     join_type,
@@ -127,17 +131,27 @@ def test_simple_left_right_outer_join(
 
     # Join using Pandas (to assert against)
     if join_type == "left_outer":
-        pd_join_type = "left"
-        squares_pd = squares_pd.set_index("id")
+        expected_pd = doubles_pd.join(squares_pd.set_index("id"), on="id", how="left").reset_index(drop=True)
     elif join_type == "right_outer":
-        pd_join_type = "right"
-        doubles_pd = doubles_pd.set_index("id")
+        expected_pd = doubles_pd.set_index("id").join(squares_pd, on="id", how="right").reset_index(drop=True)
+    elif join_type == "left_semi":
+        # Left semi: left rows that have matches in right (left columns only)
+        merged = doubles_pd.merge(squares_pd, on="id", how="inner")
+        expected_pd = merged[["id", "double"]].drop_duplicates().reset_index(drop=True)
+    elif join_type == "right_semi":
+        # Right semi: right rows that have matches in left (right columns only)
+        merged = doubles_pd.merge(squares_pd, on="id", how="inner")
+        expected_pd = merged[["id", "square"]].drop_duplicates().reset_index(drop=True)
+    elif join_type == "left_anti":
+        # Left anti: left rows that don't have matches in right
+        merged = doubles_pd.merge(squares_pd, on="id", how="left", indicator=True)
+        expected_pd = merged[merged["_merge"] == "left_only"][["id", "double"]].reset_index(drop=True)
+    elif join_type == "right_anti":
+        # Right anti: right rows that don't have matches in left
+        merged = doubles_pd.merge(squares_pd, on="id", how="right", indicator=True)
+        expected_pd = merged[merged["_merge"] == "right_only"][["id", "square"]].reset_index(drop=True)
     else:
         raise ValueError(f"Unsupported join type: {join_type}")
-
-    expected_pd = doubles_pd.join(squares_pd, on="id", how=pd_join_type).reset_index(
-        drop=True
-    )
 
     # Join using Ray Data
     joined: Dataset = doubles.join(
@@ -395,6 +409,7 @@ def test_default_shuffle_aggregator_args():
     } == args
 
 
+@pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 @pytest.mark.parametrize(
     "num_rows_left,num_rows_right",
     [
@@ -406,9 +421,10 @@ def test_default_shuffle_aggregator_args():
         (32, 1),
     ],
 )
-def test_simple_left_anti_join(
+def test_simple_anti_join(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
+    join_type,
     num_rows_left,
     num_rows_right,
 ):
@@ -432,16 +448,24 @@ def test_simple_left_anti_join(
     doubles_pd = doubles.to_pandas()
     squares_pd = squares.to_pandas()
 
-    # Perform left anti-join using pandas for expected result
-    # Left anti-join returns rows from left table that don't have matches in right table
-    merged = doubles_pd.merge(squares_pd, on="id", how="left", indicator=True)
-    expected_pd = merged[merged["_merge"] == "left_only"][["id", "double"]]
+    # Perform anti-join using pandas for expected result
+    if join_type == "left_anti":
+        # Left anti-join returns rows from left table that don't have matches in right table
+        merged = doubles_pd.merge(squares_pd, on="id", how="left", indicator=True)
+        expected_pd = merged[merged["_merge"] == "left_only"][["id", "double"]]
+    elif join_type == "right_anti":
+        # Right anti-join returns rows from right table that don't have matches in left table
+        merged = doubles_pd.merge(squares_pd, on="id", how="right", indicator=True)
+        expected_pd = merged[merged["_merge"] == "right_only"][["id", "square"]]
+    else:
+        raise ValueError(f"Unsupported join type: {join_type}")
+    
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
 
     # Join using Ray Data
     joined: Dataset = doubles.join(
         squares,
-        join_type="left_anti",
+        join_type=join_type,
         num_partitions=16,
         on=("id",),
     )
@@ -454,59 +478,67 @@ def test_simple_left_anti_join(
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
-def test_left_anti_join_no_matches(
+@pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
+    join_type,
 ):
-    """Test left anti-join when there are no matches - should return all left rows"""
+    """Test anti-join when there are no matches - should return all rows from respective side"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
-    doubles = ray.data.range(10).map(
+    doubles = ray.data.range(32).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
 
     # Create squares with completely different keys
-    squares = ray.data.range(10).map(
+    squares = ray.data.range(32).map(
         lambda row: {"id": row["id"] + 100, "square": int(row["id"]) ** 2}
     )
 
-    # Left anti-join should return all rows from doubles
+    # Anti-join should return all rows from respective side
     joined: Dataset = doubles.join(
         squares,
-        join_type="left_anti",
+        join_type=join_type,
         num_partitions=4,
         on=("id",),
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
-    doubles_pd = doubles.to_pandas()
+    
+    if join_type == "left_anti":
+        expected_pd = doubles.to_pandas()
+    else:  # right_anti
+        expected_pd = squares.to_pandas()
 
-    # Should get all rows from left table
+    # Should get all rows from the respective table
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
-    doubles_pd_sorted = doubles_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
 
-    pd.testing.assert_frame_equal(doubles_pd_sorted, joined_pd_sorted)
+    pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
-def test_left_anti_join_all_matches(
+@pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+def test_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
+    join_type,
 ):
-    """Test left anti-join when all rows match - should return empty result"""
+    """Test anti-join when all rows match - should return empty result"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
-    doubles = ray.data.range(10).map(
+    doubles = ray.data.range(32).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
 
-    squares = ray.data.range(10).map(
+    squares = ray.data.range(32).map(
         lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
     )
 
-    # Left anti-join should return no rows since all keys match
+    # Anti-join should return no rows since all keys match
     joined: Dataset = doubles.join(
         squares,
-        join_type="left_anti",
+        join_type=join_type,
         num_partitions=4,
         on=("id",),
     )
@@ -515,32 +547,37 @@ def test_left_anti_join_all_matches(
 
     # Should get empty result
     assert len(joined_pd) == 0
-    assert list(joined_pd.columns) == ["id", "double"]
+    if join_type == "left_anti":
+        assert list(joined_pd.columns) == ["id", "double"]
+    else:  # right_anti
+        assert list(joined_pd.columns) == ["id", "square"]
 
 
-def test_left_anti_join_multi_key(
+@pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+def test_anti_join_multi_key(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
+    join_type,
 ):
-    """Test left anti-join with multiple join keys"""
+    """Test anti-join with multiple join keys"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
     # Create left dataset
     left_data = []
-    for i in range(10):
+    for i in range(32):
         left_data.append({"key1": i // 3, "key2": i % 3, "value_left": i * 10})
     left_ds = ray.data.from_items(left_data)
 
     # Create right dataset with partial matches
     right_data = []
-    for i in range(5):
+    for i in range(16):  # Half of left dataset size for partial matches
         right_data.append({"key1": i // 3, "key2": i % 3, "value_right": i * 100})
     right_ds = ray.data.from_items(right_data)
 
-    # Left anti-join should return rows from left that don't have matching key1,key2 in right
+    # Anti-join should return rows that don't have matching key1,key2 in the other dataset
     joined: Dataset = left_ds.join(
         right_ds,
-        join_type="left_anti",
+        join_type=join_type,
         num_partitions=4,
         on=("key1", "key2"),
     )
@@ -550,19 +587,46 @@ def test_left_anti_join_multi_key(
     right_pd = pd.DataFrame(right_data)
 
     # Calculate expected result using pandas
-    merged = left_pd.merge(right_pd, on=["key1", "key2"], how="left", indicator=True)
-    expected_pd = merged[merged["_merge"] == "left_only"][
-        ["key1", "key2", "value_left"]
-    ]
-    expected_pd_sorted = expected_pd.sort_values(
-        by=["key1", "key2", "value_left"]
-    ).reset_index(drop=True)
-
-    joined_pd_sorted = joined_pd.sort_values(
-        by=["key1", "key2", "value_left"]
-    ).reset_index(drop=True)
+    if join_type == "left_anti":
+        merged = left_pd.merge(right_pd, on=["key1", "key2"], how="left", indicator=True)
+        expected_pd = merged[merged["_merge"] == "left_only"][
+            ["key1", "key2", "value_left"]
+        ]
+        sort_cols = ["key1", "key2", "value_left"]
+    else:  # right_anti
+        merged = left_pd.merge(right_pd, on=["key1", "key2"], how="right", indicator=True)
+        expected_pd = merged[merged["_merge"] == "right_only"][
+            ["key1", "key2", "value_right"]
+        ]
+        sort_cols = ["key1", "key2", "value_right"]
+    
+    expected_pd_sorted = expected_pd.sort_values(by=sort_cols).reset_index(drop=True)
+    joined_pd_sorted = joined_pd.sort_values(by=sort_cols).reset_index(drop=True)
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+def test_join_type_validation(ray_start_regular_shared_2_cpus):
+    """Test that all supported join types are accepted and invalid ones are rejected"""
+    ds = ray.data.range(32)
+    
+    # Test all valid join types are accepted  
+    valid_join_types = [
+        "inner", "left_outer", "right_outer", "full_outer", 
+        "left_semi", "right_semi", "left_anti", "right_anti"
+    ]
+    
+    for join_type in valid_join_types:
+        # Should not raise ValueError (just test validation, don't execute)
+        try:
+            ds.join(ds, join_type=join_type, num_partitions=1, on=("id",))._plan
+        except ValueError as e:
+            if "Invalid join type" in str(e):
+                pytest.fail(f"Valid join type '{join_type}' was rejected: {e}")
+    
+    # Test invalid join type is rejected
+    with pytest.raises(ValueError, match="Invalid join type"):
+        ds.join(ds, join_type="invalid_join", num_partitions=1, on=("id",))
 
 
 if __name__ == "__main__":
