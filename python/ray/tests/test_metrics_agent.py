@@ -467,6 +467,13 @@ def test_metrics_export_node_metrics(shutdown_only):
 
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+_EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
+_EVENT_AGGREGATOR_AGENT_TARGET_ADDR = (
+    "http://"
+    + _EVENT_AGGREGATOR_AGENT_TARGET_IP
+    + ":"
+    + str(_EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+)
 
 
 @pytest.fixture(scope="module")
@@ -480,8 +487,7 @@ def httpserver_listen_address():
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -526,15 +532,13 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
         }
-        result = True
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
-            print(f"samples: {samples}")
             if not samples:
-                result = False
+                return False
             if samples[0].value != expected_value:
-                result = False
-        return result
+                return False
+        return True
 
     wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
