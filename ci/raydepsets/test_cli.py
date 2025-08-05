@@ -538,6 +538,19 @@ depsets:
         assert depset.output == depset_dict["output"]
         assert depset.build_arg_set == build_arg_set
 
+    def test_dict_to_depset_without_build_arg_set(self):
+        depset_dict = {
+            "name": "test_depset",
+            "operation": "compile",
+            "requirements": ["requirements_test.txt"],
+            "output": "requirements_compiled_test.txt",
+        }
+        depset = Config.dict_to_depset(depset_dict)
+        assert depset.name == depset_dict["name"]
+        assert depset.operation == depset_dict["operation"]
+        assert depset.requirements == depset_dict["requirements"]
+        assert depset.output == depset_dict["output"]
+
     def test_substitute_build_args(self):
         build_arg_set = BuildArgSet(
             name="py311_cpu",
