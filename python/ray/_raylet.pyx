@@ -788,9 +788,16 @@ cdef int prepare_label_selector(
 
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+            raise ValueError(f"Label selector key type must be string, but got {type(key)}")
         if not isinstance(value, str):
             raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        if key == "":
+            raise ValueError("Label selector key must be a non-empty string.")
+        if (value.startswith("in(") and value.endswith(")")) or \
+           (value.startswith("!in(") and value.endswith(")")):
+            inner = value[value.index("(")+1:-1].strip()
+            if not inner:
+                raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
         label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
@@ -2291,7 +2298,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+        gpu_object_manager.gpu_object_store.pop_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -3353,11 +3360,10 @@ cdef class CoreWorker:
             c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(
-                            c_writer_ref,
-                            c_remote_reader_nodes,
-                        ))
+            CCoreWorkerProcess.GetCoreWorker().ExperimentalRegisterMutableObjectWriter(
+                    c_writer_ref,
+                    c_remote_reader_nodes,
+            )
             check_status(
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(
@@ -4737,19 +4743,6 @@ cdef class CoreWorker:
             self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
-
-    def get_task_submission_stats(self):
-        cdef:
-            int64_t num_tasks_submitted
-            int64_t num_leases_requested
-
-        with nogil:
-            num_tasks_submitted = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
-            num_leases_requested = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
-
-        return (num_tasks_submitted, num_leases_requested)
 
     def get_local_memory_store_bytes_used(self):
         cdef:

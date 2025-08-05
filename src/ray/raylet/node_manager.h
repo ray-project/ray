@@ -49,6 +49,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
@@ -138,6 +139,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       gcs::GcsClient &gcs_client,
       rpc::ClientCallManager &client_call_manager,
       rpc::CoreWorkerClientPool &worker_rpc_pool,
+      rpc::RayletClientPool &raylet_client_pool,
       pubsub::SubscriberInterface &core_worker_subscriber,
       ClusterResourceScheduler &cluster_resource_scheduler,
       ILocalTaskManager &local_task_manager,
@@ -370,32 +372,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
                                        const RayTask &task);
 
-  /// Handle blocking gets of objects. This could be a task assigned to a worker,
-  /// an out-of-band task (e.g., a thread created by the application), or a
-  /// driver task. This can be triggered when a client starts a get call or a
-  /// wait call.
+  /// Start a get or wait request for the requested objects.
   ///
-  /// \param client The client that is executing the blocked task.
-  /// \param required_object_refs The objects that the client is blocked waiting for.
-  /// \param current_task_id The task that is blocked.
-  /// \param ray_get Whether the task is blocked in a `ray.get` call.
+  /// \param client The client that is requesting the objects.
+  /// \param object_refs The objects that are requested.
+  /// \param is_get_request If this is a get request, else it's a wait request.
   /// \return Void.
-  void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<rpc::ObjectReference> &required_object_refs,
-                           const TaskID &current_task_id,
-                           bool ray_get);
+  void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
+                      const std::vector<rpc::ObjectReference> &object_refs,
+                      bool is_get_request);
 
-  /// Handle end of a blocking object get. This could be a task assigned to a
-  /// worker, an out-of-band task (e.g., a thread created by the application),
-  /// or a driver task. This can be triggered when a client finishes a get call
-  /// or a wait call. The given task must be blocked, via a previous call to
-  /// AsyncResolveObjects.
+  /// Cancel all ongoing get requests from the client.
   ///
-  /// \param client The client that is executing the unblocked task.
-  /// \param current_task_id The task that is unblocked.
-  /// \return Void.
-  void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id);
+  /// This does *not* cancel ongoing wait requests.
+  ///
+  /// \param client The client whose get requests will be canceled.
+  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -766,6 +758,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   rpc::ClientCallManager &client_call_manager_;
   /// Pool of RPC client connections to core workers.
   rpc::CoreWorkerClientPool &worker_rpc_pool_;
+  // Pool of RPC client connections to raylets.
+  rpc::RayletClientPool &raylet_client_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
   pubsub::SubscriberInterface &core_worker_subscriber_;

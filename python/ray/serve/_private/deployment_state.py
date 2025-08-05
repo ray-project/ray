@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
-from ray._private import ray_constants
+from ray._common import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
