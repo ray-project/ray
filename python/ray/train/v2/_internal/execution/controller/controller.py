@@ -65,8 +65,8 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 from ray.train.v2.api.result import Result
-from ray.train.v2.api.training_result import TrainingResult
 
 logger = logging.getLogger(__name__)
 
@@ -540,9 +540,9 @@ class TrainController:
 
         return None
 
-    async def get_all_training_results(
+    async def get_all_reported_checkpoints(
         self, expected_num_checkpoints: int
-    ) -> List[TrainingResult]:
-        return await self._checkpoint_manager.get_all_training_results(
+    ) -> List[ReportedCheckpoint]:
+        return await self._checkpoint_manager.get_all_reported_checkpoints(
             expected_num_checkpoints
         )

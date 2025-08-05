@@ -5,7 +5,7 @@ from ray.train import Checkpoint
 
 
 @dataclass
-class TrainingResult:
+class ReportedCheckpoint:
     """A user-reported checkpoint and its associated metrics.
 
     Attributes:

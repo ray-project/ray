@@ -174,7 +174,7 @@ def train_fn(config):
         print("Loaded back state from checkpoint:", state)
         start = state["iter"] + 1
 
-    assert len(ray.train.get_all_training_results()) == min(
+    assert len(ray.train.get_all_reported_checkpoints()) == min(
         start, config.get("num_to_keep", float("inf"))
     )
 
@@ -231,7 +231,7 @@ def train_fn(config):
         )
 
         if i in config.get("fail_iters", []):
-            assert len(ray.train.get_all_training_results()) == min(
+            assert len(ray.train.get_all_reported_checkpoints()) == min(
                 i + 1, config.get("num_to_keep", float("inf"))
             )
             raise RuntimeError(f"Failing on iter={i}!!")

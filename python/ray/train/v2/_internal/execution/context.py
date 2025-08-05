@@ -16,7 +16,7 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
 from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.api.training_result import TrainingResult
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.callback import TrainContextCallback
@@ -137,9 +137,9 @@ class TrainContext:
     def get_checkpoint(self):
         return self.checkpoint
 
-    def get_all_training_results(self) -> List[TrainingResult]:
+    def get_all_reported_checkpoints(self) -> List[ReportedCheckpoint]:
         return ray.get(
-            self.controller_actor.get_all_training_results.remote(
+            self.controller_actor.get_all_reported_checkpoints.remote(
                 self.num_reported_checkpoints
             )
         )

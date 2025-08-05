@@ -141,8 +141,8 @@ def test_report_checkpoint_multirank(tmp_path):
         assert tmp_path.joinpath("validate", str(rank)).exists()
 
 
-def run_process_for_get_all_training_results(tmp_path):
-    # Lives outside test_get_all_training_results because cannot pickle nested functions.
+def run_process_for_get_all_reported_checkpoints(tmp_path):
+    # Lives outside test_get_all_reported_checkpoints because cannot pickle nested functions.
 
     # Needed to reuse current ray cluster.
     ray.init(address="auto")
@@ -151,10 +151,10 @@ def run_process_for_get_all_training_results(tmp_path):
         if ray.train.get_context().get_world_rank() == 0:
             with create_dict_checkpoint({}) as checkpoint:
                 ray.train.report(metrics={}, checkpoint=checkpoint)
-            assert len(ray.train.get_all_training_results()) == 1
+            assert len(ray.train.get_all_reported_checkpoints()) == 1
         else:
             signal_actor = ray.get_actor(
-                "signal_actor", namespace="test_report_get_all_training_results"
+                "signal_actor", namespace="test_report_get_all_reported_checkpoints"
             )
             ray.get(signal_actor.wait.remote())
             ray.train.report(metrics={}, checkpoint=None)
@@ -167,18 +167,18 @@ def run_process_for_get_all_training_results(tmp_path):
     trainer.fit()
 
 
-def test_report_get_all_training_results(tmp_path):
-    """Check that get_all_training_results waits until all workers have reported."""
+def test_report_get_all_reported_checkpoints(tmp_path):
+    """Check that get_all_reported_checkpoints waits until all workers have reported."""
     SignalActor = create_remote_signal_actor(ray)
     signal_actor = SignalActor.options(
-        name="signal_actor", namespace="test_report_get_all_training_results"
+        name="signal_actor", namespace="test_report_get_all_reported_checkpoints"
     ).remote()
 
     # Use spawn because of
     # https://docs.ray.io/en/latest/ray-core/patterns/fork-new-processes.html
     multiprocessing.set_start_method("spawn", force=True)
     process = multiprocessing.Process(
-        target=run_process_for_get_all_training_results, args=(tmp_path,)
+        target=run_process_for_get_all_reported_checkpoints, args=(tmp_path,)
     )
     process.start()
 

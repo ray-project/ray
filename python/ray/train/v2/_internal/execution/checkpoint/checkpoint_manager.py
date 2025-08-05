@@ -18,7 +18,7 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.api.training_result import TrainingResult
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 try:
     from pydantic import BaseModel
@@ -318,18 +318,18 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ] * len(workers)
         return train_context_args
 
-    async def get_all_training_results(
+    async def get_all_reported_checkpoints(
         self, expected_num_checkpoints: int
-    ) -> List[TrainingResult]:
-        """Once expected_num_checkpoints are reported, return the TrainingResults."""
+    ) -> List[ReportedCheckpoint]:
+        """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
         async with self._condition:
             await self._condition.wait_for(
                 lambda: self._num_reported_checkpoints == expected_num_checkpoints
             )
-            # TODO: might be nice for CheckpointManager to manage TrainingResult
+            # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
             # instead of _TrainingResult but that is a large refactor.
             return [
-                TrainingResult(
+                ReportedCheckpoint(
                     checkpoint=tr.checkpoint,
                     metrics=tr.metrics,
                 )

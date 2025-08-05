@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2.api.context import TrainContext
-from ray.train.v2.api.training_result import TrainingResult
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -153,12 +153,48 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
 
 @PublicAPI(stability="alpha")
-def get_all_training_results() -> List[TrainingResult]:
-    """Get all the TrainingResults reported so far.
+def get_all_reported_checkpoints() -> List[ReportedCheckpoint]:
+    """Get all the reported checkpoints so far.
 
-    modoru: docstring
+    Blocks until Ray Train has finished processing every `ray.train.report` call.
+
+    Example:
+
+        .. testcode::
+
+            import tempfile
+
+            from ray import train
+            from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
+
+
+            def train_func(config):
+                start_epoch = 0
+
+                for epoch in range(start_epoch, config.get("num_epochs", 10)):
+                    # Do training...
+
+                    metrics = {"loss": ...}
+
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                       # Save the checkpoint...
+
+                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                        train.report(metrics, checkpoint=checkpoint)
+
+                reported_checkpoints = train.get_all_reported_checkpoints()
+                # Report artifacts/metrics to experiment tracking framework...
+
+            trainer = TorchTrainer(
+                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+            )
+
+    Returns:
+        List of ReportedCheckpoint objects that represent the checkpoints and
+            corresponding metrics reported by the workers.
     """
-    return get_train_context().get_all_training_results()
+    return get_train_context().get_all_reported_checkpoints()
 
 
 @PublicAPI(stability="stable")
