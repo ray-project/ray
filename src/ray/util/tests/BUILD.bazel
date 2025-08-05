@@ -159,6 +159,7 @@ ray_cc_test(
     srcs = ["signal_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/util:logging",
         "//src/ray/util:path_utils",
         "@com_google_googletest//:gtest_main",
     ],
