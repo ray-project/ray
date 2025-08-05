@@ -39,7 +39,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
