@@ -32,11 +32,12 @@ from ray._private.label_utils import (
     parse_node_labels_string,
 )
 from ray._private.utils import (
-    check_ray_client_dependencies_installed,
+    get_ray_client_dependency_error,
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
+import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -64,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
@@ -787,7 +788,7 @@ def start(
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
@@ -853,6 +854,15 @@ def start(
             ray_params.env_vars = {
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
             }
+
+        if (
+            usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
+            and "RAY_CLOUD_INSTANCE_ID" in os.environ  # required by autoscaler v2.
+            and "RAY_NODE_TYPE_NAME" in os.environ  # required by autoscaler v2.
+        ):
+            # If this Ray cluster is managed by KubeRay and RAY_CLOUD_INSTANCE_ID and RAY_NODE_TYPE_NAME are set,
+            # we enable the v2 autoscaler by default if RAY_enable_autoscaler_v2 is not set.
+            os.environ.setdefault("RAY_enable_autoscaler_v2", "1")
 
         num_redis_shards = None
         # Start Ray on the head node.

@@ -259,7 +259,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const size_t data_size,
                     const c_vector[CObjectID] &contained_object_ids,
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
-                    c_bool created_by_worker,
                     const unique_ptr[CAddress] &owner_address,
                     c_bool inline_small_object)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
@@ -279,7 +278,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id)
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
-        CRayStatus ExperimentalRegisterMutableObjectWriter(
+        void ExperimentalRegisterMutableObjectWriter(
                 const CObjectID &writer_object_id,
                 const c_vector[CNodeID] &remote_reader_node_ids)
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
@@ -318,7 +317,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t item_index,
             uint64_t attempt_number,
             shared_ptr[CGeneratorBackpressureWaiter] waiter)
-        c_string MemoryUsageString()
+
+        # Param output contains the usage string if successful.
+        # Returns an error status if unable to communicate with the plasma store.
+        CRayStatus GetPlasmaUsage(c_string &output)
+
         int GetMemoryStoreSize()
 
         CWorkerContext &GetWorkerContext()
@@ -406,6 +409,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t generator_backpressure_num_objects,
             CTensorTransport tensor_transport
         ) nogil) task_execution_callback
+        (void(const CObjectID &) nogil) free_actor_object_callback
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect

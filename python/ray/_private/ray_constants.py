@@ -246,9 +246,6 @@ LOGGER_LEVEL_HELP = (
     " 'warning', 'error', 'critical'], default='info'"
 )
 
-LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
-LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
-
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
 # Logging format when logging stderr. This should be formatted with the
 # component before setting the formatter, e.g. via
@@ -456,9 +453,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
 
-# Default max_concurrency option in @ray.remote for async actors.
-DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
-
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
@@ -578,6 +572,11 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
+# Whether GPU metrics collection via `nvidia-smi` is enabled.
+# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
+# Defaults to False to use pynvml to collect usage.
+RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
+
 # Whether enable OpenTelemetry as the metrics collection backend on the driver
 # component. This flag is only used during the migration of the  metric collection
 # backend from OpenCensus to OpenTelemetry. It will be removed in the future.
@@ -591,4 +590,12 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
 # It will be removed in the future.
 RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
     "RAY_experimental_enable_open_telemetry_on_core", False
+)
+
+# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+#
+# NOTE: This must be kept in sync with the C++ definition of
+# `RayConfig::fetch_fail_timeout_milliseconds`.
+FETCH_FAIL_TIMEOUT_SECONDS = (
+    env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
