@@ -32,6 +32,7 @@ def _setup_jax_tpu_environment():
     # coordinator_address, num_processes, process_id are
     # auto-detected in TPU environments
     jax.distributed.initialize()
+    logger.info("Jax TPU environment setup complete")
 
 
 class _JaxBackend(Backend):
