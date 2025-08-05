@@ -46,7 +46,6 @@ if is_v2_enabled():
 
 
 __all__ = [
-    "get_all_reported_checkpoints",
     "get_checkpoint",
     "get_context",
     "get_dataset_shard",
@@ -60,12 +59,10 @@ __all__ = [
     "RunConfig",
     "ScalingConfig",
     "SyncConfig",
-    "ReportedCheckpoint",
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]
 
-get_all_reported_checkpoints.__module__ = "ray.train"
 get_checkpoint.__module__ = "ray.train"
 get_context.__module__ = "ray.train"
 get_dataset_shard.__module__ = "ray.train"
@@ -75,16 +72,20 @@ Checkpoint.__module__ = "ray.train"
 CheckpointConfig.__module__ = "ray.train"
 DataConfig.__module__ = "ray.train"
 FailureConfig.__module__ = "ray.train"
-ReportedCheckpoint.__module__ = "ray.train"
 Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
 
+# TODO: consider implementing these in v1 and raising ImportError instead.
 if is_v2_enabled():
     __all__.append("UserCallback")
     UserCallback.__module__ = "ray.train"
+    __all__.append("get_all_reported_checkpoints")
+    get_all_reported_checkpoints.__module__ = "ray.train"
+    __all__.append("ReportedCheckpoint")
+    ReportedCheckpoint.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
