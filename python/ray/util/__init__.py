@@ -66,10 +66,19 @@ class _ObjectRefWrapper:
 
 
 @PublicAPI(stability="alpha")
-def pass_by_reference(o: "ray.ObjectRef") -> _ObjectRefWrapper:
+def pass_by_reference(object_ref: "ray.ObjectRef") -> _ObjectRefWrapper:
     """Utility to pass the provided ObjectRef to another task by reference.
 
+    Normally, when you pass an ObjectRef to a downstream task, it will be automatically
+    resolved to its underlying value by Ray.
+
+    When you pass the result of this function instead, it will be resolved to the
+    ObjectRef directly.
+
     This is an advanced utility. In most cases, you should pass the ObjectRef directly.
+
+    Args:
+        object_ref: The ObjectRef to pass by reference.
 
     Example:
 
@@ -79,14 +88,11 @@ def pass_by_reference(o: "ray.ObjectRef") -> _ObjectRefWrapper:
 
             @ray.remote
             def f(obj_ref: ray.ObjectRef) -> str:
+                # Normally, obj_ref would have been resolved to the string value,
+                # but because we used `pass_by_reference`, it wasn't.
                 return ray.get(obj_ref)
 
             obj_ref = ray.put("Hello!")
-
-            # Normally, if you pass obj_ref to a downstream task, it will be
-            # automatically resolved to its value ("Hello!" in this case).
-            # Here, we use ray.util.pass_by_reference to provide the downstream task
-            # with the ObjectRef instead.
             assert ray.get(f.remote(ray.util.pass_by_reference(obj_ref))) == "Hello!"
     """
     return _ObjectRefWrapper(o)
