@@ -848,7 +848,7 @@ def call_ray_start_with_external_redis(request):
 def init_and_serve():
     import ray.util.client.server.server as ray_client_server
 
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle, _ = ray_client_server.init_and_serve("localhost", 50051)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
