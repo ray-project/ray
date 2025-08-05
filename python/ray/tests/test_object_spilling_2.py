@@ -277,7 +277,7 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
-    address = ray.init(
+    ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 3,
@@ -328,7 +328,7 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
 # https://github.com/ray-project/ray/issues/12912
 def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
