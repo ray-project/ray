@@ -53,24 +53,22 @@ class NodeManagerClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const rpc::Address &address,
                     ClientCallManager &client_call_manager,
-                    std::function<void()> raylet_unavailable_timeout_callback) {
-    grpc_client_ = std::make_shared<GrpcClient<NodeManagerService>>(
-        address.ip_address(), address.port(), client_call_manager);
-
-    retryable_grpc_client_ = RetryableGrpcClient::Create(
-        grpc_client_->Channel(),
-        client_call_manager.GetMainService(),
-        /*max_pending_requests_bytes=*/
-        std::numeric_limits<uint64_t>::max(),
-        /*check_channel_status_interval_milliseconds=*/
-        ::RayConfig::instance()
-            .grpc_client_check_connection_status_interval_milliseconds(),
-        /*server_unavailable_timeout_seconds=*/
-        ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
-        /*server_unavailable_timeout_callback=*/
-        std::move(raylet_unavailable_timeout_callback),
-        /*server_name=*/"Raylet " + address.ip_address());
-  }
+                    std::function<void()> raylet_unavailable_timeout_callback)
+      : grpc_client_(std::make_shared<GrpcClient<NodeManagerService>>(
+            address.ip_address(), address.port(), client_call_manager)),
+        retryable_grpc_client_(RetryableGrpcClient::Create(
+            grpc_client_->Channel(),
+            client_call_manager.GetMainService(),
+            /*max_pending_requests_bytes=*/
+            std::numeric_limits<uint64_t>::max(),
+            /*check_channel_status_interval_milliseconds=*/
+            ::RayConfig::instance()
+                .grpc_client_check_connection_status_interval_milliseconds(),
+            /*server_unavailable_timeout_seconds=*/
+            ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
+            /*server_unavailable_timeout_callback=*/
+            std::move(raylet_unavailable_timeout_callback),
+            /*server_name=*/"Raylet " + address.ip_address())) {}
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
 
