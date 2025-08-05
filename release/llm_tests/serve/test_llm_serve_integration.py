@@ -114,6 +114,46 @@ async def test_engine_metrics_with_spec_decode():
             pass
 
 
+def is_default_app_running():
+    """Check if the default application is running successfully."""
+    try:
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return default_app.status == ApplicationStatus.RUNNING
+    except (KeyError, AttributeError):
+        return False
+
+
+@pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
+def test_deepseek_model(model_name):
+    """
+    Test that the deepseek model can be loaded successfully.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+            model_source=model_name,
+        ),
+        runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=2,
+            pipeline_parallel_size=2,
+            gpu_memory_utilization=0.92,
+            dtype="auto",
+            max_num_seqs=40,
+            max_model_len=8192,
+            enable_chunked_prefill=True,
+            enable_prefix_caching=True,
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+
 @pytest.mark.asyncio(scope="function")
 @pytest.fixture
 def remote_model_app(request):
@@ -128,24 +168,15 @@ def remote_model_app(request):
 
     base_config = {
         "model_loading_config": dict(
-            model_id="deepseek",
-            model_source="deepseek-ai/DeepSeek-V2-Lite",
+            model_id="hmellor/Ilama-3.2-1B",
+            model_source="hmellor/Ilama-3.2-1B",
         ),
         "runtime_env": dict(env_vars={"VLLM_USE_V1": "1"}),
         "deployment_config": dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
         "engine_kwargs": dict(
-            tensor_parallel_size=2,
-            pipeline_parallel_size=2,
-            gpu_memory_utilization=0.92,
-            dtype="auto",
-            max_num_seqs=40,
-            max_model_len=8192,
-            enable_chunked_prefill=True,
-            enable_prefix_caching=True,
             trust_remote_code=remote_code,
-            enforce_eager=True,
         ),
     }
 
@@ -160,14 +191,6 @@ def remote_model_app(request):
 
 class TestRemoteCode:
     """Tests for remote code model loading behavior."""
-
-    def _is_default_app_running(self):
-        """Check if the default application is running successfully."""
-        try:
-            default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-            return default_app.status == ApplicationStatus.RUNNING
-        except (KeyError, AttributeError):
-            return False
 
     @pytest.mark.parametrize("remote_model_app", [False], indirect=True)
     def test_remote_code_failure(self, remote_model_app):
@@ -194,7 +217,7 @@ class TestRemoteCode:
             wait_for_condition(check_for_failed_deployment, timeout=120)
         except TimeoutError:
             # If deployment didn't fail, check if it succeeded
-            if self._is_default_app_running():
+            if is_default_app_running():
                 pytest.fail(
                     "App deployed successfully without trust_remote_code=True. "
                     "This model may not actually require remote code. "
@@ -213,7 +236,7 @@ class TestRemoteCode:
         serve.run(app, blocking=False)
 
         # Wait for the application to be running (timeout after 5 minutes)
-        wait_for_condition(self._is_default_app_running, timeout=300)
+        wait_for_condition(is_default_app_running, timeout=300)
 
 
 if __name__ == "__main__":
