@@ -91,6 +91,9 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
+        .reporting(
+            min_time_s_per_iteration=45,
+        )
         .environment(
             env="FootsiesEnv",
             env_config={
@@ -109,7 +112,7 @@ if __name__ == "__main__":
             num_learners=1,
             num_cpus_per_learner=1,
             num_gpus_per_learner=0,
-            num_aggregator_actors_per_learner=1,
+            num_aggregator_actors_per_learner=0,
         )
         .env_runners(
             env_runner_cls=MultiAgentEnvRunner,
@@ -142,7 +145,7 @@ if __name__ == "__main__":
                         module_class=LSTMContainingRLModule,
                         model_config={
                             "lstm_cell_size": 32,
-                            "dense_layers": [64, 64],
+                            "dense_layers": [128, 128],
                             "max_seq_len": 32,
                         },
                     ),
@@ -154,6 +157,7 @@ if __name__ == "__main__":
             evaluation_num_env_runners=1,
             evaluation_interval=1,
             evaluation_duration="auto",
+            evaluation_duration_unit="timesteps",
             evaluation_parallel_to_training=True,
             evaluation_config={
                 "env_config": {"evaluation": True},
