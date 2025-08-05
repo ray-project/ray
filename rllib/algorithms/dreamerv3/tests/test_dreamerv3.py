@@ -68,7 +68,7 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 3
 
         for env in [
-            "DMC/cartpole/swingup",
+            # "DMC/cartpole/swingup",  # causes strange MuJoCo error(s) on CI
             "FrozenLake-v1",
             "CartPole-v1",
             "ale_py:ALE/MsPacman-v5",
