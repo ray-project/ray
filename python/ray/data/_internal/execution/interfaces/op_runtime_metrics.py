@@ -650,12 +650,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OUTPUTS,
     )
     def average_rows_outputs_per_task(self) -> Optional[float]:
-        """Average size in bytes of output blocks per task,
+        """Average number of rows in output blocks per task,
         or None if no task has finished."""
         if self.num_tasks_finished == 0:
             return None
         else:
-            return self.rows_output_of_finished_tasks / self.num_tasks_finished
+            return self.rows_outputs_of_finished_tasks / self.num_tasks_finished
 
     @metric_property(
         description="Average USS usage of tasks.",
