@@ -62,7 +62,7 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
 
 void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
                                                   int32_t max_pending_calls,
-                                                  bool execute_out_of_order,
+                                                  bool allow_out_of_order_execution,
                                                   bool fail_if_actor_unreachable,
                                                   bool owned) {
   bool inserted;
@@ -74,7 +74,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
         << "Set actor max pending calls to " << max_pending_calls;
     inserted = client_queues_
                    .emplace(actor_id,
-                            ClientQueue(execute_out_of_order,
+                            ClientQueue(allow_out_of_order_execution,
                                         max_pending_calls,
                                         fail_if_actor_unreachable,
                                         owned))

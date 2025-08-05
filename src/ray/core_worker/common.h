@@ -129,7 +129,7 @@ struct ActorCreationOptions {
                        rpc::SchedulingStrategy scheduling_strategy_p,
                        std::string serialized_runtime_env_info_p = "{}",
                        std::vector<ConcurrencyGroup> concurrency_groups_p = {},
-                       bool execute_out_of_order_p = false,
+                       bool allow_out_of_order_execution_p = false,
                        int32_t max_pending_calls_p = -1,
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
@@ -147,7 +147,7 @@ struct ActorCreationOptions {
         is_asyncio(is_asyncio_p),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         concurrency_groups(std::move(concurrency_groups_p)),
-        execute_out_of_order(execute_out_of_order_p),
+        allow_out_of_order_execution(allow_out_of_order_execution_p),
         max_pending_calls(max_pending_calls_p),
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
@@ -199,7 +199,7 @@ struct ActorCreationOptions {
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
   /// Whether the actor execute tasks out of order.
-  const bool execute_out_of_order = false;
+  const bool allow_out_of_order_execution = false;
   /// The maximum actor call pending count.
   const int max_pending_calls = -1;
   // The strategy about how to schedule this actor.
