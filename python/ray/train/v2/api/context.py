@@ -339,4 +339,4 @@ def get_context() -> TrainContext:
     with _context_lock:
         if _train_context is not None:
             return _train_context
-    return TrainContext()
+    return DistributedTrainContext()
