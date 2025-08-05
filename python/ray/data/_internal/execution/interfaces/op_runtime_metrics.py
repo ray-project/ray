@@ -468,6 +468,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
         self._cum_max_uss_bytes: Optional[int] = None
+        self._issue_detector_hanging = 0
+        self._issue_detector_high_memory = 0
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -634,6 +636,22 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
             return self._cum_max_uss_bytes / self.num_task_outputs_generated
+
+    @metric_property(
+        description="Indicates if the operator is hanging.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    def issue_detector_hanging(self) -> int:
+        return self._issue_detector_hanging
+
+    @metric_property(
+        description="Indicates if the operator is using high memory.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    def issue_detector_high_memory(self) -> int:
+        return self._issue_detector_high_memory
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""

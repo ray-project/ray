@@ -37,8 +37,7 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
 
     import ray
     from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    import numpy as np
-
+    
     config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={

@@ -49,10 +49,11 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//:grpc_common_lib",
         "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
+        "//src/ray/rpc:grpc_server",
         "//src/ray/util:path_utils",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -173,9 +174,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:grpc_common_lib",
         "//src/ray/common:grpc_util",
         "//src/ray/common:status",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_googletest//:gtest_main",
     ],
 )

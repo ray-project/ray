@@ -14,7 +14,9 @@ from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 def _check_if_diag_gaussian(action_distribution_cls, framework, no_error=False):
     if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
+        from ray.rllib.core.distribution.torch.torch_distribution import (
+            TorchDiagGaussian,
+        )
 
         is_diag_gaussian = issubclass(action_distribution_cls, TorchDiagGaussian)
         if no_error:
@@ -23,17 +25,6 @@ def _check_if_diag_gaussian(action_distribution_cls, framework, no_error=False):
             assert is_diag_gaussian, (
                 f"free_log_std is only supported for DiagGaussian action "
                 f"distributions. Found action distribution: {action_distribution_cls}."
-            )
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
-
-        is_diag_gaussian = issubclass(action_distribution_cls, TfDiagGaussian)
-        if no_error:
-            return is_diag_gaussian
-        else:
-            assert is_diag_gaussian, (
-                "free_log_std is only supported for DiagGaussian action distributions. "
-                "Found action distribution: {}.".format(action_distribution_cls)
             )
     else:
         raise ValueError(f"Framework {framework} not supported for free_log_std.")
