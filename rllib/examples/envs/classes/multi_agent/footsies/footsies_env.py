@@ -3,9 +3,13 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary import (
+    FootsiesBinary,
+)
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
 )
@@ -54,17 +58,16 @@ class FootsiesEnv(MultiAgentEnv):
         }
     )
 
-    def __init__(self, config: dict[Any, Any] = None):
+    def __init__(self, config: EnvContext, port: int):
         super().__init__()
 
         if config is None:
             config = {}
         self.config = config
+        self.port = port
         self.agents: list[AgentID] = ["p1", "p2"]
         self.possible_agents: list[AgentID] = self.agents.copy()
         self._agent_ids: set[AgentID] = set(self.agents)
-
-        self.evaluation = config.get("evaluation", False)
 
         self.t: int = 0
         self.max_t: int = config.get("max_t", 1000)
@@ -79,9 +82,12 @@ class FootsiesEnv(MultiAgentEnv):
             observation_delay=observation_delay // self.frame_skip
         )
 
+        # start the game server before initializing the communication between the
+        # game server and the Python harness via gRPC
+        self._prepare_and_start_game_server()
         self.game = FootsiesGame(
             host=config["host"],
-            port=config["port"],
+            port=self.port,
         )
 
         self.last_game_state = None
@@ -212,3 +218,7 @@ class FootsiesEnv(MultiAgentEnv):
         assert self.SPECIAL_CHARGE_FRAMES % self.frame_skip == 0
         steps_to_apply_attack = int(self.SPECIAL_CHARGE_FRAMES // self.frame_skip)
         return steps_to_apply_attack
+
+    def _prepare_and_start_game_server(self):
+        fb = FootsiesBinary(config=self.config, port=self.port)
+        fb.start_game_server()

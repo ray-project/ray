@@ -6,12 +6,11 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import grpc
 import requests
-from pydantic import BaseModel
 
+from ray.rllib.env import EnvContext
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
 )
@@ -40,50 +39,43 @@ class BinaryUrls:
     URL_MAC_WINDOWED_BINARIES = S3_ROOT + ZIP_MAC_WINDOWED
 
 
-class Config(BaseModel):
-    download_dir: Path = Path("/tmp/ray/binaries/footsies")
-    extract_dir: Path = Path("/tmp/ray/binaries/footsies")
-    target_binary: Literal[
-        "linux_server", "linux_windowed", "mac_headless", "mac_windowed"
-    ] = "linux_server"
-
-
 class FootsiesBinary:
-    def __init__(self, config: Config):
+    def __init__(self, config: EnvContext, port: int):
         self._urls = BinaryUrls()
         self.config = config
-        self.target_binary = config.target_binary
-        if self.target_binary == "linux_server":
+        self.port = port
+        self.binary_to_download = config["binary_to_download"]
+        if self.binary_to_download == "linux_server":
             self.url = self._urls.URL_LINUX_SERVER_BINARIES
-        elif self.target_binary == "linux_windowed":
+        elif self.binary_to_download == "linux_windowed":
             self.url = self._urls.URL_LINUX_WINDOWED_BINARIES
-        elif self.target_binary == "mac_headless":
+        elif self.binary_to_download == "mac_headless":
             self.url = self._urls.URL_MAC_HEADLESS_BINARIES
-        elif self.target_binary == "mac_windowed":
+        elif self.binary_to_download == "mac_windowed":
             self.url = self._urls.URL_MAC_WINDOWED_BINARIES
         else:
-            raise ValueError(f"Invalid target binary: {self.target_binary}")
+            raise ValueError(f"Invalid target binary: {self.binary_to_download}")
 
-        self.full_download_dir = config.download_dir.resolve()
+        self.full_download_dir = Path(config["binary_download_dir"]).resolve()
         self.full_download_path = (
             self.full_download_dir / str.split(self.url, sep="/")[-1]
         )
-        self.full_extract_dir = config.extract_dir.resolve()
-        self.renamed_path = ""
+        self.full_extract_dir = Path(config["binary_extract_dir"]).resolve()
+        self.renamed_path = self.full_extract_dir / "footsies_binaries"
 
     @staticmethod
     def _add_executable_permission(binary_path: Path) -> None:
         binary_path.chmod(binary_path.stat().st_mode | stat.S_IXUSR)
 
-    def start_game_server(self, port: int) -> None:
+    def start_game_server(self) -> None:
         self._download_game_binary()
         self._unzip_game_binary()
 
-        if self.target_binary == "mac_windowed":
+        if self.binary_to_download == "mac_windowed":
             game_binary_path = (
                 Path(self.renamed_path) / "Contents" / "MacOS" / "FOOTSIES"
             )
-        elif self.target_binary == "mac_headless":
+        elif self.binary_to_download == "mac_headless":
             game_binary_path = Path(self.renamed_path) / "FOOTSIES"
         else:
             game_binary_path = Path(self.renamed_path) / "footsies.x86_64"
@@ -97,10 +89,10 @@ class FootsiesBinary:
         logger.info(f"Game binary path: {game_binary_path}")
 
         if (
-            self.target_binary == "linux_server"
-            or self.target_binary == "linux_windowed"
+            self.binary_to_download == "linux_server"
+            or self.binary_to_download == "linux_windowed"
         ):
-            subprocess.Popen([game_binary_path, "--port", str(port)])
+            subprocess.Popen([game_binary_path, "--port", str(self.port)])
         else:
             subprocess.Popen(
                 [
@@ -108,7 +100,7 @@ class FootsiesBinary:
                     "-x86_64",
                     game_binary_path,
                     "--port",
-                    str(port),
+                    str(self.port),
                 ],
             )
         time.sleep(10)  # Grace period for the server to start
@@ -117,7 +109,7 @@ class FootsiesBinary:
         _t0 = time.time()
         _timeout_duration = 10  # seconds
 
-        channel = grpc.insecure_channel(f"localhost:{port}")
+        channel = grpc.insecure_channel(f"localhost:{self.port}")
         try:
             stub = footsies_pb2_grpc.FootsiesGameServiceStub(channel)
             stub.StartGame(footsies_pb2.Empty())
@@ -159,8 +151,6 @@ class FootsiesBinary:
                 logger.error(f"Failed to download binary from {self.url}: {e}")
 
     def _unzip_game_binary(self):
-        self.renamed_path = self.full_extract_dir / "footsies_binaries"
-
         if Path(self.renamed_path).exists():
             logger.info(
                 f"Game binary already extracted at {self.renamed_path}, skipping extraction."
@@ -170,7 +160,7 @@ class FootsiesBinary:
             with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
                 zip_ref.extractall(self.full_extract_dir)
 
-            if self.target_binary == "mac_windowed":
+            if self.binary_to_download == "mac_windowed":
                 self.full_download_path.with_suffix(".app").rename(self.renamed_path)
             else:
                 self.full_download_path.with_suffix("").rename(self.renamed_path)

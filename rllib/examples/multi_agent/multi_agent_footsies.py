@@ -5,15 +5,15 @@ Footsies is a two-player fighting game where each player controls a character
 and tries to hit the opponent while avoiding being hit.
 """
 
+
+from pathlib import Path
+
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
+from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     FootsiesEnv,
-)
-from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary import (
-    Config,
-    FootsiesBinary,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
@@ -34,48 +34,96 @@ from ray.tune.result import TRAINING_ITERATION
 eval_policies = []
 
 parser = add_rllib_example_script_args()
+parser.add_argument(
+    "--start-port",
+    type=int,
+    default=45001,
+    help="First port number for environment server (default: 45001)",
+)
+parser.add_argument(
+    "--eval-start-port",
+    type=int,
+    default=55001,
+    help="First port number for evaluation environment server (default: 55001)",
+)
+parser.add_argument(
+    "--binary-download-dir",
+    type=Path,
+    default="/tmp/ray/binaries/footsies",
+    help="Directory to download Footsies binaries (default: /tmp/ray/binaries/footsies)",
+)
+parser.add_argument(
+    "--binary-extract-dir",
+    type=Path,
+    default="/tmp/ray/binaries/footsies",
+    help="Directory to extract Footsies binaries (default: /tmp/ray/binaries/footsies)",
+)
+parser.add_argument(
+    "--binary-to-download",
+    type=str,
+    choices=["linux_server", "linux_windowed", "mac_headless", "mac_windowed"],
+    default="linux_server",
+    help="Target binary for Footsies environment (default: linux_server)",
+)
+
+
+def env_creator(env_config: EnvContext) -> FootsiesEnv:
+    if env_config.get("evaluation", False):
+        port = (
+            env_config["eval_start_port"]
+            - 1  # "-1" to start with eval_start_port as the first port (worker index starts at 1)
+            + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
+            + env_config.get("vector_index", 0)
+        )
+        print(f"port for evaluation is {port=}\n XXXXXXXXXXXXXXXXXXXXXX")
+    else:
+        port = (
+            env_config["start_port"]
+            + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
+            + env_config.get("vector_index", 0)
+        )
+        print(f"port for training is {port=}\n XXXXXXXXXXXXXXXXXXXXXX")
+    return FootsiesEnv(config=env_config, port=port)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    port = 50051
-
-    c = Config(target_binary="mac_headless")
-    fb = FootsiesBinary(config=c)
-    fb.start_game_server(port=port)
-
-    # Register the environment
-    register_env("FootsiesEnv", FootsiesEnv)
+    register_env("FootsiesEnv", env_creator)
 
     config = (
         PPOConfig()
         .environment(
             env="FootsiesEnv",
             env_config={
-                "max_t": 100,
+                "max_t": 1000,
                 "frame_skip": 4,
-                "observation_delay": 0,
-                "port": port,
+                "observation_delay": 16,
+                "start_port": args.start_port,
+                "eval_start_port": args.eval_start_port,
                 "host": "localhost",
+                "binary_download_dir": args.binary_download_dir,
+                "binary_extract_dir": args.binary_extract_dir,
+                "binary_to_download": args.binary_to_download,
             },
         )
         .learners(
             num_learners=1,
             num_cpus_per_learner=1,
             num_gpus_per_learner=0,
-            num_aggregator_actors_per_learner=0,
+            num_aggregator_actors_per_learner=1,
         )
         .env_runners(
             env_runner_cls=MultiAgentEnvRunner,
-            num_env_runners=1,
-            num_cpus_per_env_runner=1,
+            num_env_runners=20,
+            num_cpus_per_env_runner=0.2,
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length=256,
             episodes_to_numpy=False,
         )
         .training(
-            # model={"uses_new_env_runners": True},
+            train_batch_size_per_learner=256 * 20,
             lr=3e-4,
             entropy_coeff=0.01,
         )
@@ -137,5 +185,5 @@ if __name__ == "__main__":
         config,
         args,
         stop=stop,
-        keep_ray_up=True,
+        # keep_ray_up=True,
     )
