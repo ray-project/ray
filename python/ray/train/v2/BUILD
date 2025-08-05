@@ -486,7 +486,7 @@ py_test(
 )
 
 py_test(
-    name = "test_context",
+    name = "test_local_running_utils",
     size = "small",
     srcs = ["tests/test_local_running_utils.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
