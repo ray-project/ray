@@ -893,6 +893,10 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 // See https://github.com/ray-project/ray/pull/42992 for more info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
 
+// The interval for the subreaper to periodically kill unknown children processes.
+RAY_CONFIG(int64_t, subreaper_cleanup_interval_ms, 5000)
+
+
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
 
