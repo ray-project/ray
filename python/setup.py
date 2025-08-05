@@ -704,7 +704,7 @@ def pip_run(build_ext):
         build(True, BUILD_JAVA, True)
 
     if setup_spec.type == SetupType.RAY:
-        if DUMMY_WHEEL == "1":
+        if DUMMY_WHEEL:
             setup_spec.files_to_include = []
         else:
             setup_spec.files_to_include += ray_files
