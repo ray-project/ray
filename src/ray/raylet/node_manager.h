@@ -492,13 +492,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       const uint8_t *message_data);
 
-  /// Process client message of FetchOrReconstruct
+  /// Handle client request AsyncPullObjects.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessFetchOrReconstructMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
+  void HandleAsyncPullObjectsMessage(const std::shared_ptr<ClientConnection> &client,
+                                     const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///

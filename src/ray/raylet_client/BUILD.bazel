@@ -12,6 +12,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:network",
+        "//src/ray/flatbuffers:node_manager_generated",
     ],
 )
 

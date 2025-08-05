@@ -121,7 +121,6 @@ ray_cc_library(
         ":asio",
         ":id",
         ":status",
-        "//src/ray/flatbuffers:node_manager_generated",
     ],
 )
 
