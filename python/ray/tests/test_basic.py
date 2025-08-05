@@ -2,7 +2,6 @@
 import logging
 import os
 import pickle
-import psutil
 import random
 import re
 import sys
@@ -11,6 +10,7 @@ import time
 import pytest
 
 import ray
+import psutil
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
