@@ -243,6 +243,7 @@ ray_cc_library(
         "//src/ray/core_worker:core_worker_common",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/ipc:client_connection",
+        "//src/ray/common:network_util",
         "@boost//:system",
         "@com_google_absl//absl/strings",
     ],

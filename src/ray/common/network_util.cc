@@ -14,7 +14,18 @@
 
 #include "ray/common/network_util.h"
 
+#include <boost/asio.hpp>
+
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/util/logging.h"
 
 using boost::asio::ip::tcp;
+
+bool CheckPortFree(int port) {
+  instrumented_io_context io_service;
+  tcp::socket socket(io_service);
+  socket.open(boost::asio::ip::tcp::v4());
+  boost::system::error_code ec;
+  socket.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), ec);
+  socket.close();
+  return !ec.failed();
+}

@@ -43,16 +43,6 @@ void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_por
   }
 }
 
-bool CheckPortFree(int port) {
-  instrumented_io_context io_service;
-  tcp::socket socket(io_service);
-  socket.open(boost::asio::ip::tcp::v4());
-  boost::system::error_code ec;
-  socket.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), ec);
-  socket.close();
-  return !ec.failed();
-}
-
 // start a redis server with specified port, use random one when 0 given
 int TestSetupUtil::StartUpRedisServer(int port, bool save) {
   int actual_port = port;

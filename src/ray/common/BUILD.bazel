@@ -18,6 +18,7 @@ ray_cc_library(
         ":asio",
         ":id",
         ":ray_object",
+        ":network_util",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
@@ -104,6 +105,20 @@ ray_cc_library(
         ":id",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "network_util",
+    srcs = [
+        "network_util.cc",
+    ],
+    hdrs = [
+        "network_util.h",
+    ],
+    deps = [
+        ":asio",
+        "@boost//:asio",
     ],
 )
 
