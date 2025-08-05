@@ -61,10 +61,10 @@ class LocalDependencyResolver {
 
   /// Cancel resolution of the given task's dependencies.
   /// If cancellation succeeds, the registered callback will not be called.
-  void CancelDependencyResolution(const TaskID &task_id);
+  /// \return true if dependency resolution was successfully cancelled
+  bool CancelDependencyResolution(const TaskID &task_id);
 
   /// Return the number of tasks pending dependency resolution.
-  /// TODO(ekl) this should be exposed in worker stats.
   int64_t NumPendingTasks() const {
     absl::MutexLock lock(&mu_);
     return pending_tasks_.size();
@@ -77,7 +77,6 @@ class LocalDependencyResolver {
               const absl::flat_hash_set<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
         : task(std::move(t)),
-          local_dependencies(),
           actor_dependencies_remaining(actor_ids.size()),
           status(Status::OK()),
           on_dependencies_resolved(std::move(on_dependencies_resolved)) {

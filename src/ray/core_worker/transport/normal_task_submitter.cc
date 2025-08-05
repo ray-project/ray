@@ -30,9 +30,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
-    // NOTE: task_spec here is capture copied (from a stack variable) and also
-    // mutable. (Mutations to the variable are expected to be shared inside and
-    // outside of this closure).
     task_manager_.MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       // TODO(https://github.com/ray-project/ray/issues/54871): There is a potential
@@ -697,17 +694,18 @@ bool NormalTaskSubmitter::HandleGetTaskFailureCause(
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                        bool force_kill,
                                        bool recursive) {
-  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
-                << " force_kill: " << force_kill << " recursive: " << recursive;
+  const auto task_id = task_spec.TaskId();
+  RAY_LOG(INFO) << "Cancelling a task: " << task_id << " force_kill: " << force_kill
+                << " recursive: " << recursive;
   SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                task_spec.GetDependencyIds(),
                                task_spec.GetRuntimeEnvHash());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    auto task_id = task_spec.TaskId();
     generators_to_resubmit_.erase(task_id);
 
+    // For idempotency.
     if (cancelled_tasks_.contains(task_id)) {
       // The task cancel is already in progress. We don't need to do anything.
       return Status::OK();
@@ -725,30 +723,32 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // a worker lease.
     if (!scheduling_tasks.empty()) {
       for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
-        if (spec->TaskId() == task_spec.TaskId()) {
+        if (spec->TaskId() == task_id) {
           scheduling_tasks.erase(spec);
           CancelWorkerLeaseIfNeeded(scheduling_key);
-          task_manager_.FailPendingTask(task_spec.TaskId(),
-                                        rpc::ErrorType::TASK_CANCELLED);
+          task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
           return Status::OK();
         }
       }
     }
 
-    // This will get removed either when the RPC call to cancel is returned
-    // or when all dependencies are resolved.
-    RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
-    auto rpc_client = executing_tasks_.find(task_spec.TaskId());
+    // This will get removed either when the RPC call to cancel is returned, when all
+    // dependencies are resolved, or when dependency resolution is successfully cancelled.
+    RAY_CHECK(cancelled_tasks_.emplace(task_id).second);
+    auto rpc_client = executing_tasks_.find(task_id);
 
     if (rpc_client == executing_tasks_.end()) {
-      // This case is reached for tasks that have unresolved dependencies.
-      if (failed_tasks_pending_failure_cause_.contains(task_spec.TaskId())) {
+      if (failed_tasks_pending_failure_cause_.contains(task_id)) {
         // We are waiting for the task failure cause. Do not fail it here; instead,
         // wait for the cause to come in and then handle it appropriately.
       } else {
-        resolver_.CancelDependencyResolution(task_spec.TaskId());
-        RAY_UNUSED(task_manager_.FailPendingTask(task_spec.TaskId(),
-                                                 rpc::ErrorType::TASK_CANCELLED));
+        // This case is reached for tasks that have unresolved dependencies.
+        if (resolver_.CancelDependencyResolution(task_id)) {
+          // ResolveDependencies callback will never be called if dependency resolution
+          // was successfully cancelled, so need to remove from the set here.
+          cancelled_tasks_.erase(task_id);
+        }
+        task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
       }
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the

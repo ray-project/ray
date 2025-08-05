@@ -88,9 +88,9 @@ void InlineDependencies(
 
 }  // namespace
 
-void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) {
+bool LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
-  pending_tasks_.erase(task_id);
+  return pending_tasks_.erase(task_id) > 0;
 }
 
 void LocalDependencyResolver::ResolveDependencies(

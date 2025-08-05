@@ -1194,7 +1194,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       ray_error_info = nullptr;
     }
 
-    if ((status != nullptr) && status->IsIntentionalSystemExit()) {
+    if (status != nullptr && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
       // exit by exit_actor(), exit by ray.shutdown(), etc. These tasks are expected
       // to exit and not be marked as failure.
