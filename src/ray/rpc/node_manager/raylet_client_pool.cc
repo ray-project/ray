@@ -52,7 +52,7 @@ std::function<void()> RayletClientPool::GetDefaultUnavailableTimeoutCallback(
             }
           },
           -1,
-          raylet_id);
+          {raylet_id});
     };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {

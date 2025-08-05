@@ -65,7 +65,7 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
               AsyncGetAll,
               (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
                int64_t,
-               std::optional<NodeID>),
+               const std::vector<NodeID> &),
               (override));
 
  private:
@@ -116,7 +116,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
     return Invoke(
         [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
                            int64_t,
-                           std::optional<NodeID>) {
+                           const std::vector<NodeID> &) {
           callback(Status::OK(), node_info_vector);
         });
   };
@@ -144,22 +144,22 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
         .WillOnce(Return(&node_info_alive))
         .WillOnce(Return(&node_info_dead));
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(raylet_client_1_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{raylet_client_1_node_id}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}));
     EXPECT_CALL(mock_node_accessor,
                 Get(raylet_client_2_node_id, /*filter_dead_nodes=*/false))
         .WillOnce(Return(nullptr));
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(raylet_client_2_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{raylet_client_2_node_id}))
         .WillOnce(invoke_with_node_info_vector({}));
   } else {
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(raylet_client_1_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{raylet_client_1_node_id}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}))
         .WillOnce(invoke_with_node_info_vector({node_info_dead}));
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(raylet_client_2_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{raylet_client_2_node_id}))
         .WillOnce(invoke_with_node_info_vector({}));
   }
 
