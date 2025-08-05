@@ -124,4 +124,5 @@ __all__ = [
     "register_serializer",
     "deregister_serializer",
     "list_named_actors",
+    "pass_by_reference",
 ]
