@@ -123,15 +123,15 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
 
   auto raylet_client_1_address = CreateRandomAddress("1");
   auto raylet_client_2_address = CreateRandomAddress("2");
-  auto raylet_client_1 = dynamic_cast<MockRayletClient *>(
-      raylet_client_pool_->GetOrConnectByAddress(raylet_client_1_address).get());
-  ASSERT_EQ(raylet_client_pool_->Size(), 1);
-  auto raylet_client_2 = dynamic_cast<MockRayletClient *>(
-      raylet_client_pool_->GetOrConnectByAddress(raylet_client_2_address).get());
-  ASSERT_EQ(raylet_client_pool_->Size(), 2);
-
   auto raylet_client_1_node_id = NodeID::FromBinary(raylet_client_1_address.raylet_id());
   auto raylet_client_2_node_id = NodeID::FromBinary(raylet_client_2_address.raylet_id());
+
+  auto raylet_client_1 = dynamic_cast<MockRayletClient *>(
+      raylet_client_pool_->GetOrConnectByAddress(raylet_client_1_address).get());
+  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), raylet_client_1);
+  auto raylet_client_2 = dynamic_cast<MockRayletClient *>(
+      raylet_client_pool_->GetOrConnectByAddress(raylet_client_2_address).get());
+  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_2_node_id).get(), raylet_client_2);
 
   rpc::GcsNodeInfo node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
@@ -164,13 +164,13 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   }
 
   raylet_client_1->unavailable_timeout_callback_();
-  ASSERT_EQ(raylet_client_pool_->Size(), 2);
+  ASSERT_NE(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), nullptr);
   raylet_client_1->unavailable_timeout_callback_();
-  ASSERT_EQ(raylet_client_pool_->Size(), 2);
+  ASSERT_NE(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), nullptr);
   raylet_client_1->unavailable_timeout_callback_();
-  ASSERT_EQ(raylet_client_pool_->Size(), 1);
+  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), nullptr);
   raylet_client_2->unavailable_timeout_callback_();
-  ASSERT_EQ(raylet_client_pool_->Size(), 0);
+  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_2_node_id).get(), nullptr);
 }
 
 INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,

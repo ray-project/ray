@@ -64,20 +64,21 @@ TEST(CoreWorkerClientPoolTest, TestGC) {
 
   rpc::Address address1 = CreateRandomAddress("1");
   rpc::Address address2 = CreateRandomAddress("2");
+  auto worker_id1 = WorkerID::FromBinary(address1.worker_id());
+  auto worker_id2 = WorkerID::FromBinary(address2.worker_id());
   auto client1 = client_pool.GetOrConnect(address1);
-  ASSERT_EQ(client_pool.Size(), 1);
+  ASSERT_EQ(client_pool.GetByID(worker_id1).get(), client1.get());
   auto client2 = client_pool.GetOrConnect(address2);
-  ASSERT_EQ(client_pool.Size(), 2);
-  client_pool.Disconnect(WorkerID::FromBinary(address2.worker_id()));
-  ASSERT_EQ(client_pool.Size(), 1);
-  ASSERT_EQ(client1.get(), client_pool.GetOrConnect(address1).get());
-  ASSERT_EQ(client_pool.Size(), 1);
+  ASSERT_EQ(client_pool.GetByID(worker_id2).get(), client2.get());
+  client_pool.Disconnect(worker_id2);
+  ASSERT_EQ(client_pool.GetByID(worker_id2), nullptr);
+  ASSERT_EQ(client_pool.GetByID(worker_id1).get(), client1.get());
   client2 = client_pool.GetOrConnect(address2);
-  ASSERT_EQ(client_pool.Size(), 2);
+  ASSERT_EQ(client_pool.GetByID(worker_id2).get(), client2.get());
   dynamic_cast<MockCoreWorkerClient *>(client1.get())->is_idle_after_rpcs = true;
   // Client 1 will be removed since it's idle.
   ASSERT_EQ(client2.get(), client_pool.GetOrConnect(address2).get());
-  ASSERT_EQ(client_pool.Size(), 1);
+  ASSERT_EQ(client_pool.GetByID(worker_id1), nullptr);
 }
 
 class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
@@ -159,12 +160,14 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
 
   auto worker_1_address = CreateRandomAddress("1");
   auto worker_2_address = CreateRandomAddress("2");
+  auto worker_id1 = WorkerID::FromBinary(worker_1_address.worker_id());
+  auto worker_id2 = WorkerID::FromBinary(worker_2_address.worker_id());
   auto worker_1_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_1_address).get());
-  ASSERT_EQ(client_pool_->Size(), 1);
+  ASSERT_EQ(client_pool_->GetByID(worker_id1).get(), worker_1_client);
   auto worker_2_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_2_address).get());
-  ASSERT_EQ(client_pool_->Size(), 2);
+  ASSERT_EQ(client_pool_->GetByID(worker_id2).get(), worker_2_client);
 
   auto worker_1_node_id = NodeID::FromBinary(worker_1_address.raylet_id());
   auto worker_2_node_id = NodeID::FromBinary(worker_2_address.raylet_id());
@@ -211,13 +214,13 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
           }));
 
   worker_1_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 2);
+  ASSERT_EQ(client_pool_->GetByID(worker_id1).get(), worker_1_client);
   worker_1_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 2);
+  ASSERT_EQ(client_pool_->GetByID(worker_id1).get(), worker_1_client);
   worker_1_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 1);
+  ASSERT_EQ(client_pool_->GetByID(worker_id1).get(), nullptr);
   worker_2_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 0);
+  ASSERT_EQ(client_pool_->GetByID(worker_id2).get(), nullptr);
 }
 
 TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
@@ -226,9 +229,10 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
   // 2nd call - Node is alive and worker is dead, client should be disconnected.
 
   auto worker_address = CreateRandomAddress("1");
+  auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_address).get());
-  ASSERT_EQ(client_pool_->Size(), 1);
+  ASSERT_EQ(client_pool_->GetByID(worker_id).get(), core_worker_client);
 
   rpc::GcsNodeInfo node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
@@ -265,9 +269,9 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
 
   // Disconnects the second time.
   core_worker_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 1);
+  ASSERT_EQ(client_pool_->GetByID(worker_id).get(), core_worker_client);
   core_worker_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 0);
+  ASSERT_EQ(client_pool_->GetByID(worker_id), nullptr);
 }
 
 INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,

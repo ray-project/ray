@@ -52,6 +52,10 @@ class CoreWorkerClientPool {
   /// briefly.
   std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
+  /// Return an existing CoreWorkerClient if exists or nullptr if it does not.
+  /// The returned pointer is expected to be used briefly.
+  std::shared_ptr<CoreWorkerClientInterface> GetByID(ray::WorkerID id);
+
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
   /// be open until it's no longer used, at which time it will disconnect.
@@ -59,13 +63,6 @@ class CoreWorkerClientPool {
 
   /// Removes connections to all workers on a node.
   void Disconnect(ray::NodeID node_id);
-
-  /// For testing.
-  size_t Size() {
-    absl::MutexLock lock(&mu_);
-    RAY_CHECK_EQ(client_list_.size(), worker_client_map_.size());
-    return client_list_.size();
-  }
 
  private:
   /// Try to remove some idle clients to free memory.

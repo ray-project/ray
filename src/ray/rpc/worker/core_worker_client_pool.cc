@@ -139,6 +139,16 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   return entry.core_worker_client;
 }
 
+std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetByID(
+    ray::WorkerID id) {
+  absl::MutexLock lock(&mu_);
+  auto entry = worker_client_map_.find(id);
+  if (entry == worker_client_map_.end()) {
+    return nullptr;
+  }
+  return entry->second->core_worker_client;
+}
+
 void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
     auto worker_id = client_list_.back().worker_id;
