@@ -75,6 +75,8 @@ class Config:
                             source_depset=depset_yaml.get("source_depset"),
                             depsets=depset_yaml.get("depsets", []),
                             build_arg_set=build_arg_set,
+                            override_flags=depset_yaml.get("override_flags", []),
+                            append_flags=depset_yaml.get("append_flags", []),
                         )
                     )
             else:
@@ -88,6 +90,8 @@ class Config:
                         source_depset=depset.get("source_depset"),
                         depsets=depset.get("depsets", []),
                         build_arg_set=None,
+                        override_flags=depset.get("override_flags", []),
+                        append_flags=depset.get("append_flags", []),
                     )
                 )
 
