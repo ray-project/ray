@@ -9,10 +9,10 @@ ray_cc_library(
         "client_connection.h",
     ],
     deps = [
+        "//:node_manager_fbs",
         "//src/ray/common:asio",
         "//src/ray/common:event_stats",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//:node_manager_fbs",
     ],
 )
