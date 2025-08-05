@@ -156,7 +156,7 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
             "commands": [
                 f"python release/ray_release/scripts/custom_byod_build.py --image-name {image} --base-image {base_image} --post-build-script {post_build_script}"
             ],
-            "depends_on": "anyscalebuild"
+            "depends_on": "~"
         }
         build_config["steps"].append(step)
 
