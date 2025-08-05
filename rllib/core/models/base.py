@@ -88,6 +88,11 @@ class Encoder(abc.ABC):
 
     """
 
+    framework = "torch"
+
+    def __init__(self, config):
+        self.config = config
+
     @abc.abstractmethod
     def forward(self, input_dict: dict, **kwargs) -> dict:
         """Returns the latent of the encoder for the given inputs.
@@ -113,6 +118,9 @@ class Encoder(abc.ABC):
             The output tensors. Must contain at a minimum the key ENCODER_OUT.
         """
 
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
 
 @ExperimentalAPI
 class ActorCriticEncoder(Encoder):
@@ -123,8 +131,6 @@ class ActorCriticEncoder(Encoder):
     critic. The two encoders are of the same type, and we can therefore make the
     assumption that they have the same input and output specs.
     """
-
-    framework = None
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
@@ -188,8 +194,6 @@ class StatefulActorCriticEncoder(Encoder):
     stored under the keys `(STATE_IN, ACTOR)` and `(STATE_IN, CRITIC)` and
     `(STATE_OUT, ACTOR)` and `(STATE_OUT, CRITIC)`, respectively.
     """
-
-    framework = None
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)

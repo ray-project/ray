@@ -7,14 +7,12 @@ from ray.rllib.core.models.base import (
     StatefulActorCriticEncoder,
     ENCODER_OUT,
 )
-from ray.rllib.core.models.base import Model, tokenize
+from ray.rllib.core.models.base import tokenize
 from ray.rllib.core.models.configs import (
-    ActorCriticEncoderConfig,
     CNNEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
-from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
@@ -22,31 +20,14 @@ from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
-
-class TorchActorCriticEncoder(ActorCriticEncoder):
-    """An actor-critic encoder for torch."""
-
-    framework = "torch"
-
-    def __init__(self, config: ActorCriticEncoderConfig) -> None:
-        TorchModel.__init__(self, config)
-        ActorCriticEncoder.__init__(self, config)
-
-
-class TorchStatefulActorCriticEncoder(StatefulActorCriticEncoder):
-    """A stateful actor-critic encoder for torch."""
-
-    framework = "torch"
-
-    def __init__(self, config: ActorCriticEncoderConfig) -> None:
-        TorchModel.__init__(self, config)
-        StatefulActorCriticEncoder.__init__(self, config)
+# Backward compatibility.
+TorchActorCriticEncoder = ActorCriticEncoder
+TorchStatefulActorCriticEncoder = StatefulActorCriticEncoder
 
 
 class TorchMLPEncoder(Encoder):
     def __init__(self, config: MLPEncoderConfig) -> None:
-        TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
+        super().__init__(config)
 
         # Create the neural network.
         self.net = TorchMLP(
@@ -74,15 +55,14 @@ class TorchMLPEncoder(Encoder):
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
-    @override(Model)
-    def _forward(self, inputs: dict, **kwargs) -> dict:
+    @override(Encoder)
+    def forward(self, inputs: dict, **kwargs) -> dict:
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TorchCNNEncoder(Encoder):
     def __init__(self, config: CNNEncoderConfig) -> None:
-        TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
+        super().__init__(config)
 
         layers = []
         # The bare-bones CNN (no flatten, no succeeding dense).
@@ -106,8 +86,8 @@ class TorchCNNEncoder(Encoder):
         # Create the network from gathered layers.
         self.net = nn.Sequential(*layers)
 
-    @override(Model)
-    def _forward(self, inputs: dict, **kwargs) -> dict:
+    @override(Encoder)
+    def forward(self, inputs: dict, **kwargs) -> dict:
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
@@ -120,7 +100,7 @@ class TorchGRUEncoder(Encoder):
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
-        TorchModel.__init__(self, config)
+        super().__init__(config)
 
         # Maybe create a tokenizer
         if config.tokenizer_config is not None:
@@ -161,14 +141,13 @@ class TorchGRUEncoder(Encoder):
                 self.gru.weight, **config.hidden_bias_initializer_config or {}
             )
 
-    @override(Model)
     def get_initial_state(self):
         return {
             "h": torch.zeros(self.config.num_layers, self.config.hidden_dim),
         }
 
-    @override(Model)
-    def _forward(self, inputs: dict, **kwargs) -> dict:
+    @override(Encoder)
+    def forward(self, inputs: dict, **kwargs) -> dict:
         outputs = {}
 
         if self.tokenizer is not None:
@@ -203,7 +182,7 @@ class TorchLSTMEncoder(Encoder):
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
-        TorchModel.__init__(self, config)
+        super().__init__(config)
 
         # Maybe create a tokenizer
         if config.tokenizer_config is not None:
@@ -250,15 +229,14 @@ class TorchLSTMEncoder(Encoder):
                     layer[3], **config.hidden_bias_initializer_config or {}
                 )
 
-    @override(Model)
     def get_initial_state(self):
         return {
             "h": torch.zeros(self.config.num_layers, self.config.hidden_dim),
             "c": torch.zeros(self.config.num_layers, self.config.hidden_dim),
         }
 
-    @override(Model)
-    def _forward(self, inputs: dict, **kwargs) -> dict:
+    @override(Encoder)
+    def forward(self, inputs: dict, **kwargs) -> dict:
         outputs = {}
 
         if self.tokenizer is not None:

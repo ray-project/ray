@@ -1,12 +1,10 @@
 import numpy as np
 
-from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     CNNTransposeHeadConfig,
     FreeLogStdMLPHeadConfig,
     MLPHeadConfig,
 )
-from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchCNNTranspose, TorchMLP
 from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
@@ -15,9 +13,9 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-class TorchMLPHead(TorchModel):
+class TorchMLPHead(nn.Module):
     def __init__(self, config: MLPHeadConfig) -> None:
-        super().__init__(config)
+        super().__init__()
 
         self.net = TorchMLP(
             input_dim=config.input_dims[0],
@@ -51,8 +49,8 @@ class TorchMLPHead(TorchModel):
         # Register a buffer to handle device mapping.
         self.register_buffer("log_std_clip_param_const", self.log_std_clip_param)
 
-    @override(Model)
-    def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+    @override(nn.Module)
+    def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         # Only clip the log standard deviations, if the user wants to clip. This
         # avoids also clipping value heads.
         if self.clip_log_std:
@@ -68,11 +66,11 @@ class TorchMLPHead(TorchModel):
             return self.net(inputs)
 
 
-class TorchFreeLogStdMLPHead(TorchModel):
+class TorchFreeLogStdMLPHead(nn.Module):
     """An MLPHead that implements floating log stds for Gaussian distributions."""
 
     def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
-        super().__init__(config)
+        super().__init__()
 
         assert config.output_dims[0] % 2 == 0, "output_dims must be even for free std!"
         self._half_output_dim = config.output_dims[0] // 2
@@ -115,8 +113,8 @@ class TorchFreeLogStdMLPHead(TorchModel):
         # Register a buffer to handle device mapping.
         self.register_buffer("log_std_clip_param_const", self.log_std_clip_param)
 
-    @override(Model)
-    def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+    @override(nn.Module)
+    def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         # Compute the mean first, then append the log_std.
         mean = self.net(inputs)
 
@@ -135,9 +133,9 @@ class TorchFreeLogStdMLPHead(TorchModel):
         return torch.cat([mean, log_std.unsqueeze(0).repeat([len(mean), 1])], axis=1)
 
 
-class TorchCNNTransposeHead(TorchModel):
+class TorchCNNTransposeHead(nn.Module):
     def __init__(self, config: CNNTransposeHeadConfig) -> None:
-        super().__init__(config)
+        super().__init__()
 
         # Initial, inactivated Dense layer (always w/ bias).
         # This layer is responsible for getting the incoming tensor into a proper
@@ -186,8 +184,8 @@ class TorchCNNTransposeHead(TorchModel):
             ),
         )
 
-    @override(Model)
-    def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+    @override(nn.Module)
+    def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         out = self.initial_dense(inputs)
         # Reshape to initial 3D (image-like) format to enter CNN transpose stack.
         out = out.reshape((-1,) + tuple(self.config.initial_image_dims))
