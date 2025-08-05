@@ -443,7 +443,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
 
-  resolver.CancelDependencyResolution(task.TaskId());
+  ASSERT_TRUE(resolver.CancelDependencyResolution(task.TaskId()));
   // Callback is not called.
   ASSERT_FALSE(ok);
   // Should not have inlined any dependencies.
