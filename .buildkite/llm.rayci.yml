@@ -37,7 +37,6 @@ steps:
   - label: "llm gpu tests"
     key: "llm-gpu-tests"
     tags:
-      - python
       - llm
       - gpu
     instance_type: g6-large
