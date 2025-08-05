@@ -150,10 +150,12 @@ class ReadTask(Callable[[], Iterable[Block]]):
         read_fn: Callable[[], Iterable[Block]],
         metadata: BlockMetadata,
         schema: Optional["Schema"] = None,
+        per_block_limit: Optional[int] = None,  # New parameter
     ):
         self._metadata = metadata
         self._read_fn = read_fn
         self._schema = schema
+        self._per_block_limit = per_block_limit  # New: store per-block limit
 
     @property
     def metadata(self) -> BlockMetadata:
@@ -168,6 +170,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def read_fn(self) -> Callable[[], Iterable[Block]]:
         return self._read_fn
 
+    @property
+    def per_block_limit(self) -> Optional[int]:
+        """Get the per-block limit for this read task."""
+        return self._per_block_limit
+
     def __call__(self) -> Iterable[Block]:
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
@@ -176,7 +183,29 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result)
             )
-        yield from result
+        # Apply per-block limiting if set
+        if self._per_block_limit is not None:
+            rows_read = 0
+            for block in result:
+                if rows_read >= self._per_block_limit:
+                    break
+
+                from ray.data.block import BlockAccessor
+
+                accessor = BlockAccessor.for_block(block)
+                block_rows = accessor.num_rows()
+
+                if rows_read + block_rows <= self._per_block_limit:
+                    yield block
+                    rows_read += block_rows
+                else:
+                    # Slice the block to meet the limit exactly
+                    remaining_rows = self._per_block_limit - rows_read
+                    sliced_block = accessor.slice(0, remaining_rows, copy=True)
+                    yield sliced_block
+                    break
+        else:
+            yield from result
 
 
 @DeveloperAPI
