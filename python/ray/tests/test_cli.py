@@ -636,8 +636,10 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
 
 def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
     """Test basic symmetric_run interface with minimal arguments."""
+    from ray.scripts.symmetric_run import symmetric_run
     import socket
-    import ray.scripts.symmetric_run as symmetric_run
+
+    runner = CliRunner()
 
     # Mock subprocess.run to avoid actually starting Ray
     with patch("subprocess.run") as mock_run:
@@ -659,23 +661,9 @@ def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
                     ]
                 }
 
-                # Test basic symmetric_run call
-                symmetric_run.symmetric_run(
-                    address="127.0.0.1:6379",
-                    wait_for_nnodes=None,
-                    execute_on_head=("echo", "test"),
-                    num_cpus=None,
-                    num_gpus=None,
-                    disable_usage_stats=False,
-                    resources="{}",
-                    min_worker_port=None,
-                    max_worker_port=None,
-                    node_manager_port=0,
-                    object_manager_port=None,
-                    runtime_env_agent_port=None,
-                    dashboard_agent_grpc_port=None,
-                    dashboard_agent_listen_port=None,
-                    metrics_export_port=None,
+                # Test basic symmetric_run call using CliRunner
+                runner.invoke(
+                    symmetric_run, ["--address", "127.0.0.1:6379", "--", "echo", "test"]
                 )
 
                 # Verify that subprocess.run was called for ray start
@@ -699,8 +687,10 @@ def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
 
 def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
     """Test symmetric_run behavior when not on the head node."""
+    from ray.scripts.symmetric_run import symmetric_run
     import socket
-    import ray.scripts.symmetric_run as symmetric_run
+
+    runner = CliRunner()
 
     with patch("subprocess.run") as mock_run:
         mock_run.return_value.returncode = 0
@@ -733,22 +723,9 @@ def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
                     )
 
                     # Test worker node behavior
-                    symmetric_run.symmetric_run(
-                        address="192.168.1.100:6379",
-                        wait_for_nnodes=None,
-                        execute_on_head=(),  # No command to execute on worker
-                        num_cpus=None,
-                        num_gpus=None,
-                        disable_usage_stats=False,
-                        resources="{}",
-                        min_worker_port=None,
-                        max_worker_port=None,
-                        node_manager_port=0,
-                        object_manager_port=None,
-                        runtime_env_agent_port=None,
-                        dashboard_agent_grpc_port=None,
-                        dashboard_agent_listen_port=None,
-                        metrics_export_port=None,
+                    runner.invoke(
+                        symmetric_run,
+                        ["--address", "192.168.1.100:6379", "--", "echo", "test"],
                     )
 
                     # Verify that subprocess.run was called
@@ -768,6 +745,7 @@ def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
                     start_args = start_call[0][0]
                     assert "--address" in start_args
                     assert "192.168.1.100:6379" in start_args
+                    assert "--head" not in start_args
                     assert "--block" in start_args  # Worker nodes should block
 
 

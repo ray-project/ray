@@ -17,7 +17,7 @@ Example:
 
 """
 
-from typing import List
+from typing import List, Tuple
 
 import click
 import ray
@@ -217,11 +217,11 @@ def update_ray_start_cmd(
     default=None,
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
-@click.argument("execute-on-head", nargs=-1, type=str)
+@click.argument("execute-on-head", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(
     address: str,
     wait_for_nnodes: int,
-    execute_on_head: List[str],
+    execute_on_head: Tuple[str],
     num_cpus: int,
     num_gpus: int,
     disable_usage_stats: bool,
