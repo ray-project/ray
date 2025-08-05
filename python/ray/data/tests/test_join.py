@@ -395,6 +395,170 @@ def test_default_shuffle_aggregator_args():
     } == args
 
 
+@pytest.mark.parametrize(
+    "num_rows_left,num_rows_right",
+    [
+        (32, 32),
+        (32, 16),
+        (16, 32),
+        # "Degenerate" cases with mostly empty partitions
+        (1, 32),
+        (32, 1),
+    ],
+)
+def test_simple_anti_join(
+    ray_start_regular_shared_2_cpus,
+    nullify_shuffle_aggregator_num_cpus,
+    num_rows_left,
+    num_rows_right,
+):
+    # NOTE: We override max-block size to make sure that in cases when a partition
+    #       size hint is not provided, we're not over-estimating amount of memory
+    #       required for the aggregators
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Create datasets with some overlapping and some non-overlapping keys
+    doubles = ray.data.range(num_rows_left).map(
+        lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+    )
+
+    # Create squares dataset with keys that start from half of num_rows_left
+    # This ensures some overlap and some anti-join results
+    offset = num_rows_left // 2
+    squares = ray.data.range(num_rows_right).map(
+        lambda row: {"id": row["id"] + offset, "square": int(row["id"]) ** 2}
+    )
+
+    doubles_pd = doubles.to_pandas()
+    squares_pd = squares.to_pandas()
+
+    # Perform anti-join using pandas for expected result
+    # Anti-join returns rows from left table that don't have matches in right table
+    merged = doubles_pd.merge(squares_pd, on="id", how="left", indicator=True)
+    expected_pd = merged[merged["_merge"] == "left_only"][["id", "double"]]
+    expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+
+    # Join using Ray Data
+    joined: Dataset = doubles.join(
+        squares,
+        join_type="anti",
+        num_partitions=16,
+        on=("id",),
+    )
+
+    joined_pd = pd.DataFrame(joined.take_all())
+
+    # Sort resulting frame and reset index (to be able to compare with expected one)
+    joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+def test_anti_join_no_matches(
+    ray_start_regular_shared_2_cpus,
+    nullify_shuffle_aggregator_num_cpus,
+):
+    """Test anti-join when there are no matches - should return all left rows"""
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    doubles = ray.data.range(10).map(
+        lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+    )
+
+    # Create squares with completely different keys
+    squares = ray.data.range(10).map(
+        lambda row: {"id": row["id"] + 100, "square": int(row["id"]) ** 2}
+    )
+
+    # Anti-join should return all rows from doubles
+    joined: Dataset = doubles.join(
+        squares,
+        join_type="anti",
+        num_partitions=4,
+        on=("id",),
+    )
+
+    joined_pd = pd.DataFrame(joined.take_all())
+    doubles_pd = doubles.to_pandas()
+
+    # Should get all rows from left table
+    joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    doubles_pd_sorted = doubles_pd.sort_values(by=["id"]).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(doubles_pd_sorted, joined_pd_sorted)
+
+
+def test_anti_join_all_matches(
+    ray_start_regular_shared_2_cpus,
+    nullify_shuffle_aggregator_num_cpus,
+):
+    """Test anti-join when all rows match - should return empty result"""
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    doubles = ray.data.range(10).map(
+        lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+    )
+
+    squares = ray.data.range(10).map(
+        lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+    )
+
+    # Anti-join should return no rows since all keys match
+    joined: Dataset = doubles.join(
+        squares,
+        join_type="anti",
+        num_partitions=4,
+        on=("id",),
+    )
+
+    joined_pd = pd.DataFrame(joined.take_all())
+
+    # Should get empty result
+    assert len(joined_pd) == 0
+    assert list(joined_pd.columns) == ["id", "double"]
+
+
+def test_anti_join_multi_key(
+    ray_start_regular_shared_2_cpus,
+    nullify_shuffle_aggregator_num_cpus,
+):
+    """Test anti-join with multiple join keys"""
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Create left dataset
+    left_data = []
+    for i in range(10):
+        left_data.append({"key1": i // 3, "key2": i % 3, "value_left": i * 10})
+    left_ds = ray.data.from_items(left_data)
+
+    # Create right dataset with partial matches
+    right_data = []
+    for i in range(5):
+        right_data.append({"key1": i // 3, "key2": i % 3, "value_right": i * 100})
+    right_ds = ray.data.from_items(right_data)
+
+    # Anti-join should return rows from left that don't have matching key1,key2 in right
+    joined: Dataset = left_ds.join(
+        right_ds,
+        join_type="anti",
+        num_partitions=4,
+        on=("key1", "key2"),
+    )
+
+    joined_pd = pd.DataFrame(joined.take_all())
+    left_pd = pd.DataFrame(left_data)
+    right_pd = pd.DataFrame(right_data)
+
+    # Calculate expected result using pandas
+    merged = left_pd.merge(right_pd, on=["key1", "key2"], how="left", indicator=True)
+    expected_pd = merged[merged["_merge"] == "left_only"][["key1", "key2", "value_left"]]
+    expected_pd_sorted = expected_pd.sort_values(by=["key1", "key2", "value_left"]).reset_index(drop=True)
+
+    joined_pd_sorted = joined_pd.sort_values(by=["key1", "key2", "value_left"]).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
 if __name__ == "__main__":
     import sys
 
