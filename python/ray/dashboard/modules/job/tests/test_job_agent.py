@@ -13,6 +13,7 @@ import requests
 import yaml
 
 import ray
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -25,7 +26,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,

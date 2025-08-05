@@ -1,12 +1,13 @@
 import copy
 from pathlib import Path
+import platform
 import requests
+import sys
 from typing import Any, Dict, Optional
 from unittest import mock
-
-import platform
-import pytest
 import yaml
+
+import pytest
 
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
@@ -15,7 +16,6 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _get_num_tpus,
     _get_custom_resources,
 )
-
 from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -553,6 +553,4 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

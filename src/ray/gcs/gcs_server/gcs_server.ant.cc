@@ -28,10 +28,8 @@ void GcsServer::InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data) {
       periodical_runner_);
   // Initialize by gcs tables data.
   gcs_virtual_cluster_manager_->Initialize(gcs_init_data);
-  // Register service.
-  gcs_virtual_cluster_service_.reset(new rpc::VirtualClusterInfoGrpcService(
+  rpc_server_.RegisterService(std::make_unique<rpc::VirtualClusterInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(), *gcs_virtual_cluster_manager_));
-  rpc_server_.RegisterService(*gcs_virtual_cluster_service_);
 }
 }  // namespace gcs
 }  // namespace ray

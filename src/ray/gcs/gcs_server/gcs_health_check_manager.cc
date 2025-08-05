@@ -14,14 +14,18 @@
 
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
+#include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "ray/stats/metric.h"
 
 DEFINE_stats(health_check_rpc_latency_ms,
              "Latency of rpc request for health check.",
              (),
-             ({1, 10, 100, 1000, 10000}, ),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
 namespace ray::gcs {

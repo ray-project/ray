@@ -14,7 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"

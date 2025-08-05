@@ -82,8 +82,8 @@ TEST(LRUCacheTest, Test) {
 
 class MockAllocator : public IAllocator {
  public:
-  MOCK_METHOD1(Allocate, absl::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(FallbackAllocate, absl::optional<Allocation>(size_t bytes));
+  MOCK_METHOD1(Allocate, std::optional<Allocation>(size_t bytes));
+  MOCK_METHOD1(FallbackAllocate, std::optional<Allocation>(size_t bytes));
   MOCK_METHOD1(Free, void(Allocation));
   MOCK_CONST_METHOD0(GetFootprintLimit, int64_t());
   MOCK_CONST_METHOD0(Allocated, int64_t());

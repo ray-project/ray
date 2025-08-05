@@ -22,13 +22,13 @@
 #include <regex>
 #include <tuple>
 #include <unordered_map>
-#include <utility>  // std::pair
+#include <utility>
 
-#include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/util/logging.h"
+
 namespace ray {
 
 namespace stats {
@@ -79,13 +79,13 @@ class StatsConfig final {
     return std::move(initializers_);
   }
 
- private:
-  StatsConfig() = default;
   ~StatsConfig() = default;
   StatsConfig(const StatsConfig &) = delete;
   StatsConfig &operator=(const StatsConfig &) = delete;
 
  private:
+  StatsConfig() = default;
+
   TagsType global_tags_;
   /// If true, don't collect metrics in this process.
   bool is_stats_disabled_ = true;
@@ -105,8 +105,8 @@ class StatsConfig final {
 class Metric {
  public:
   Metric(const std::string &name,
-         const std::string &description,
-         const std::string &unit,
+         std::string description,
+         std::string unit,
          const std::vector<std::string> &tag_keys = {});
 
   virtual ~Metric();
@@ -116,7 +116,7 @@ class Metric {
   static const std::regex &GetMetricNameRegex();
 
   /// Get the name of this metric.
-  std::string GetName() const { return name_; }
+  const std::string &GetName() const { return name_; }
 
   /// Record the value for this metric.
   void Record(double value) { Record(value, TagsType{}); }
@@ -125,13 +125,14 @@ class Metric {
   ///
   /// \param value The value that we record.
   /// \param tags The tag values that we want to record for this metric record.
-  void Record(double value, const TagsType &tags);
+  void Record(double value, TagsType tags);
 
   /// Record the value for this metric.
   ///
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
-  void Record(double value, const std::unordered_map<std::string, std::string> &tags);
+  void Record(double value, std::unordered_map<std::string_view, std::string> tags);
+  void Record(double value, std::unordered_map<std::string, std::string> tags);
 
  protected:
   virtual void RegisterView() = 0;
@@ -168,7 +169,7 @@ class Histogram : public Metric {
   Histogram(const std::string &name,
             const std::string &description,
             const std::string &unit,
-            const std::vector<double> boundaries,
+            const std::vector<double> &boundaries,
             const std::vector<std::string> &tag_keys = {})
       : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
 
@@ -283,6 +284,7 @@ void RegisterViewWithTagList(const std::string &name,
 inline std::vector<opencensus::tags::TagKey> convert_tags(
     const std::vector<std::string> &names) {
   std::vector<opencensus::tags::TagKey> ret;
+  ret.reserve(names.size());
   for (auto &n : names) {
     ret.push_back(TagKeyType::Register(n));
   }
@@ -326,7 +328,9 @@ class Stats {
 
   /// Record a value
   /// \param val The value to record
-  void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
+  void Record(double val) {
+    Record(val, std::unordered_map<std::string_view, std::string>());
+  }
 
   /// Record a value
   /// \param val The value to record
@@ -346,7 +350,7 @@ class Stats {
   /// Record a value
   /// \param val The value to record
   /// \param tags The tags for this value
-  void Record(double val, std::unordered_map<std::string, std::string> tags) {
+  void Record(double val, std::unordered_map<std::string_view, std::string> tags) {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }

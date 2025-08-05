@@ -65,7 +65,7 @@ def test_e2e(
             scaling_config=ray.train.ScalingConfig(
                 num_workers=tune_config["num_workers"], use_gpu=True
             ),
-            run_config=ray.tune.RunConfig(
+            run_config=ray.train.RunConfig(
                 storage_path=tmp_path,
                 name=f"train-{ray.tune.get_context().get_trial_id()}",
                 callbacks=[TuneReportCallback()],

@@ -1,6 +1,5 @@
 # coding: utf-8
 import logging
-import os
 import sys
 import torch
 from typing import List, Dict, Tuple
@@ -518,7 +517,4 @@ def test_direct_return_with_cpu_data_channel(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

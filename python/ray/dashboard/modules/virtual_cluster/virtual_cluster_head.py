@@ -239,7 +239,7 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
                 ),
             )
 
-    async def run(self, server):
+    async def run(self):
         self._gcs_virtual_cluster_info_stub = (
             gcs_service_pb2_grpc.VirtualClusterInfoGcsServiceStub(
                 self.aiogrpc_gcs_channel

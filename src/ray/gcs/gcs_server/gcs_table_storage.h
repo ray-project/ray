@@ -15,7 +15,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/virtual_cluster_id.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"

@@ -16,6 +16,12 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
@@ -55,7 +61,7 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
               return left_retriable < right_retriable;
             });
 
-  const static int32_t max_to_print = 10;
+  static const int32_t max_to_print = 10;
   RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
                 << WorkersDebugString(sorted, max_to_print, system_memory);
 

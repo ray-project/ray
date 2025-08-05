@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include "gmock/gmock.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "src/ray/protobuf/gcs.pb.h"
+
 namespace ray {
 namespace gcs {
 
@@ -20,15 +26,15 @@ class MockGcsTable : public GcsTable<Key, Data> {
  public:
   MOCK_METHOD(Status,
               Put,
-              (const Key &key, const Data &value, const StatusCallback &callback),
+              (const Key &key, const Data &value, Postable<void(ray::Status)> callback),
               (override));
   MOCK_METHOD(Status,
               Delete,
-              (const Key &key, const StatusCallback &callback),
+              (const Key &key, Postable<void(ray::Status)> callback),
               (override));
   MOCK_METHOD(Status,
               BatchDelete,
-              (const std::vector<Key> &keys, const StatusCallback &callback),
+              (const std::vector<Key> &keys, Postable<void(ray::Status)> callback),
               (override));
 };
 
@@ -43,15 +49,15 @@ class MockGcsTableWithJobId : public GcsTableWithJobId<Key, Data> {
  public:
   MOCK_METHOD(Status,
               Put,
-              (const Key &key, const Data &value, const StatusCallback &callback),
+              (const Key &key, const Data &value, Postable<void(ray::Status)> callback),
               (override));
   MOCK_METHOD(Status,
               Delete,
-              (const Key &key, const StatusCallback &callback),
+              (const Key &key, Postable<void(ray::Status)> callback),
               (override));
   MOCK_METHOD(Status,
               BatchDelete,
-              (const std::vector<Key> &keys, const StatusCallback &callback),
+              (const std::vector<Key> &keys, Postable<void(ray::Status)> callback),
               (override));
   MOCK_METHOD(JobID, GetJobIdFromKey, (const Key &key), (override));
 };
@@ -102,8 +108,8 @@ class MockGcsNodeTable : public GcsNodeTable {
   MOCK_METHOD(Status,
               Put,
               (const NodeID &key,
-               const GcsNodeInfo &value,
-               const StatusCallback &callback),
+               const rpc::GcsNodeInfo &value,
+               Postable<void(ray::Status)> callback),
               (override));
 };
 

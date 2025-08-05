@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "src/ray/protobuf/usage.pb.h"

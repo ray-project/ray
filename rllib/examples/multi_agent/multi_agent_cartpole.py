@@ -48,12 +48,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
         .env_runners(
-            # TODO (sven): MAEnvRunner does not support vectorized envs yet
-            #  due to gym's env checkers and non-compatability with RLlib's
-            #  MultiAgentEnv API.
-            num_envs_per_env_runner=1
-            if args.num_agents > 0
-            else 20,
+            num_envs_per_env_runner=20,
         )
     )
 

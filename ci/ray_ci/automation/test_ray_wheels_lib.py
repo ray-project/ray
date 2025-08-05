@@ -13,6 +13,8 @@ from ci.ray_ci.automation.ray_wheels_lib import (
     PYTHON_VERSIONS,
     ALL_PLATFORMS,
     RAY_TYPES,
+    add_build_tag_to_wheels,
+    add_build_tag_to_wheel,
 )
 
 SAMPLE_WHEELS = [
@@ -28,9 +30,10 @@ def test_get_wheel_names():
     ray_version = "1.11.0"
     wheel_names = _get_wheel_names(ray_version)
 
-    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(
-        RAY_TYPES
-    )
+    assert (
+        len(wheel_names)
+        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(RAY_TYPES) - 2
+    )  # Except for the win_amd64 wheel for cp313 on ray and ray-cpp
 
     for wheel_name in wheel_names:
         assert len(wheel_name.split("-")) == 5
@@ -229,6 +232,36 @@ def test_download_ray_wheels_from_s3_fail_download(
                 commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
             )
     assert mock_check_wheels.call_count == 0
+
+
+def test_add_build_tag_to_wheel():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wheel_name = "ray-1.0.0-cp39-cp39-manylinux2014_x86_64.whl"
+        wheel_path = os.path.join(tmp_dir, wheel_name)
+        with open(wheel_path, "w") as f:
+            f.write("")
+        add_build_tag_to_wheel(wheel_path=wheel_path, build_tag="123")
+        expected_wheel_name = "ray-1.0.0-123-cp39-cp39-manylinux2014_x86_64.whl"
+        expected_wheel_path = os.path.join(tmp_dir, expected_wheel_name)
+        assert os.path.exists(expected_wheel_path)
+
+
+def test_add_build_tag_to_wheels():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wheels = [
+            "ray-1.0.0-cp39-cp39-manylinux2014_x86_64.whl",
+            "ray-1.0.0-cp39-cp39-manylinux2014_aarch64.whl",
+        ]
+        for wheel in wheels:
+            with open(os.path.join(tmp_dir, wheel), "w") as f:
+                f.write("")
+        add_build_tag_to_wheels(directory_path=tmp_dir, build_tag="123")
+        assert os.path.exists(
+            os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_x86_64.whl")
+        )
+        assert os.path.exists(
+            os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_aarch64.whl")
+        )
 
 
 if __name__ == "__main__":

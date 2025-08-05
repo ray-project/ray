@@ -162,6 +162,6 @@ Next Steps
 ----------
 
 * Check out the :ref:`Tune tutorials <tune-guides>` for guides on using Tune with your preferred machine learning library.
-* Browse our :doc:`gallery of examples <examples/other-examples>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
+* Browse our :ref:`gallery of examples <tune-examples-others>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
 * `Let us know <https://github.com/ray-project/ray/issues>`__ if you ran into issues or have any questions by opening an issue on our Github.
 * To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.

@@ -1,4 +1,3 @@
-import os
 import random
 import signal
 import sys
@@ -733,7 +732,4 @@ def test_recursive_cancel_error_messages(shutdown_only, capsys):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

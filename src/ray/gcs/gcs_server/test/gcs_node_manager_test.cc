@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -36,10 +38,10 @@ class GcsNodeManagerTest : public ::testing::Test {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ =
-        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
-            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
   }
 
  protected:
@@ -59,7 +61,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
                                    ClusterID::Nil(),
-                                  *gcs_virtual_cluster_manager_);
+                                   *gcs_virtual_cluster_manager_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -78,7 +80,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
                                    ClusterID::Nil(),
-                                  *gcs_virtual_cluster_manager_);
+                                   *gcs_virtual_cluster_manager_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

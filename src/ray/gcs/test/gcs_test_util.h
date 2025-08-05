@@ -17,7 +17,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "ray/common/asio/instrumented_io_context.h"

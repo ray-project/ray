@@ -15,6 +15,9 @@
 #include "ray/gcs/gcs_server/store_client_kv.h"
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "src/ray/protobuf/gcs.pb.h"
 

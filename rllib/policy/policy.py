@@ -1327,9 +1327,9 @@ class Policy(metaclass=ABCMeta):
             auto_remove_unneeded_view_reqs: Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
-            stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
-                TensorType]]]): An optional stats function to be called after
-                the loss.
+                stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
+                    TensorType]]]): An optional stats function to be called after
+                    the loss.
         """
 
         if self.config.get("_disable_initialize_loss_from_dummy_batch", False):

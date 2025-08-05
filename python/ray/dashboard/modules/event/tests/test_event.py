@@ -231,6 +231,31 @@ def test_event_message_limit(
     wait_for_condition(_check_events, timeout=15)
 
 
+def test_report_events(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    url = f"{webui_url}/report_events"
+
+    resp = requests.post(url)
+    assert resp.status_code == 400
+    resp = requests.post(url, json={"Hello": "World"})
+    assert resp.status_code == 400
+
+    job_id = ray.JobID.from_int(100).hex()
+    sample_event = _get_event("Hello", job_id=job_id)
+    resp = requests.post(url, json=[json.dumps(sample_event)])
+    assert resp.status_code == 200
+
+    resp = requests.get(f"{webui_url}/events")
+    assert resp.status_code == 200
+    result = resp.json()
+    all_events = result["data"]["events"]
+    assert len(all_events) == 1
+    assert job_id in all_events
+    assert len(all_events[job_id]) == 1
+    assert all_events[job_id][0]["message"] == "Hello"
+
+
 @pytest.mark.asyncio
 async def test_monitor_events():
     with tempfile.TemporaryDirectory() as temp_dir:

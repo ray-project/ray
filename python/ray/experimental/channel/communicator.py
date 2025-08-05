@@ -18,7 +18,7 @@ TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 @DeveloperAPI
 class Communicator(ABC):
     """
-    Communicator for a group of Compiled Graph actors on Nvidia GPU.
+    Communicator for a group of Compiled Graph actors on NVIDIA GPU.
 
     The Compiled Graph execution leverages this internally to support communication
     between actors in the group.
@@ -123,6 +123,22 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        """
+        Collectively allgather the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to allgather. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allgather result.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def allreduce(
         self,
         send_buf: "torch.Tensor",
@@ -141,7 +157,25 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def destroy() -> None:
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        """
+        Collectively reducescatter the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to reducescatter. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the reducescatter result.
+            op: The reduce operation.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def destroy(self) -> None:
         """
         Destroy the GPU communicator.
 
@@ -151,7 +185,7 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_transport_name() -> str:
+    def get_transport_name(self) -> str:
         """
         Return the type of the communicator (gpu or cpu).
         """

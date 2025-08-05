@@ -32,7 +32,7 @@ class IAllocator {
   ///
   /// \param bytes Number of bytes.
   /// \return allocated memory. returns empty if not enough space.
-  virtual absl::optional<Allocation> Allocate(size_t bytes) = 0;
+  virtual std::optional<Allocation> Allocate(size_t bytes) = 0;
 
   // Same as Allocate, but allocates pages from the filesystem. The footprint limit
   // is not enforced for these allocations, but allocations here are still tracked
@@ -41,7 +41,7 @@ class IAllocator {
   // TODO(scv119) ideally we should have mem/disk allocator implementations
   // so we don't need FallbackAllocate. However the dlmalloc has some limitation
   // prevents us from doing so.
-  virtual absl::optional<Allocation> FallbackAllocate(size_t bytes) = 0;
+  virtual std::optional<Allocation> FallbackAllocate(size_t bytes) = 0;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
   /// a previous call to Allocate/FallbackAllocate or it yield undefined behavior.

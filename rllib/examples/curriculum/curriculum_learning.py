@@ -216,7 +216,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_envs_per_env_runner=5,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             num_epochs=6,

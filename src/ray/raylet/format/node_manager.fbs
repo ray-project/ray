@@ -63,7 +63,7 @@ enum MessageType:int {
   // remaining.
   WaitReply,
   // Wait for objects asynchronously. The reply will be sent back via gRPC push.
-  WaitForDirectActorCallArgsRequest,
+  WaitForActorCallArgsRequest,
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
@@ -85,10 +85,6 @@ enum MessageType:int {
 
 table Task {
   task_specification: string;
-}
-
-table SubmitTaskRequest {
-  task_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.
@@ -188,11 +184,6 @@ table AnnounceWorkerPortReply {
   failure_reason: string;
 }
 
-table RegisterNodeManagerRequest {
-  // GCS ClientID of the connecting node manager.
-  client_id: string;
-}
-
 // Mimics the Address protobuf.
 table Address {
   raylet_id: string;
@@ -245,7 +236,7 @@ table WaitReply {
   remaining: [string];
 }
 
-table WaitForDirectActorCallArgsRequest {
+table WaitForActorCallArgsRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
@@ -278,15 +269,6 @@ table FreeObjectsRequest {
 table ConnectClient {
   // ID of the connecting client.
   client_id: string;
-}
-
-table SetResourceRequest {
-  // Name of the resource to be set.
-  resource_name: string;
-  // Capacity of the resource to be set.
-  capacity: double;
-  // Node ID where this resource will be set.
-  node_id: string;
 }
 
 table SubscribePlasmaReady {

@@ -13,7 +13,6 @@ except ImportError as exc:
 # isort: on
 
 
-from ray._private.usage import usage_lib
 from ray.air.config import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.air.result import Result
 
@@ -26,7 +25,6 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
-
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
@@ -43,9 +41,6 @@ if is_v2_enabled():
         get_dataset_shard,
         report,
     )
-
-
-usage_lib.record_library_usage("train")
 
 
 __all__ = [

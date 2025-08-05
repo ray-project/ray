@@ -605,7 +605,10 @@ class Pool:
                 RAY_ADDRESS_ENV in os.environ
                 or ray._private.utils.read_ray_address() is not None
             ):
-                ray.init()
+                init_kwargs = {}
+                if os.environ.get(RAY_ADDRESS_ENV) == "local":
+                    init_kwargs["num_cpus"] = processes
+                ray.init(**init_kwargs)
             elif ray_address is not None:
                 init_kwargs = {}
                 if ray_address == "local":

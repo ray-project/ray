@@ -5,7 +5,7 @@ from typing import Generator, Tuple
 
 import pytest
 
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.http_util import ASGIReceiveProxy, MessageQueue
 
 

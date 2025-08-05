@@ -15,9 +15,52 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 
 namespace ray {
 namespace rpc {
+
+std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+    gcs::GcsClient *gcs_client,
+    rpc::CoreWorkerClientPool *worker_client_pool,
+    std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
+        raylet_client_factory,
+    const rpc::Address &addr) {
+  return [addr,
+          gcs_client,
+          worker_client_pool,
+          raylet_client_factory = std::move(raylet_client_factory)]() {
+    const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+    const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
+    RAY_CHECK(gcs_client->Nodes().IsSubscribedToNodeChange());
+    const rpc::GcsNodeInfo *node_info =
+        gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+    if (node_info == nullptr) {
+      RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+          << "Disconnect core worker client since its node is dead";
+      worker_client_pool->Disconnect(worker_id);
+      return;
+    }
+    auto raylet_client = raylet_client_factory(node_info->node_manager_address(),
+                                               node_info->node_manager_port());
+    raylet_client->IsLocalWorkerDead(
+        worker_id,
+        [worker_client_pool, worker_id, node_id](const Status &status,
+                                                 rpc::IsLocalWorkerDeadReply &&reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                << "Failed to check if worker is dead on request to raylet";
+            return;
+          }
+          if (reply.is_dead()) {
+            RAY_LOG(INFO).WithField(worker_id)
+                << "Disconnect core worker client since it is dead";
+            worker_client_pool->Disconnect(worker_id);
+          }
+        });
+  };
+}
 
 std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
     const Address &addr_proto) {

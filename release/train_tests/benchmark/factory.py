@@ -8,6 +8,7 @@ class BenchmarkFactory(ABC):
     def __init__(self, benchmark_config: BenchmarkConfig):
         self.benchmark_config = benchmark_config
         self.dataloader_factory = self.get_dataloader_factory()
+        self.dataset_creation_time = 0
 
     @abstractmethod
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:
@@ -36,3 +37,9 @@ class BenchmarkFactory(ABC):
 
     def get_ray_datasets(self):
         return self.dataloader_factory.get_ray_datasets()
+
+    def get_dataset_creation_time(self):
+        return self.dataset_creation_time
+
+    def set_dataset_creation_time(self, time):
+        self.dataset_creation_time = time

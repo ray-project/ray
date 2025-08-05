@@ -3,7 +3,7 @@ import zipfile
 
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version

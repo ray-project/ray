@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "ray/raylet/runtime_env_agent_client.h"
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -24,6 +25,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
@@ -39,7 +41,7 @@ using tcp = boost::asio::ip::tcp;
 using boost::asio::ip::port_type;
 
 port_type GetFreePort() {
-  boost::asio::io_service io_service;
+  boost::asio::io_context io_service;
   boost::asio::ip::tcp::acceptor acceptor(io_service);
   boost::asio::ip::tcp::endpoint endpoint;
 
@@ -235,8 +237,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                callback,
+                                WorkerID::Nil(),
+                                serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -290,8 +296,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                callback,
+                                WorkerID::Nil(),
+                                serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -350,8 +360,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                callback,
+                                WorkerID::Nil(),
+                                serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -394,8 +408,11 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                     callback,
+                                     WorkerID::Nil(),
+                                     JobID::Nil(),
+                                     "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -439,8 +456,11 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                     callback,
+                                     WorkerID::Nil(),
+                                     JobID::Nil(),
+                                     "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -489,8 +509,11 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                     callback,
+                                     WorkerID::Nil(),
+                                     JobID::Nil(),
+                                     "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -594,8 +617,11 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   };
 
   for (int i = 0; i < 100; ++i) {
-    client->DeleteRuntimeEnvIfPossible(
-        "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env",
+                                       callback,
+                                       WorkerID::Nil(),
+                                       JobID::Nil(),
+                                       "serialized_allocated_instances");
   }
 
   ioc.run();

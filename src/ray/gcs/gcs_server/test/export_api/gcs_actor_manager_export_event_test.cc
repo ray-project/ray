@@ -13,13 +13,16 @@
 // limitations under the License.
 
 #include <chrono>
+#include <list>
 #include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -76,7 +79,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
+  explicit MockWorkerClient(instrumented_io_context &io_service)
+      : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
       const rpc::WaitForActorRefDeletedRequest &request,
@@ -129,8 +133,8 @@ class GcsActorManagerTest : public ::testing::Test {
   )");
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));
@@ -154,10 +158,10 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
     auto actor_scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = actor_scheduler.get();
-    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
-    gcs_virtual_cluster_manager_ =
-        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
-            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(actor_scheduler),
         gcs_table_storage_.get(),
@@ -273,6 +277,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   rpc::CreateActorRequest create_actor_request;
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
+  create_actor_request.mutable_task_spec()->mutable_labels()->insert({"w00t", "hi"});
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
 
@@ -311,7 +316,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
     Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
-    if ((int)vc.size() == num_export_events) {
+    if (static_cast<int>(vc.size()) == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
         json event_data = export_event_as_json["event_data"].get<json>();
@@ -322,6 +327,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
               event_data["death_cause"]["actor_died_error_context"]["error_message"],
               "The actor is dead because all references to the actor were removed "
               "including lineage ref count.");
+        }
+        if (expected_states[event_idx] == "ALIVE") {
+          ASSERT_EQ(event_data["labels"]["w00t"], "hi");
         }
       }
       return;
@@ -336,8 +344,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   for (auto line : vc) {
     lines << line << "\n";
   }
-  ASSERT_TRUE(false) << "Export API wrote " << (int)vc.size() << " lines, but expecting "
-                     << num_export_events << ".\nLines:\n"
+  ASSERT_TRUE(false) << "Export API wrote " << static_cast<int>(vc.size())
+                     << " lines, but expecting " << num_export_events << ".\nLines:\n"
                      << lines.str();
 }
 

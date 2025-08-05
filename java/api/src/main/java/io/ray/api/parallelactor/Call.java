@@ -11,9 +11,7 @@ import io.ray.api.function.RayFunc4;
 import io.ray.api.function.RayFunc5;
 import io.ray.api.function.RayFunc6;
 
-/**
- * This class provides type-safe interfaces for `ParallelActor.actor`.
- **/
+/** This class provides type-safe interfaces for `ParallelActor.actor`. */
 class Call {
   // ===========================
   // Methods for actor creation.
@@ -38,619 +36,1167 @@ class Call {
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, A> ParallelActorCreator<A> actor(RayFunc2<T0, T1, A> f, T0 t0, ObjectRef<T1> t1) {
+  public static <T0, T1, A> ParallelActorCreator<A> actor(
+      RayFunc2<T0, T1, A> f, T0 t0, ObjectRef<T1> t1) {
     Object[] args = new Object[] {t0, t1};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, A> ParallelActorCreator<A> actor(RayFunc2<T0, T1, A> f, ObjectRef<T0> t0, T1 t1) {
+  public static <T0, T1, A> ParallelActorCreator<A> actor(
+      RayFunc2<T0, T1, A> f, ObjectRef<T0> t0, T1 t1) {
     Object[] args = new Object[] {t0, t1};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, A> ParallelActorCreator<A> actor(RayFunc2<T0, T1, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1) {
+  public static <T0, T1, A> ParallelActorCreator<A> actor(
+      RayFunc2<T0, T1, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1) {
     Object[] args = new Object[] {t0, t1};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, T2 t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, ObjectRef<T2> t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, T0 t0, ObjectRef<T1> t1, T2 t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, T0 t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, T1 t1, T2 t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
+  public static <T0, T1, T2, A> ParallelActorCreator<A> actor(
+      RayFunc3<T0, T1, T2, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[] {t0, t1, t2};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(RayFunc4<T0, T1, T2, T3, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
+  public static <T0, T1, T2, T3, A> ParallelActorCreator<A> actor(
+      RayFunc4<T0, T1, T2, T3, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3) {
     Object[] args = new Object[] {t0, t1, t2, t3};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(RayFunc5<T0, T1, T2, T3, T4, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
+  public static <T0, T1, T2, T3, T4, A> ParallelActorCreator<A> actor(
+      RayFunc5<T0, T1, T2, T3, T4, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      T0 t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      T1 t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      T2 t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      T3 t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      T4 t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, T5 t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      T5 t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
 
-  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4, ObjectRef<T5> t5) {
+  public static <T0, T1, T2, T3, T4, T5, A> ParallelActorCreator<A> actor(
+      RayFunc6<T0, T1, T2, T3, T4, T5, A> f,
+      ObjectRef<T0> t0,
+      ObjectRef<T1> t1,
+      ObjectRef<T2> t2,
+      ObjectRef<T3> t3,
+      ObjectRef<T4> t4,
+      ObjectRef<T5> t5) {
     Object[] args = new Object[] {t0, t1, t2, t3, t4, t5};
     return new ParallelActorCreator<>(f, args);
   }
-
 }

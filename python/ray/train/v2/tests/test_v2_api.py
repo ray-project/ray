@@ -1,7 +1,7 @@
 import importlib
+import sys
 
 import pytest
-import sys
 
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
@@ -58,9 +58,9 @@ def test_trainer_restore():
 def test_serialized_imports(ray_start_4_cpus):
     """Check that captured imports are deserialized properly without circular imports."""
 
+    from ray.train.lightgbm import LightGBMTrainer
     from ray.train.torch import TorchTrainer
     from ray.train.xgboost import XGBoostTrainer
-    from ray.train.lightgbm import LightGBMTrainer
 
     if sys.version_info < (3, 12):
         from ray.train.tensorflow import TensorflowTrainer
@@ -86,8 +86,10 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
     # isort: on
 
     # Import from the absolute module paths as references
-    from ray.train.v2.api.config import FailureConfig as FailureConfigV2
-    from ray.train.v2.api.config import RunConfig as RunConfigV2
+    from ray.train.v2.api.config import (
+        FailureConfig as FailureConfigV2,
+        RunConfig as RunConfigV2,
+    )
     from ray.train.v2.api.result import Result as ResultV2
 
     if env_v2_enabled:

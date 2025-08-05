@@ -84,6 +84,12 @@ DEFINE_stats(finished_jobs,
              /*buckets=*/(),
              ray::stats::COUNT);
 
+DEFINE_stats(job_duration_s,
+             "Duration of jobs finished in seconds.",
+             ("JobId"),
+             (),
+             ray::stats::GAUGE);
+
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used
@@ -179,6 +185,24 @@ DEFINE_stats(grpc_server_req_handling,
              ray::stats::COUNT);
 DEFINE_stats(grpc_server_req_finished,
              "Finished request number in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_succeeded,
+             "Succeeded request count in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_failed,
+             "Failed request count in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+
+/// Number of failures observed from gRPC client(s).
+/// A failure is an RPC whose response status was not `OK`.
+DEFINE_stats(grpc_client_req_failed,
+             "Number of gRPC client failures (non-OK response statuses).",
              ("Method"),
              (),
              ray::stats::COUNT);

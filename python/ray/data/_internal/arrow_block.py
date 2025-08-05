@@ -7,6 +7,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -14,8 +15,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
@@ -25,16 +28,17 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 
 try:
     import pyarrow
@@ -50,6 +54,18 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+_MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+
+
+# Set the max chunk size in bytes for Arrow to Batches conversion in
+# ArrowBlockAccessor.iter_rows(). Default to 4MB, to optimize for image
+# datasets in parquet format.
+ARROW_MAX_CHUNK_SIZE_BYTES = env_integer(
+    "RAY_DATA_ARROW_MAX_CHUNK_SIZE_BYTES",
+    int(DEFAULT_TARGET_MAX_BLOCK_SIZE / 32),
+)
 
 
 # We offload some transformations to polars for performance.
@@ -153,6 +169,25 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return BlockType.ARROW
 
 
+def _get_max_chunk_size(
+    table: "pyarrow.Table", max_chunk_size_bytes: int
+) -> Optional[int]:
+    """
+    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    ArrowBlockAccessor.iter_rows().
+    Args:
+        table: The pyarrow table to calculate the max chunk size for.
+        max_chunk_size_bytes: The max chunk size in bytes.
+    Returns:
+        The max chunk size in rows, or None if the table is empty.
+    """
+    if table.nbytes == 0:
+        return None
+    else:
+        avg_row_size = int(table.nbytes / table.num_rows)
+        return max(1, int(max_chunk_size_bytes / avg_row_size))
+
+
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
@@ -160,20 +195,28 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
+        # Set the max chunk size in rows for Arrow to Batches conversion in
+        # ArrowBlockAccessor.iter_rows().
+        self._max_chunk_size = _get_max_chunk_size(
+            self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+        )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.column_names
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
+        import pyarrow.compute as pc
 
-        return self._table.append_column(name, [data])
+        if isinstance(value, pyarrow.Scalar):
+            type = value.type
+        else:
+            type = pyarrow.infer_type([value])
+
+        array = pyarrow.nulls(len(self._table), type=type)
+        array = pc.fill_null(array, value)
+        return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -329,87 +372,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = self._table.select(sort_key.get_columns())
         return transform_pyarrow.take_table(table, indices)
 
-    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
-        """Count the number of non-null values in the provided column."""
-        import pyarrow.compute as pac
-
-        if not isinstance(on, str):
-            raise ValueError(
-                "on must be a string when aggregating on Arrow blocks, but got:"
-                f"{type(on)}."
-            )
-
-        if self.num_rows() == 0:
-            return None
-
-        mode = "only_valid" if ignore_nulls else "all"
-
-        col = self._table[on]
-        return pac.count(col, mode=mode).as_py()
-
-    def _apply_arrow_compute(
-        self, compute_fn: Callable, on: str, ignore_nulls: bool
-    ) -> Optional[U]:
-        """Helper providing null handling around applying an aggregation to a column."""
-        import pyarrow as pa
-
-        if not isinstance(on, str):
-            raise ValueError(
-                "on must be a string when aggregating on Arrow blocks, but got:"
-                f"{type(on)}."
-            )
-
-        if self.num_rows() == 0:
-            return None
-
-        col = self._table[on]
-        if pa.types.is_null(col.type):
-            return None
-        else:
-            return compute_fn(col, skip_nulls=ignore_nulls).as_py()
-
-    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.sum, on, ignore_nulls)
-
-    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.min, on, ignore_nulls)
-
-    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.max, on, ignore_nulls)
-
-    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.mean, on, ignore_nulls)
-
-    def sum_of_squared_diffs_from_mean(
-        self,
-        on: str,
-        ignore_nulls: bool,
-        mean: Optional[U] = None,
-    ) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        if mean is None:
-            # If precomputed mean not given, we compute it ourselves.
-            mean = self.mean(on, ignore_nulls)
-            if mean is None:
-                return None
-        return self._apply_arrow_compute(
-            lambda col, skip_nulls: pac.sum(
-                pac.power(pac.subtract(col, mean), 2),
-                skip_nulls=skip_nulls,
-            ),
-            on,
-            ignore_nulls,
-        )
-
     def sort(self, sort_key: "SortKey") -> Block:
         assert (
             sort_key.get_columns()
@@ -435,7 +397,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(
@@ -449,8 +413,104 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # Handle blocks of different types.
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
-            ret = concat_and_sort(blocks, sort_key)
+            ret = concat_and_sort(blocks, sort_key, promote_types=True)
         return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        table = self._table
+        if public_row_format:
+            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
+                yield from batch.to_pylist()
+        else:
+            for i in range(self.num_rows()):
+                yield self._get_row(i)
+
+
+class ArrowBlockColumnAccessor(BlockColumnAccessor):
+    def __init__(self, col: Union["pyarrow.Array", "pyarrow.ChunkedArray"]):
+        super().__init__(col)
+
+    def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.count(self._column, mode="only_valid" if ignore_nulls else "all")
+        return res.as_py() if as_py else res
+
+    def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.sum(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.min(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def max(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.max(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def mean(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.mean(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def sum_of_squared_diffs_from_mean(
+        self, ignore_nulls: bool, mean: Optional[U] = None, as_py: bool = True
+    ) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        # Calculate mean if not provided
+        if mean is None:
+            mean = self.mean(ignore_nulls=ignore_nulls)
+
+        if mean is None:
+            return None
+
+        res = pac.sum(
+            pac.power(pac.subtract(self._column, mean), 2), skip_nulls=ignore_nulls
+        )
+        return res.as_py() if as_py else res
+
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        array = pac.quantile(self._column, q=q, skip_nulls=ignore_nulls)
+        # NOTE: That quantile method still returns an array
+        res = array[0]
+        return res.as_py() if as_py else res
+
+    def unique(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.unique(self._column)
+
+    def flatten(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.list_flatten(self._column)
+
+    def to_pylist(self) -> List[Any]:
+        return self._column.to_pylist()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        # NOTE: Pyarrow < 13.0.0 does not support ``zero_copy_only``
+        if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
+            return self._column.to_numpy()
+
+        return self._column.to_numpy(zero_copy_only=zero_copy_only)
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self._column

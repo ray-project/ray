@@ -1,5 +1,8 @@
 import logging
+import random
+import sys
 import time
+from os import urandom
 
 import numpy as np
 import pandas as pd
@@ -17,7 +20,6 @@ from ray.data._internal.block_batching.util import (
     resolve_block_refs,
 )
 from ray.data._internal.util import make_async_gen
-
 
 logger = logging.getLogger(__file__)
 
@@ -113,8 +115,9 @@ def test_finalize():
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_fail(buffer_size: int):
+def test_make_async_gen_fail(buffer_size: int, preserve_ordering):
     """Tests that any errors raised in async threads are propagated to the main
     thread."""
 
@@ -124,7 +127,8 @@ def test_make_async_gen_fail(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter([1]),
         fn=gen,
-        queue_buffer_size=buffer_size,
+        preserve_ordering=preserve_ordering,
+        buffer_size=buffer_size,
     )
 
     with pytest.raises(ValueError) as e:
@@ -134,79 +138,183 @@ def test_make_async_gen_fail(buffer_size: int):
     assert e.match("Fail")
 
 
-@pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_varying_seq_lengths(buffer_size: int):
-    """Tests that iterators of varying lengths are handled appropriately"""
+@pytest.mark.parametrize("preserve_ordering", [True, False])
+def test_make_async_gen_varying_seq_length_stress_test(preserve_ordering):
+    """This test executes make_async_gen against a function generating variable
+    length sequences to stress test its concurrency control.
+    """
 
-    def _gen(base_iterator):
-        worker_id = next(base_iterator)
+    num_workers = 4
 
-        # Make workers produce sequences increasing the same order
-        # as worker-ids (so that for left workers sequences run out first)
-        target_length = worker_id + 1
+    c = 0
 
-        return iter([f"worker_{worker_id}:{i}" for i in range(target_length)])
+    # Roll the dice 100 times
+    for i in range(100):
+        # Fetch 8b seed from urandom
+        seed = int.from_bytes(urandom(8), byteorder=sys.byteorder)
+        r = random.Random(seed)
 
-    num_seqs = 3
+        print(f">>> Seed: {seed}")
 
-    iterator = make_async_gen(
-        base_iterator=iter(list(range(num_seqs))),
-        fn=_gen,
-        # Make sure individual elements are handle by diff workers
-        num_workers=num_seqs,
-        queue_buffer_size=buffer_size,
-    )
+        # NOTE: Number of seqs >> number of workers
+        #       to saturate the input queue
+        num_seqs = num_workers * 10
 
-    seq = list(iterator)
+        lens = list(range(num_seqs))
+
+        r.shuffle(lens)
+
+        source = [range(len_) for len_ in lens]
+
+        print("===" * 8)
+        print(source)
+        print("===" * 8)
+
+        def flatten(list_iter):
+            for l in list_iter:
+                print(f">>> Flattening: {l}")
+                yield from l
+
+        it = make_async_gen(
+            iter(source),
+            flatten,
+            preserve_ordering=preserve_ordering,
+            num_workers=4,
+            buffer_size=1,
+        )
+
+        total = 0
+
+        for i in it:
+            total += i
+
+        assert total == 9880
+        c += 1
+
+    assert c == 100
+
+
+@pytest.mark.parametrize("preserve_ordering", [True, False])
+def test_make_async_gen_non_reentrant(preserve_ordering):
+    """This test is asserting that make_async_gen iterating over the
+    sequence as a whole and not re-entering provided transformation,
+    as this might have substantial performance impact in extreme case
+    of re-entering for every element of the sequence
+    """
+
+    logs = []
+    finished = False
+
+    def _transform_inner(it):
+        nonlocal finished
+
+        assert not finished
+
+        logs.append(">>> Entering Inner")
+
+        for i in it:
+            logs.append(f">>> Inner: {i}")
+            yield i
+
+        logs.append(">>> Leaving Inner")
+
+        # Once this transform finishes
+        finished = True
+
+    def _transform_b(it):
+        logs.append(">>> Entering Outer")
+
+        for i in _transform_inner(it):
+            logs.append(f">>> Outer: {i}")
+            yield i
+
+        logs.append(">>> Leaving Outer")
+
+    for _ in make_async_gen(
+        iter(range(3)),
+        _transform_b,
+        preserve_ordering=preserve_ordering,
+    ):
+        pass
 
     assert [
-        "worker_0:0",
-        "worker_1:0",
-        "worker_2:0",
-        "worker_1:1",
-        "worker_2:1",
-        "worker_2:2",
-    ] == seq
+        ">>> Entering Outer",
+        ">>> Entering Inner",
+        ">>> Inner: 0",
+        ">>> Outer: 0",
+        ">>> Inner: 1",
+        ">>> Outer: 1",
+        ">>> Inner: 2",
+        ">>> Outer: 2",
+        ">>> Leaving Inner",
+        ">>> Leaving Outer",
+    ] == logs
 
 
-@pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen(buffer_size: int):
+@pytest.mark.parametrize("preserve_ordering", [True, False])
+@pytest.mark.parametrize(
+    "buffer_size, expected_gen_time",
+    [
+        (0, 5.5),  # 5 x 1s + 0.5s buffer
+        (1, 7.5),  # 3 x 1s + 2 x 2s (limited buffer delay) + 0.5s buffer
+        (2, 5.5),  # 5 x 1s + 0.5s buffer
+    ],
+)
+def test_make_async_gen_x(buffer_size: int, expected_gen_time, preserve_ordering):
     """Tests that make_async_gen overlaps compute."""
 
     num_items = 5
 
     def gen(base_iterator):
+        gen_start = time.perf_counter()
+
         for i in base_iterator:
             time.sleep(1)
             yield i
+            print(f">>> ({time.time()}) Generating {i}")
 
-    def sleep_udf(item):
+        gen_finish = time.perf_counter()
+
+        # 0.5s buffer
+        assert gen_finish - gen_start < expected_gen_time
+
+    def sleepy_udf(item):
         time.sleep(2)
         return item
 
     iterator = make_async_gen(
         base_iterator=iter(range(num_items)),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         num_workers=1,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
-    start_time = time.time()
     outputs = []
+
+    iter_start = time.perf_counter()
     for item in iterator:
+        print(f">>> ({time.time()}) Iterating over {item}")
         print(item)
-        outputs.append(sleep_udf(item))
-    end_time = time.time()
+        outputs.append(sleepy_udf(item))
+    iter_finish = time.perf_counter()
+
+    dur_s = iter_finish - iter_start
+
+    print(f">>> Took {dur_s}")
+
+    # 1s to yield first element
+    # 10s to iterate t/h all 5
+    # 0.5s extra buffer
+    assert dur_s < num_items * 2 + 1.5
 
     # Assert ordering is preserved
     assert outputs == list(range(num_items))
 
-    # Three second buffer.
-    assert end_time - start_time < num_items * 2 + 3
 
-
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_multiple_threads(buffer_size: int):
+def test_make_async_gen_multiple_threads(buffer_size: int, preserve_ordering):
     """Tests that using multiple threads can overlap compute even more."""
 
     num_items = 5
@@ -227,8 +335,9 @@ def test_make_async_gen_multiple_threads(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter(range(num_items)),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         num_workers=5,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
     start_time = time.time()
@@ -240,7 +349,8 @@ def test_make_async_gen_multiple_threads(buffer_size: int):
     end_time = time.time()
 
     # Assert ordering is preserved
-    assert elements == list(range(num_items))
+    if preserve_ordering:
+        assert elements == list(range(num_items))
 
     # - 2 second for every worker to handle their single element
     # - 3 seconds for overlapping one
@@ -248,8 +358,11 @@ def test_make_async_gen_multiple_threads(buffer_size: int):
     assert end_time - start_time < gen_sleep + iter_sleep + 0.5
 
 
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_multiple_threads_unfinished(buffer_size: int):
+def test_make_async_gen_multiple_threads_unfinished(
+    buffer_size: int, preserve_ordering
+):
     """Tests that using multiple threads can overlap compute even more.
     Do not finish iteration with break in the middle.
     """
@@ -269,8 +382,9 @@ def test_make_async_gen_multiple_threads_unfinished(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter(range(num_items)),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         num_workers=5,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
     start_time = time.time()

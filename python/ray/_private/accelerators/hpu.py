@@ -1,8 +1,8 @@
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
 from functools import lru_cache
 from importlib.util import find_spec
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 

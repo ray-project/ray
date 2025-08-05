@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 namespace ray {
 namespace gcs {
 

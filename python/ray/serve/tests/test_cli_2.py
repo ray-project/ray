@@ -83,7 +83,7 @@ def test_status_multi_app(ray_start_stop):
     print("All deployments are live.")
 
     status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:52365/"]
+        ["serve", "status", "-a", "http://localhost:8265/"]
     )
     statuses = yaml.safe_load(status_response)["applications"]
 
@@ -747,10 +747,9 @@ def test_run_config_request_timeout():
     )
     subprocess.check_output(
         ["ray", "start", "--head"],
-        env=dict(os.environ, RAY_SERVE_HTTP_REQUEST_MAX_RETRIES="1"),
     )
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )

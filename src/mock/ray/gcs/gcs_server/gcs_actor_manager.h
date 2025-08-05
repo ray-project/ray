@@ -12,6 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include "mock/ray/gcs/gcs_server/gcs_table_storage.h"
+#include "mock/ray/pubsub/publisher.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+
 namespace ray {
 namespace gcs {
 
@@ -85,11 +94,20 @@ class MockGcsActorManager : public GcsActorManager {
               (override));
 
   instrumented_io_context mock_io_context_do_not_use_;
+
+  std::shared_ptr<gcs::GcsTableStorage> mock_gcs_table_storage_ =
+      std::make_shared<gcs::InMemoryGcsTableStorage>();
+
+  std::shared_ptr<gcs::GcsPublisher> mock_gcs_publisher_ =
+      std::make_shared<gcs::GcsPublisher>(std::make_unique<pubsub::MockPublisher>());
+
+  ClusterResourceManager mock_cluster_resource_manager_{mock_io_context_do_not_use_};
+
   GcsVirtualClusterManager mock_virtual_cluster_manager_do_not_use_{
-      mock_io_context_do_not_use_, 
-      *static_cast<GcsTableStorage*>(nullptr), 
-      *static_cast<GcsPublisher*>(nullptr), 
-      *static_cast<const ClusterResourceManager*>(nullptr)};
+      mock_io_context_do_not_use_,
+      *mock_gcs_table_storage_,
+      *mock_gcs_publisher_,
+      mock_cluster_resource_manager_};
 };
 
 }  // namespace gcs

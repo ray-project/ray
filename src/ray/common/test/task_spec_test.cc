@@ -220,6 +220,41 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
   }
 }
 
+TEST(TaskSpecTest, TestCallerAddress) {
+  rpc::Address caller_address;
+  NodeID caller_node_id = NodeID::FromRandom();
+  WorkerID caller_worker_id = WorkerID::FromRandom();
+  caller_address.set_raylet_id(caller_node_id.Binary());
+  caller_address.set_worker_id(caller_worker_id.Binary());
+  TaskSpecBuilder task_spec_builder;
+  task_spec_builder.SetCommonTaskSpec(
+      TaskID::Nil(),
+      "dummy_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      caller_address,
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  task_spec_builder.SetNormalTaskSpec(
+      0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+  TaskSpecification task_spec = std::move(task_spec_builder).ConsumeAndBuild();
+  ASSERT_EQ(task_spec.CallerNodeId(), caller_node_id);
+  ASSERT_EQ(task_spec.CallerWorkerId(), caller_worker_id);
+}
+
 TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   rpc::SchedulingStrategy scheduling_strategy_1;
   auto expr_1 = scheduling_strategy_1.mutable_node_label_scheduling_strategy()

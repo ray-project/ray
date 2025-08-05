@@ -83,6 +83,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/daft.webp
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
+                :target: https://github.com/Eventual-Inc/Daft
+
+            Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
+
+        +++
+        .. button-link:: https://www.getdaft.io
+            :color: primary
+            :outline:
+            :expand:
+
+            Daft Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/dask.png
             :class: card-figure
 

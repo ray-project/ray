@@ -2,17 +2,15 @@ import asyncio
 from typing import AsyncGenerator, Optional
 
 from ray.exceptions import RayTaskError, TaskCancelledError
-
-from ray.llm._internal.serve.observability.logging import get_logger
-
-from ray.llm._internal.serve.observability.metrics.utils import (
-    InstrumentTokenAsyncGenerator,
-)
-from ray.llm._internal.serve.deployments.utils.metrics_utils import Metrics
 from ray.llm._internal.serve.configs.server_models import LLMRawResponse
+from ray.llm._internal.serve.deployments.utils.metrics_utils import Metrics
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_response_for_error,
     get_serve_request_id,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.utils import (
+    InstrumentTokenAsyncGenerator,
 )
 
 logger = get_logger(__name__)

@@ -1,10 +1,9 @@
-import pytest
-import ray
-from ray.actor import ActorHandle
 from unittest.mock import MagicMock
 
-from ray.train.v2.api.config import RunConfig
+import pytest
 
+import ray
+from ray.actor import ActorHandle
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
@@ -12,8 +11,8 @@ from ray.train.v2._internal.execution.controller.state import (
     FinishedState,
     InitializingState,
     ReschedulingState,
-    RestartingState,
     ResizingState,
+    RestartingState,
     RunningState,
     SchedulingState,
 )
@@ -37,6 +36,7 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2.api.config import RunConfig
 from ray.train.v2.api.exceptions import TrainingFailedError
 
 
@@ -303,6 +303,8 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     attempt = attempts["test_run"]["attempt_1"]
     assert attempt.status == RunAttemptStatus.FINISHED
     assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 2
+    assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
@@ -414,8 +416,16 @@ def test_callback_worker_group_lifecycle(
 def test_callback_worker_group_error(
     ray_start_regular, callback, mock_worker_group, mock_worker_group_context
 ):
+    state_actor = get_state_actor()
+
     callback.before_worker_group_start(mock_worker_group_context)
     callback.after_worker_group_start(mock_worker_group)
+
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.RUNNING
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].status == ActorStatus.ALIVE
 
     # Simulate error in worker group
     error_msg = "Test error"
@@ -426,12 +436,13 @@ def test_callback_worker_group_error(
 
     callback.before_worker_group_shutdown(mock_worker_group)
 
-    state_actor = get_state_actor()
     attempts = ray.get(state_actor.get_train_run_attempts.remote())
     attempt = list(attempts.values())[0]["attempt_1"]
     assert attempt.status == RunAttemptStatus.ERRORED
     assert attempt.status_detail == error_msg
     assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].status == ActorStatus.DEAD
 
 
 def test_callback_log_file_paths(

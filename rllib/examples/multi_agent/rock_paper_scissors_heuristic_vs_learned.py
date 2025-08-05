@@ -86,7 +86,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("pettingzoo_rps")
         .env_runners(
-            env_to_module_connector=lambda env: (
+            env_to_module_connector=lambda env, spaces, device: (
                 # `agent_ids=...`: Only flatten obs for the learning RLModule.
                 FlattenObservations(multi_agent=True, agent_ids={"player_0"}),
             ),

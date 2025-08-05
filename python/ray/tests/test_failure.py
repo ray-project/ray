@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -70,13 +71,12 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    gcs_publisher = ray._raylet.GcsPublisher(address=address_info["gcs_address"])
 
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,
         error_message,
-        gcs_publisher=gcs_publisher,
+        gcs_client=ray._raylet.GcsClient(address=address_info["gcs_address"]),
     )
     errors = get_error_message(
         error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR
@@ -735,10 +735,69 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     caplog.clear()
 
 
-if __name__ == "__main__":
-    import pytest
+def test_transient_error_retry(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.PushTask=100:25:25",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(
+            num_cpus=1,
+            resources={"head": 1},
+        )
+        ray.init(address=cluster.address)
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        @ray.remote(max_task_retries=-1, resources={"head": 1})
+        class RetryActor:
+            def echo(self, value):
+                return value
+
+        refs = []
+        actor = RetryActor.remote()
+        for i in range(200):
+            refs.append(actor.echo.remote(i))
+        assert ray.get(refs) == list(range(200))
+
+
+@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+def test_update_object_location_batch_failure(
+    monkeypatch, ray_start_cluster, deterministic_failure
+):
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
+            + ("100:0" if deterministic_failure == "request" else "0:100"),
+        )
+        cluster = ray_start_cluster
+        head_node_id = cluster.add_node(
+            num_cpus=0,
+        ).node_id
+        ray.init(address=cluster.address)
+        worker_node_id = cluster.add_node(num_cpus=1).node_id
+
+        @ray.remote(num_cpus=1)
+        def create_large_object():
+            return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
+
+        @ray.remote(num_cpus=0)
+        def consume_large_object(obj):
+            return sys.getsizeof(obj)
+
+        obj_ref = create_large_object.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=worker_node_id, soft=False
+            )
+        ).remote()
+        consume_ref = consume_large_object.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
+        ).remote(obj_ref)
+        assert ray.get(consume_ref) > 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

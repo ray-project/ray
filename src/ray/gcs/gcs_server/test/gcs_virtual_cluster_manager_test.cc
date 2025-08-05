@@ -209,10 +209,8 @@ class VirtualClusterTest : public ::testing::Test {
     auto status = primary_cluster->CreateOrUpdateVirtualCluster(
         request,
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
-          ASSERT_TRUE(status.ok());
-        });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_TRUE(status.ok()); });
     return status;
   }
 
@@ -439,10 +437,8 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
         job_cluster_id_0,
         {{template_id_0, 5}, {template_id_1, 10}},
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
-          ASSERT_TRUE(status.ok());
-        });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_TRUE(status.ok()); });
     ASSERT_TRUE(status.ok());
   }
 
@@ -489,10 +485,8 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
         {{template_id_0, node_count_per_template - 5},
          {template_id_1, node_count_per_template - 10}},
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
-          ASSERT_TRUE(status.ok());
-        });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_TRUE(status.ok()); });
     ASSERT_TRUE(status.ok());
   }
 
@@ -553,10 +547,8 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
         job_cluster_id_0,
         {{template_id_0, 5}, {template_id_1, 10}},
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
-          ASSERT_TRUE(status.ok());
-        });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_TRUE(status.ok()); });
     ASSERT_TRUE(status.ok());
   }
 
@@ -599,8 +591,8 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
     auto status = primary_cluster->RemoveJobCluster(
         job_cluster_id_0,
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) {
           ASSERT_TRUE(status.ok());
           ASSERT_TRUE(data->is_removed());
         });
@@ -629,8 +621,8 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
     auto status = primary_cluster->RemoveJobCluster(
         job_cluster_id_1,
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) { ASSERT_FALSE(true); });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_FALSE(true); });
     ASSERT_TRUE(status.IsNotFound());
   }
 }
@@ -692,8 +684,8 @@ TEST_F(PrimaryClusterTest, RemoveVirtualCluster) {
     auto status = primary_cluster->RemoveVirtualCluster(
         virtual_cluster_id_0,
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) {
           ASSERT_TRUE(status.ok());
           ASSERT_TRUE(data->is_removed());
         });
@@ -721,8 +713,8 @@ TEST_F(PrimaryClusterTest, RemoveVirtualCluster) {
     auto status = primary_cluster->RemoveVirtualCluster(
         virtual_cluster_id_0,
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) { ASSERT_FALSE(true); });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_FALSE(true); });
     ASSERT_TRUE(status.IsNotFound());
   }
 }
@@ -749,30 +741,30 @@ TEST_F(PrimaryClusterTest, GetVirtualClusters) {
                                    {{template_id_0, 5}, {template_id_1, 5}})
                   .ok());
 
-  ASSERT_TRUE(primary_cluster
-                  ->CreateJobCluster(job_cluster_id_0,
-                                     {{template_id_0, 10}, {template_id_1, 10}},
-                                     [](const Status &status,
-                                            auto data,
-                                            const auto *replica_sets_to_recommend) {
-                                       ASSERT_TRUE(status.ok());
-                                     })
-                  .ok());
+  ASSERT_TRUE(
+      primary_cluster
+          ->CreateJobCluster(
+              job_cluster_id_0,
+              {{template_id_0, 10}, {template_id_1, 10}},
+              [](const Status &status, auto data, const auto *replica_sets_to_recommend) {
+                ASSERT_TRUE(status.ok());
+              })
+          .ok());
 
   auto virtual_cluster_0 = std::dynamic_pointer_cast<DivisibleCluster>(
       primary_cluster->GetLogicalCluster(virtual_cluster_id_0));
   ASSERT_TRUE(virtual_cluster_0 != nullptr);
 
   std::string job_cluster_id_1 = virtual_cluster_0->BuildJobClusterID("job_1");
-  ASSERT_TRUE(virtual_cluster_0
-                  ->CreateJobCluster(job_cluster_id_1,
-                                     {{template_id_0, 2}, {template_id_1, 2}},
-                                     [](const Status &status,
-                                            auto data,
-                                            const auto *replica_sets_to_recommend) {
-                                       ASSERT_TRUE(status.ok());
-                                     })
-                  .ok());
+  ASSERT_TRUE(
+      virtual_cluster_0
+          ->CreateJobCluster(
+              job_cluster_id_1,
+              {{template_id_0, 2}, {template_id_1, 2}},
+              [](const Status &status, auto data, const auto *replica_sets_to_recommend) {
+                ASSERT_TRUE(status.ok());
+              })
+          .ok());
 
   {
     rpc::GetVirtualClustersRequest request;
@@ -887,10 +879,8 @@ TEST_F(PrimaryClusterTest, RemoveNodesFromVirtualCluster) {
     auto status = primary_cluster->RemoveNodesFromVirtualCluster(
         request,
         [](const Status &status,
-               std::shared_ptr<rpc::VirtualClusterTableData> data,
-               const ReplicaSets *replica_sets_to_recommend) {
-          ASSERT_TRUE(status.ok());
-        });
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) { ASSERT_TRUE(status.ok()); });
     ASSERT_TRUE(status.ok());
   }
 
@@ -942,8 +932,8 @@ TEST_F(PrimaryClusterTest, RemoveNodesFromVirtualCluster) {
     auto status = primary_cluster->RemoveNodesFromVirtualCluster(
         request,
         [](const Status &status,
-                                 std::shared_ptr<rpc::VirtualClusterTableData> data,
-                                 const ReplicaSets *replica_sets_to_recommend) {});
+           std::shared_ptr<rpc::VirtualClusterTableData> data,
+           const ReplicaSets *replica_sets_to_recommend) {});
     ASSERT_TRUE(status.IsUnsafeToRemove());
     // The failure message should tell which nodes are not eligible for removal.
     auto nodes_with_failure = std::any_cast<std::vector<std::string>>(status.data());
@@ -1095,7 +1085,7 @@ TEST_F(FailoverTest, FailoverWithDeadNodes) {
     nodes_.erase(dead_node_id);
   }
 
-  auto default_data_flusher = [this](auto data, auto callback) {
+  auto default_data_flusher = [](auto data, auto callback) {
     callback(Status::OK(), data, nullptr);
     return Status::OK();
   };
@@ -1200,7 +1190,7 @@ TEST_F(FailoverTest, OnlyFlushJobClusters) {
     nodes_.erase(dead_node_id);
   }
 
-  auto default_data_flusher = [this](auto data, auto callback) {
+  auto default_data_flusher = [](auto data, auto callback) {
     callback(Status::OK(), data, nullptr);
     return Status::OK();
   };

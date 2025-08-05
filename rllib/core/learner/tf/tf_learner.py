@@ -294,9 +294,6 @@ class TfLearner(Learner):
         #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         def helper(_batch):
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
@@ -308,7 +305,7 @@ class TfLearner(Learner):
 
             # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
             # results.
-            return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+            return fwd_out, loss_per_module, {}
 
         return self._strategy.run(helper, args=(batch,))
 

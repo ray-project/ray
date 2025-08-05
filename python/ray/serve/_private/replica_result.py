@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import threading
 import time
@@ -62,6 +63,7 @@ class ActorReplicaResult(ReplicaResult):
         self._is_streaming: bool = metadata.is_streaming
         self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
+        self._lazy_object_ref_or_gen_asyncio_lock = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -72,6 +74,14 @@ class ActorReplicaResult(ReplicaResult):
             assert (
                 self._obj_ref_gen is not None
             ), "An ObjectRefGenerator must be passed for streaming requests."
+
+    @property
+    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
+        """Lazy `asyncio.Lock` object."""
+        if self._lazy_object_ref_or_gen_asyncio_lock is None:
+            self._lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
+
+        return self._lazy_object_ref_or_gen_asyncio_lock
 
     def _process_response(f: Union[Callable, Coroutine]):
         @wraps(f)
@@ -174,7 +184,7 @@ class ActorReplicaResult(ReplicaResult):
         # object ref cached in order to avoid calling `__anext__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
-        with self._object_ref_or_gen_sync_lock:
+        async with self._object_ref_or_gen_asyncio_lock:
             if self._obj_ref is None:
                 self._obj_ref = await self._obj_ref_gen.__anext__()
 

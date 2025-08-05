@@ -13,6 +13,11 @@
 // limitations under the License.
 
 #pragma once
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
@@ -138,10 +143,11 @@ class ActorInfoAccessor {
                                     const StatusCallback &callback,
                                     int64_t timeout_ms = -1);
 
-  virtual Status AsyncRestartActor(const ActorID &actor_id,
-                                   uint64_t num_restarts,
-                                   const StatusCallback &callback,
-                                   int64_t timeout_ms = -1);
+  virtual Status AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      const StatusCallback &callback,
+      int64_t timeout_ms = -1);
 
   /// Register actor to GCS synchronously.
   ///
@@ -470,6 +476,10 @@ class NodeInfoAccessor {
 
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
+
+  virtual bool IsSubscribedToNodeChange() const {
+    return node_change_callback_ != nullptr;
+  }
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -1100,6 +1110,30 @@ class VirtualClusterInfoAccessor {
 
   // Local cache of the virtual cluster data. It can be used for revision control.
   absl::flat_hash_map<VirtualClusterID, rpc::VirtualClusterTableData> virtual_clusters_;
+};
+
+/// \class PublisherAccessor
+/// `PublisherAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to
+/// publishing information to GCS.
+class PublisherAccessor {
+ public:
+  PublisherAccessor() = default;
+  explicit PublisherAccessor(GcsClient *client_impl);
+  virtual ~PublisherAccessor() = default;
+
+  virtual Status PublishError(std::string key_id,
+                              rpc::ErrorTableData data,
+                              int64_t timeout_ms);
+
+  virtual Status PublishLogs(std::string key_id, rpc::LogBatch data, int64_t timeout_ms);
+
+  virtual Status AsyncPublishNodeResourceUsage(std::string key_id,
+                                               std::string node_resource_usage_json,
+                                               const StatusCallback &done);
+
+ private:
+  GcsClient *client_impl_;
 };
 
 }  // namespace gcs

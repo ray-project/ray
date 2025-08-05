@@ -16,6 +16,9 @@
 #include "ray/raylet/placement_group_resource_manager.h"
 
 #include <memory>
+#include <vector>
+#include <utility>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "ray/common/bundle_spec.h"

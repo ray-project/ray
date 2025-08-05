@@ -95,7 +95,7 @@ def test_wait_for_multiple_events(workflow_start_regular_shared):
 )
 def test_event_after_arg_resolution(workflow_start_regular_shared):
     """Ensure that a workflow resolves all of its non-event arguments while it
-    waiting the the event to occur.
+    is waiting for the event to occur.
     """
 
     class MyEventListener(workflow.EventListener):

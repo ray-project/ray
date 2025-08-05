@@ -219,7 +219,7 @@ if __name__ == "__main__":
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
             num_envs_per_env_runner=5 if args.algo == "PPO" else 1,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             learner_config_dict={

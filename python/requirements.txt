@@ -15,8 +15,6 @@ msgpack<2.0.0,>=1.0.0
 packaging
 protobuf!=3.19.5,>=3.15.3
 pyyaml
-aiosignal
-frozenlist
 requests
 watchfiles
 
@@ -40,6 +38,7 @@ scipy
 colorful
 rich
 opentelemetry-sdk
+opentelemetry-exporter-prometheus
 fastapi
 gymnasium==1.0.0
 virtualenv!=20.21.1,>=20.0.24
@@ -63,3 +62,4 @@ py-spy>=0.4.0; python_version >= '3.12'
 memray; sys_platform != "win32" # memray is not supported on Windows
 pyOpenSSL
 redis >= 3.5.0, <= 4.5.5
+flow-insight>=1.0.0

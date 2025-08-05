@@ -2,7 +2,6 @@ import collections
 import inspect
 
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.utils import ResponseType
@@ -88,6 +87,7 @@ class SubprocessRouteTable(BaseRouteTable):
             # Used in bound_routes().
             parent_side_handler.__route_method__ = method
             parent_side_handler.__route_path__ = path
+            parent_side_handler.__name__ = handler.__name__
 
             cls._routes.route(method, path)(parent_side_handler)
 

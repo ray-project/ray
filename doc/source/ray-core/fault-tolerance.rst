@@ -1,14 +1,15 @@
 .. _fault-tolerance:
 
-Fault Tolerance
+Fault tolerance
 ===============
 
-Ray is a distributed system, and that means failures can happen. Generally, failures can
-be classified into two classes: 1) application-level failures, and 2)
-system-level failures.  The former can happen because of bugs in user-level
-code, or if external systems fail. The latter can be triggered by node
-failures, network failures, or just bugs in Ray. Here, we describe the
-mechanisms that Ray provides to allow applications to recover from failures.
+Ray is a distributed system, and that means failures can happen. Generally, Ray classifies
+failures into two classes:
+1. application-level failures
+2. system-level failures
+Bugs in user-level code or external system failures trigger application-level failures.
+Node failures, network failures, or just bugs in Ray trigger system-level failures.
+The following section contains the mechanisms that Ray provides to allow applications to recover from failures.
 
 To handle application-level failures, Ray provides mechanisms to catch errors,
 retry failed code, and handle misbehaving code. See the pages for :ref:`task
@@ -18,7 +19,7 @@ tolerance for more information on these mechanisms.
 Ray also provides several mechanisms to automatically recover from internal system-level failures like :ref:`node failures <fault-tolerance-nodes>`.
 In particular, Ray can automatically recover from some failures in the :ref:`distributed object store <fault-tolerance-objects>`.
 
-How to Write Fault Tolerant Ray Applications
+How to write fault tolerant Ray applications
 --------------------------------------------
 
 There are several recommendations to make Ray applications fault tolerant:
@@ -43,10 +44,10 @@ One example of creating such outlived objects is returning ``ObjectRef`` created
     :start-after: __return_ray_put_start__
     :end-before: __return_ray_put_end__
 
-In the above example, object ``x`` outlives its owner task ``a``.
-If the worker process running task ``a`` fails, calling ``ray.get`` on ``x_ref`` afterwards will result in an ``OwnerDiedError`` exception.
+In the preceding example, object ``x`` outlives its owner task ``a``.
+If the worker process running task ``a`` fails, calling ``ray.get`` on ``x_ref`` afterwards results in an ``OwnerDiedError`` exception.
 
-A fault tolerant version is returning ``x`` directly so that it is owned by the driver and it's only accessed within the lifetime of the driver.
+The following example is a fault tolerant version which returns ``x`` directly. In this example, the driver owns ``x`` and you only access it within the lifetime of the driver.
 If ``x`` is lost, Ray can automatically recover it via :ref:`lineage reconstruction <fault-tolerance-objects-reconstruction>`.
 See :doc:`/ray-core/patterns/return-ray-put` for more details.
 
@@ -55,8 +56,8 @@ See :doc:`/ray-core/patterns/return-ray-put` for more details.
     :start-after: __return_directly_start__
     :end-before: __return_directly_end__
 
-Third, avoid using :ref:`custom resource requirements <custom-resources>` that can only be satisfied by a particular node.
-If that particular node fails, the running tasks or actors cannot be retried.
+Third, avoid using :ref:`custom resource requirements <custom-resources>` that only particular nodes can satisfy.
+If that particular node fails, Ray won't retry the running tasks or actors.
 
 .. literalinclude:: doc_code/fault_tolerance_tips.py
     :language: python
@@ -72,7 +73,7 @@ It allows you to specify the affinity as a soft constraint so even if the target
     :end-before: __node_affinity_scheduling_strategy_end__
 
 
-More about Ray Fault Tolerance
+More about Ray fault tolerance
 ------------------------------
 
 .. toctree::

@@ -14,6 +14,12 @@
 
 // clang-format off
 #include <memory>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <map>
+#include <string>
+#include <limits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -22,7 +28,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
@@ -76,9 +82,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [](const std::string &, std::function<void(bool)>) {});
     gcs_actor_manager_ =
         std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
-    gcs_resource_manager_ =
-          std::make_shared<MockGcsResourceManager>(*cluster_resource_manager_,
-                                                    *gcs_node_manager_);
+    gcs_resource_manager_ = std::make_shared<MockGcsResourceManager>(
+        *cluster_resource_manager_, *gcs_node_manager_);
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
@@ -89,7 +94,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_placement_group_manager_,
                                       *client_pool_,
                                       kv_manager_->GetInstance(),
-                                      io_service_));
+                                      io_service_,
+                                      /*gcs_publisher=*/nullptr));
   }
 
  public:

@@ -651,7 +651,7 @@ class ModelCatalog:
             )
         else:
             raise NotImplementedError(
-                "`framework` must be 'tf2|tf|torch', but is " "{}!".format(framework)
+                "`framework` must be 'tf2|tf|torch', but is {}!".format(framework)
             )
 
     @staticmethod

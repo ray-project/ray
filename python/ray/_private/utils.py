@@ -1,8 +1,4 @@
-import asyncio
 import binascii
-import random
-import string
-from collections import defaultdict
 import contextlib
 import errno
 import functools
@@ -13,8 +9,10 @@ import logging
 import multiprocessing
 import os
 import platform
+import random
 import re
 import signal
+import string
 import subprocess
 import sys
 import tempfile
@@ -22,6 +20,7 @@ import threading
 import time
 import warnings
 import base64
+from collections import defaultdict
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
@@ -29,17 +28,14 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    List,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
     Union,
-    Coroutine,
-    List,
-    Mapping,
 )
 
-# Import psutil after ray so the packaged version is used.
-import psutil
 from google.protobuf import json_format
 
 import ray
@@ -49,7 +45,9 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 from ray.core.generated.common_pb2 import Language
-from ray._private.services import get_ray_native_library_dir
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -201,9 +199,8 @@ def push_error_to_driver(
 def publish_error_to_driver(
     error_type: str,
     message: str,
-    gcs_publisher,
+    gcs_client,
     job_id=None,
-    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -216,7 +213,7 @@ def publish_error_to_driver(
         error_type: The type of the error.
         message: The message that will be printed in the background
             on the driver.
-        gcs_publisher: The GCS publisher to use.
+        gcs_client: The GCS client to use.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
@@ -224,9 +221,7 @@ def publish_error_to_driver(
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     try:
-        gcs_publisher.publish_error(
-            job_id.hex().encode(), error_type, message, job_id, num_retries
-        )
+        gcs_client.publish_error(job_id.hex().encode(), error_type, message, job_id, 60)
     except Exception:
         logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
@@ -301,8 +296,8 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     to the visible ids."""
 
     from ray._private.accelerators import (
-        get_all_accelerator_resource_names,
         get_accelerator_manager_for_resource,
+        get_all_accelerator_resource_names,
     )
 
     return {
@@ -354,7 +349,7 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
     """
@@ -1642,15 +1637,20 @@ def get_runtime_env_info(
     return json_format.MessageToJson(proto_runtime_env_info)
 
 
-def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
+def parse_runtime_env_for_task_or_actor(
+    runtime_env: Optional[Union[Dict, "RuntimeEnv"]]
+):
     from ray.runtime_env import RuntimeEnv
+    from ray.runtime_env.runtime_env import _validate_no_local_paths
 
     # Parse local pip/conda config files here. If we instead did it in
     # .remote(), it would get run in the Ray Client server, which runs on
     # a remote node where the files aren't available.
     if runtime_env:
         if isinstance(runtime_env, dict):
-            return RuntimeEnv(**(runtime_env or {}))
+            runtime_env = RuntimeEnv(**(runtime_env or {}))
+            _validate_no_local_paths(runtime_env)
+            return runtime_env
         raise TypeError(
             "runtime_env must be dict or RuntimeEnv, ",
             f"but got: {type(runtime_env)}",
@@ -1687,39 +1687,6 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
-
-
-def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
-    """Get a running async event loop if one exists, otherwise create one.
-
-    This function serves as a proxy for the deprecating get_event_loop().
-    It tries to get the running loop first, and if no running loop
-    could be retrieved:
-    - For python version <3.10: it falls back to the get_event_loop
-        call.
-    - For python version >= 3.10: it uses the same python implementation
-        of _get_event_loop() at asyncio/events.py.
-
-    Ideally, one should use high level APIs like asyncio.run() with python
-    version >= 3.7, if not possible, one should create and manage the event
-    loops explicitly.
-    """
-    vers_info = sys.version_info
-    if vers_info.major >= 3 and vers_info.minor >= 10:
-        # This follows the implementation of the deprecating `get_event_loop`
-        # in python3.10's asyncio. See python3.10/asyncio/events.py
-        # _get_event_loop()
-        try:
-            loop = asyncio.get_running_loop()
-            assert loop is not None
-            return loop
-        except RuntimeError as e:
-            # No running loop, relying on the error message as for now to
-            # differentiate runtime errors.
-            assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
-
-    return asyncio.get_event_loop()
 
 
 def get_entrypoint_name():
@@ -1806,38 +1773,6 @@ class DeferSigint(contextlib.AbstractContextManager):
             return False
 
 
-background_tasks = set()
-
-
-def run_background_task(coroutine: Coroutine) -> asyncio.Task:
-    """Schedule a task reliably to the event loop.
-
-    This API is used when you don't want to cache the reference of `asyncio.Task`.
-    For example,
-
-    ```
-    get_event_loop().create_task(coroutine(*args))
-    ```
-
-    The above code doesn't guarantee to schedule the coroutine to the event loops
-
-    When using create_task in a  "fire and forget" way, we should keep the references
-    alive for the reliable execution. This API is used to fire and forget
-    asynchronous execution.
-
-    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
-    """
-    task = get_or_create_event_loop().create_task(coroutine)
-    # Add task to the set. This creates a strong reference.
-    background_tasks.add(task)
-
-    # To prevent keeping references to finished tasks forever,
-    # make each task remove its own reference from the set after
-    # completion:
-    task.add_done_callback(background_tasks.discard)
-    return task
-
-
 def try_import_each_module(module_names_to_import: List[str]) -> None:
     """
     Make a best-effort attempt to import each named Python module.
@@ -1876,43 +1811,6 @@ def update_envs(env_vars: Dict[str, str]):
         updated_envs[key] = os.environ[key]
 
     return updated_envs
-
-
-def parse_node_labels_json(
-    labels_json: str, cli_logger, cf, command_arg="--labels"
-) -> Dict[str, str]:
-    try:
-        labels = json.loads(labels_json)
-        if not isinstance(labels, dict):
-            raise ValueError(
-                "The format after deserialization is not a key-value pair map"
-            )
-        for key, value in labels.items():
-            if not isinstance(key, str):
-                raise ValueError("The key is not string type.")
-            if not isinstance(value, str):
-                raise ValueError(f'The value of the "{key}" is not string type')
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid JSON string, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"{command_arg}={labels_json}"),
-            str(e),
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
-        )
-    return labels
-
-
-def validate_node_labels(labels: Dict[str, str]):
-    if labels is None:
-        return
-    for key in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
-            raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
-                f"This is reserved for Ray defined labels."
-            )
 
 
 def parse_pg_formatted_resources_to_original(
@@ -2066,6 +1964,20 @@ def try_update_ld_library_path(
 ):
     all_library_paths = ""
     if language == Language.CPP:
+
+        def get_ray_native_library_dir():
+            """Return a directory where all ray-related native libraries and
+            their dependencies are located."""
+            current_dir = RAY_PATH
+            native_library_dir = os.path.abspath(os.path.join(current_dir, "cpp/lib"))
+            if not os.path.exists(native_library_dir):
+                raise RuntimeError(
+                    "Ray native libraries is not packaged into ray. "
+                    "Please install ray with option [cpp] "
+                    '(pip install "ray[cpp]")'
+                )
+            return native_library_dir
+
         all_library_paths += get_ray_native_library_dir()
     if native_libraries.get("lib_path", []):
         all_library_paths += ":"
@@ -2410,3 +2322,35 @@ def parse_allocated_resource(serialized_allocated_instances):
             "--memory=" + str(int(allocated_resource["memory"] / 100000000)) + "m"
         )
     return container_resource_args
+
+
+def validate_socket_filepath(filepath: str):
+    """
+    Validate the provided filename is a valid Unix socket filename.
+    """
+    # Don't check for Windows as it doesn't support Unix sockets.
+    if sys.platform == "win32":
+        return
+    is_mac = sys.platform.startswith("darwin")
+    maxlen = (104 if is_mac else 108) - 1
+    if len(filepath.encode("utf-8")) > maxlen:
+        raise OSError(
+            f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
+        )
+
+
+# Whether we're currently running in a test, either local or CI.
+in_test = None
+
+
+def is_in_test():
+    global in_test
+
+    if in_test is None:
+        in_test = any(
+            env_var in os.environ
+            # These environment variables are always set by pytest and Buildkite,
+            # respectively.
+            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
+        )
+    return in_test

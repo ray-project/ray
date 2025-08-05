@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "jni_utils.h"
+#include <string>
+
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 
 jclass java_boolean_class;
 jmethodID java_boolean_init;

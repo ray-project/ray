@@ -3,8 +3,8 @@
 [Aa]lgos?
 (APPO|appo)
 [Aa]utoscal(e|ing)
+[Bb]oolean
 [Aa]utoregressive
-boolean
 [Cc]allables?
 [Cc]heckpoints?(ing)?
 [Cc]heckpointable

@@ -22,6 +22,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"

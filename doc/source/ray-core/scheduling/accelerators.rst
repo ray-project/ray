@@ -15,7 +15,7 @@ The accelerators natively supported by Ray Core are:
    * - Accelerator
      - Ray Resource Name
      - Support Level
-   * - Nvidia GPU
+   * - NVIDIA GPU
      - GPU
      - Fully tested, supported by the Ray team
    * - AMD GPU
@@ -45,13 +45,13 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. tip::
 
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
-            to limit the Nvidia GPUs that are visible to Ray.
+            to limit the NVIDIA GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
 
@@ -135,8 +135,8 @@ and assign accelerators to the task or actor by setting the corresponding enviro
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. testcode::
 
@@ -446,8 +446,8 @@ so multiple tasks and actors can share the same accelerator.
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. testcode::
             :hide:
