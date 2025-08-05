@@ -5,7 +5,7 @@ from ray.rllib.utils.checkpoints import try_import_msgpack
 from ray.util.annotations import DeveloperAPI
 
 
-msgpack = try_import_msgpack()
+msgpack = None
 
 
 @DeveloperAPI
@@ -55,6 +55,10 @@ class RLlink(Enum):
 @DeveloperAPI
 def send_rllink_message(sock_, message: dict):
     """Sends a message to the client with a length header."""
+    global msgpack
+    if msgpack is None:
+        msgpack = try_import_msgpack(error=True)
+
     body = msgpack.packb(message, use_bin_type=True)  # .encode("utf-8")
     header = str(len(body)).zfill(8).encode("utf-8")
     try:
@@ -69,6 +73,10 @@ def send_rllink_message(sock_, message: dict):
 @DeveloperAPI
 def get_rllink_message(sock_):
     """Receives a message from the client following the length-header protocol."""
+    global msgpack
+    if msgpack is None:
+        msgpack = try_import_msgpack(error=True)
+
     try:
         # Read the length header (8 bytes)
         header = _get_num_bytes(sock_, 8)
