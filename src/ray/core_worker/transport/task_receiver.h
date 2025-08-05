@@ -111,7 +111,9 @@ class TaskReceiver {
  private:
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
-  void SetupActor(bool is_asyncio, int fiber_max_concurrency, bool allow_out_of_order_execution);
+  void SetupActor(bool is_asyncio,
+                  int fiber_max_concurrency,
+                  bool allow_out_of_order_execution);
 
   /// The callback function to process a task.
   TaskHandler task_handler_;
