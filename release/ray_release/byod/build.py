@@ -29,6 +29,32 @@ REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
+def build_custom_byod_image(image_name: str, base_image: str, post_build_script: str) -> None:
+    if _image_exist(image_name):
+        logger.info(f"Image {image_name} already exists")
+        return
+
+    env = os.environ.copy()
+    env["DOCKER_BUILDKIT"] = "1"
+    subprocess.check_call(
+        [
+            "docker",
+            "build",
+            "--progress=plain",
+            "--build-arg",
+            f"BASE_IMAGE={base_image}",
+            "--build-arg",
+            f"POST_BUILD_SCRIPT={post_build_script}",
+            "-t",
+            image_name,
+            "-f",
+            os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
+            RELEASE_BYOD_DIR,
+        ],
+        stdout=sys.stderr,
+        env=env,
+    )
+    _validate_and_push(image_name)
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
     if not test.require_custom_byod_image():
