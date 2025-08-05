@@ -284,8 +284,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
-  // First, attempt to fetch all of the required objects once without reconstructing.
-  // XXX: refactor to remove this.
+  // Send initial requests to pull all objects in parallel.
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += batch_size) {
