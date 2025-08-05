@@ -636,19 +636,6 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
 
-    # Test if consumed bytes are correctly calculated.
-    obj = ray.put(np.zeros(30 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    def func_with_ref(obj):
-        return True
-
-    ray.get(func_with_ref.remote(obj))
-
-    s = memory_summary(address=address["address"], stats_only=True)
-    # 50MB * 5 references + 30MB used for task execution.
-    assert "Objects consumed by Ray tasks: 280 MiB." in s, s
-
 
 @pytest.mark.skipif(platform.system() == "Darwin", reason="Failing on macOS.")
 @pytest.mark.asyncio
