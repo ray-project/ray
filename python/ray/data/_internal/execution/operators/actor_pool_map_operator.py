@@ -165,7 +165,7 @@ class ActorPoolMapOperator(MapOperator):
         # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
         # tell which operator they belong to. To fix that, we dynamically create a new
         # class per operator with a unique name.
-        self._map_worker_cls = type(self.name, (_MapWorker,), {})
+        self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
         # Cached actor class.
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
@@ -255,7 +255,7 @@ class ActorPoolMapOperator(MapOperator):
             map_transformer=self._map_transformer,
             actor_location_tracker=get_or_create_actor_location_tracker(),
         )
-        res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
+        res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
@@ -302,7 +302,6 @@ class ActorPoolMapOperator(MapOperator):
             )
             gen = actor.submit.options(
                 num_returns="streaming",
-                name=f"{self.name}.submit",
                 **self._ray_actor_task_remote_args,
             ).remote(
                 self.data_context,
