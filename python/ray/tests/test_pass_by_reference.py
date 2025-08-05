@@ -41,7 +41,7 @@ def test_pass_to_actor(ray_start_regular_shared):
     class A:
         def __init__(self, arg: ray.ObjectRef):
             assert arg == constructor_obj_ref
-            self._constructor_obj_ref = constructor_obj_ref
+            self._constructor_obj_ref = arg
 
         def get_constructor_ref(self) -> str:
             return ray.get(self._constructor_obj_ref)
