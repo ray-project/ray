@@ -406,7 +406,7 @@ def test_default_shuffle_aggregator_args():
         (32, 1),
     ],
 )
-def test_simple_anti_join(
+def test_simple_left_anti_join(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
     num_rows_left,
@@ -432,8 +432,8 @@ def test_simple_anti_join(
     doubles_pd = doubles.to_pandas()
     squares_pd = squares.to_pandas()
 
-    # Perform anti-join using pandas for expected result
-    # Anti-join returns rows from left table that don't have matches in right table
+    # Perform left anti-join using pandas for expected result
+    # Left anti-join returns rows from left table that don't have matches in right table
     merged = doubles_pd.merge(squares_pd, on="id", how="left", indicator=True)
     expected_pd = merged[merged["_merge"] == "left_only"][["id", "double"]]
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
@@ -441,7 +441,7 @@ def test_simple_anti_join(
     # Join using Ray Data
     joined: Dataset = doubles.join(
         squares,
-        join_type="anti",
+        join_type="left_anti",
         num_partitions=16,
         on=("id",),
     )
@@ -454,11 +454,11 @@ def test_simple_anti_join(
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
-def test_anti_join_no_matches(
+def test_left_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
 ):
-    """Test anti-join when there are no matches - should return all left rows"""
+    """Test left anti-join when there are no matches - should return all left rows"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
     doubles = ray.data.range(10).map(
@@ -470,10 +470,10 @@ def test_anti_join_no_matches(
         lambda row: {"id": row["id"] + 100, "square": int(row["id"]) ** 2}
     )
 
-    # Anti-join should return all rows from doubles
+    # Left anti-join should return all rows from doubles
     joined: Dataset = doubles.join(
         squares,
-        join_type="anti",
+        join_type="left_anti",
         num_partitions=4,
         on=("id",),
     )
@@ -488,11 +488,11 @@ def test_anti_join_no_matches(
     pd.testing.assert_frame_equal(doubles_pd_sorted, joined_pd_sorted)
 
 
-def test_anti_join_all_matches(
+def test_left_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
 ):
-    """Test anti-join when all rows match - should return empty result"""
+    """Test left anti-join when all rows match - should return empty result"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
     doubles = ray.data.range(10).map(
@@ -503,10 +503,10 @@ def test_anti_join_all_matches(
         lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
     )
 
-    # Anti-join should return no rows since all keys match
+    # Left anti-join should return no rows since all keys match
     joined: Dataset = doubles.join(
         squares,
-        join_type="anti",
+        join_type="left_anti",
         num_partitions=4,
         on=("id",),
     )
@@ -518,11 +518,11 @@ def test_anti_join_all_matches(
     assert list(joined_pd.columns) == ["id", "double"]
 
 
-def test_anti_join_multi_key(
+def test_left_anti_join_multi_key(
     ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
 ):
-    """Test anti-join with multiple join keys"""
+    """Test left anti-join with multiple join keys"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
     # Create left dataset
@@ -537,10 +537,10 @@ def test_anti_join_multi_key(
         right_data.append({"key1": i // 3, "key2": i % 3, "value_right": i * 100})
     right_ds = ray.data.from_items(right_data)
 
-    # Anti-join should return rows from left that don't have matching key1,key2 in right
+    # Left anti-join should return rows from left that don't have matching key1,key2 in right
     joined: Dataset = left_ds.join(
         right_ds,
-        join_type="anti",
+        join_type="left_anti",
         num_partitions=4,
         on=("key1", "key2"),
     )
