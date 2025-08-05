@@ -357,7 +357,7 @@ class TestCli(unittest.TestCase):
             # assert that the compile depsets are first
             assert "ray_base_test_depset" in sorted_nodes[:3]
             assert "general_depset" in sorted_nodes[:3]
-            assert "build_args_test_depset" in sorted_nodes[:3]
+            assert "build_args_test_depset_py311" in sorted_nodes[:3]
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -476,7 +476,7 @@ depsets:
             assert (
                 "requirements_compiled_general_py311_cpu.txt"
                 == manager.get_depset(
-                    "build_args_test_depset", manager.config.build_arg_sets[0]
+                    "build_args_test_depset_py311", manager.config.build_arg_sets[0]
                 ).output
             )
 

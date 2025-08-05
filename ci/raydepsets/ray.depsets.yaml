@@ -8,7 +8,7 @@ build_arg_sets:
       CUDA_VERSION: cu128
       PYTHON_VERSION: py311
 depsets:
-  - name: ray_base_test_depset
+  - name: ray_base_test_depset_${PYTHON_VERSION}
     requirements:
       - python/requirements.txt
       - python/requirements/cloud-requirements.txt
@@ -17,6 +17,9 @@ depsets:
       - python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt
     output: python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt
     operation: compile
+    build_arg_sets:
+      - py311_cpu
+      - py311_gpu
   - name: general_depset
     operation: compile
     requirements:
