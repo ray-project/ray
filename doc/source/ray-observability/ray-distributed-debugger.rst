@@ -77,7 +77,7 @@ Start a Ray cluster
     After checking that `ssh -p 2222 ray@localhost` works, set up VS Code as described in the
     `VS Code SSH documentation <https://code.visualstudio.com/docs/remote/ssh>`_.
 
-  .. tab-item:: KubeRay (Code Server)
+  .. tab-item:: KubeRay (Code Server, Community Maintained)
 
     Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
     
@@ -104,6 +104,7 @@ Start a Ray cluster
               - mountPath: /tmp/ray
                 name: shared-ray-volume
             env:
+              # Specifies the default directory that opens when VSCode Web starts, pointing to the workspace containing the Ray runtime resources.
               - name: DEFAULT_WORKSPACE
                 value: "/tmp/ray/session_latest/runtime_resources"
         # Add this volume at the same level as `containers`:
