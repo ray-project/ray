@@ -2465,7 +2465,7 @@ class Dataset:
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
-                "left_outer", "right_outer", "full_outer")
+                "left_outer", "right_outer", "full_outer", "anti")
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
