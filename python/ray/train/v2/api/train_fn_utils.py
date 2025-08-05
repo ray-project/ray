@@ -195,4 +195,9 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_context().get_dataset_shard(dataset_name)
+    from ray.train.v2._internal.callbacks.datasets import DatasetShardMetadata
+
+    dataset_info = DatasetShardMetadata(
+        dataset_name=dataset_name, world_rank=get_train_context().get_world_rank()
+    )
+    return get_train_context().get_dataset_shard(dataset_info)

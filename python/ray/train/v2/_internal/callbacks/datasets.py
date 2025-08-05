@@ -24,8 +24,6 @@ class DatasetShardMetadata:
 
     dataset_name: str
     world_rank: int
-    world_size: int
-    worker_node_ids: List[NodeIdStr]
 
 
 class DatasetManager:
@@ -39,9 +37,13 @@ class DatasetManager:
         datasets: Dict[str, GenDataset],
         data_config: ray.train.DataConfig,
         data_context: DataContext,
+        world_size: int,
+        worker_node_ids: List[NodeIdStr],
     ):
         self._datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
         self._data_config = data_config
+        self._world_size = world_size
+        self._worker_node_ids = worker_node_ids
 
         # Maps dataset name to a list of `DataIterator`s corresponding to Train worker ranks.
         self._dataset_iterators: Dict[str, List[DataIterator]] = {}
@@ -77,8 +79,6 @@ class DatasetManager:
 
         dataset_name = dataset_info.dataset_name
         world_rank = dataset_info.world_rank
-        world_size = dataset_info.world_size
-        worker_node_ids = dataset_info.worker_node_ids
 
         async with self._condition:
             if dataset_name in self._dataset_iterators:
@@ -93,15 +93,15 @@ class DatasetManager:
 
                 iterators_per_rank = self._data_config.configure(
                     datasets={dataset_name: base_dataset},
-                    world_size=world_size,
+                    world_size=self._world_size,
                     worker_handles=None,
-                    worker_node_ids=worker_node_ids,
+                    worker_node_ids=self._worker_node_ids,
                 )
-                assert len(iterators_per_rank) == world_size
+                assert len(iterators_per_rank) == self._world_size
                 # Convert the List[Dict[str, DataIterator]] to a List[DataIterator],
                 # since we only configured one dataset.
                 shards = [
-                    iterators_per_rank[i][dataset_name] for i in range(world_size)
+                    iterators_per_rank[i][dataset_name] for i in range(self._world_size)
                 ]
                 shard = shards[world_rank]
 
@@ -111,7 +111,6 @@ class DatasetManager:
             else:
                 # Wait for the dataset iterators to be created by the rank 0 worker.
                 await self._condition.wait()
-                assert dataset_name in self._dataset_iterators
                 shard = self._dataset_iterators[dataset_name][world_rank]
 
         return shard
@@ -151,6 +150,9 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         if not self._datasets:
             return {"dataset_manager": [None] * len(workers)}
 
+        world_size = len(workers)
+        worker_node_ids = [worker.metadata.node_id for worker in workers]
+
         dataset_manager = (
             ray.remote(DatasetManager)
             .options(
@@ -163,6 +165,8 @@ class DatasetsSetupCallback(WorkerGroupCallback):
                 datasets=self._datasets,
                 data_config=self._data_config,
                 data_context=self._data_context,
+                world_size=world_size,
+                worker_node_ids=worker_node_ids,
             )
         )
         return {"dataset_manager": [dataset_manager] * len(workers)}
