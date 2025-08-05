@@ -146,6 +146,10 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         these resources logically from its available pool."""
         return scaling_config.total_resources
 
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
     def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
         if not self._datasets:
             return {"dataset_manager": [None] * len(workers)}
