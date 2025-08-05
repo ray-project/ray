@@ -73,7 +73,7 @@ def is_port_open(host: str, port: int, timeout: int = 5) -> bool:
             s.settimeout(timeout)
             result = s.connect_ex((host, port))
             return result == 0
-    except Exception:
+    except (socket.error, OSError):
         return False
 
 
@@ -92,26 +92,151 @@ def check_head_node_ready(head_ip, head_port, timeout=CLUSTER_WAIT_TIMEOUT):
     return False
 
 
+def update_ray_start_cmd(
+    ray_start_cmd: List[str],
+    num_cpus: int,
+    num_gpus: int,
+    disable_usage_stats: bool,
+    resources: str,
+    min_worker_port: int,
+    max_worker_port: int,
+    node_manager_port: int,
+    object_manager_port: int,
+    runtime_env_agent_port: int,
+    dashboard_agent_grpc_port: int,
+    dashboard_agent_listen_port: int,
+    metrics_export_port: int,
+):
+    # Add optional parameters if provided
+    if num_cpus is not None:
+        ray_start_cmd.extend(["--num-cpus", str(num_cpus)])
+    if num_gpus is not None:
+        ray_start_cmd.extend(["--num-gpus", str(num_gpus)])
+    if disable_usage_stats:
+        ray_start_cmd.append("--disable-usage-stats")
+    if resources != "{}":
+        ray_start_cmd.extend(["--resources", resources])
+    if min_worker_port:
+        ray_start_cmd.extend(["--min-worker-port", str(min_worker_port)])
+    if max_worker_port:
+        ray_start_cmd.extend(["--max-worker-port", str(max_worker_port)])
+    if node_manager_port:
+        ray_start_cmd.extend(["--node-manager-port", str(node_manager_port)])
+    if object_manager_port:
+        ray_start_cmd.extend(["--object-manager-port", str(object_manager_port)])
+    if runtime_env_agent_port:
+        ray_start_cmd.extend(["--runtime-env-agent-port", str(runtime_env_agent_port)])
+    if dashboard_agent_grpc_port:
+        ray_start_cmd.extend(
+            ["--dashboard-agent-grpc-port", str(dashboard_agent_grpc_port)]
+        )
+    if dashboard_agent_listen_port:
+        ray_start_cmd.extend(
+            ["--dashboard-agent-listen-port", str(dashboard_agent_listen_port)]
+        )
+    if metrics_export_port:
+        ray_start_cmd.extend(["--metrics-export-port", str(metrics_export_port)])
+    return ray_start_cmd
+
+
 @click.command()
 @click.option(
     "--address", required=True, type=str, help="The address of the Ray cluster."
+)
+@click.option(
+    "--num-cpus",
+    type=int,
+    help="The number of CPUs to use for the Ray cluster. If not provided, "
+    "the number of CPUs will be automatically detected.",
+)
+@click.option(
+    "--num-gpus",
+    type=int,
+    help="The number of GPUs to use for the Ray cluster. If not provided, "
+    "the number of GPUs will be automatically detected.",
 )
 @click.option(
     "--wait-for-nnodes",
     type=int,
     help="If provided, wait for this number of nodes to start.",
 )
-@click.argument("execute-on-head", nargs=-1, type=str)
-def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]):
-    """Start a Ray cluster and run a script only on the head node.
-
-    This command should be executed symmetrically on all nodes in the cluster.
-
-    Arguments:
-        address: The address of the Ray cluster.
-        wait_for_nnodes: The number of nodes in the cluster.
-        execute_on_head: The command to run on the head node.
-    """
+@click.option(
+    "--disable-usage-stats",
+    is_flag=True,
+    default=False,
+    help="If True, the usage stats collection will be disabled.",
+)
+@click.option(
+    "--resources",
+    required=False,
+    default="{}",
+    type=str,
+    help="A JSON serialized dictionary mapping resource name to resource quantity.",
+)
+@click.option(
+    "--min-worker-port",
+    type=int,
+    help="the lowest port number that workers will bind on. If not set, "
+    "random ports will be chosen.",
+)
+@click.option(
+    "--max-worker-port",
+    type=int,
+    help="the highest port number that workers will bind on. If set, "
+    "'--min-worker-port' must also be set.",
+)
+@click.option(
+    "--node-manager-port",
+    type=int,
+    default=0,
+    help="the port to use for starting the node manager",
+)
+@click.option(
+    "--object-manager-port",
+    type=int,
+    help="the port to use for starting the object manager",
+)
+@click.option(
+    "--runtime-env-agent-port",
+    type=int,
+    help="The port for the runtime environment agents to listen for http on.",
+)
+@click.option(
+    "--dashboard-agent-grpc-port",
+    type=int,
+    help="the port for dashboard agents to listen for grpc on.",
+)
+@click.option(
+    "--dashboard-agent-listen-port",
+    type=int,
+    help="the port for dashboard agents to listen for http on.",
+)
+@click.option(
+    "--metrics-export-port",
+    type=int,
+    default=None,
+    help="the port to use to expose Ray metrics through a Prometheus endpoint.",
+)
+@click.argument(
+    "execute-on-head", nargs=-1, type=str, help="The command to run on the head node."
+)
+def symmetric_run(
+    address: str,
+    wait_for_nnodes: int,
+    execute_on_head: List[str],
+    num_cpus: int,
+    num_gpus: int,
+    disable_usage_stats: bool,
+    resources: str,
+    min_worker_port: int,
+    max_worker_port: int,
+    node_manager_port: int,
+    object_manager_port: int,
+    runtime_env_agent_port: int,
+    dashboard_agent_grpc_port: int,
+    dashboard_agent_listen_port: int,
+    metrics_export_port: int,
+):
     min_nodes = 1 if wait_for_nnodes is None else wait_for_nnodes
 
     if check_ray_already_started():
@@ -162,18 +287,33 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
         if is_head:
             # On the head node, start Ray, run the command, then stop Ray.
             click.echo("On head node. Starting Ray cluster head...", err=True)
-            # Start Ray head. This runs in the background and hides output.
-            subprocess.run(
-                [
-                    "ray",
-                    "start",
-                    "--head",
-                    f"--node-ip-address={resolved_head_ip}",
-                    f"--port={head_port}",
-                ],
-                check=True,
-                capture_output=True,
+
+            # Build the ray start command with all parameters
+            ray_start_cmd = [
+                "ray",
+                "start",
+                "--head",
+                f"--node-ip-address={resolved_head_ip}",
+                f"--port={head_port}",
+            ]
+
+            ray_start_cmd = update_ray_start_cmd(
+                ray_start_cmd,
+                num_cpus,
+                num_gpus,
+                disable_usage_stats,
+                resources,
+                min_worker_port,
+                max_worker_port,
+                node_manager_port,
+                object_manager_port,
+                runtime_env_agent_port,
+                dashboard_agent_grpc_port,
+                dashboard_agent_listen_port,
+                metrics_export_port,
             )
+            # Start Ray head. This runs in the background and hides output.
+            subprocess.run(ray_start_cmd, check=True, capture_output=True)
             click.echo("Head node started.", err=True)
             click.echo("=======================", err=True)
             if min_nodes > 1 and not check_cluster_ready(min_nodes):
@@ -199,10 +339,27 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
             if not check_head_node_ready(head_ip, head_port):
                 raise click.ClickException("Timed out waiting for head node to start.")
 
-            # This command will block until the Ray cluster is stopped.
-            subprocess.run(
-                ["ray", "start", "--address", address, "--block"], check=True
+            # Build the ray start command for worker nodes with all parameters
+            ray_start_cmd = ["ray", "start", "--address", address, "--block"]
+
+            ray_start_cmd = update_ray_start_cmd(
+                ray_start_cmd,
+                num_cpus,
+                num_gpus,
+                disable_usage_stats,
+                resources,
+                min_worker_port,
+                max_worker_port,
+                node_manager_port,
+                object_manager_port,
+                runtime_env_agent_port,
+                dashboard_agent_grpc_port,
+                dashboard_agent_listen_port,
+                metrics_export_port,
             )
+
+            # This command will block until the Ray cluster is stopped.
+            subprocess.run(ray_start_cmd, check=True)
 
     except subprocess.CalledProcessError as e:
         click.echo(f"Failed to start Ray: {e}", err=True)
