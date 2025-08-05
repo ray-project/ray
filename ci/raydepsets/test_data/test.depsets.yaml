@@ -17,7 +17,7 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
-  - name: build_args_test_depset
+  - name: build_args_test_depset_${PYTHON_VERSION}
     operation: compile
     requirements:
       - requirements_test.txt

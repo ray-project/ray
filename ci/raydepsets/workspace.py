@@ -82,10 +82,20 @@ class Config:
             append_flags=depset.get("append_flags", []),
         )
 
-    def substitute_build_args(depset: dict, build_arg_set: BuildArgSet) -> dict:
-        depset_str = yaml.dump(depset)
-        substituted_depset = Template(depset_str).substitute(build_arg_set.build_args)
-        return yaml.safe_load(substituted_depset)
+    def substitute_build_args(depset, build_arg_set: BuildArgSet):
+        if isinstance(depset, str):
+            return Template(depset).substitute(build_arg_set.build_args)
+        elif isinstance(depset, dict):
+            return {
+                key: Config.substitute_build_args(value, build_arg_set)
+                for key, value in depset.items()
+            }
+        elif isinstance(depset, list):
+            return [
+                Config.substitute_build_args(item, build_arg_set) for item in depset
+            ]
+        else:
+            return depset
 
 
 class Workspace:

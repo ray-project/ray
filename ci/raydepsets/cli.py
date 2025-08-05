@@ -34,7 +34,20 @@ def cli():
 @click.option("--name", default=None)
 @click.option("--build-arg-set", default=None)
 def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
-    """Load a dependency sets from a config file."""
+    """
+    Load a dependency sets from a config file.
+
+    Args:
+        config_path: The path to the config file.
+        workspace_dir: The path to the workspace directory.
+        name: The name of the dependency set to load.
+        build_arg_set: The name of the build arg set to use.
+
+    User can specify a name and build arg set to load a single dependency set.
+    If no name is specified, all dependency sets will be loaded.
+    If no build arg set is specified, the defined dependency set will be loaded without build args.
+    If no workspace directory is specified, the current workspace directory will be used.
+    """
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
     build_arg_set_obj = None
     if name:
@@ -43,6 +56,7 @@ def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
                 if arg_set.name == build_arg_set:
                     build_arg_set_obj = arg_set
                     break
+
         manager.execute_single(manager.get_depset(name, build_arg_set_obj))
     else:
         manager.execute()
