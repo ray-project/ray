@@ -832,7 +832,7 @@ py_test(
 
 py_test(
     name = "test_dynamic_block_split",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_dynamic_block_split.py"],
     tags = [
         "data_non_parallel",
