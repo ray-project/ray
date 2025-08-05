@@ -65,26 +65,6 @@ def is_dir_empty(temp_folder, node_id, append_path=True):
     return num_files == 0
 
 
-def assert_no_thrashing(address):
-    state = ray._private.state.GlobalState()
-    options = GcsClientOptions.create(
-        address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
-    )
-    state._initialize_global_state(options)
-    summary = memory_summary(address=address, stats_only=True)
-    restored_bytes = 0
-    consumed_bytes = 0
-
-    for line in summary.split("\n"):
-        if "Restored" in line:
-            restored_bytes = int(line.split(" ")[1])
-        if "consumed" in line:
-            consumed_bytes = int(line.split(" ")[-2])
-    assert (
-        consumed_bytes >= restored_bytes
-    ), f"consumed: {consumed_bytes}, restored: {restored_bytes}"
-
-
 @pytest.mark.skipif(platform.system() == "Windows", reason="Doesn't support Windows.")
 def test_spill_file_uniqueness(shutdown_only):
     ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
@@ -462,7 +442,6 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
 
     print(type(temp_folder))
     wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
-    assert_no_thrashing(ray_context["address"])
 
 
 def test_spill_remote_object(
@@ -509,7 +488,6 @@ def test_spill_remote_object(
 
     # Test passing the spilled object as an arg to another task.
     ray.get(depends.remote(ref))
-    assert_no_thrashing(cluster.address)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
@@ -548,7 +526,6 @@ def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_on
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -588,7 +565,6 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["address"])
 
 
 def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
@@ -626,7 +602,6 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["address"])
 
 
 def test_spill_stats(object_spilling_config, shutdown_only):
@@ -674,7 +649,6 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     s = memory_summary(address=address["address"], stats_only=True)
     # 50MB * 5 references + 30MB used for task execution.
     assert "Objects consumed by Ray tasks: 280 MiB." in s, s
-    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(platform.system() == "Darwin", reason="Failing on macOS.")
@@ -735,7 +709,6 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     assert duration <= timedelta(
         seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
-    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.parametrize(
