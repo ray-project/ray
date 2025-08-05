@@ -152,7 +152,7 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
         step = {
             "label": f":tapioca: build custom: {image}",
             "key": f"build_" + image.replace("/", "_").replace(":", "_").replace(".", "_"),
-            "instance_type": "large",
+            "instance_type": "release-medium",
             "commands": [
                 f"docker build --progress=plain --build-arg BASE_IMAGE={base_image} --build-arg POST_BUILD_SCRIPT={post_build_script} -t {image} -f {RELEASE_BYOD_DIR}/byod.custom.Dockerfile {RELEASE_BYOD_DIR}"
             ],
