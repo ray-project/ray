@@ -296,9 +296,10 @@ int main(int argc, char *argv[]) {
       ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
       auto runner = ray::PeriodicalRunner::Create(main_service);
-      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
-                                /*period_ms=*/10000,
-                                "Raylet.KillUnknownChildren");
+      runner->RunFnPeriodically(
+          [runner]() { ray::KillUnknownChildren(); },
+          RayConfig::instance().subreaper_cleanup_interval_ms(),
+          "Raylet.KillUnknownChildren");
       RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
                        "10 seconds.";
     } else {
