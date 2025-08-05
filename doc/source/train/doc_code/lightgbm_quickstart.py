@@ -86,7 +86,7 @@ def train_func():
         "bagging_freq": 5,
         # Adding the line below is the only change needed
         # for your `lgb.train` call!
-        **ray.train.lightgbm.v2.get_network_params(),
+        **ray.train.lightgbm.get_network_params(),
     }
 
     # 4. Do distributed data-parallel training.
