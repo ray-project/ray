@@ -2071,8 +2071,8 @@ py_test(
     size = "large",
     srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"],
     tags = [
-        "team:rllib",
         "algorithms_dir",
+        "team:rllib",
     ],
 )
 

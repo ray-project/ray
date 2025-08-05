@@ -7,7 +7,7 @@ opencv-python-headless==4.9.0.80
 
 # For testing MuJoCo envs with gymnasium.
 mujoco==3.2.4
-dm_control==1.0.12; python_version < "3.12"
+dm_control==1.0.16; python_version < "3.12"
 
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.24.3
