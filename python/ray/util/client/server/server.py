@@ -786,7 +786,7 @@ def serve(host: str, port: int, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    if host != "127.0.0.1":
+    if host != "127.0.0.1" and host != "localhost":
         add_port_to_grpc_server(server, f"127.0.0.1:{port}")
     add_port_to_grpc_server(server, f"{host}:{port}")
     current_handle = ClientServerHandle(
