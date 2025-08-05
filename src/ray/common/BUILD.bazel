@@ -17,8 +17,8 @@ ray_cc_library(
     deps = [
         ":asio",
         ":id",
-        ":ray_object",
         ":network_util",
+        ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
