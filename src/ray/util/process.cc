@@ -82,6 +82,32 @@ void SetFdCloseOnExec(int fd) {
 }
 #endif
 
+#if defined(__linux__)
+// A helper function to robustly read a specific number of bytes from a file descriptor.
+// This handles partial reads and interruptions by signals.
+static inline ssize_t ReadBytesFromFd(int fd, void *buffer, size_t count) {
+  ssize_t total_bytes_read = 0;
+  while (total_bytes_read < (ssize_t)count) {
+    ssize_t bytes_read = read(fd,
+                              reinterpret_cast<char *>(buffer) + total_bytes_read,
+                              count - total_bytes_read);
+    if (bytes_read == 0) {
+      // EOF reached before all bytes were read.
+      return total_bytes_read;
+    }
+    if (bytes_read == -1) {
+      if (errno == EINTR) {
+        continue;  // Interrupted by signal, retry.
+      } else {
+        return -1;  // A real read error occurred.
+      }
+    }
+    total_bytes_read += bytes_read;
+  }
+  return total_bytes_read;
+}
+#endif
+
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
   // It should be changed when Process adds Unicode support on Windows.
@@ -348,7 +374,6 @@ class ProcessFD {
       }
     }
 #else   // macOS and other non-Linux POSIX
-    // --- Start of old logic for macOS ---
     int pipefds[2];  // Create pipe to get PID & track lifetime
     int parent_lifetime_pipe[2];
 
@@ -436,7 +461,6 @@ class ProcessFD {
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
-    // --- End of old logic for macOS ---
 #endif  // defined(__linux__)
 #endif  // _WIN32
     return ProcessFD(pid, fd);
