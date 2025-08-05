@@ -188,6 +188,16 @@ rm -rf "${EP_TEMP_DIR}"
 
 EOF
 
-ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+# Q: Why add paths that don't exist in the base image, like /usr/local/nvidia/lib64
+# and /usr/local/nvidia/bin?
+# A: The NVIDIA GPU operator version used by GKE injects these into the container
+# after it's mounted to a pod.
+# Issue is tracked here:
+# https://github.com/GoogleCloudPlatform/compute-gpu-installation/issues/46
+# More context here:
+# https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
+# and here:
+# https://gitlab.com/nvidia/container-images/cuda/-/issues/27
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
