@@ -55,7 +55,7 @@ ray_cc_test(
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet:local_object_manager",
         "//src/ray/raylet:worker_pool",
-        "//src/ray/rpc:core_worker_rpc",
+        "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:grpc_client",
         "@com_google_googletest//:gtest_main",
     ],
