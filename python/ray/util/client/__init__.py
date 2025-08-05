@@ -170,7 +170,7 @@ class _ClientContext:
         import ray.util.client.server.server as ray_client_server
 
         server_handle, address_info = ray_client_server.init_and_serve(
-            "127.0.0.1:50051", *args, **kwargs
+            "127.0.0.1", 50051, *args, **kwargs
         )
         self._server = server_handle.grpc_server
         self.connect("127.0.0.1:50051")
