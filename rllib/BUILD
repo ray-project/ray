@@ -838,6 +838,30 @@ py_test(
     ],
 )
 
+# DreamerV3
+# takes too long (up to 20-30min to learn -200 on 1 GPU)
+# # Pendulum
+# py_test(
+#    name = "learning_tests_pendulum_dreamerv3_gpu",
+#    size = "large",
+#    srcs = ["tuned_examples/dreamerv3/pendulum_dreamerv3.py"],
+#    args = [
+#        "--as-test",
+#        "--num-gpus-per-learner=1",
+#        "--num-learners=1",
+#    ],
+#    main = "tuned_examples/marwil/cartpole_marwil.py",
+#    tags = [
+#        "exclusive",
+#        "gpu",
+#        "learning_tests",
+#        "learning_tests_continuous",
+#        "learning_tests_pytorch_use_all_core",
+#        "team:rllib",
+#        "torch_only",
+#    ],
+# )
+
 # IMPALA
 # CartPole
 py_test(
@@ -2041,12 +2065,15 @@ py_test(
 )
 
 # DreamerV3
-# py_test(
-#    name = "test_dreamerv3",
-#    tags = ["team:rllib", "algorithms_dir"],
-#    size = "large",
-#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
-# )
+py_test(
+    name = "test_dreamerv3",
+    size = "large",
+    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
 
 # IMPALA
 py_test(

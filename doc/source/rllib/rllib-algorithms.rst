@@ -249,6 +249,7 @@ DreamerV3
 ---------
 `[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
+`[RLlib readme] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__
 
 Also see `this README here for more details on how to run experiments <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__ with DreamerV3.
 
