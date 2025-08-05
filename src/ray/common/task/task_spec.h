@@ -551,7 +551,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const std::string &ConcurrencyGroupName() const;
 
-  bool ExecuteOutOfOrder() const;
+  bool AllowOutOfOrderExecution() const;
 
   bool IsSpreadSchedulingStrategy() const;
 

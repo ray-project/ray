@@ -252,7 +252,7 @@ TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_addre
                                              /*is_asyncio=*/false,
                                              /*concurrency_groups=*/{},
                                              /*extension_data=*/"",
-                                             /*execute_out_of_order=*/false,
+                                             /*allow_out_of_order_execution=*/false,
                                              /*root_detached_actor_id=*/actor_id);
   return task_spec_builder;
 }
