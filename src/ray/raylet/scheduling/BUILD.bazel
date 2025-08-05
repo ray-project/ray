@@ -100,8 +100,8 @@ ray_cc_library(
     name = "cluster_task_manager_interface",
     hdrs = ["cluster_task_manager_interface.h"],
     deps = [
-        "//:rpc_server_call",
         "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/rpc:server_call",
     ],
 )
 

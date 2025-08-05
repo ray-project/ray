@@ -115,6 +115,7 @@ NodeManager::NodeManager(
     gcs::GcsClient &gcs_client,
     rpc::ClientCallManager &client_call_manager,
     rpc::CoreWorkerClientPool &worker_rpc_pool,
+    rpc::RayletClientPool &raylet_client_pool,
     pubsub::SubscriberInterface &core_worker_subscriber,
     ClusterResourceScheduler &cluster_resource_scheduler,
     ILocalTaskManager &local_task_manager,
@@ -137,6 +138,7 @@ NodeManager::NodeManager(
       worker_pool_(worker_pool),
       client_call_manager_(client_call_manager),
       worker_rpc_pool_(worker_rpc_pool),
+      raylet_client_pool_(raylet_client_pool),
       core_worker_subscriber_(core_worker_subscriber),
       object_directory_(object_directory),
       object_manager_(object_manager),
@@ -1041,11 +1043,8 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
     HandleDirectCallTaskUnblocked(registered_worker);
   } break;
-  case protocol::MessageType::NotifyUnblocked: {
-    // TODO(ekl) this is still used from core worker even in direct call mode to
-    // finish up get requests.
-    auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()));
+  case protocol::MessageType::CancelGetRequest: {
+    CancelGetRequest(client);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1490,11 +1489,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     // subscribe to in the task dependency manager. These objects will be
     // pulled from remote node managers. If an object's owner dies, an error
     // will be stored as the object's value.
-    const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
-    AsyncResolveObjects(client,
-                        refs,
-                        task_id,
-                        /*ray_get=*/true);
+    AsyncGetOrWait(client,
+                   refs,
+                   /*is_get_request=*/true);
   }
 }
 
@@ -1506,28 +1503,24 @@ void NodeManager::ProcessWaitRequestMessage(
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
 
-  bool resolve_objects = false;
+  bool all_objects_local = true;
   for (auto const &object_id : object_ids) {
     if (!dependency_manager_.CheckObjectLocal(object_id)) {
-      // At least one object requires resolution.
-      resolve_objects = true;
+      all_objects_local = false;
     }
   }
 
-  const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
-  if (resolve_objects) {
+  if (!all_objects_local) {
     // Resolve any missing objects. This is a no-op for any objects that are
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncResolveObjects(client,
-                        refs,
-                        current_task_id,
-                        /*ray_get=*/false);
+    AsyncGetOrWait(client, refs, /*is_get_request=*/false);
   }
+
   if (message->num_required_objects() == 0) {
     // If we don't need to wait for any, return immediately after making the pull
-    // requests through AsyncResolveObjects above.
+    // requests through AsyncGetOrWait above.
     flatbuffers::FlatBufferBuilder fbb;
     auto wait_reply = protocol::CreateWaitReply(fbb,
                                                 to_flatbuf(fbb, std::vector<ObjectID>{}),
@@ -1537,11 +1530,7 @@ void NodeManager::ProcessWaitRequestMessage(
         client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
                              fbb.GetSize(),
                              fbb.GetBufferPointer());
-    if (status.ok()) {
-      if (resolve_objects) {
-        AsyncResolveObjectsFinish(client, current_task_id);
-      }
-    } else {
+    if (!status.ok()) {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
       stream << "Failed to write WaitReply to the client. Status " << status;
@@ -1555,8 +1544,8 @@ void NodeManager::ProcessWaitRequestMessage(
       object_ids,
       message->timeout(),
       num_required_objects,
-      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
-                                                       std::vector<ObjectID> remaining) {
+      [this, client, all_objects_local](std::vector<ObjectID> ready,
+                                        std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -1568,10 +1557,8 @@ void NodeManager::ProcessWaitRequestMessage(
                                  fbb.GetSize(),
                                  fbb.GetBufferPointer());
         if (status.ok()) {
-          // The client is unblocked now because the wait call has
-          // returned.
-          if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id);
+          if (!all_objects_local) {
+            CancelGetRequest(client);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1587,19 +1574,14 @@ void NodeManager::ProcessWaitRequestMessage(
 
 void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  // Read the data.
   auto message =
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
   int64_t tag = message->tag();
-  // Resolve any missing objects. This will pull the objects from remote node
-  // managers or store an error if the objects have failed.
+  // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
-  AsyncResolveObjects(client,
-                      refs,
-                      TaskID::Nil(),
-                      /*ray_get=*/false);
+  AsyncGetOrWait(client, refs, /*is_get_request=*/false);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -2094,44 +2076,31 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   }
 }
 
-void NodeManager::AsyncResolveObjects(
-    const std::shared_ptr<ClientConnection> &client,
-    const std::vector<rpc::ObjectReference> &required_object_refs,
-    const TaskID &current_task_id,
-    bool ray_get) {
+void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
+                                 const std::vector<rpc::ObjectReference> &object_refs,
+                                 bool is_get_request) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
-    // The client is a driver. Drivers do not hold resources, so we simply mark
-    // the task as blocked.
     worker = worker_pool_.GetRegisteredDriver(client);
   }
-
   RAY_CHECK(worker);
-  // Subscribe to the objects required by the task. These objects will be
-  // fetched and/or restarted as necessary, until the objects become local
-  // or are unsubscribed.
-  if (ray_get) {
-    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), required_object_refs);
+
+  // Start an async request to get or wait for the objects.
+  // The objects will be fetched locally unless the get or wait request is canceled.
+  if (is_get_request) {
+    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), object_refs);
   } else {
-    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
-                                                 required_object_refs);
+    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
   }
 }
 
-void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id) {
+void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
-    // The client is a driver. Drivers do not hold resources, so we simply
-    // mark the driver as unblocked.
     worker = worker_pool_.GetRegisteredDriver(client);
   }
-
   RAY_CHECK(worker);
-  // Unsubscribe from any `ray.get` objects that the task was blocked on.  Any
-  // fetch or reconstruction operations to make the objects local are canceled.
-  // `ray.wait` calls will stay active until the objects become local, or the
-  // task/actor that called `ray.wait` exits.
+
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 }
 
@@ -2637,8 +2606,9 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
-    auto client = std::make_shared<RayletClient>(
-        /*address=*/address.first, /*port=*/address.second, client_call_manager_);
+    auto addr = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, address.first, address.second);
+    auto client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
     client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {

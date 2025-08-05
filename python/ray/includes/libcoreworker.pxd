@@ -116,6 +116,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int MaxPendingCalls() const
         int MaxTaskRetries() const
         c_bool EnableTaskEvents() const
+        c_bool AllowOutOfOrderExecution() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()
@@ -278,7 +279,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id)
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
-        CRayStatus ExperimentalRegisterMutableObjectWriter(
+        void ExperimentalRegisterMutableObjectWriter(
                 const CObjectID &writer_object_id,
                 const c_vector[CNodeID] &remote_reader_node_ids)
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
@@ -341,10 +342,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const CNodeID &client_Id)
 
         CJobConfig GetJobConfig()
-
-        int64_t GetNumTasksSubmitted() const
-
-        int64_t GetNumLeasesRequested() const
 
         int64_t GetLocalMemoryStoreBytesUsed() const
 
