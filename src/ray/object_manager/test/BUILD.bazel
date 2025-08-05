@@ -8,6 +8,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:id",
         "//src/ray/object_manager:pull_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -49,7 +50,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:raylet_lib",
+        "//src/ray/object_manager:push_manager",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -62,7 +65,10 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:raylet_lib",
+        "//src/ray/object_manager:chunk_object_reader",
+        "//src/ray/object_manager:memory_object_reader",
+        "//src/ray/object_manager:spilled_object_reader",
+        "//src/ray/util:filesystem",
         "//src/ray/util:path_utils",
         "@boost//:endian",
         "@com_google_absl//absl/strings:str_format",

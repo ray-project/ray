@@ -121,7 +121,7 @@ ray_cc_library(
         ":asio",
         ":id",
         ":status",
-        "//:node_manager_fbs",
+        "//src/ray/flatbuffers:node_manager_generated",
     ],
 )
 
@@ -187,7 +187,7 @@ ray_cc_library(
         ":ray_config",
         ":ray_object",
         ":runtime_env",
-        "//:node_manager_fbs",
+        "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/util",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
