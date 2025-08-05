@@ -426,8 +426,7 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
   case fb::MessageType::PlasmaGetRequest: {
     std::vector<ObjectID> object_ids_to_get;
     int64_t timeout_ms;
-    RAY_RETURN_NOT_OK(ReadGetRequest(
-        input, input_size, object_ids_to_get, &timeout_ms));
+    RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms));
     ProcessGetRequest(client, object_ids_to_get, timeout_ms);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {

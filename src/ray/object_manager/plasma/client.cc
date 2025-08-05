@@ -513,8 +513,7 @@ Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
   for (int64_t i = 0; i < num_objects; i++) {
     RAY_LOG(DEBUG) << "Sending get request " << object_ids[i];
   }
-  RAY_RETURN_NOT_OK(SendGetRequest(
-      store_conn_, &object_ids[0], num_objects, timeout_ms));
+  RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms));
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
@@ -630,8 +629,7 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
-  return GetBuffers(
-      object_ids.data(), num_objects, timeout_ms, out->data());
+  return GetBuffers(object_ids.data(), num_objects, timeout_ms, out->data());
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
@@ -926,8 +924,7 @@ Status PlasmaClient::GetExperimentalMutableObject(
   // First make sure the object is in scope. The ObjectBuffer will keep the
   // value pinned in the plasma store.
   std::vector<ObjectBuffer> object_buffers;
-  RAY_RETURN_NOT_OK(impl_->Get(
-      {object_id}, /*timeout_ms=*/0, &object_buffers));
+  RAY_RETURN_NOT_OK(impl_->Get({object_id}, /*timeout_ms=*/0, &object_buffers));
   if (!object_buffers[0].data) {
     return Status::Invalid(
         "Experimental mutable object must be in the local object store to register as "

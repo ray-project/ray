@@ -2334,9 +2334,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  if (!store_client_
-           .Get(object_ids, /*timeout_ms=*/0, &plasma_results)
-           .ok()) {
+  if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
     return false;
   }
 

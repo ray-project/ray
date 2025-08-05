@@ -23,7 +23,6 @@ from ray._private.external_storage import (
 )
 from ray._private.internal_api import memory_summary
 from ray._common.test_utils import wait_for_condition
-from ray._raylet import GcsClientOptions
 import ray.remote_function
 from ray.tests.conftest import (
     buffer_object_spilling_config,
