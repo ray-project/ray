@@ -72,24 +72,20 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
 
   /// Wait until the worker is initialized.
   void WaitUntilInitialized() override {
-    auto is_initialized = [this]() { return this->core_worker_ != nullptr; };
-    if (!core_worker_mutex_.LockWhenWithTimeout(absl::Condition(&is_initialized),
-                                                absl::Seconds(60))) {
-      // If the core worker initialization is hanging for 60 seconds, we can assume that
-      // something is wrong and we should exit the program.
-      RAY_LOG(FATAL) << "Core worker is not initialized after 60 seconds";
-    }
-    core_worker_mutex_.Unlock();
+    std::unique_lock<std::mutex> lock(core_worker_mutex_);
+    core_worker_cv_.wait(lock, [this]() { return this->core_worker_ != nullptr; });
   }
 
   void SetCoreWorker(CoreWorker *core_worker) {
-    absl::MutexLock lock(&core_worker_mutex_);
+    std::lock_guard<std::mutex> lock(core_worker_mutex_);
     core_worker_ = core_worker;
+    core_worker_cv_.notify_all();
   }
 
  private:
-  absl::Mutex core_worker_mutex_;
-  CoreWorker *core_worker_ ABSL_GUARDED_BY(core_worker_mutex_) = nullptr;
+  std::mutex core_worker_mutex_;
+  std::condition_variable core_worker_cv_;
+  CoreWorker *core_worker_ = nullptr;
 };
 
 }  // namespace core
