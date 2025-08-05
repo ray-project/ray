@@ -1293,7 +1293,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         kill_delay_s: float = 0,
-        max_to_kill: int = 2,
+        max_to_kill: Optional[int] = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
@@ -1332,7 +1332,7 @@ class ResourceKillerActor:
 
             for to_kill in to_kills:
                 self._kill_resource(*to_kill)
-            if len(self.killed) >= self.max_to_kill:
+            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
@@ -1464,7 +1464,11 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         def _kill_node_with_grace_period(node_id, node_to_kill_ip):
             self._drain_node(node_id)
             time.sleep(self._grace_period_s)
-            _terminate_ec2_instance(node_to_kill_ip)
+            # Anyscale extends the drain deadline if you shut down the instance
+            # directly. To work around this, we force-stop Ray on the node. Anyscale
+            # should then terminate it shortly after without updating the drain
+            # deadline.
+            _execute_command_on_node("ray stop --force", node_to_kill_ip)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
         thread = threading.Thread(
@@ -1974,19 +1978,29 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def _terminate_ec2_instance(ip):
-    logging.info(f"Terminating instance, {ip=}")
+def _terminate_ec2_instance(node_ip: str) -> None:
+    logging.info(f"Terminating instance {node_ip}")
     # This command uses IMDSv2 to get the host instance id and region.
     # After that it terminates itself using aws cli.
-    multi_line_command = (
-        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+    command = (
         'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
         'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
         "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
     )
+    _execute_command_on_node(command, node_ip)
+
+
+def _execute_command_on_node(command: str, node_ip: str):
+    logging.debug(f"Executing command on node {node_ip}: {command}")
+
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        f"{command}"
+    )
+
     # This is a feature on Anyscale platform that enables
     # easy ssh access to worker nodes.
-    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
 
     try:
         subprocess.run(

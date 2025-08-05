@@ -9,6 +9,7 @@ load("@rules_java//java:java_test.bzl", "java_test")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load("@rules_python//python:defs.bzl", "py_binary")
 load("//bazel:ray.bzl", "define_java_module", "native_java_library")
 
 exports_files([
@@ -194,6 +195,17 @@ java_library(
     ],
 )
 
+# This is a local java test rule. It needs generated files to be copied into
+# the source tree before running. To build and generate ray core (gcs and
+# raylet), run `bazelisk run //:gen_ray_pkg` first.
+#
+# This rule used to depend on local genrules, which are deprecated. Reason
+# being that local genrules are build rules and do not capture changes in
+# source tree, and hence cannot be cached by bazel remote cache. Using local
+# genrule forces bazel to effectively disable caching globally to have a
+# correct build.
+#
+# TODO(ray-ci): covert java tests to non-local, hermetic tests.
 java_test(
     name = "all_tests",
     testonly = True,
@@ -201,7 +213,7 @@ java_test(
     data = [
         "testng.xml",
         ":ray_java_pkg",
-        "//:ray_pkg",
+        "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
     resources = [
@@ -215,15 +227,16 @@ java_test(
 )
 
 # 0. `cp testng_custom_template.xml testng_custom.xml`
-# 1. Specify test class/method in `testng_custom.xml`
-# 2. `bazel test //java:custom_test --test_output=streamed`
+# 1. `bazel run //:gen_ray_pkg`
+# 2. Specify test class/method in `testng_custom.xml`
+# 3. `bazel test //java:custom_test --test_output=streamed`
 java_test(
     name = "custom_test",
     args = ["java/testng_custom.xml"],
     data = [
         "testng_custom.xml",
         ":ray_java_pkg",
-        "//:ray_pkg",
+        "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
     tags = ["local"],
@@ -498,4 +511,16 @@ genrule(
     local = 1,
     tags = ["no-cache"],
     visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "gen_ray_java_pkg",
+    srcs = ["gen_ray_java_pkg.py"],
+    data = [
+        ":ray_java_pkg.zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )
