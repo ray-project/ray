@@ -48,7 +48,7 @@ enum MessageType:int {
   ExecuteTask,
   // Request the Raylet to pull a set of objects to the local node.
   // a raylet.
-  AsyncPullObjectsRequest,
+  AsyncGetObjectsRequest,
   // Cancel outstanding get requests from the worker.
   CancelGetRequest,
   // Notify the current worker is blocked. This is only used by direct task calls;
@@ -168,7 +168,7 @@ table Address {
   worker_id: string;
 }
 
-table AsyncPullObjectsRequest {
+table AsyncGetObjectsRequest {
   // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
   // Owner RPC addresses for the objects in the object_ids list.

@@ -295,7 +295,7 @@ class RayletClient : public RayletClientInterface {
   /// \param object_ids The IDs of the objects to pull.
   /// \param owner_addresses The owner addresses of the objects.
   /// \return ray::Status.
-  ray::Status AsyncPullObjects(const std::vector<ObjectID> &object_ids,
+  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
                                const std::vector<rpc::Address> &owner_addresses);
 
   /// Tell the Raylet to cancel the get request from this worker.

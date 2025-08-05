@@ -1034,8 +1034,8 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::AsyncPullObjectsRequest: {
-    HandleAsyncPullObjectsRequest(client, message_data);
+  case protocol::MessageType::AsyncGetObjectsRequest: {
+    HandleAsyncGetObjectsRequest(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
     HandleDirectCallTaskBlocked(registered_worker);
@@ -1465,9 +1465,9 @@ void NodeManager::ProcessDisconnectClientMessage(
                    creation_task_exception.get());
 }
 
-void NodeManager::HandleAsyncPullObjectsRequest(
+void NodeManager::HandleAsyncGetObjectsRequest(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto request = flatbuffers::GetRoot<protocol::AsyncPullObjectsRequest>(message_data);
+  auto request = flatbuffers::GetRoot<protocol::AsyncGetObjectsRequest>(message_data);
   const auto refs =
       FlatbufferToObjectReference(*request->object_ids(), *request->owner_addresses());
 
