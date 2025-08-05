@@ -218,9 +218,7 @@ if __name__ == "__main__":
         check_raylet_task = create_check_raylet_task(
             args.log_dir, gcs_client, parent_dead_callback, loop
         )
-    runtime_env_agent_ip = (
-        "127.0.0.1" if args.node_ip_address == "127.0.0.1" else "0.0.0.0"
-    )
+    runtime_env_agent_ip = args.node_ip_address
     try:
         web.run_app(
             app,
