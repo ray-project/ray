@@ -136,7 +136,7 @@ Status RayletClient::ActorCreationTaskDone() {
 }
 
 Status RayletClient::AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                                      const std::vector<rpc::Address> &owner_addresses) {
+                                     const std::vector<rpc::Address> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
