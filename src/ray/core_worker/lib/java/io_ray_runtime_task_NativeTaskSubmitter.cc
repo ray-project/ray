@@ -181,7 +181,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string ray_namespace = "";
   int32_t max_pending_calls = -1;
   bool is_async = false;
-  bool execute_out_of_order = false;
+  bool allow_out_of_order_execution = false;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -277,8 +277,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
     is_async = static_cast<bool>(
         env->GetBooleanField(actorCreationOptions, java_actor_creation_options_is_async));
-    execute_out_of_order = static_cast<bool>(env->GetBooleanField(
-        actorCreationOptions, java_actor_creation_options_execute_out_of_order));
+    allow_out_of_order_execution = static_cast<bool>(env->GetBooleanField(
+        actorCreationOptions, java_actor_creation_options_allow_out_of_order_execution));
   }
 
   rpc::SchedulingStrategy scheduling_strategy;
@@ -305,7 +305,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                               /*scheduling_strategy=*/scheduling_strategy,
                                               serialized_runtime_env,
                                               concurrency_groups,
-                                              execute_out_of_order,
+                                              allow_out_of_order_execution,
                                               max_pending_calls};
   return actor_creation_options;
 }

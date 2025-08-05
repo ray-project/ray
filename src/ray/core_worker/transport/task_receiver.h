@@ -111,7 +111,9 @@ class TaskReceiver {
  private:
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
-  void SetupActor(bool is_asyncio, int fiber_max_concurrency, bool execute_out_of_order);
+  void SetupActor(bool is_asyncio,
+                  int fiber_max_concurrency,
+                  bool allow_out_of_order_execution);
 
   /// The callback function to process a task.
   TaskHandler task_handler_;
@@ -155,7 +157,7 @@ class TaskReceiver {
 
   /// Whether this actor executes tasks out of order with respect to client submission
   /// order.
-  bool execute_out_of_order_ = false;
+  bool allow_out_of_order_execution_ = false;
 
   /// The repr name of the actor instance for an anonymous actor.
   /// This is only available after the actor creation task.
