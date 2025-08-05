@@ -92,14 +92,13 @@ class RayletClientInterface {
   /// \return int 0 means correct, other numbers mean error.
   virtual ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                          const std::vector<rpc::Address> &owner_addresses,
-                                         bool fetch_only,
-                                         const TaskID &current_task_id) = 0;
+                                         bool fetch_only) = 0;
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
-  virtual ray::Status NotifyUnblocked(const TaskID &current_task_id) = 0;
+  virtual ray::Status CancelGetRequest() = 0;
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
@@ -129,8 +128,7 @@ class RayletClientInterface {
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
-      int64_t timeout_milliseconds,
-      const TaskID &current_task_id) = 0;
+      int64_t timeout_milliseconds) = 0;
 
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
   virtual void PinObjectIDs(
@@ -406,14 +404,12 @@ class RayletClient : public RayletClientInterface {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
-                                 bool fetch_only,
-                                 const TaskID &current_task_id) override;
+                                 bool fetch_only) override;
 
-  /// Notify the raylet that this client (worker) is no longer blocked.
+  /// Tell the Raylet to cancel the get request from this worker.
   ///
-  /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id) override;
+  ray::Status CancelGetRequest() override;
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
@@ -434,7 +430,6 @@ class RayletClient : public RayletClientInterface {
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::StatusOr containing error status or the set of object ids that were
@@ -443,8 +438,7 @@ class RayletClient : public RayletClientInterface {
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
-      int64_t timeout_milliseconds,
-      const TaskID &current_task_id) override;
+      int64_t timeout_milliseconds) override;
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.

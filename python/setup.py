@@ -355,7 +355,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.9.2",
+                "vllm>=0.10.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -630,6 +630,7 @@ def build(build_python, build_java, build_cpp):
         # And we put it here so that does not change behavior of
         # conda-forge build.
         bazel_flags.append("--incompatible_strict_action_env")
+        bazel_flags.append("--remote_download_minimal")
 
     bazel_targets = []
     bazel_targets += ["//:gen_ray_pkg"] if build_python else []

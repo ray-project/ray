@@ -37,14 +37,11 @@ class FakeRayletClient : public RayletClientInterface {
 
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
-                                 bool fetch_only,
-                                 const TaskID &current_task_id) override {
+                                 bool fetch_only) override {
     return Status::OK();
   }
 
-  ray::Status NotifyUnblocked(const TaskID &current_task_id) override {
-    return Status::OK();
-  }
+  ray::Status CancelGetRequest() override { return Status::OK(); }
 
   ray::Status NotifyDirectCallTaskBlocked() override { return Status::OK(); }
 
@@ -54,8 +51,7 @@ class FakeRayletClient : public RayletClientInterface {
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
-      int64_t timeout_milliseconds,
-      const TaskID &current_task_id) override {
+      int64_t timeout_milliseconds) override {
     return absl::flat_hash_set<ObjectID>{};
   }
 

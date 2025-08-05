@@ -33,10 +33,9 @@ class MockRayletClientInterface : public RayletClientInterface {
               FetchOrReconstruct,
               (const std::vector<ObjectID> &object_ids,
                const std::vector<rpc::Address> &owner_addresses,
-               bool fetch_only,
-               const TaskID &current_task_id),
+               bool fetch_only),
               (override));
-  MOCK_METHOD(ray::Status, NotifyUnblocked, (const TaskID &current_task_id), (override));
+  MOCK_METHOD(ray::Status, CancelGetRequest, (), (override));
   MOCK_METHOD(ray::Status, NotifyDirectCallTaskBlocked, (), (override));
   MOCK_METHOD(ray::Status, NotifyDirectCallTaskUnblocked, (), (override));
   MOCK_METHOD(ray::StatusOr<absl::flat_hash_set<ObjectID>>,
@@ -44,8 +43,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const std::vector<ObjectID> &object_ids,
                const std::vector<rpc::Address> &owner_addresses,
                int num_returns,
-               int64_t timeout_milliseconds,
-               const TaskID &current_task_id),
+               int64_t timeout_milliseconds),
               (override));
   MOCK_METHOD(ray::Status,
               WaitForActorCallArgs,

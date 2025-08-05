@@ -219,7 +219,7 @@ class TaskManager : public TaskManagerInterface {
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.
-  void DrainAndShutdown(std::function<void()> shutdown);
+  void DrainAndShutdown(std::function<void()> shutdown) override;
 
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply,
@@ -295,7 +295,8 @@ class TaskManager : public TaskManagerInterface {
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
-      const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
+      const ExecutionSignalCallback &execution_signal_callback) override
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -321,7 +322,7 @@ class TaskManager : public TaskManagerInterface {
   /// \param generator_id The return ref ID of a generator task.
   /// \return True if we temporarily owned the reference. False otherwise.
   bool TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
-                                                const ObjectID &generator_id)
+                                                const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Delete the object ref stream. The caller must guarantee that the
@@ -354,13 +355,15 @@ class TaskManager : public TaskManagerInterface {
   /// generator task.
   /// \return Whether the task metadata and stream metadata were successfully
   /// erased.
-  bool TryDelObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
+  bool TryDelObjectRefStream(const ObjectID &generator_id) override
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Return true if the object ref stream exists.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  bool ObjectRefStreamExists(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
+  bool ObjectRefStreamExists(const ObjectID &generator_id) override
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read object reference of the next index from the
   /// object stream of a generator_id.
@@ -377,7 +380,8 @@ class TaskManager : public TaskManagerInterface {
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
-  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
+  Status TryReadObjectRefStream(const ObjectID &generator_id,
+                                ObjectID *object_id_out) override
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Returns true if there are no more objects to read from the streaming
@@ -386,7 +390,7 @@ class TaskManager : public TaskManagerInterface {
   /// \param[in] generator_id The ObjectRef ID returned by the streaming
   /// generator task.
   /// \return True if there are no more objects to read from the generator.
-  bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const
+  bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const override
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
@@ -399,7 +403,7 @@ class TaskManager : public TaskManagerInterface {
   /// \return A object reference of the next index and if the object is already ready
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
-  std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
+  std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mu_);
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override;
@@ -441,7 +445,8 @@ class TaskManager : public TaskManagerInterface {
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
-  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
+  std::vector<TaskID> GetPendingChildrenTasks(
+      const TaskID &parent_task_id) const override;
 
   /// Return whether this task can be submitted for execution.
   ///
@@ -460,10 +465,10 @@ class TaskManager : public TaskManagerInterface {
   /// Return the number of submissible tasks. This includes both tasks that are
   /// pending execution and tasks that have finished but that may be
   /// re-executed to recover from a failure.
-  size_t NumSubmissibleTasks() const;
+  size_t NumSubmissibleTasks() const override;
 
   /// Return the number of pending tasks.
-  size_t NumPendingTasks() const;
+  size_t NumPendingTasks() const override;
 
   int64_t TotalLineageFootprintBytes() const {
     absl::MutexLock lock(&mu_);
@@ -481,23 +486,24 @@ class TaskManager : public TaskManagerInterface {
   ///
   /// \param[out] stats Will be populated with objects' current task status, if
   /// any.
-  void AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const;
+  void AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const override;
 
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
-  void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
+  void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
+                    const int64_t limit) const override;
 
   /// Return the ongoing retry tasks triggered by lineage reconstruction.
   /// Key is the lineage reconstruction task info.
   /// Value is the number of ongoing lineage reconstruction tasks of this type.
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-  GetOngoingLineageReconstructionTasks(const ActorManager &actor_manager) const;
+  GetOngoingLineageReconstructionTasks(const ActorManager &actor_manager) const override;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
-  ObjectID TaskGeneratorId(const TaskID &task_id) const;
+  ObjectID TaskGeneratorId(const TaskID &task_id) const override;
 
   /// Record OCL metrics.
-  void RecordMetrics();
+  void RecordMetrics() override;
 
  private:
   struct TaskEntry {
