@@ -40,6 +40,7 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
 
     Examples:
         >>> import ray
+        >>> import torch
         >>> @ray.remote(enable_tensor_transport=True)
         ... class MyActor:
         ...     @ray.method(tensor_transport="gloo")
@@ -52,6 +53,7 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
         ...         # Ray no longer stores the tensor, so it is
         ...         # safe to modify the tensor now.
         ...         self.tensor += 1
+        ...         return self.tensor
         ...     def read(self, tensor: torch.Tensor):
         ...         return tensor
         >>> actors = [MyActor.remote(), MyActor.remote()]
@@ -59,9 +61,11 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
         ...     actors,
         ...     backend="gloo")
         >>> ref = actors[0].zeros.remote()
-        >>> tensor0 = actors[0].increment_saved.remote()
-        >>> tensor1 = actors[1].read.remote(ref)
-        >>> assert torch.allclose(tensor0, tensor1 + 1)
+        >>> tensor0_ref = actors[0].increment_saved.remote()
+        >>> tensor1_ref = actors[1].read.remote(ref)
+        >>> # The wait call on the sender will block until `ref` is out of scope.
+        >>> del ref
+        >>> assert torch.allclose(ray.get(tensor0_ref), ray.get(tensor1_ref) + 1)
 
 
     Args:

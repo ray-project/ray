@@ -491,8 +491,47 @@ def test_wait_tensor_freed(ray_start_regular):
     gc_thread.start()
     # Now the wait_tensor_freed call should be able to return.
     ray.experimental.wait_tensor_freed(tensor)
-    assert not gpu_object_store.has_object(obj_id)
     gc_thread.join()
+    assert not gpu_object_store.has_object(obj_id)
+
+
+def test_wait_tensor_freed_double_tensor(ray_start_regular):
+    """Unit test for ray.experimental.wait_tensor_freed when multiple objects
+    contain the same tensor."""
+    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
+    obj_id1 = "random_id1"
+    obj_id2 = "random_id2"
+    tensor = torch.randn((1,))
+    gpu_object_store.add_object(obj_id1, [tensor], is_primary=True)
+    gpu_object_store.add_object(obj_id2, [tensor], is_primary=True)
+
+    assert gpu_object_store.has_object(obj_id1)
+    assert gpu_object_store.has_object(obj_id2)
+    with pytest.raises(TimeoutError):
+        ray.experimental.wait_tensor_freed(tensor, timeout=1)
+    assert gpu_object_store.has_object(obj_id1)
+    assert gpu_object_store.has_object(obj_id2)
+
+    # Simulate garbage collection in a background thread.
+    def gc(obj_id):
+        time.sleep(0.1)
+        gpu_object_store.pop_object(obj_id)
+
+    # Free one object. Tensor should still be stored.
+    gc_thread = threading.Thread(target=gc, args=(obj_id1,))
+    gc_thread.start()
+    with pytest.raises(TimeoutError):
+        ray.experimental.wait_tensor_freed(tensor, timeout=1)
+    gc_thread.join()
+    assert not gpu_object_store.has_object(obj_id1)
+
+    # Free the other object. Now the wait_tensor_freed call should be able to
+    # return.
+    gc_thread = threading.Thread(target=gc, args=(obj_id2,))
+    gc_thread.start()
+    ray.experimental.wait_tensor_freed(tensor)
+    gc_thread.join()
+    assert not gpu_object_store.has_object(obj_id2)
 
 
 if __name__ == "__main__":

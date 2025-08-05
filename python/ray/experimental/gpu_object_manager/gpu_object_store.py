@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Set
 import threading
+from collections import defaultdict
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -123,7 +124,8 @@ class GPUObjectStore:
         #
         # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
         self._gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
-        self._tensor_to_object_id: Dict["torch.Tensor", str] = {}
+        # Mapping from tensor to the IDs of objects that contain it.
+        self._tensor_to_object_ids: Dict["torch.Tensor", Set[str]] = defaultdict(set)
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
@@ -139,7 +141,7 @@ class GPUObjectStore:
 
     def has_tensor(self, tensor: "torch.Tensor") -> bool:
         with self._lock:
-            return tensor in self._tensor_to_object_id
+            return tensor in self._tensor_to_object_ids
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
@@ -164,7 +166,7 @@ class GPUObjectStore:
                 self._primary_gpu_object_ids.add(obj_id)
             self._gpu_object_store[obj_id] = gpu_object
             for tensor in gpu_object:
-                self._tensor_to_object_id[tensor] = obj_id
+                self._tensor_to_object_ids[tensor].add(obj_id)
             self._object_present_cv.notify_all()
 
     def is_primary_copy(self, obj_id: str) -> bool:
@@ -222,10 +224,9 @@ class GPUObjectStore:
                 indefinitely.
         """
         with self._object_present_cv:
-            present = self._object_present_cv.wait_for(
+            if not self._object_present_cv.wait_for(
                 lambda: obj_id in self._gpu_object_store, timeout=timeout
-            )
-            if not present:
+            ):
                 raise TimeoutError(
                     f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
@@ -237,7 +238,9 @@ class GPUObjectStore:
             ), f"obj_id={obj_id} not found in GPU object store"
             tensors = self._gpu_object_store.pop(obj_id)
             for tensor in tensors:
-                self._tensor_to_object_id.pop(tensor)
+                self._tensor_to_object_ids[tensor].remove(obj_id)
+                if len(self._tensor_to_object_ids[tensor]) == 0:
+                    self._tensor_to_object_ids.pop(tensor)
             self._object_freed_cv.notify_all()
             if obj_id in self._primary_gpu_object_ids:
                 self._primary_gpu_object_ids.remove(obj_id)
@@ -250,12 +253,11 @@ class GPUObjectStore:
         Wait for the object to be freed from the GPU object store.
         """
         with self._object_freed_cv:
-            self._object_freed_cv.wait_for(
-                lambda: tensor not in self._tensor_to_object_id, timeout=timeout
-            )
-            if tensor in self._tensor_to_object_id:
+            if not self._object_freed_cv.wait_for(
+                lambda: tensor not in self._tensor_to_object_ids, timeout=timeout
+            ):
                 raise TimeoutError(
-                    f"Tensor {tensor} not freed from GPU object store after {timeout}s."
+                    f"Tensor {tensor} not freed from GPU object store after {timeout}s. The tensor will not be freed until all ObjectRefs containing the tensor have gone out of scope."
                 )
 
     def get_num_objects(self) -> int:
