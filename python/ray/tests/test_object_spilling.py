@@ -606,7 +606,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
-    ray.init(
+    address = ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
