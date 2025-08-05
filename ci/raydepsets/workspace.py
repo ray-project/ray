@@ -2,6 +2,13 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
+from string import Template
+
+
+@dataclass
+class BuildArgSet:
+    name: str
+    build_args: List[str]
 
 
 @dataclass
@@ -14,32 +21,81 @@ class Depset:
     override_flags: List[str]
     append_flags: List[str]
     source_depset: Optional[str] = None
+    build_arg_set: BuildArgSet = None
     depsets: Optional[List[str]] = None
 
 
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
+    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
+
+    @staticmethod
+    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List["BuildArgSet"]:
+        return [
+            BuildArgSet(
+                name=build_arg_set.get("name", None),
+                build_args=build_arg_set.get("build_args", []),
+            )
+            for build_arg_set in build_arg_sets
+        ]
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
+        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
+        depsets = []
         raw_depsets = data.get("depsets", [])
-        depsets = [
-            Depset(
-                name=values.get("name"),
-                requirements=values.get("requirements", []),
-                constraints=values.get("constraints", []),
-                operation=values.get("operation", "compile"),
-                output=values.get("output"),
-                source_depset=values.get("source_depset"),
-                override_flags=values.get("override_flags", []),
-                append_flags=values.get("append_flags", []),
-                depsets=values.get("depsets", []),
-            )
-            for values in raw_depsets
-        ]
+        for depset in raw_depsets:
+            build_arg_set_matrix = depset.get("build_arg_sets", [])
+            if build_arg_set_matrix:
+                for build_arg_set_name in build_arg_set_matrix:
+                    build_arg_set = next(
+                        (
+                            build_arg_set
+                            for build_arg_set in build_arg_sets
+                            if build_arg_set.name == build_arg_set_name
+                        ),
+                        None,
+                    )
+                    if build_arg_set is None:
+                        raise KeyError(f"Build arg set {build_arg_set_name} not found")
 
-        return Config(depsets=depsets)
+                    depset_yaml = Config.substitute_build_args(depset, build_arg_set)
+
+                    depsets.append(Config.dict_to_depset(depset_yaml, build_arg_set))
+            else:
+                depsets.append(Config.dict_to_depset(depset))
+
+        return Config(depsets=depsets, build_arg_sets=build_arg_sets)
+
+    def dict_to_depset(depset: dict, build_arg_set: BuildArgSet = None) -> Depset:
+        return Depset(
+            name=depset.get("name"),
+            requirements=depset.get("requirements", []),
+            constraints=depset.get("constraints", []),
+            operation=depset.get("operation", None),
+            output=depset.get("output"),
+            source_depset=depset.get("source_depset"),
+            depsets=depset.get("depsets", []),
+            build_arg_set=build_arg_set,
+            override_flags=depset.get("override_flags", []),
+            append_flags=depset.get("append_flags", []),
+        )
+
+    def substitute_build_args(depset, build_arg_set: BuildArgSet):
+        if isinstance(depset, str):
+            return Template(depset).substitute(build_arg_set.build_args)
+        elif isinstance(depset, dict):
+            return {
+                key: Config.substitute_build_args(value, build_arg_set)
+                for key, value in depset.items()
+            }
+        elif isinstance(depset, list):
+            return [
+                Config.substitute_build_args(item, build_arg_set) for item in depset
+            ]
+        else:
+            return depset
 
 
 class Workspace:
