@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import get_train_context
-from ray.train.v2.api.context import TrainContext
+from ray.train.v2.api.context import TrainContext, _train_context
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -91,19 +91,6 @@ def report(
     get_train_context().report(
         metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
     )
-
-
-@PublicAPI(stability="stable")
-def get_context() -> TrainContext:
-    """Get or create a singleton training context.
-
-    The context is only available within a function passed to Ray Train.
-
-    See the :class:`~ray.train.TrainContext` API reference to see available methods.
-    """
-    # TODO: Return a dummy train context on the controller and driver process
-    # instead of raising an exception if the train context does not exist.
-    return TrainContext()
 
 
 @PublicAPI(stability="stable")
