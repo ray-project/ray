@@ -360,19 +360,9 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        # TODO (Kourosh): We should uncomment this logic when
-        # https://github.com/vllm-project/vllm/pull/20636 is
-        # included in our vLLM release.
-        # if disk_lora_model.model_id in self._oai_models.lora_requests:
-        #     # Lora is already loaded, return
-        #     return
-
         self._validate_openai_serving_models()
 
-        if any(
-            lora_request.lora_name == disk_lora_model.model_id
-            for lora_request in self._oai_models.lora_requests  # type: ignore[attr-defined]
-        ):
+        if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
 
