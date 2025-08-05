@@ -52,6 +52,5 @@ ray_cc_library(
         ":gcs_pb_util",
         ":gcs_redis_client",
         "//:node_manager_fbs",
-        "//src/ray/rpc:node_manager_rpc",
     ],
 )

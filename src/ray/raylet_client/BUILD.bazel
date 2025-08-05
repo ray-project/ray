@@ -26,7 +26,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/rpc:node_manager_rpc",
+        "//src/ray/rpc:node_manager_client",
         "//src/ray/util:logging",
     ],
 )
