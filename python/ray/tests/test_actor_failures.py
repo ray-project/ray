@@ -6,6 +6,7 @@ import signal
 import sys
 import tempfile
 import time
+from typing import Callable, Generator
 
 import pytest
 import numpy as np
@@ -31,8 +32,8 @@ def ray_init_with_task_retry_delay():
 
 
 @pytest.fixture
-def temp_files():
-    """Create temporary files and ensure cleanup."""
+def tempfile_factory() -> Generator[Callable[[], str], None, None]:
+    """Yields a factory function to generate tempfiles that will be deleted after the test run."""
     files = []
 
     def create_temp_file():
@@ -1275,9 +1276,9 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
     assert ray.get(refs) == [3, 4, 5]
 
 
-def test_actor_user_shutdown_method(ray_start_regular_shared, temp_files):
+def test_actor_user_shutdown_method(ray_start_regular_shared, tempfile_factory):
     """Test that __ray_shutdown__ method is called during actor termination."""
-    shutdown_file = temp_files()
+    shutdown_file = tempfile_factory()
 
     @ray.remote
     class UserShutdownActor:
@@ -1302,9 +1303,11 @@ def test_actor_user_shutdown_method(ray_start_regular_shared, temp_files):
         assert f.read() == "ray_shutdown_called"
 
 
-def test_actor_ray_shutdown_handles_exceptions(ray_start_regular_shared, temp_files):
+def test_actor_ray_shutdown_handles_exceptions(
+    ray_start_regular_shared, tempfile_factory
+):
     """Test that Ray handles unhandled exceptions in __ray_shutdown__ gracefully."""
-    shutdown_file = temp_files()
+    shutdown_file = tempfile_factory()
 
     @ray.remote
     class ExceptionActor:
@@ -1334,11 +1337,11 @@ def test_actor_ray_shutdown_handles_exceptions(ray_start_regular_shared, temp_fi
 
 
 def test_actor_atexit_handler_dont_conflict_with_ray_shutdown(
-    ray_start_regular_shared, temp_files
+    ray_start_regular_shared, tempfile_factory
 ):
     """Test that atexit handler methods don't conflict with __ray_shutdown__ and both run."""
-    shutdown_file = temp_files()
-    atexit_file = temp_files()
+    shutdown_file = tempfile_factory()
+    atexit_file = tempfile_factory()
 
     @ray.remote
     class CleanupActor:
@@ -1372,10 +1375,10 @@ def test_actor_atexit_handler_dont_conflict_with_ray_shutdown(
 
 
 def test_actor_ray_shutdown_dont_interfere_with_kill(
-    ray_start_regular_shared, temp_files
+    ray_start_regular_shared, tempfile_factory
 ):
     """Test __ray_shutdown__ is not called when actor is killed with ray.kill()."""
-    shutdown_file = temp_files()
+    shutdown_file = tempfile_factory()
 
     @ray.remote
     class KillableActor:

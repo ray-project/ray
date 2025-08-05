@@ -499,14 +499,10 @@ void CoreWorker::Shutdown() {
     absl::MutexLock lock(&mutex_);
     if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil() &&
         actor_shutdown_callback_) {
-      try {
-        RAY_LOG(INFO) << "Calling actor cleanup callback before shutdown";
-        actor_shutdown_callback_();
-        // Clear callback to prevent multiple calls
-        actor_shutdown_callback_ = nullptr;
-      } catch (const std::exception &e) {
-        RAY_LOG(ERROR) << "Actor cleanup callback failed: " << e.what();
-      }
+      RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
+      actor_shutdown_callback_();
+      // Clear callback to prevent multiple calls
+      actor_shutdown_callback_ = nullptr;
     }
   }
 
