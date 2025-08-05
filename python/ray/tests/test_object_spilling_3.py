@@ -295,7 +295,7 @@ def test_spill_dir_cleanup_on_node_removal(fs_only_object_spilling_config):
 def test_spill_deadlock(object_spilling_config, shutdown_only):
     object_spilling_config, _ = object_spilling_config
     # Limit our object store to 75 MiB of memory.
-    address = ray.init(
+    ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
