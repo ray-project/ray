@@ -462,7 +462,14 @@ def test_metrics_export_node_metrics(shutdown_only):
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
 _EVENT_AGGREGATOR_AGENT_TARGET_ADDR = (
+<<<<<<< HEAD
     f"http://{_EVENT_AGGREGATOR_AGENT_TARGET_IP}:{_EVENT_AGGREGATOR_AGENT_TARGET_PORT}"
+=======
+    "http://"
+    + _EVENT_AGGREGATOR_AGENT_TARGET_IP
+    + ":"
+    + str(_EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+>>>>>>> dc35f14f79 (fix merge issue)
 )
 
 
@@ -524,15 +531,13 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_published_total": 1.0,
             "ray_event_aggregator_agent_events_filtered_out_total": 1.0,
         }
-        result = True
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
-            print(f"samples: {samples}")
             if not samples:
-                result = False
+                return False
             if samples[0].value != expected_value:
-                result = False
-        return result
+                return False
+        return True
 
     wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
