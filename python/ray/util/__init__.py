@@ -95,7 +95,7 @@ def pass_by_reference(object_ref: "ray.ObjectRef") -> _ObjectRefWrapper:
             obj_ref = ray.put("Hello!")
             assert ray.get(f.remote(ray.util.pass_by_reference(obj_ref))) == "Hello!"
     """
-    return _ObjectRefWrapper(o)
+    return _ObjectRefWrapper(object_ref)
 
 
 __all__ = [
