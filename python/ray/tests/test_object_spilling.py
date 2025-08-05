@@ -493,7 +493,7 @@ def test_spill_remote_object(
 def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = fs_only_object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -534,7 +534,7 @@ def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_on
 def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = unstable_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -569,7 +569,7 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown
 def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = slow_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -606,7 +606,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
@@ -655,7 +655,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 @pytest.mark.parametrize("is_async", [False, True])
 async def test_spill_during_get(object_spilling_config, shutdown_only, is_async):
     object_spilling_config, _ = object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
