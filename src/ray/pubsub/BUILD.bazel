@@ -1,82 +1,31 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
-    name = "pubsub_rpc",
-    deps = [
-        "//src/ray/protobuf:pubsub_cc_grpc",
-        "//src/ray/rpc:grpc_common_lib",
-    ],
-)
-
-ray_cc_library(
-    name = "publisher_lib",
+    name = "publisher",
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
-        ":pubsub_rpc",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        # NOTE(edoakes): we only seem to need `SendReplyCallback` from server_call.h.
+        # We should move that definition to its own target.
+        "//src/ray/rpc:server_call",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
 )
 
-# Subscriber module
 ray_cc_library(
-    name = "subscriber_lib",
+    name = "subscriber",
     srcs = ["subscriber.cc"],
     hdrs = ["subscriber.h"],
     deps = [
-        ":pubsub_rpc",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        # NOTE(edoakes): we only seem to need `ClientCallback` from client_call.h.
+        # We should move that definition to its own target.
+        "//src/ray/rpc:client_call",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
-    ],
-)
-
-# Combined PubSub Library
-ray_cc_library(
-    name = "pubsub_lib",
-    deps = [
-        ":publisher_lib",
-        ":subscriber_lib",
-    ],
-)
-
-ray_cc_test(
-    name = "pubsub_integration_test",
-    size = "small",
-    srcs = ["test/integration_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":pubsub_lib",
-        "//src/ray/protobuf:pubsub_cc_grpc",
-        "//src/ray/protobuf:pubsub_cc_proto",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "publisher_test",
-    size = "small",
-    srcs = ["test/publisher_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "subscriber_test",
-    size = "small",
-    srcs = [
-        "test/subscriber_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
