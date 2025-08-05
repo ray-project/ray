@@ -84,8 +84,8 @@ class DependencySetManager:
                 return depset
         raise KeyError(f"Dependency set {name} not found")
 
-    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = [uv_binary(), "pip", cmd, *args]
+    def exec_uv_cmd(self, cmd: List[str], args: List[str]) -> str:
+        cmd = [uv_binary(), *cmd, *args]
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
@@ -145,7 +145,7 @@ class DependencySetManager:
                 args.extend([self.get_path(requirement)])
         if output:
             args.extend(["-o", self.get_path(output)])
-        self.exec_uv_cmd("compile", args)
+        self.exec_uv_cmd(["pip", "compile"], args)
 
     def subset(
         self,
@@ -194,6 +194,22 @@ class DependencySetManager:
             append_flags=append_flags,
             override_flags=override_flags,
         )
+
+    def build_wheel(
+        self,
+        setup_path: str,
+        output_dir: str,
+        python_version: str,
+    ):
+        args = []
+        if setup_path:
+            args.extend(["--directory", setup_path])
+        if python_version:
+            args.extend(["--python-version", python_version])
+        if output_dir:
+            args.extend(["-o", output_dir])
+
+        self.exec_uv_cmd(["build"], ["--wheel", *args])
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
