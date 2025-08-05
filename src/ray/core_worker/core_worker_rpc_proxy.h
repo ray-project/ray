@@ -77,8 +77,10 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   }
 
   void SetCoreWorker(CoreWorker *core_worker) {
-    std::lock_guard<std::mutex> lock(core_worker_mutex_);
+    core_worker_mutex_.lock();
     core_worker_ = core_worker;
+    // Unlock the mutex before notifying the cv to avoid context switch
+    core_worker_mutex_.unlock();
     core_worker_cv_.notify_all();
   }
 
