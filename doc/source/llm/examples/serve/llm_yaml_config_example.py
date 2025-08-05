@@ -41,7 +41,7 @@ process = subprocess.Popen(
 app_name = "llm_app"
 status = ApplicationStatus.NOT_STARTED
 start_time = time.time()
-timeout_seconds = 600
+timeout_seconds = 300
 
 while status != ApplicationStatus.RUNNING and time.time() - start_time < timeout_seconds:
     # Check if subprocess failed early
