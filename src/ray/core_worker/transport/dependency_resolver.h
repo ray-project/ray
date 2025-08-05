@@ -75,12 +75,12 @@ class LocalDependencyResolver {
     TaskState(TaskSpecification t,
               const absl::flat_hash_set<ObjectID> &deps,
               const absl::flat_hash_set<ActorID> &actor_ids,
-              std::function<void(Status)> _on_dependencies_resolved)
+              std::function<void(Status)> on_dependencies_resolved)
         : task(std::move(t)),
           local_dependencies(),
           actor_dependencies_remaining(actor_ids.size()),
           status(Status::OK()),
-          on_dependencies_resolved(std::move(_on_dependencies_resolved)) {
+          on_dependencies_resolved_(std::move(on_dependencies_resolved)) {
       local_dependencies.reserve(deps.size());
       for (const auto &dep : deps) {
         local_dependencies.emplace(dep, /*ray_object=*/nullptr);
@@ -98,7 +98,7 @@ class LocalDependencyResolver {
     size_t obj_dependencies_remaining;
     /// Dependency resolution status.
     Status status;
-    std::function<void(Status)> on_dependencies_resolved;
+    std::function<void(Status)> on_dependencies_resolved_;
   };
 
   /// The in-memory store.
