@@ -199,20 +199,6 @@ pkg_zip(
     visibility = ["//visibility:private"],
 )
 
-genrule(
-    name = "ray_cpp_pkg",
-    srcs = ["ray_cpp_pkg.zip"],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        rm -rf "$$WORK_DIR/python/ray/cpp" &&
-        unzip -q $(location ray_cpp_pkg.zip) -d "$$WORK_DIR/python" &&
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
-    """,
-    local = 1,
-    visibility = ["//visibility:private"],
-)
-
 py_binary(
     name = "gen_ray_cpp_pkg",
     srcs = ["gen_ray_cpp_pkg.py"],
