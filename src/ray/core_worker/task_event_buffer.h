@@ -251,12 +251,13 @@ enum TaskEventBufferCounter {
   kTotalNumTaskProfileEventDropped,
   kTotalNumTaskStatusEventDropped,
   kTotalNumTaskAttemptsReported,
-  kTotalNumTaskAttemptsReportedToAggregator,
   kTotalNumLostTaskAttemptsReported,
-  kTotalNumLostTaskAttemptsReportedToAggregator,
   kTotalTaskEventsBytesReported,
   kTotalNumFailedToReport,
-  kTotalNumFailedToReportToAggregator,
+  kTotalNumTaskEventsReportedToAggregator,
+  kTotalNumTaskEventsFailedToReportToAggregator,
+  kTotalNumLostTaskAttemptsReportedToAggregator,
+  kTotalNumFailedRequestsToAggregator,
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,

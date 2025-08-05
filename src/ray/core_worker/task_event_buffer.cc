@@ -745,44 +745,34 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
 void TaskEventBufferImpl::SendRayEventsToAggregator(
     std::unique_ptr<rpc::events::RayEventsData> data) {
   event_aggregator_grpc_in_progress_ = true;
-  auto num_task_attempts_to_send = data->events_size();
+  auto num_task_events_to_send = data->events_size();
   auto num_dropped_task_attempts_to_send =
       data->task_events_metadata().dropped_task_attempts_size();
 
-  // TODO(myan) #54515: To improve observability of the pipeline, we should track the
-  // number of events failed on the aggregator side due to grpc failure & unknown errors
-  // separately.
-  auto on_complete = [this, num_task_attempts_to_send, num_dropped_task_attempts_to_send](
-                         const Status &status, const rpc::events::AddEventsReply &reply) {
-    auto add_events_status = reply.status();
-    auto add_events_status_code = add_events_status.code();
-    auto add_events_status_message = add_events_status.message();
-    if (!status.ok() || add_events_status_code != 0) {
-      // The event aggregator failed to add events due to unknown errors or exiting
-      // events are dropped due to event buffer is full.
-      std::stringstream error_info;
-      error_info << "[grpc_status=" << status;
-      if (add_events_status_code != 0) {
-        error_info << ", add_events_status=" << add_events_status_code
-                   << ", add_events_status_message=" << add_events_status_message;
-      }
-      error_info << "]";
-
-      RAY_LOG(WARNING) << "Failed to send task events of  " << num_task_attempts_to_send
-                       << " tasks attempts, and report "
-                       << num_dropped_task_attempts_to_send
-                       << " task attempts lost on worker to the event aggregator."
-                       << error_info.str();
-      this->stats_counter_.Increment(
-          TaskEventBufferCounter::kTotalNumFailedToReportToAggregator);
-    } else {
-      this->stats_counter_.Increment(kTotalNumTaskAttemptsReportedToAggregator,
-                                     num_task_attempts_to_send);
-      this->stats_counter_.Increment(kTotalNumLostTaskAttemptsReportedToAggregator,
-                                     num_dropped_task_attempts_to_send);
-    }
-    event_aggregator_grpc_in_progress_ = false;
-  };
+  rpc::ClientCallback<rpc::events::AddEventsReply> on_complete =
+      [this, num_task_events_to_send, num_dropped_task_attempts_to_send](
+          const Status &status, const rpc::events::AddEventsReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "GRPC Error: Failed to send task events of "
+                           << num_task_events_to_send << " tasks attempts, and report "
+                           << num_dropped_task_attempts_to_send
+                           << " task attempts lost on worker to the event aggregator."
+                           << "[status=" << status << "]";
+          this->stats_counter_.Increment(
+              TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator);
+          this->stats_counter_.Increment(
+              TaskEventBufferCounter::kTotalNumTaskEventsFailedToReportToAggregator,
+              num_task_events_to_send);
+        } else {
+          this->stats_counter_.Increment(
+              TaskEventBufferCounter::kTotalNumTaskEventsReportedToAggregator,
+              num_task_events_to_send);
+          this->stats_counter_.Increment(
+              TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator,
+              num_dropped_task_attempts_to_send);
+        }
+        event_aggregator_grpc_in_progress_ = false;
+      };
 
   rpc::events::AddEventsRequest request;
   *request.mutable_events_data() = std::move(*data);
@@ -998,7 +988,15 @@ std::string TaskEventBufferImpl::DebugString() {
      << "\n\tnum status task events dropped: "
      << stats[TaskEventBufferCounter::kTotalNumTaskStatusEventDropped]
      << "\n\tnum profile task events dropped: "
-     << stats[TaskEventBufferCounter::kTotalNumTaskProfileEventDropped] << "\n";
+     << stats[TaskEventBufferCounter::kTotalNumTaskProfileEventDropped]
+     << "\n\tnum ray task events reported to aggregator: "
+     << stats[TaskEventBufferCounter::kTotalNumTaskEventsReportedToAggregator]
+     << "\n\tnum ray task events failed to report to aggregator: "
+     << stats[TaskEventBufferCounter::kTotalNumTaskEventsFailedToReportToAggregator]
+     << "\n\tnum of task attempts dropped reported to aggregator: "
+     << stats[TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator]
+     << "\n\tnum of failed requests to aggregator: "
+     << stats[TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator];
 
   return ss.str();
 }
