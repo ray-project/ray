@@ -1,33 +1,32 @@
 import inspect
 import logging
 from typing import (
+    TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
+    Generic,
     List,
     Literal,
     Optional,
     Tuple,
-    Union,
-    TYPE_CHECKING,
     TypeVar,
-    Generic,
-    Callable,
+    Union,
     overload,
 )
 
 try:
-    from typing import ParamSpec
-    from typing import Concatenate
+    from typing import Concatenate, ParamSpec
 except ImportError:
-    from typing_extensions import ParamSpec
-    from typing_extensions import Concatenate
+    from typing_extensions import Concatenate, ParamSpec
 
-import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 import ray._common.signature as signature
+import ray._private.ray_constants as ray_constants
 import ray._raylet
-from ray import ActorClassID, Language, cross_language, ObjectRef
+from ray import ActorClassID, Language, ObjectRef, cross_language
 from ray._common import ray_option_utils
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
@@ -35,12 +34,14 @@ from ray._private.client_mode_hook import (
     client_mode_hook,
     client_mode_should_convert,
 )
+from ray._private.custom_types import (
+    TensorTransportEnum,
+)
 from ray._private.inspect_util import (
     is_class_method,
     is_function_or_method,
     is_static_method,
 )
-from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -59,9 +60,6 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_class,
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
-)
-from ray._private.custom_types import (
-    TensorTransportEnum,
 )
 
 if TYPE_CHECKING:
@@ -1349,6 +1347,11 @@ class ActorClass(Generic[T]):
                 concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
+            allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+                tasks out of order. If you're using multi-threaded
+                (``max_concurrency > 1``) or async actors, you can't set this to False.
+                Defaults to True if you're using multi-threaded or async actors, and
+                False otherwise. Actor task retries are always executed out of order.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
                 actor is still alive.
@@ -1445,55 +1448,8 @@ class ActorClass(Generic[T]):
         Args:
             args: The arguments to forward to the actor constructor.
             kwargs: The keyword arguments to forward to the actor constructor.
-            num_cpus: The number of CPUs required by the actor creation task.
-            num_gpus: The number of GPUs required by the actor creation task.
-            memory: Restrict the heap memory usage of this actor.
-            resources: The custom resources required by the actor creation
-                task.
-            max_concurrency: The max number of concurrent calls to allow for
-                this actor. This only works with direct actor calls. The max
-                concurrency defaults to 1 for threaded execution, and 1000 for
-                asyncio execution. Note that the execution order is not
-                guaranteed when max_concurrency > 1.
-            name: The globally unique name for the actor, which can be used
-                to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive.
-            namespace: Override the namespace to use for the actor. By default,
-                actors are created in an anonymous namespace. The actor can
-                be retrieved via ray.get_actor(name=name, namespace=namespace).
-            lifetime: Either `None`, which defaults to the actor will fate
-                share with its creator and will be deleted once its refcount
-                drops to zero, or "detached", which means the actor will live
-                as a global object independent of the creator.
-            placement_group: (This has been deprecated, please use
-                `PlacementGroupSchedulingStrategy` scheduling_strategy)
-                the placement group this actor belongs to,
-                or None if it doesn't belong to any group. Setting to "default"
-                autodetects the placement group based on the current setting of
-                placement_group_capture_child_tasks.
-            placement_group_bundle_index: (This has been deprecated, please use
-                `PlacementGroupSchedulingStrategy` scheduling_strategy)
-                the index of the bundle
-                if the actor belongs to a placement group, which may be -1 to
-                specify any available bundle.
-            placement_group_capture_child_tasks: (This has been deprecated,
-                please use `PlacementGroupSchedulingStrategy`
-                scheduling_strategy)
-                Whether or not children tasks
-                of this actor should implicitly use the same placement group
-                as its parent. It is False by default.
-            runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children (see
-                :ref:`runtime-environments` for details).
-            max_pending_calls: Set the max number of pending calls
-                allowed on the actor handle. When this value is exceeded,
-                PendingCallsLimitExceeded will be raised for further tasks.
-                Note that this limit is counted per handle. -1 means that the
-                number of pending calls is unlimited.
-            scheduling_strategy: Strategy about how to schedule this actor.
-            enable_task_events: True if tracing is enabled, i.e., task events from
-                the actor should be reported. Defaults to True.
-            _labels: The key-value labels of the actor.
+            **actor_options: Keyword arguments for configuring the actor options.
+                See ``ActorClass.options`` for more details.
 
         Returns:
             A handle to the newly created actor.
@@ -1752,6 +1708,26 @@ class ActorClass(Generic[T]):
                 )
             )
 
+        execute_out_of_order = actor_options.get("allow_out_of_order_execution")
+
+        # If the actor is async or multi-threaded, default to out-of-order execution.
+        if execute_out_of_order is None:
+            execute_out_of_order = is_asyncio or max_concurrency > 1
+
+        if is_asyncio and not execute_out_of_order:
+            raise ValueError(
+                "If you're using async actors, Ray can't execute actor tasks in order. "
+                "Set `allow_out_of_order_execution=True` to allow out-of-order "
+                "execution."
+            )
+
+        elif max_concurrency > 1 and not execute_out_of_order:
+            raise ValueError(
+                "If you're using multi-threaded actors, Ray can't execute actor tasks "
+                "in order. Set `allow_out_of_order_execution=True` to allow "
+                "out-of-order execution."
+            )
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -1774,6 +1750,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            execute_out_of_order=execute_out_of_order,
         )
 
         if _actor_launch_hook:
@@ -1799,6 +1776,7 @@ class ActorClass(Generic[T]):
             meta.actor_creation_function_descriptor,
             worker.current_cluster_and_job,
             original_handle=True,
+            execute_out_of_order=execute_out_of_order,
         )
 
         return actor_handle
@@ -1868,6 +1846,7 @@ class ActorHandle(Generic[T]):
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
+        _ray_execute_out_of_order: Whether the actor can execute tasks out of order.
     """
 
     def __init__(
@@ -1890,6 +1869,7 @@ class ActorHandle(Generic[T]):
         cluster_and_job,
         original_handle=False,
         weak_ref: bool = False,
+        execute_out_of_order: Optional[bool] = None,
     ):
         """Initialize an ActorHandle.
 
@@ -1912,6 +1892,7 @@ class ActorHandle(Generic[T]):
             cluster_and_job: The cluster and job information.
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
+            execute_out_of_order: Whether the actor can execute tasks out of order.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -1919,6 +1900,7 @@ class ActorHandle(Generic[T]):
         self._ray_original_handle = original_handle
         self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
+        self._ray_execute_out_of_order = execute_out_of_order
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
