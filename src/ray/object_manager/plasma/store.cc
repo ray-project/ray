@@ -43,7 +43,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
