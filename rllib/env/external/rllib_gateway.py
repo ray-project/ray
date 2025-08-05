@@ -66,8 +66,6 @@ class RLlibGateway:
                     py::object action = rllib.attr("get_action")(
                         env.reward,  // 0.0 if episode just started with a reset-obs.
                         env.observation,
-                        false,
-                        false
                     );
                     // Apply the locally computed action in the simulation.
                     env.step(action.cast<int>());
@@ -78,16 +76,14 @@ class RLlibGateway:
                     break;
                 }
 
-                // Send last reward and last observation (with dummy-action request) to
-                // get_action.
+                // Send last reward and last observation to episode_done().
                 if (env.terminated || env.truncated)
                 {
                     try {
                         py::gil_scoped_acquire gil;
-                        rllib.attr("get_action")(
+                        rllib.attr("episode_done")(
                             env.reward,
                             env.observation,
-                            env.terminated,
                             env.truncated
                         );
                     }
@@ -95,7 +91,7 @@ class RLlibGateway:
                         std::cerr << "[Python error in get_action (episode done)]\n" << e.what() << std::endl;
                         break;
                     }
-                    // Episode is done, reset it to start a new one.
+                    // Reset episode to start a new one.
                     env.reset();
                     // Report episode's total return.
                     std::cout << "Episode " << eps << " return: " << total_reward << "\n";
@@ -161,7 +157,11 @@ class RLlibGateway:
             args=(address, port),
         ).start()
 
-    def get_action(self, prev_reward, next_observation, terminated, truncated):
+    def get_action(
+        self,
+        prev_reward,
+        next_observation,
+    ):
         """Computes and returns a new action, given an observation.
 
         Args:
@@ -173,15 +173,81 @@ class RLlibGateway:
                 episdode through `Episode.add_env_step()`, then the env-to-module
                 connector creates the inference forward batch for the RLModule based on
                 this running episode.
-            terminated: Whether the episode is terminated. If True, `next_observation`
-                is the terminal observation of the episode and `prev_reward` is the last
-                reward that the agent receives in the episode.
-            truncated: Whether the episode is truncated (done). If True,
-                `next_observation` is the observation right before the truncation point
-                and `prev_reward` is the last reward that the agent receives in the
-                episode. A truncated episode's last observation should still be used to
+        """
+        return self._step_helper(prev_reward, next_observation)
+
+    def episode_done(self, final_reward, final_observation, truncated: bool):
+        """Logs the last step in an episode and starts a new one.
+
+        Args:
+            final_reward: The final reward received in the episode.
+            final_observation: The final observation in the episode.
+            truncated: Whether the episode is truncated. If True,
+                `final_observation` is the observation right before the truncation point
+                and `final_reward` is the last reward that the agent receives in the
+                episode. A truncated episode's final observation should still be used to
                 compute value function estimates at the truncation point.
         """
+        # Forward to `self.get_action()` with the correct terminated/truncated args.
+        self._step_helper(
+            final_reward,
+            final_observation,
+            terminated=not truncated,
+            truncated=truncated,
+        )
+
+    def _connect_to_server_thread_func(self, address, port):
+        # Try connecting to server.
+        while True:
+            try:
+                logger.info(f"Trying to connect to {address}:{port} ...")
+                self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._sock.settimeout(120.0)
+                print(f"address={address} port={port}")
+                self._sock.connect((address, port))
+                break
+            except ConnectionRefusedError:
+                time.sleep(5)
+
+        logger.info(f"Connected to server at {address}:{port} ...")
+
+        # Send ping-pong.
+        send_rllink_message(self._sock, {"type": RLlink.PING.name})
+        msg_type, msg_body = get_rllink_message(self._sock)
+        assert msg_type == RLlink.PONG
+
+        logger.info("\tPING/PONG ok ...")
+
+        # Request config.
+        send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
+        msg_type, msg_body = get_rllink_message(self._sock)
+        assert msg_type == RLlink.SET_CONFIG
+        # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
+        #  Checkpointable with a pickle-independent state.
+        self._config = pickle.loads(msg_body["config"])
+        # Create the RLModule and connector pipelines.
+        self._env_to_module = self._config.build_env_to_module_connector()
+        rl_module_spec = self._config.get_rl_module_spec()
+        self._rl_module = rl_module_spec.build()
+        self._module_to_env = self._config.build_module_to_env_connector()
+
+        logger.info("\tGET_CONFIG ok (built connectors and module) ...")
+
+        # Request EnvRunner state (incl. model weights).
+        send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
+        msg_type, msg_body = get_rllink_message(self._sock)
+        assert msg_type == RLlink.SET_STATE
+        self._set_state(msg_body["state"])
+
+        logger.info("\tSET_STATE ok ...")
+
+    def _step_helper(
+        self,
+        prev_reward,
+        next_observation,
+        terminated: bool = False,
+        truncated: bool = False,
+    ):
         # TODO (sven): Block until we have created our model.
         while self._module_to_env is None:
             time.sleep(0.01)
@@ -285,47 +351,3 @@ class RLlibGateway:
         # self._module_to_env.set_state(msg_body[COMPONENT_MODULE_TO_ENV_CONNECTOR])
         self._rl_module.set_state(msg_body[COMPONENT_RL_MODULE])
         self._weights_seq_no = msg_body[WEIGHTS_SEQ_NO]
-
-    def _connect_to_server_thread_func(self, address, port):
-        # Try connecting to server.
-        while True:
-            try:
-                logger.info(f"Trying to connect to {address}:{port} ...")
-                self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._sock.settimeout(120.0)
-                self._sock.connect((address, port))
-                break
-            except ConnectionRefusedError:
-                time.sleep(5)
-
-        logger.info(f"Connected to server at {address}:{port} ...")
-
-        # Send ping-pong.
-        send_rllink_message(self._sock, {"type": RLlink.PING.name})
-        msg_type, msg_body = get_rllink_message(self._sock)
-        assert msg_type == RLlink.PONG
-
-        logger.info("\tPING/PONG ok ...")
-
-        # Request config.
-        send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
-        msg_type, msg_body = get_rllink_message(self._sock)
-        assert msg_type == RLlink.SET_CONFIG
-        # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
-        #  Checkpointable with a pickle-independent state.
-        self._config = pickle.loads(msg_body["config"])
-        # Create the RLModule and connector pipelines.
-        self._env_to_module = self._config.build_env_to_module_connector()
-        rl_module_spec = self._config.get_rl_module_spec()
-        self._rl_module = rl_module_spec.build()
-        self._module_to_env = self._config.build_module_to_env_connector()
-
-        logger.info("\tGET_CONFIG ok (built connectors and module) ...")
-
-        # Request EnvRunner state (incl. model weights).
-        send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
-        msg_type, msg_body = get_rllink_message(self._sock)
-        assert msg_type == RLlink.SET_STATE
-        self._set_state(msg_body["state"])
-
-        logger.info("\tSET_STATE ok ...")
