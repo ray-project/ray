@@ -377,9 +377,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "core_worker_handle_get_object_status_test",
+    name = "core_worker_test",
     size = "small",
-    srcs = ["core_worker_handle_get_object_status_test.cc"],
+    srcs = ["core_worker_test.cc"],
     tags = ["team:core"],
     deps = [
         "//:ray_fakes",

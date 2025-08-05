@@ -12,25 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/core_worker.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <condition_variable>
+#include <future>
+#include <iostream>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
-#include "fakes/ray/core_worker/actor_creator.h"
-#include "fakes/ray/core_worker/actor_task_submitter.h"
-#include "fakes/ray/core_worker/experimental_mutable_object_provider.h"
-#include "fakes/ray/core_worker/lease_policy.h"
-#include "fakes/ray/core_worker/task_event_buffer.h"
-#include "fakes/ray/core_worker/task_manager.h"
 #include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
@@ -38,7 +33,6 @@
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/object_recovery_manager.h"
@@ -91,6 +85,9 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
       return Status::OK();
     };
 
+    auto client_call_manager =
+        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+
     auto core_worker_client_pool =
         std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
           return std::make_shared<rpc::CoreWorkerClientInterface>();
@@ -141,7 +138,28 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         core_worker_client_pool,
         rpc_address);
 
-    auto fake_task_manager = std::make_shared<FakeTaskManager>();
+    auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+        std::make_unique<gcs::MockGcsClient>(),
+        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager));
+
+    auto task_manager = std::make_shared<TaskManager>(
+        *memory_store_,
+        *reference_counter_,
+        [this](const RayObject &object, const ObjectID &object_id) {
+          return Status::OK();
+        },
+        [](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {},
+        [](const TaskSpecification &spec) { return false; },
+        [](const JobID &job_id,
+           const std::string &type,
+           const std::string &error_message,
+           double timestamp) { return Status::OK(); },
+        RayConfig::instance().max_lineage_bytes(),
+        *task_event_buffer,
+        [](const ActorID &actor_id) {
+          return std::make_shared<rpc::CoreWorkerClientInterface>();
+        },
+        mock_gcs_client);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address,
@@ -150,16 +168,17 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         [](const ObjectID &object_id, const ObjectLookupCallback &callback) {
           return Status::OK();
         },
-        *fake_task_manager,
+        *task_manager,
         *reference_counter_,
         *memory_store_,
         [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {});
 
-    auto lease_policy = std::make_unique<FakeLeasePolicy>();
+    auto lease_policy = std::unique_ptr<LeasePolicyInterface>(
+        std::make_unique<LocalLeasePolicy>(rpc_address));
 
     auto lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(10);
 
-    auto fake_actor_creator = std::make_shared<FakeActorCreator>();
+    auto actor_creator = std::make_shared<DefaultActorCreator>(mock_gcs_client);
 
     auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
         rpc_address,
@@ -168,78 +187,66 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         raylet_client_pool,
         std::move(lease_policy),
         memory_store_,
-        *fake_task_manager,
+        *task_manager,
         NodeID::Nil(),
         WorkerType::WORKER,
         10000,
-        fake_actor_creator,
+        actor_creator,
         JobID::Nil(),
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
         boost::asio::steady_timer(io_service_));
 
-    auto fake_actor_task_submitter = std::make_unique<FakeActorTaskSubmitter>();
+    auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
+        *core_worker_client_pool,
+        *memory_store_,
+        *task_manager,
+        *actor_creator,
+        /*tensor_transport_getter=*/
+        [this](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
+        io_service_,
+        reference_counter_);
 
     auto actor_manager = std::make_unique<ActorManager>(
-        mock_gcs_client, *fake_actor_task_submitter, *reference_counter_);
+        mock_gcs_client, *actor_task_submitter, *reference_counter_);
 
-    auto fake_task_event_buffer = std::make_unique<FakeTaskEventBuffer>();
+    auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
 
-    io_thread_ = boost::thread([this]() { io_service_.run(); });
-
-    auto client_call_manager =
-        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
-
-    auto fake_experimental_mutable_object_provider =
-        std::make_shared<experimental::FakeMutableObjectProvider>();
-
-    auto periodical_runner = std::make_shared<FakePeriodicalRunner>();
-
-    EXPECT_CALL(*mock_gcs_client->mock_worker_accessor, AsyncAdd(_, _)).Times(1);
-    EXPECT_CALL(*mock_gcs_client->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-        .Times(1);
-    // Create CoreWorker
-    core_worker_ =
-        std::make_shared<CoreWorker>(std::move(options),
-                                     std::move(worker_context),
-                                     io_service_,
-                                     std::move(client_call_manager),
-                                     std::move(core_worker_client_pool),
-                                     std::move(raylet_client_pool),
-                                     std::move(periodical_runner),
-                                     std::move(core_worker_server),
-                                     std::move(rpc_address),
-                                     std::move(mock_gcs_client),
-                                     std::move(fake_local_raylet_client),
-                                     io_thread_,
-                                     reference_counter_,
-                                     memory_store_,
-                                     nullptr,  // plasma_store_provider_
-                                     std::move(fake_experimental_mutable_object_provider),
-                                     std::move(future_resolver),
-                                     std::move(fake_task_manager),
-                                     std::move(fake_actor_creator),
-                                     std::move(fake_actor_task_submitter),
-                                     std::move(fake_object_info_publisher),
-                                     std::move(fake_object_info_subscriber),
-                                     std::move(lease_request_rate_limiter),
-                                     std::move(normal_task_submitter),
-                                     std::move(object_recovery_manager),
-                                     std::move(actor_manager),
-                                     task_execution_service_,
-                                     std::move(fake_task_event_buffer),
-                                     getpid());
-  }
-
-  void TearDown() override {
-    io_service_.stop();
-    if (io_thread_.joinable()) {
-      io_thread_.join();
-    }
+    // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
+    // create a real plasma_store_provider_ and mutable_object_provider_
+    core_worker_ = std::make_shared<CoreWorker>(std::move(options),
+                                                std::move(worker_context),
+                                                io_service_,
+                                                std::move(client_call_manager),
+                                                std::move(core_worker_client_pool),
+                                                std::move(raylet_client_pool),
+                                                std::move(periodical_runner),
+                                                std::move(core_worker_server),
+                                                std::move(rpc_address),
+                                                std::move(mock_gcs_client),
+                                                std::move(fake_local_raylet_client),
+                                                io_thread_,
+                                                reference_counter_,
+                                                memory_store_,
+                                                nullptr,  // plasma_store_provider_
+                                                nullptr,  // mutable_object_provider_
+                                                std::move(future_resolver),
+                                                std::move(task_manager),
+                                                std::move(actor_creator),
+                                                std::move(actor_task_submitter),
+                                                std::move(fake_object_info_publisher),
+                                                std::move(fake_object_info_subscriber),
+                                                std::move(lease_request_rate_limiter),
+                                                std::move(normal_task_submitter),
+                                                std::move(object_recovery_manager),
+                                                std::move(actor_manager),
+                                                task_execution_service_,
+                                                std::move(task_event_buffer),
+                                                getpid());
   }
 
  protected:
-  // Core io contexts (must be first)
   instrumented_io_context io_service_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
   instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false,
@@ -268,43 +275,42 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, IdempotencyTest) {
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+
   ASSERT_TRUE(memory_store_->Put(*ray_object, object_id));
-  rpc::GetObjectStatusRequest request1;
-  request1.set_object_id(object_id.Binary());
-  request1.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
 
+  rpc::GetObjectStatusRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
+
+  std::promise<Status> promise1;
+  auto future1 = promise1.get_future();
   rpc::GetObjectStatusReply reply1;
-  std::mutex callback_mutex1;
-  std::condition_variable callback_cv1;
-  bool callback_called1 = false;
-  core_worker_->HandleGetObjectStatus(
-      request1,
-      &reply1,
-      [&](Status s, std::function<void()> success, std::function<void()> failure) {
-        std::lock_guard<std::mutex> lock(callback_mutex1);
-        callback_called1 = true;
-        callback_cv1.notify_one();
-      });
 
+  std::promise<Status> promise2;
+  auto future2 = promise2.get_future();
   rpc::GetObjectStatusReply reply2;
-  std::mutex callback_mutex2;
-  std::condition_variable callback_cv2;
-  bool callback_called2 = false;
+
+  // Make both requests with the same parameters to test idempotency
   core_worker_->HandleGetObjectStatus(
-      request1,
+      request,
+      &reply1,
+      [&promise1](Status s,
+                  std::function<void()> success,
+                  std::function<void()> failure) { promise1.set_value(s); });
+
+  core_worker_->HandleGetObjectStatus(
+      request,
       &reply2,
-      [&](Status s, std::function<void()> success, std::function<void()> failure) {
-        std::lock_guard<std::mutex> lock(callback_mutex2);
-        callback_called2 = true;
-        callback_cv2.notify_one();
-      });
+      [&promise2](Status s,
+                  std::function<void()> success,
+                  std::function<void()> failure) { promise2.set_value(s); });
 
-  std::unique_lock<std::mutex> lock1(callback_mutex1);
-  callback_cv1.wait(lock1, [&] { return callback_called1; });
-  std::unique_lock<std::mutex> lock2(callback_mutex2);
-  callback_cv2.wait(lock2, [&] { return callback_called2; });
+  // Wait for both callbacks to complete
+  io_service_.run_one();
+  io_service_.run_one();
 
-  // Verify both replies are identical (idempotency)
+  ASSERT_TRUE(future1.get().ok());
+  ASSERT_TRUE(future2.get().ok());
   EXPECT_EQ(reply1.status(), rpc::GetObjectStatusReply::CREATED);
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::CREATED);
   EXPECT_EQ("test_data", reply1.object().data());

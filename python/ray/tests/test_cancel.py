@@ -453,10 +453,8 @@ def test_remote_cancel(ray_start_cluster, use_force):
 
     ray.cancel(inner, force=use_force)
 
-    with pytest.raises(valid_exceptions(use_force)) as excinfo:
+    with pytest.raises(valid_exceptions(use_force)):
         ray.get(inner, timeout=10)
-    print(excinfo.value)
-    ray.shutdown()
 
 
 @pytest.mark.parametrize("use_force", [True, False])
