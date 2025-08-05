@@ -788,9 +788,16 @@ cdef int prepare_label_selector(
 
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+            raise ValueError(f"Label selector key type must be string, but got {type(key)}")
         if not isinstance(value, str):
             raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        if key == "":
+            raise ValueError("Label selector key must be a non-empty string.")
+        if (value.startswith("in(") and value.endswith(")")) or \
+           (value.startswith("!in(") and value.endswith(")")):
+            inner = value[value.index("(")+1:-1].strip()
+            if not inner:
+                raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
         label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
@@ -3766,6 +3773,7 @@ cdef class CoreWorker:
                      c_bool enable_task_events,
                      labels,
                      label_selector,
+                     c_bool allow_out_of_order_execution,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3818,9 +3826,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute_out_of_order for
-                        # async or threaded actors.
-                        is_asyncio or max_concurrency > 1,
+                        allow_out_of_order_execution,
                         max_pending_calls,
                         enable_task_events,
                         c_labels,
@@ -4102,6 +4108,7 @@ cdef class CoreWorker:
             dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         max_task_retries = dereference(c_actor_handle).MaxTaskRetries()
         enable_task_events = dereference(c_actor_handle).EnableTaskEvents()
+        allow_out_of_order_execution = dereference(c_actor_handle).AllowOutOfOrderExecution()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4129,7 +4136,8 @@ cdef class CoreWorker:
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
-                                         weak_ref=weak_ref)
+                                         weak_ref=weak_ref,
+                                         allow_out_of_order_execution=allow_out_of_order_execution)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4147,6 +4155,7 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
                                          weak_ref=weak_ref,
+                                         allow_out_of_order_execution=allow_out_of_order_execution,
                                          )
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
@@ -4736,19 +4745,6 @@ cdef class CoreWorker:
             self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
-
-    def get_task_submission_stats(self):
-        cdef:
-            int64_t num_tasks_submitted
-            int64_t num_leases_requested
-
-        with nogil:
-            num_tasks_submitted = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
-            num_leases_requested = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
-
-        return (num_tasks_submitted, num_leases_requested)
 
     def get_local_memory_store_bytes_used(self):
         cdef:
