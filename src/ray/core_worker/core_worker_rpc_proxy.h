@@ -72,10 +72,14 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
 
   /// Wait until the worker is initialized.
   void WaitUntilInitialized() override {
-    // TODO(joshlee): investigate and remove the 1 second timeout
     absl::MutexLock lock(&core_worker_mutex_);
     while (core_worker_ == nullptr) {
-      core_worker_cv_.WaitWithTimeout(&core_worker_mutex_, absl::Seconds(1));
+      core_worker_cv_.WaitWithTimeout(&core_worker_mutex_, absl::Seconds(60));
+    }
+    // If the core worker initialization is hanging for 60 seconds, we can assume that
+    // something is wrong and we should exit the program.
+    if (core_worker_ == nullptr) {
+      RAY_LOG(FATAL) << "Core worker is not initialized after 60 seconds";
     }
   }
 
