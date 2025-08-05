@@ -280,7 +280,6 @@ ray_cc_library(
         ":asio",
         ":id",
         "//:ray_syncer_cc_grpc",
-        "//src/ray/util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
