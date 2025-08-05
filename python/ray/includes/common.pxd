@@ -355,7 +355,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
-            c_bool execute_out_of_order,
+            c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
@@ -455,7 +455,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
             int64_t timeout_ms,
-            optional[CNodeID] node_id)
+            c_vector[CNodeID] node_ids)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -783,3 +783,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyNodeRegion
     cdef const char[] kLabelKeyNodeZone
     cdef const char[] kLabelKeyNodeGroup
+    cdef const char[] kLabelKeyTpuTopology
+    cdef const char[] kLabelKeyTpuSliceName
+    cdef const char[] kLabelKeyTpuWorkerId
+    cdef const char[] kLabelKeyTpuPodType
