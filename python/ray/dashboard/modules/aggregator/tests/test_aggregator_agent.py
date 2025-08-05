@@ -29,7 +29,6 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
-from ray.core.generated.common_pb2 import TaskAttempt
 
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
@@ -111,9 +110,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
-
+    assert reply is not None
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     req, _ = httpserver.log[0]
@@ -152,15 +149,23 @@ def test_aggregator_agent_receive_event_full(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
-                    event_id=b"1",
+                    event_id=b"2",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello",
+                ),
+                RayEvent(
+                    event_id=b"3",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
                     timestamp=timestamp,
@@ -175,65 +180,14 @@ def test_aggregator_agent_receive_event_full(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
-
-    reply = stub.AddEvents(request)
-    assert reply.status.code == 5
-    assert reply.status.message == "event 1 dropped because event buffer full"
-
-
-@_with_aggregator_port
-def test_aggregator_agent_receive_dropped_at_core_worker(
-    ray_start_cluster_head_with_env_vars, httpserver
-):
-    cluster = ray_start_cluster_head_with_env_vars
-    stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
-    )
-
-    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
-
-    request = AddEventsRequest(
-        events_data=RayEventsData(
-            events=[
-                RayEvent(
-                    event_id=b"5",
-                    source_type=RayEvent.SourceType.CORE_WORKER,
-                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
-                    severity=RayEvent.Severity.INFO,
-                    message="core worker event",
-                ),
-            ],
-            task_events_metadata=TaskEventsMetadata(
-                dropped_task_attempts=[
-                    TaskAttempt(
-                        task_id=b"1",
-                        attempt_number=1,
-                    ),
-                    TaskAttempt(
-                        task_id=b"2",
-                        attempt_number=2,
-                    ),
-                ],
-            ),
-        )
-    )
-
-    reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
-
+    assert reply is not None
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
-    assert req_json[0]["message"] == "core worker event"
+
+    assert len(req_json) == 1
+    assert req_json[0]["eventId"] == base64.b64encode(b"3").decode()
 
 
 @_with_aggregator_port
@@ -253,7 +207,7 @@ def test_aggregator_agent_receive_multiple_events(
         events_data=RayEventsData(
             events=[
                 RayEvent(
-                    event_id=b"3",
+                    event_id=b"4",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
                     timestamp=timestamp,
@@ -261,7 +215,7 @@ def test_aggregator_agent_receive_multiple_events(
                     message="event1",
                 ),
                 RayEvent(
-                    event_id=b"4",
+                    event_id=b"5",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
                     timestamp=timestamp,
@@ -275,13 +229,14 @@ def test_aggregator_agent_receive_multiple_events(
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
+    assert reply is not None
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
     assert len(req_json) == 2
+    assert req_json[0]["eventId"] == base64.b64encode(b"4").decode()
     assert req_json[0]["message"] == "event1"
+    assert req_json[1]["eventId"] == base64.b64encode(b"5").decode()
     assert req_json[1]["message"] == "event2"
 
 
@@ -341,11 +296,12 @@ def test_aggregator_agent_receive_multiple_events_failures(
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.code == 5
-    assert (
-        reply.status.message
-        == "event 1 dropped because event buffer full, event 2 dropped because event buffer full"
-    )
+    assert reply is not None
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert len(req_json) == 1
+    assert req_json[0]["eventId"] == base64.b64encode(b"3").decode()
 
 
 @_with_aggregator_port
@@ -366,8 +322,7 @@ def test_aggregator_agent_receive_empty_events(
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
+    assert reply is not None
 
 
 @_with_aggregator_port
@@ -455,8 +410,7 @@ def test_aggregator_agent_receive_profile_events(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
+    assert reply is not None
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
