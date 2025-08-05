@@ -1,4 +1,5 @@
 import sys
+from typing import List
 
 import pytest
 
@@ -55,6 +56,18 @@ def test_pass_to_actor(ray_start_regular_shared):
         ray.get(a.method.remote(ray.util.pass_by_reference(method_obj_ref)))
         == "Hello method!"
     )
+
+
+
+def test_pass_inside_object(ray_start_regular_shared):
+    obj_ref = ray.put("Hello world!")
+
+    @ray.remote
+    def f(arg: List[ray.ObjectRef]) -> str:
+        assert arg[0] == obj_ref
+        return ray.get(arg[0])
+
+    assert ray.get(f.remote([ray.util.pass_by_reference(obj_ref)])) == "Hello world!"
 
 
 if __name__ == "__main__":
