@@ -285,19 +285,13 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
 
-        slice_name = None
         bundle_label_selector = None
-
         if getattr(scaling_config, "use_tpu", False):
             try:
-                slice_name = reserve_tpu_slice(
-                    scaling_config=scaling_config,
-                )
-                bundle_label_selector = {
-                    "ray.io/tpu-slice-name": slice_name,
-                }
-                if slice_name is None:
+                slice_name = reserve_tpu_slice(scaling_config=scaling_config)
+                if not slice_name:
                     raise RuntimeError("Failed to reserve TPU slice.")
+                bundle_label_selector = {"ray.io/tpu-slice-name": slice_name}
             except Exception as e:
                 return ControllerError(e)
 

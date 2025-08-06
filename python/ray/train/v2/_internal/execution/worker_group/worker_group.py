@@ -269,13 +269,15 @@ class WorkerGroup:
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
-            bundle_label_selector = [
-                worker_group_context.bundle_label_selector.copy()
-                for _ in range(worker_group_context.num_workers)
-            ]
+            bundle_label_selector = (
+                [worker_group_context.bundle_label_selector.copy()]
+                * worker_group_context.num_workers
+                if worker_group_context.bundle_label_selector
+                else None
+            )
 
             pg = placement_group(
-                bundles=[{worker_group_context.resources_per_worker: 1}]
+                bundles=[worker_group_context.resources_per_worker]
                 * worker_group_context.num_workers,
                 strategy=worker_group_context.placement_strategy,
                 bundle_label_selector=bundle_label_selector,
