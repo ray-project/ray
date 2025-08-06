@@ -562,7 +562,7 @@ void CoreWorker::Disconnect(
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_->GetCurrentTaskID(),
         worker_context_->GetCurrentJobID(),
-        /* attempt_number */ 0,
+        /*attempt_number=*/0,
         rpc::TaskStatus::FINISHED,
         /*timestamp=*/absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil());
@@ -2060,9 +2060,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.serialized_runtime_env_info,
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
-                      /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true,
-                      /*generator_backpressure_num_objects*/
+                      /*concurrency_group_name=*/"",
+                      /*include_job_config=*/true,
+                      /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event=*/task_options.enable_task_events,
                       task_options.labels,
@@ -2157,10 +2157,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.serialized_runtime_env_info,
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
-                      /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true,
-                      /*generator_backpressure_num_objects*/ -1,
-                      /*enable_task_events*/ actor_creation_options.enable_task_events,
+                      /*concurrency_group_name=*/"",
+                      /*include_job_config=*/true,
+                      /*generator_backpressure_num_objects=*/-1,
+                      /*enable_task_events=*/actor_creation_options.enable_task_events,
                       actor_creation_options.labels,
                       actor_creation_options.label_selector);
 
@@ -2181,7 +2181,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name,
       ray_namespace,
       actor_creation_options.max_pending_calls,
-      actor_creation_options.execute_out_of_order,
+      actor_creation_options.allow_out_of_order_execution,
       actor_creation_options.enable_task_events,
       actor_creation_options.labels);
   std::string serialized_actor_handle;
@@ -2205,7 +2205,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_asyncio,
                                    actor_creation_options.concurrency_groups,
                                    extension_data,
-                                   actor_creation_options.execute_out_of_order,
+                                   actor_creation_options.allow_out_of_order_execution,
                                    root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the

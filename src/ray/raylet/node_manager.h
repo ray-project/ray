@@ -23,7 +23,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
@@ -32,6 +31,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
@@ -492,13 +492,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       const uint8_t *message_data);
 
-  /// Process client message of FetchOrReconstruct
+  /// Handle client request AsyncGetObjects.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessFetchOrReconstructMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
+  void HandleAsyncGetObjectsRequest(const std::shared_ptr<ClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///
