@@ -41,7 +41,7 @@ class WorkerGroupPollStatus:
             error_to_rank[error] = ", ".join(ranks)
 
         return "\n".join(
-            f"[Rank {ranks}]: \n{error}" for error, ranks in error_to_rank.items()
+            f"[Rank Hello {ranks}]: \n{error}" for error, ranks in error_to_rank.items()
         )
 
 
