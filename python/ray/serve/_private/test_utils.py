@@ -736,8 +736,9 @@ def get_application_urls(
     """
     client = _get_global_client(_health_check_controller=True)
     serve_details = client.get_serve_details()
-    if app_name not in serve_details["applications"]:
-        return [client.root_url]
+    assert (
+        app_name in serve_details["applications"]
+    ), f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
     if exclude_route_prefix:
         route_prefix = ""
@@ -798,6 +799,15 @@ def get_application_url(
     """
     return random.choice(
         get_application_urls(
-            protocol, app_name, use_localhost, is_websocket, exclude_route_prefix
+            protocol,
+            app_name,
+            use_localhost,
+            is_websocket,
+            exclude_route_prefix,
         )
     )
+
+
+def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
+    assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
+    return True
