@@ -442,7 +442,7 @@ class ReporterAgent(
                     prometheus_exporter.Options(
                         namespace="ray",
                         port=dashboard_agent.metrics_export_port,
-                        address="127.0.0.1" if self._ip == "127.0.0.1" else "",
+                        address=self._ip,
                     )
                 )
             except Exception:
