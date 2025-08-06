@@ -263,7 +263,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="increase(ray_data_bytes_task_outputs_generated{{{global_filters}, operator=~\"$Operator\"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}}}[5m])",
+                expr="increase(ray_data_bytes_task_outputs_generated{{{global_filters}, operator=~\"$Operator\"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~\"$Operator\"}}[5m])",
                 legend="Average Bytes Generated / Output Block: {{dataset}}, {{operator}}",
             )
         ],
@@ -277,7 +277,7 @@ DATA_GRAFANA_PANELS = [
         unit="blocks",
         targets=[
             Target(
-                expr="increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~\"$Operator\"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+                expr="increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~\"$Operator\"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~\"$Operator\"}}[5m])",
                 legend="Average Number of Output Blocks / Task: {{dataset}}, {{operator}}",
             )
         ],
@@ -680,8 +680,8 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="sum(ray_data_iter_initialize_seconds{{{global_filters}, operator=~\"$Operator\"}}) by (dataset)",
-                legend="Seconds: {{dataset}}, {{operator}}",
+                expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
             )
         ],
         fill=0,
