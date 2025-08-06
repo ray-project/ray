@@ -13,14 +13,21 @@ from typing import (
     Union,
 )
 
-import numpy as np
 import gymnasium as gym
 
 from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+    # Modules might be missing but supply users with type hints if they are installed.
+    import jax.numpy as jnp
+    import keras
+    import tensorflow as tf
+    import torch
+    from numpy.typing import NDArray
+    from torch._prims_common import DeviceLikeType
+
     from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -29,203 +36,259 @@ if TYPE_CHECKING:
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
-    from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
 
-    _, tf, _ = try_import_tf()
-    torch, _ = try_import_torch()
-    jax, _ = try_import_jax()
-    jnp = None
-    if jax is not None:
-        jnp = jax.numpy
 
-# Represents a generic tensor type.
-# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Union[np.array, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
+TensorType = Union["NDArray[Any]", "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
+"""
+Represents a generic tensor type.
+This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
+"""
 
-# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
+"""Either a plain tensor, or a dict or tuple of tensors (or StructTensors)."""
 
-# A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
+"""A shape of a tensor."""
 
-# A neural network.
-NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
+NetworkType = Union["torch.nn.Module", "keras.Model"]
+"""A neural network."""
 
-# A device.
-DeviceType = TypeVar("torch.cuda.device")
+DeviceType = Union[str, "torch.device", DeviceLikeType]
+"""A device or object representing torch.cuda.device"""
 
-# An RLModule spec (single-agent or multi-agent).
 RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
+"""An RLModule spec (single-agent or multi-agent)."""
 
-# A state dict of an RLlib component (e.g. EnvRunner, Learner, RLModule).
 StateDict = Dict[str, Any]
+"""A state dict of an RLlib component (e.g. EnvRunner, Learner, RLModule)."""
 
-# Represents a fully filled out config of a Algorithm class.
-# Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
-# parts of it may sometimes be altered in e.g. a multi-agent setup,
-# where we have >1 Policies in the same Algorithm.
 AlgorithmConfigDict = dict  # @OldAPIStack
+"""
+Represents a fully filled out config of a Algorithm class.
 
-# An algorithm config dict that only has overrides. It needs to be combined with
-# the default algorithm config to be used.
+Note:
+    Policy config dicts are usually the same as AlgorithmConfigDict, but
+    parts of it may sometimes be altered in e.g. a multi-agent setup,
+    where we have >1 Policies in the same Algorithm.
+"""
+
 PartialAlgorithmConfigDict = dict  # @OldAPIStack
+"""
+An algorithm config dict that only has overrides. It needs to be combined with
+the default algorithm config to be used.
+"""
 
-# Represents the model config sub-dict of the algo config that is passed to
-# the model catalog.
 ModelConfigDict = dict  # @OldAPIStack
+"""
+Represents the model config sub-dict of the algo config that is passed to the
+model catalog.
+"""
 
-# Conv2D configuration format.
-# Each entry in the outer list represents one Conv2D layer.
-# Each inner list has the format: [num_output_filters, kernel, stride], where kernel
-# and stride may be single ints (width and height are the same) or 2-tuples (int, int)
-# for width and height (different values).
 ConvFilterSpec = List[
     Tuple[int, Union[int, Tuple[int, int]], Union[int, Tuple[int, int]]]
 ]
+"""
+Conv2D configuration format. Each entry in the outer list represents one Conv2D
+layer. Each inner list has the format: [num_output_filters, kernel, stride], where
+kernel and stride may be single ints (width and height are the same) or 2-tuples
+(int, int) for width and height (different values).
+"""
 
-# Objects that can be created through the `from_config()` util method
-# need a config dict with a "type" key, a class path (str), or a type directly.
-FromConfigSpec = Union[Dict[str, Any], type, str]
+FromConfigSpec = Union[Dict[str, Any | type | str], type, str]
+"""
+Objects that can be created through the `from_config()` util method
+need a config dict with a "type" key, a class path (str), or a type directly.
+"""
 
-# Represents the env_config sub-dict of the algo config that is passed to
-# the env constructor.
 EnvConfigDict = dict
+"""
+Represents the env_config sub-dict of the algo config that is passed to
+the env constructor.
+"""
 
-# Represents an environment id. These could be:
-# - An int index for a sub-env within a vectorized env.
-# - An external env ID (str), which changes(!) each episode.
 EnvID = Union[int, str]
+"""
+Represents an environment id. These could be:
+- An int index for a sub-env within a vectorized env.
+- An external env ID (str), which changes(!) each episode.
+"""
 
-# Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
-# VectorEnv, gym.Env, or ActorHandle.
 # TODO (sven): Specify this type more strictly (it should just be gym.Env).
 EnvType = Union[Any, gym.Env]
+"""
+Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
+VectorEnv, gym.Env, or ActorHandle.
+"""
 
-# A callable, taking a EnvContext object
-# (config dict + properties: `worker_index`, `vector_index`, `num_workers`,
-# and `remote`) and returning an env object (or None if no env is used).
 EnvCreator = Callable[["EnvContext"], Optional[EnvType]]
+"""
+A callable, taking a EnvContext object
+(config dict + properties: `worker_index`, `vector_index`, `num_workers`,
+and `remote`) and returning an env object (or None if no env is used).
+"""
 
-# Represents a generic identifier for an agent (e.g., "agent1").
-AgentID = Any
+AgentID = Hashable
+"""Represents a generic identifier for an agent (e.g., "agent1")."""
 
-# Represents a generic identifier for a policy (e.g., "pol1").
 PolicyID = str  # @OldAPIStack
-# Represents a generic identifier for a (single-agent) RLModule.
+"""Represents a generic identifier for a policy (e.g., "pol1")."""
+
 ModuleID = str
+"""Represents a generic identifier for a (single-agent) RLModule."""
 
-# Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]  # @OldAPIStack
+"""Type of the config.policies dict for multi-agent training."""
 
-# A new stack Episode type: Either single-agent or multi-agent.
 EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
+"""A new stack Episode type: Either single-agent or multi-agent."""
 
-# Is Policy to train callable.
-# @OldAPIStack
+# @ OldAPIStack
 IsPolicyToTrain = Callable[[PolicyID, Optional["MultiAgentBatch"]], bool]
+"""Is Policy to train callable."""
 
-# Agent to module mapping and should-module-be-updated.
 AgentToModuleMappingFn = Callable[[AgentID, EpisodeType], ModuleID]
+"""Function describing an agent to module mapping."""
+
 ShouldModuleBeUpdatedFn = Union[
     Sequence[ModuleID],
     Callable[[ModuleID, Optional["MultiAgentBatch"]], bool],
 ]
+"""
+ModuleIDs that should be updated
+or a callable to return whether a module should be updated.
+"""
 
-# State dict of a Policy, mapping strings (e.g. "weights") to some state
-# data (TensorStructType).
 PolicyState = Dict[str, TensorStructType]  # @OldAPIStack
+"""
+State dict of a Policy, mapping strings (e.g. "weights")
+to some state data (TensorStructType).
+"""
 
-# Any tf Policy type (static-graph or eager Policy).
 TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]  # @OldAPIStack
+"""Any tf Policy type (static-graph or eager Policy)."""
 
-# Represents an episode id (old and new API stack).
 EpisodeID = Union[int, str]
+"""Represents an episode id (old and new API stack)."""
 
-# Represents an "unroll" (maybe across different sub-envs in a vector env).
 UnrollID = int  # @OldAPIStack
+"""Represents an "unroll" (maybe across different sub-envs in a vector env)."""
 
-# A dict keyed by agent ids, e.g. {"agent-1": value}.
 MultiAgentDict = Dict[AgentID, Any]
+"""A dict keyed by agent ids, e.g. {"agent-1": value}."""
 
-# A dict keyed by env ids that contain further nested dictionaries keyed by
-# agent ids. e.g., {"env-1": {"agent-1": value}}.
 MultiEnvDict = Dict[EnvID, MultiAgentDict]
+"""
+A dict keyed by env ids that contain further nested dictionaries keyed by agent
+ids. e.g., {"env-1": {"agent-1": value}}.
+"""
 
-# Represents an observation returned from the env.
 EnvObsType = Any
+"""Represents an observation returned from the env. (Any alias)"""
 
-# Represents an action passed to the env.
 EnvActionType = Any
+"""Represents an action passed to the env. (Any alias)"""
 
-# Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
-# instances. Might be an empty dict.
 EnvInfoDict = dict
+"""
+Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
+instances. Might be an empty dict.
+"""
 
-# Represents a File object
 FileType = Any
+"""Represents a File object. (Any alias)"""
 
-# Represents a ViewRequirements dict mapping column names (str) to
-# ViewRequirement objects.
 ViewRequirementsDict = Dict[str, "ViewRequirement"]  # @OldAPIStack
+"""
+Represents a ViewRequirements dict mapping column names (str) to ViewRequirement
+objects.
+"""
 
-# Represents the result dict returned by Algorithm.train() and algorithm components,
-# such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
-# components returns this upon its `reduce()` method call, so a ResultDict can further
-# be accumulated (and reduced again) by downstream components.
 ResultDict = Dict
+"""
+Represents the result dict returned by Algorithm.train() and algorithm components,
+such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
+components returns this upon its `reduce()` method call, so a ResultDict can further
+be accumulated (and reduced again) by downstream components.
+"""
 
-# A tf or torch local optimizer object.
-LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
+LocalOptimizer = Union["torch.optim.Optimizer", "keras.optimizers.Optimizer"]
+"""A tf or torch local optimizer object."""
+
 Optimizer = LocalOptimizer
-Param = Union["torch.Tensor", "tf.Variable"]
-ParamRef = Hashable
-ParamDict = Dict[ParamRef, Param]
-ParamList = List[Param]
-NamedParamDict = Dict[str, Param]
+"""A tf or torch optimizer object."""
 
-# A single learning rate or a learning rate schedule (list of sub-lists, each of
-# the format: [ts (int), lr_to_reach_by_ts (float)]).
+Param = Union["torch.Tensor", "tf.Variable"]
+"""A parameter, either a torch.Tensor or tf.Variable."""
+
+ParamRef = Hashable
+"""A reference to a parameter. (Hashable alias)"""
+
+ParamDict = Dict[ParamRef, Param]
+"""A dictionary mapping parameter references to parameters."""
+
+ParamList = List[Param]
+"""A list of parameters."""
+
+NamedParamDict = Dict[str, Param]
+"""A dictionary mapping parameter names to parameters."""
+
 LearningRateOrSchedule = Union[
     float,
     List[List[Union[int, float]]],
     List[Tuple[int, Union[int, float]]],
 ]
+"""
+A single learning rate or a learning rate schedule (list of sub-lists, each of
+the format: [ts (int), lr_to_reach_by_ts (float)]).
+"""
 
-# Dict of tensors returned by compute gradients on the policy, e.g.,
-# {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
-# {"policy1": {"learner_stats": ..., }, "policy2": ...}.
 GradInfoDict = dict
+"""
+Dict of tensors returned by compute gradients on the policy, e.g.,
+{"td_error": [...], "learner_stats": {"vf_loss": ..., ...}},
+for multi-agent, {"policy1": {"learner_stats": ..., }, "policy2": ...}.
+"""
 
-# Dict of learner stats returned by compute gradients on the policy, e.g.,
-# {"vf_loss": ..., ...}. This will always be nested under the "learner_stats"
-# key(s) of a GradInfoDict. In the multi-agent case, this will be keyed by
-# policy id.
 LearnerStatsDict = dict
+"""
+Dict of learner stats returned by compute gradients on the policy, e.g.,
+{"vf_loss": ..., ...}. This will always be nested under the "learner_stats" key(s)
+of a GradInfoDict. In the multi-agent case, this will be keyed by policy id.
+"""
 
-# List of grads+var tuples (tf) or list of gradient tensors (torch)
-# representing model gradients and returned by compute_gradients().
 ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
+"""
+List of grads+var tuples (tf) or list of gradient tensors (torch) representing
+model gradients and returned by compute_gradients().
+"""
 
-# Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict
+"""Type of dict returned by get_weights() representing model weights."""
 
-# An input dict used for direct ModelV2 calls.
 ModelInputDict = Dict[str, TensorType]
+"""An input dict used for direct ModelV2 calls."""
 
-# Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch", Dict[str, Any]]
+"""Some kind of sample batch."""
 
-# A (possibly nested) space struct: Either a gym.spaces.Space or a
-# (possibly nested) dict|tuple of gym.space.Spaces.
-SpaceStruct = Union[gym.spaces.Space, dict, tuple]
+SpaceStruct = Union[
+    gym.spaces.Space, dict[str, gym.spaces.Space], tuple[gym.spaces.Space, ...]
+]
+"""
+A (possibly nested) space struct: Either a gym.spaces.Space or a (possibly
+nested) dict|tuple of gym.space.Spaces.
+"""
 
-# A list of batches of RNN states.
-# Each item in this list has dimension [B, S] (S=state vector size)
 StateBatches = List[List[Any]]  # @OldAPIStack
+"""
+A list of batches of RNN states.
+Each item in this list has dimension [B, S] (S=state vector size)
+"""
 
 # Format of data output from policy forward pass.
 # __sphinx_doc_begin_policy_output_type__
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]  # @OldAPIStack
+"""Format of data output from policy forward pass."""
 # __sphinx_doc_end_policy_output_type__
 
 
