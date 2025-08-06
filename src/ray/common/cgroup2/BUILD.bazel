@@ -5,6 +5,9 @@ ray_cc_library(
     hdrs = [
         "cgroup_driver_interface.h",
     ],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         "//src/ray/common:status",
         "//src/ray/common:status_or",
@@ -16,6 +19,9 @@ ray_cc_library(
     srcs = ["sysfs_cgroup_driver.cc"],
     hdrs = [
         "sysfs_cgroup_driver.h",
+    ],
+    tags = [
+        "no_windows",
     ],
     deps = [
         ":cgroup_driver_interface",
