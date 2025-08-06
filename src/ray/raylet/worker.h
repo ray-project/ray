@@ -150,8 +150,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager,
          StartupToken startup_token);
-  /// A destructor responsible for freeing all worker state.
-  ~Worker() = default;
+
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
@@ -159,7 +158,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// \param io_service for scheduling the graceful period timer.
   /// \param force true to kill immediately, false to give time for the worker to clean up
   /// and exit gracefully.
-  /// \return Void.
   void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
