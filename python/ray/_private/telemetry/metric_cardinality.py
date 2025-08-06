@@ -1,12 +1,15 @@
 from enum import Enum
-from typing import List
+from typing import Dict, List
 
 from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL
 
 # Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
 WORKER_ID_TAG_KEY = "WorkerId"
+# Keep in sync with the NameKey in src/ray/stats/metric_defs.cc
+TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
 
 _CARDINALITY_LEVEL = None
+_HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
 
 
 class MetricCardinality(str, Enum):
@@ -19,10 +22,12 @@ class MetricCardinality(str, Enum):
     - RECOMMENDED: Drop high cardinality labels. The set of high cardinality labels
     are determined internally by Ray and not exposed to users. Currently, this includes
     the following labels: WorkerId
+    - LOW: Same as RECOMMENDED, but also drop the Name label for tasks and actors.
     """
 
     LEGACY = "legacy"
     RECOMMENDED = "recommended"
+    LOW = "low"
 
     @staticmethod
     def get_cardinality_level() -> "MetricCardinality":
@@ -36,8 +41,22 @@ class MetricCardinality(str, Enum):
         return _CARDINALITY_LEVEL
 
     @staticmethod
-    def get_high_cardinality_labels_to_drop() -> List[str]:
+    def get_high_cardinality_labels_to_drop(metric_name: str) -> List[str]:
         """
         Get the high cardinality labels of the metric.
         """
-        return [WORKER_ID_TAG_KEY]
+        if metric_name in _HIGH_CARDINALITY_LABELS:
+            return _HIGH_CARDINALITY_LABELS[metric_name]
+
+        cardinality_level = MetricCardinality.get_cardinality_level()
+        if cardinality_level == MetricCardinality.LEGACY:
+            _HIGH_CARDINALITY_LABELS[metric_name] = []
+            return []
+
+        _HIGH_CARDINALITY_LABELS[metric_name] = [WORKER_ID_TAG_KEY]
+        if cardinality_level == MetricCardinality.LOW and metric_name in [
+            "tasks",
+            "actors",
+        ]:
+            _HIGH_CARDINALITY_LABELS[metric_name].append(TASK_OR_ACTOR_NAME_TAG_KEY)
+        return _HIGH_CARDINALITY_LABELS[metric_name]
