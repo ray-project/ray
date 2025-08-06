@@ -53,7 +53,7 @@ TensorShape = Union[Tuple[int], List[int]]
 NetworkType = Union["torch.nn.Module", "keras.Model"]
 """A neural network."""
 
-DeviceType = Union[str, "torch.device", DeviceLikeType]
+DeviceType = Union[str, "torch.device", "DeviceLikeType"]
 """A device identifier, which can be a string (e.g. 'cpu', 'cuda:0'), a torch.device object, or other types supported by torch."""
 
 RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
