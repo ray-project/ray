@@ -34,11 +34,11 @@
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
 
