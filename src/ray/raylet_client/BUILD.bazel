@@ -11,6 +11,7 @@ ray_cc_library(
     hdrs = ["raylet_connection.h"],
     deps = [
         "//src/ray/common:asio",
+        "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/ipc:client_connection",
     ],
 )
