@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import Counter
-from functools import reduce
+from functools import lru_cache, reduce
 from typing import Dict, List
 
 from ray._private.gcs_utils import PlacementGroupTableData
@@ -16,9 +16,17 @@ from ray.autoscaler._private.util import (
     ResourceDict,
 )
 from ray.core.generated.common_pb2 import PlacementStrategy
+import dns.resolver
+import re
 
 logger = logging.getLogger(__name__)
 
+
+ip_regex = re.compile(
+            r"(?:\d{1,3}\.){3}\d{1,3}"  # IPv4
+            r"|"
+            r"(?:[A-Fa-f0-9:]+:+)+[A-Fa-f0-9]+"  # IPv6 (permissive)
+        )
 
 def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str, float]:
     """Add the values in two dictionaries.
@@ -86,6 +94,18 @@ class LoadMetrics:
         has not received a resource message from the GCS.
         """
         return bool(self.raylet_id_by_ip)
+    
+    # If the node has a ray start param of node-ip-address with a DNS address instead of an IP address,
+    # there might be a mismatch between the GCS-reported "IP address" of the node and the node's actual IP address
+    @lru_cache(maxsize=512)
+    def dns_resolve_non_ip_address(self, address):    
+        try:
+            answer = dns.resolver.resolve(address, 'A')
+            ip_str = answer[0].to_text()
+        except Exception:
+            logger.warn("LoadMetrics: " f"Could not resolve presumed DNS address: {address}. Defaulting to returning it as is.")
+            return address
+        return ip_str
 
     def update(
         self,
@@ -99,6 +119,9 @@ class LoadMetrics:
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
     ):
+        if not ip_regex.match(ip):
+            ip = self.dns_resolve_non_ip_address(ip)
+        
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
