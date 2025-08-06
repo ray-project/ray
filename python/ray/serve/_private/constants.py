@@ -132,14 +132,14 @@ DEFAULT_TARGET_ONGOING_REQUESTS = 2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = (
-    get_env_float("RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", 10) or 10
+    get_env_float("RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", 10.0) or 10.0
 )
 
 PROXY_HEALTH_CHECK_PERIOD_S = (
-    get_env_float("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", 10) or 10
+    get_env_float("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", 10.0) or 10.0
 )
 PROXY_READY_CHECK_TIMEOUT_S = (
-    get_env_float("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5) or 5
+    get_env_float("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0) or 5.0
 )
 
 # Number of times in a row that a HTTP proxy must fail the health check before
@@ -148,7 +148,7 @@ PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # The minimum drain period for a HTTP proxy.
 PROXY_MIN_DRAINING_PERIOD_S = (
-    get_env_float("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", 30) or 30
+    get_env_float("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", 30.0) or 30.0
 )
 # The time in seconds that the http proxy state waits before
 # rechecking whether the proxy actor is drained or not.
@@ -167,11 +167,11 @@ CLIENT_CHECK_CREATION_POLLING_INTERVAL_S = 0.1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
 HANDLE_METRIC_PUSH_INTERVAL_S = get_env_float(
-    "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10
+    "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10.0
 )
 
 # Timeout for GCS internal KV service
-RAY_SERVE_KV_TIMEOUT_S = get_env_float("RAY_SERVE_KV_TIMEOUT_S", 0) or None
+RAY_SERVE_KV_TIMEOUT_S = get_env_float("RAY_SERVE_KV_TIMEOUT_S", 0.0) or None
 
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
@@ -234,8 +234,8 @@ RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int(
 )
 
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)
-    or get_env_float("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)
+    get_env_float("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0)
+    or get_env_float("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0)
     or None
 )
 
@@ -340,7 +340,7 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
 )
 
 RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float(
-    "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10
+    "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.
@@ -433,8 +433,8 @@ RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = get_env_bool(
 # By default, we run the router in a separate event loop.
 # This flag can be set to 0 to run the router in the same event loop as the
 # replica's main event loop.
-RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = (
-    os.environ.get("RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1") == "1"
+RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
+    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1"
 )
 
 # The default buffer size for request path logs. Setting to 1 will ensure
