@@ -25,7 +25,6 @@ DOCKER_BUILDKIT=1 docker build \
 DOCKER_BUILDKIT=1 docker build \
     --build-arg BASE_IMAGE="$DEST_IMAGE" \
     --build-arg PIP_REQUIREMENTS="$REQUIREMENTS" \
-    --build-arg DEBIAN_REQUIREMENTS=requirements_debian_byod.txt \
     -t "$DEST_IMAGE" \
     -f release/ray_release/byod/byod.Dockerfile \
     release/ray_release/byod
