@@ -336,7 +336,6 @@ def submit(
         "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
-
 @click.argument("job-id", type=str)
 @add_common_job_options
 @add_click_logging_options
