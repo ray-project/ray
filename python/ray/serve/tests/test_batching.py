@@ -290,9 +290,6 @@ async def send_k_requests(
     async with httpx.AsyncClient() as client:
         url = get_application_url()
 
-        if sys.platform == "win32":
-            url = url.replace("localhost", "127.0.0.1")
-
         for _ in range(k):
             asyncio.create_task(client.get(f"{url}/"))
         await wait_for_n_waiters(
