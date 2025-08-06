@@ -519,9 +519,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         return True
 
     def supports_fusion(self) -> bool:
-        if self._operator_options and self._operator_options.disable_fusion:
-            return False
-        return True
+        return not (self._operator_options and self._operator_options.disable_fusion)
 
     def num_active_tasks(self) -> int:
         # Override `num_active_tasks` to only include data tasks and exclude

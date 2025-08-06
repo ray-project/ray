@@ -32,6 +32,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data.operation_options import OperatorOptions
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -51,7 +52,7 @@ from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
-from ray.data._internal.execution.interfaces import RefBundle, OperatorOptions
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -380,7 +381,7 @@ class Dataset:
                   method raises an error.
 
             operator_options: Options for configuring the operator. See
-            :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
+                :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
             details.
 
             ray_remote_args_fn: A function that returns a dictionary of remote args
@@ -648,7 +649,7 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
             operator_options: Options for configuring the operator. See
-            :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
+                :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
             details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
