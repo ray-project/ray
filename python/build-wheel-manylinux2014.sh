@@ -30,7 +30,8 @@ if [ -f /ray/dashboard_build.tar.gz ]; then
   mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
   tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
 else
-  echo "dashboard_build.tar.gz not found, skipping dashboard extraction"
+  echo "ERROR: dashboard_build.tar.gz not found. Aborting." >&2
+  exit 1
 fi
 
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
