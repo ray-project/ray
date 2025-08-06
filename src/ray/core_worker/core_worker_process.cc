@@ -279,10 +279,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
 
   auto raylet_client_pool =
-      std::make_shared<rpc::RayletClientPool>([this](const rpc::Address &addr) {
+      std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
         return std::make_shared<ray::raylet::RayletClient>(
-            addr, *core_worker->client_call_manager_);
+            addr,
+            *core_worker->client_call_manager_,
+            rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                core_worker->gcs_client_.get(),
+                core_worker->raylet_client_pool_.get(),
+                addr));
       });
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
@@ -537,36 +542,65 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto actor_manager = std::make_unique<ActorManager>(
       gcs_client, *actor_task_submitter, *reference_counter);
 
-  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
-      object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
-                                                   const ObjectLookupCallback &callback) {
-        auto core_worker = GetCoreWorker();
-        std::vector<rpc::Address> locations;
-        const std::optional<absl::flat_hash_set<NodeID>> object_locations =
-            core_worker->reference_counter_->GetObjectLocations(object_id);
-        if (object_locations.has_value()) {
-          locations.reserve(object_locations.value().size());
-          for (const auto &node_id : object_locations.value()) {
-            std::optional<rpc::Address> addr = node_addr_factory(node_id);
-            if (addr.has_value()) {
-              locations.emplace_back(std::move(addr.value()));
-              continue;
-            }
-            // We're getting potentially stale locations directly from the reference
-            // counter, so the location might be a dead node.
-            RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-                << "Object location is dead, not using it in the recovery of object";
-          }
+  // For the recovery manager to lookup the addresses / ports of the nodes with secondary
+  // copies.
+  auto object_lookup = [this](const ObjectID &object_id,
+                              const ObjectLookupCallback &callback) {
+    auto core_worker = GetCoreWorker();
+    std::vector<rpc::Address> locations;
+    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
+        core_worker->reference_counter_->GetObjectLocations(object_id);
+    std::vector<NodeID> nodes_to_lookup;
+    if (object_locations.has_value()) {
+      locations.reserve(object_locations->size());
+      for (const auto &node_id : *object_locations) {
+        auto *node_info =
+            core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+        if (node_info == nullptr) {
+          // Unsure if the node is dead, so we need to confirm with the GCS. This should
+          // be rare, the only foreseeable reasons are:
+          // 1. We filled our cache after the GCS cleared the node info due to
+          //    maximum_gcs_dead_node_cached_count.
+          // 2. The node is alive but we haven't received the publish yet.
+          nodes_to_lookup.push_back(node_id);
+          continue;
         }
-        callback(object_id, std::move(locations));
-        return Status::OK();
-      };
+        if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
+          continue;
+        }
+        rpc::Address addr;
+        addr.set_raylet_id(node_info->node_id());
+        addr.set_ip_address(node_info->node_manager_address());
+        addr.set_port(node_info->node_manager_port());
+        locations.push_back(std::move(addr));
+      }
+    }
+    if (nodes_to_lookup.empty()) {
+      callback(object_id, std::move(locations));
+      return;
+    }
+    core_worker->gcs_client_->Nodes().AsyncGetAll(
+        [callback, object_id, locations = std::move(locations)](
+            const Status &, const std::vector<rpc::GcsNodeInfo> &node_infos) mutable {
+          for (const auto &node_info : node_infos) {
+            if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
+              rpc::Address addr;
+              addr.set_raylet_id(node_info.node_id());
+              addr.set_ip_address(node_info.node_manager_address());
+              addr.set_port(node_info.node_manager_port());
+              locations.push_back(std::move(addr));
+            }
+          }
+          callback(object_id, std::move(locations));
+        },
+        -1,
+        nodes_to_lookup);
+  };
 
   auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
       rpc_address,
       raylet_client_pool,
-      local_raylet_client,
-      object_lookup_fn,
+      std::move(object_lookup),
       *task_manager,
       *reference_counter,
       *memory_store,
@@ -722,6 +756,18 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // We need init stats before using it/spawning threads.
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
 
+  // Initialize event framework before starting up worker.
+  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
+    const std::vector<SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
+    RayEventInit(source_types,
+                 /*custom_fields=*/{},
+                 options_.log_dir,
+                 RayConfig::instance().event_level(),
+                 RayConfig::instance().emit_event_to_log_file());
+  }
+
   {
     // Notify that core worker is initialized.
     absl::Cleanup initialzed_scope_guard = [this] {
@@ -731,18 +777,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
-  }
-
-  // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    const std::vector<SourceTypeVariant> source_types = {
-        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
-    RayEventInit(source_types,
-                 absl::flat_hash_map<std::string, std::string>(),
-                 options_.log_dir,
-                 RayConfig::instance().event_level(),
-                 RayConfig::instance().emit_event_to_log_file());
   }
 }
 
@@ -784,14 +818,17 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
     rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
-    raylet::RayletClient raylet_client(raylet_address, client_call_manager);
+    // TODO(joshlee): This local raylet client has a custom retry policy below since its
+    // likely the driver can start up before the raylet is ready. We want to move away
+    // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
+    raylet::RayletClient local_raylet_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
-                                             &raylet_client,
+                                             &local_raylet_client,
                                              &promise,
                                              &io_service](int64_t num_attempts) {
-      raylet_client.GetSystemConfig(
+      local_raylet_client.GetSystemConfig(
           [this, num_attempts, &get_once, &promise, &io_service](
               const Status &status, const rpc::GetSystemConfigReply &reply) {
             RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "

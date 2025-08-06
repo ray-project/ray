@@ -26,7 +26,9 @@ if [[ "${PYTHON_CODE}" != "py311" ]]; then
     exit 1
 fi
 
-pip install --no-deps -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
+uv pip install --system --no-cache-dir --no-deps \
+    --index-strategy unsafe-best-match \
+    -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
@@ -43,7 +45,7 @@ mkdir -p "${TEMP_DIR}"
 
 sudo apt-get update
 # kmod needed by nvidia-installer, pkg-config needed by GDRCopy, librdmacm-dev needed by UCX
-sudo apt-get install -y kmod pkg-config librdmacm-dev
+sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
 (
     echo "Installing GDRCopy"
@@ -106,6 +108,7 @@ UCX_VERSION="1.18.1"
     sudo ldconfig
 )
 
+# Keep in sync with llm-requirements.txt
 NIXL_VERSION="0.3.1"
 (
     echo "Installing NIXL ${NIXL_VERSION}"
@@ -118,7 +121,6 @@ NIXL_VERSION="0.3.1"
     cd build
     ninja
     sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir "nixl==${NIXL_VERSION}"
 )
 sudo rm -rf "${TEMP_DIR}"
 
@@ -128,9 +130,6 @@ mkdir -p "${EP_TEMP_DIR}"
 NVSHMEM_VERSION="3.2.5-1"
 (
     echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
-
-    # install dependencies if not installed
-    pip3 install cmake
 
     cd "${EP_TEMP_DIR}"
     mkdir -p nvshmem_src
@@ -185,6 +184,9 @@ NVSHMEM_VERSION="3.2.5-1"
 )
 
 rm -rf "${EP_TEMP_DIR}"
+
+sudo rm -rf /var/lib/apt/lists/*
+sudo apt-get clean
 
 EOF
 
