@@ -99,8 +99,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb),
-                                 ::testing::Return(Status::OK())));
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
   ASSERT_TRUE(actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok());
   create_cb(Status::OK(), rpc::CreateActorReply());
 }
@@ -116,8 +115,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb),
-                                 ::testing::Return(Status::OK())));
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
   ASSERT_TRUE(actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok());
   create_cb(Status::IOError(""), rpc::CreateActorReply());
 }
@@ -134,13 +132,12 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
-                                 ::testing::Return(Status::OK())));
-  ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb)));
+  actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id,
                                                  -1,
-                                                 /*execute_out_of_order*/ false,
+                                                 /*allow_out_of_order_execution*/ false,
                                                  /*fail_if_actor_unreachable*/ true,
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
@@ -163,13 +160,12 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
-                                 ::testing::Return(Status::OK())));
-  ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb)));
+  actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id,
                                                  -1,
-                                                 /*execute_out_of_order*/ false,
+                                                 /*allow_out_of_order_execution*/ false,
                                                  /*fail_if_actor_unreachable*/ true,
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));

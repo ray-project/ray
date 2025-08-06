@@ -128,7 +128,6 @@ RAY_PROCESSES = [
     ],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
-    ["reporter.py", False],
     [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
     [os.path.join("runtime_env", "agent", "main.py"), False],
