@@ -168,10 +168,28 @@ table WaitForActorCallArgsRequest {
   tag: int;
 }
 
+// This struct is the same as ErrorTableData.
+table PushErrorRequest {
+  // The ID of the job that the error is for.
+  job_id: string;
+  // The type of the error.
+  type: string;
+  // The error message.
+  error_message: string;
+  // The timestamp of the error message.
+  timestamp: double;
+}
+
 table FreeObjectsRequest {
   // Whether keep this request with local object store
   // or send it to all the object stores.
   local_only: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
+}
+
+table SubscribePlasmaReady {
+  // ObjectID to wait for
+  object_id: string;
+  owner_address: Address;
 }
