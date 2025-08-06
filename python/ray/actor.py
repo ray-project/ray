@@ -1133,7 +1133,10 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
     # If any actor method has a non-default tensor transport, automatically
     # enable tensor transport.
     if has_tensor_transport_methods:
-        if _filled_options["enable_tensor_transport"] is not None and not _filled_options["enable_tensor_transport"]:
+        if (
+            _filled_options["enable_tensor_transport"] is not None
+            and not _filled_options["enable_tensor_transport"]
+        ):
             raise ValueError(
                 "Actor class has methods with @ray.method(tensor_transport=...) decorator but @ray.remote(enable_tensor_transport=False). "
                 "Either set enable_tensor_transport=True or remove the @ray.method(tensor_transport=...) decorator from the methods."
@@ -1276,7 +1279,9 @@ class ActorClass(Generic[T]):
             actor_creation_function_descriptor,
             class_id,
             actor_method_meta,
-            **_process_option_dict(actor_options, actor_method_meta.has_tensor_transport_methods),
+            **_process_option_dict(
+                actor_options, actor_method_meta.has_tensor_transport_methods
+            ),
         )
         self._default_options = actor_options
         if "runtime_env" in self._default_options:
@@ -1303,7 +1308,9 @@ class ActorClass(Generic[T]):
             actor_creation_function_descriptor,
             None,
             actor_method_meta,
-            **_process_option_dict(actor_options, actor_method_meta.has_tensor_transport_methods),
+            **_process_option_dict(
+                actor_options, actor_method_meta.has_tensor_transport_methods
+            ),
         )
         self._default_options = actor_options
         if "runtime_env" in self._default_options:

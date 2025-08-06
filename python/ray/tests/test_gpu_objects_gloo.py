@@ -2,10 +2,13 @@ import sys
 import random
 import torch
 import pytest
+import threading
 import ray
+import time
 from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
 from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
@@ -14,7 +17,11 @@ if support_tensordict:
     from tensordict import TensorDict
 
 
-@ray.remote(enable_tensor_transport=True)
+# TODO: check whether concurrency groups are created correctly if
+# enable_tensor_transport is True or if any methods are decorated with
+# @ray.method(tensor_transport=...). Check that specifying
+# .options(tensor_transport=...) fails if enable_tensor_transport is False.
+@ray.remote
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
     def echo(self, data):
@@ -38,6 +45,11 @@ class GPUTestActor:
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
         return gpu_object_manager.gpu_object_store.get_num_objects()
+
+    def infinite_sleep(self, signal):
+        signal.send.remote()
+        while True:
+            time.sleep(1)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
@@ -197,6 +209,29 @@ def test_p2p(ray_start_regular):
     ref = sender.echo.remote(medium_tensor)
     result = receiver.double.remote(ref)
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
+
+
+def test_p2p_blocking(ray_start_regular):
+    """Test that p2p transfers still work when sender is blocked in another task."""
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    sender = actors[0]
+    receiver = actors[1]
+
+    tensor = torch.randn((500, 500))
+    ref = sender.echo.remote(tensor)
+
+    # Start a blocking task on the sender actor.
+    signal = SignalActor.remote()
+    sender.infinite_sleep.remote(signal)
+    ray.get(signal.wait.remote(), timeout=10)
+
+    # Ensure that others can still receive the object.
+    result = receiver.double.remote(ref)
+    result = ray.get(result, timeout=10)
+    assert result == pytest.approx(tensor * 2)
 
 
 def test_intra_gpu_tensor_transfer(ray_start_regular):
