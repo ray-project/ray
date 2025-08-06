@@ -141,14 +141,14 @@ class LLMConfig(BaseModelExtended):
     )
 
     runtime_env: Optional[Dict[str, Any]] = Field(
-        None,
+        default=None,
         description=(
             "The runtime_env to use for the model deployment replica "
             "and the engine workers."
         ),
     )
 
-    model_loading_config: ModelLoadingConfig = Field(
+    model_loading_config: Union[ModelLoadingConfig, Dict[str, Any]] = Field(
         description="The settings for how to download and expose the model."
     )
 
@@ -179,7 +179,7 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[LoraConfig] = Field(
+    lora_config: Optional[Union[LoraConfig, Dict[str, Any]]] = Field(
         default=None, description="Settings for LoRA adapter."
     )
 
@@ -211,7 +211,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        False,
+        default=False,
         description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
     )
 
