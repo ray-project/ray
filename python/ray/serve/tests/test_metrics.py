@@ -179,14 +179,14 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     app_name = "app1"
     handle = serve.run(target=f.bind(), name=app_name)
 
-    http_url = f'{get_application_url("HTTP", app_name)}/metrics'
-
+    http_url = get_application_url(app_name=app_name)
     # send 10 concurrent requests
     ray.get([block_until_http_ready.remote(http_url) for _ in range(10)])
     [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = "localhost:9000"
+    channel = grpc.insecure_channel(grpc_url)
     wait_for_condition(
         ping_grpc_list_applications, channel=channel, app_names=[app_name]
     )
@@ -401,8 +401,9 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    httpx.get(f"{get_application_url()}/A/", timeout=None)
-    httpx.get(f"{get_application_url()}/A/", timeout=None)
+
+    httpx.get("http://localhost:8000", timeout=None)
+    httpx.get("http://localhost:8000", timeout=None)
     channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
@@ -461,12 +462,12 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
     # Should generate 404 responses
-    broken_url = f"{get_application_url()}/fake_route"
+    broken_url = "http://127.0.0.1:8000/fake_route"
     _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
-    channel = grpc.insecure_channel("localhost:9000")
+    channel = grpc.insecure_channel("127.0.0.1:9000")
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
@@ -523,7 +524,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
         name="status_code_timeout",
     )
 
-    http_url = get_application_url("HTTP", "status_code_timeout")
+    http_url = get_application_url("HTTP", app_name="status_code_timeout")
 
     r = httpx.get(http_url)
     assert r.status_code == 408
@@ -568,7 +569,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     )
 
     # Simulate an HTTP disconnect
-    http_url = get_application_url("HTTP", "disconnect")
+    http_url = get_application_url("HTTP", app_name="disconnect")
     ip_port = http_url.replace("http://", "").split("/")[0]  # remove the route prefix
     ip, port = ip_port.split(":")
     conn = http.client.HTTPConnection(ip, int(port))
