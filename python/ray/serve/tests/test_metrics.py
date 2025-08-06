@@ -462,8 +462,6 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
 
     # Should generate 404 responses
     broken_url = f"{get_application_url()}/fake_route"
-    if sys.platform == "win32":
-        broken_url = broken_url.replace("localhost", "127.0.0.1")
 
     _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
