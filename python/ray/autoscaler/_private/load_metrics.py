@@ -119,7 +119,7 @@ class LoadMetrics:
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
     ):
-        if not ip_regex.match(ip):
+        if not ip_regex.fullmatch(ip):
             ip = self.dns_resolve_non_ip_address(ip)
         
         self.static_resources_by_ip[ip] = static_resources
