@@ -344,7 +344,7 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
 
 # Backoff seconds when choosing router failed, backoff time is calculated as
 # initial_backoff_s * backoff_multiplier ** attempt.
-# The default backoff time is [0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
+# The default backoff time is [0, 0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
 RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S = float(
     os.environ.get("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S", 0.025)
 )
@@ -469,6 +469,13 @@ REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 # replica's main event loop.
 RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
     os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1") == "1"
+)
+
+# By default, we run the router in a separate event loop.
+# This flag can be set to 0 to run the router in the same event loop as the
+# replica's main event loop.
+RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = (
+    os.environ.get("RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1") == "1"
 )
 
 # The default buffer size for request path logs. Setting to 1 will ensure
