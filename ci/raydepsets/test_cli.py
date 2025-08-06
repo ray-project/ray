@@ -59,7 +59,33 @@ class TestCli(unittest.TestCase):
                 manager.config.depsets[1].output == "requirements_compiled_general.txt"
             )
 
-    def test_dependency_set_manager_get_depset(self):
+    def test_get_depset_with_build_arg_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            depset = manager.get_depset(
+                "build_args_test_depset_py311", manager.config.build_arg_sets[0]
+            )
+            assert depset.name == "build_args_test_depset_py311"
+            assert depset.build_arg_set.name == "py311_cpu"
+            assert depset.build_arg_set.build_args["PYTHON_VERSION"] == "py311"
+            assert depset.build_arg_set.build_args["CUDA_VERSION"] == "cpu"
+
+    def test_get_depset_without_build_arg_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            depset = manager.get_depset("ray_base_test_depset", None)
+            assert depset.name == "ray_base_test_depset"
+            assert depset.build_arg_set is None
+
+    def test_get_depset_with_invalid_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
@@ -67,7 +93,9 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset", manager.config.build_arg_sets[0])
+                manager.get_depset(
+                    "ray_base_test_depset", manager.config.build_arg_sets[0]
+                )
 
     def test_uv_binary_exists(self):
         assert uv_binary() is not None

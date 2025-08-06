@@ -102,7 +102,11 @@ class DependencySetManager:
     def get_depset(self, name: str, build_arg_set: BuildArgSet) -> Depset:
         for depset in self.config.depsets:
             if depset.name == name and (
-                build_arg_set is None or depset.build_arg_set.name == build_arg_set.name
+                build_arg_set is None
+                or (
+                    depset.build_arg_set is not None
+                    and depset.build_arg_set.name == build_arg_set.name
+                )
             ):
                 return depset
         raise KeyError(
