@@ -33,7 +33,3 @@ async def test_vllm_engine_start_with_custom_resource_bundle(
     await engine.start()
     await engine.check_health()
     engine.shutdown()
-
-
-if __name__ == "__main__":
-    pytest.main(["-vs", __file__])
