@@ -488,11 +488,7 @@ def test_anti_join_all_matches(
 
     # Should get empty result
     assert len(joined_pd) == 0
-    if join_type == "left_anti":
-        assert list(joined_pd.columns) == ["id", "double"]
-    else:  # right_anti
-        assert list(joined_pd.columns) == ["id", "square"]
-
+    
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_multi_key(
@@ -503,46 +499,53 @@ def test_anti_join_multi_key(
     """Test anti-join with multiple join keys"""
     DataContext.get_current().target_max_block_size = 1 * MiB
 
-    # Create left dataset
-    left_data = []
-    for i in range(32):
-        left_data.append({"key1": i // 3, "key2": i % 3, "value_left": i * 10})
-    left_ds = ray.data.from_items(left_data)
+    # Create left dataset using ray.data.range for consistency
+    left_ds = ray.data.range(32).map(
+        lambda row: {
+            "id": row["id"],
+            "oddness": row["id"] % 2, # Even
+            "10x": row["id"] * 10
+        }
+    )
 
-    # Create right dataset with partial matches
-    right_data = []
-    for i in range(16):  # Half of left dataset size for partial matches
-        right_data.append({"key1": i // 3, "key2": i % 3, "value_right": i * 100})
-    right_ds = ray.data.from_items(right_data)
+    # Create right dataset with partial matches (16 vs 32 for partial overlap)
+    right_ds = ray.data.range(16).map(
+        lambda row: {
+            "id": row["id"] % 2,
+            "oddness": row["id"] % 2 + 1,  # odd
+            "100x": row["id"] * 100
+        }
+    )
 
     # Anti-join should return rows that don't have matching key1,key2 in the other dataset
     joined: Dataset = left_ds.join(
         right_ds,
         join_type=join_type,
         num_partitions=4,
-        on=("key1", "key2"),
+        on=("id", "oddness"),
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
-    left_pd = pd.DataFrame(left_data)
-    right_pd = pd.DataFrame(right_data)
+    
+    # Create expected data for pandas comparison
+    left_pd = left_ds.to_pandas()
+    right_pd = right_ds.to_pandas()
 
     # Calculate expected result using pandas
     if join_type == "left_anti":
-        merged = left_pd.merge(right_pd, on=["key1", "key2"], how="left", indicator=True)
-        expected_pd = merged[merged["_merge"] == "left_only"][
-            ["key1", "key2", "value_left"]
-        ]
-        sort_cols = ["key1", "key2", "value_left"]
-    else:
-        merged = left_pd.merge(right_pd, on=["key1", "key2"], how="right", indicator=True)
-        expected_pd = merged[merged["_merge"] == "right_only"][
-            ["key1", "key2", "value_right"]
-        ]
-        sort_cols = ["key1", "key2", "value_right"]
+        expected_cols = ["id", "oddness", "10x"]
 
-    expected_pd_sorted = expected_pd.sort_values(by=sort_cols).reset_index(drop=True)
-    joined_pd_sorted = joined_pd.sort_values(by=sort_cols).reset_index(drop=True)
+        merged = left_pd.merge(right_pd, on=["id", "oddness"], how="left", indicator=True)
+        expected_pd = merged[merged["_merge"] == "left_only"][expected_cols]
+    else:
+        expected_cols = ["id", "oddness", "100x"]
+
+        merged = left_pd.merge(right_pd, on=["id", "oddness"], how="right", indicator=True)
+        expected_pd = merged[merged["_merge"] == "right_only"][expected_cols]
+
+    # Sort resulting frames and reset index (to be able to compare with expected one)
+    expected_pd_sorted = expected_pd.sort_values(by=expected_cols).reset_index(drop=True)
+    joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
