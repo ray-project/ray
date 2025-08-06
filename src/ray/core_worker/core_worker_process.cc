@@ -722,6 +722,18 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // We need init stats before using it/spawning threads.
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
 
+  // Initialize event framework before starting up worker.
+  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
+    const std::vector<SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
+    RayEventInit(source_types,
+                 /*custom_fields=*/{},
+                 options_.log_dir,
+                 RayConfig::instance().event_level(),
+                 RayConfig::instance().emit_event_to_log_file());
+  }
+
   {
     // Notify that core worker is initialized.
     absl::Cleanup initialzed_scope_guard = [this] {
@@ -731,18 +743,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
-  }
-
-  // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    const std::vector<SourceTypeVariant> source_types = {
-        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
-    RayEventInit(source_types,
-                 absl::flat_hash_map<std::string, std::string>(),
-                 options_.log_dir,
-                 RayConfig::instance().event_level(),
-                 RayConfig::instance().emit_event_to_log_file());
   }
 }
 

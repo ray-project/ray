@@ -49,7 +49,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 "objective": "regression",
                 # Adding the line below is the only change needed
                 # for your `lgb.train` call!
-                **ray.train.lightgbm.v2.get_network_params(),
+                **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
                 params,

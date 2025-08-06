@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"

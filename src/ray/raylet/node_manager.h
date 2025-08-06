@@ -23,7 +23,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
@@ -32,6 +31,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
