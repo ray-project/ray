@@ -9,6 +9,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -40,6 +41,7 @@ from ray.util.annotations import PublicAPI, RayDeprecationWarning
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
+    from torch._prims_common import DeviceLikeType
 
     from ray.data.dataset import (
         CollatedData,
@@ -267,7 +269,7 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: str = "auto",
+        device: DeviceLikeType | Literal["auto"] = "auto",
         collate_fn: Optional[
             Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
         ] = None,

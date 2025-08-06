@@ -131,6 +131,7 @@ if TYPE_CHECKING:
     import torch
     import torch.utils.data
     from tensorflow_metadata.proto.v0 import schema_pb2
+    from torch._prims_common import DeviceLikeType
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
@@ -4994,7 +4995,7 @@ class Dataset:
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: str = "auto",
+        device: DeviceLikeType | Literal["auto"] = "auto",
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
