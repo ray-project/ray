@@ -43,10 +43,17 @@ class HttpServerAgent:
             try:
                 site = aiohttp.web.TCPSite(
                     self.runner,
-                    "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                    self.ip,
                     self.listen_port,
                 )
                 await site.start()
+                if self.ip != "127.0.0.1" and self.ip != "localhost":
+                    local_site = aiohttp.web.TCPSite(
+                        self.runner,
+                        "127.0.0.1",
+                        self.listen_port,
+                    )
+                    await local_site.start()
                 if attempt > 0:
                     logger.info(
                         f"Successfully started agent on port {self.listen_port} "
@@ -113,7 +120,9 @@ class HttpServerAgent:
 
         self.http_host, self.http_port, *_ = site._server.sockets[0].getsockname()
         logger.info(
-            "Dashboard agent http address: %s:%s", self.http_host, self.http_port
+            "Dashboard agent http address: %s:%s",
+            self.http_host,
+            self.http_port,
         )
 
         # Dump registered http routes.
