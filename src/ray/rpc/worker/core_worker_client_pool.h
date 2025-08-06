@@ -65,10 +65,6 @@ class CoreWorkerClientPool {
   FRIEND_TEST(DefaultUnavailableTimeoutCallbackTest, NodeDeath);
   FRIEND_TEST(DefaultUnavailableTimeoutCallbackTest, WorkerDeath);
 
-  /// Return an existing CoreWorkerClient if exists or nullptr if it does not.
-  /// The returned pointer is expected to be used briefly.
-  std::shared_ptr<CoreWorkerClientInterface> GetByID(ray::WorkerID id);
-
   /// Try to remove some idle clients to free memory.
   /// It doesn't go through the entire list and remove all idle clients.
   /// Instead, it tries to remove idle clients from the end of the list
