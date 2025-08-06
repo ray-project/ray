@@ -459,7 +459,7 @@ def test_simple_anti_join(
         expected_pd = merged[merged["_merge"] == "right_only"][["id", "square"]]
     else:
         raise ValueError(f"Unsupported join type: {join_type}")
-    
+
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
 
     # Join using Ray Data
@@ -505,7 +505,7 @@ def test_anti_join_no_matches(
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
-    
+
     if join_type == "left_anti":
         expected_pd = doubles.to_pandas()
     else:  # right_anti
@@ -599,7 +599,7 @@ def test_anti_join_multi_key(
             ["key1", "key2", "value_right"]
         ]
         sort_cols = ["key1", "key2", "value_right"]
-    
+
     expected_pd_sorted = expected_pd.sort_values(by=sort_cols).reset_index(drop=True)
     joined_pd_sorted = joined_pd.sort_values(by=sort_cols).reset_index(drop=True)
 
@@ -609,13 +609,13 @@ def test_anti_join_multi_key(
 def test_join_type_validation(ray_start_regular_shared_2_cpus):
     """Test that all supported join types are accepted and invalid ones are rejected"""
     ds = ray.data.range(32)
-    
-    # Test all valid join types are accepted  
+
+    # Test all valid join types are accepted
     valid_join_types = [
-        "inner", "left_outer", "right_outer", "full_outer", 
+        "inner", "left_outer", "right_outer", "full_outer",
         "left_semi", "right_semi", "left_anti", "right_anti"
     ]
-    
+
     for join_type in valid_join_types:
         # Should not raise ValueError (just test validation, don't execute)
         try:
@@ -623,7 +623,7 @@ def test_join_type_validation(ray_start_regular_shared_2_cpus):
         except ValueError as e:
             if "Invalid join type" in str(e):
                 pytest.fail(f"Valid join type '{join_type}' was rejected: {e}")
-    
+
     # Test invalid join type is rejected
     with pytest.raises(ValueError, match="Invalid join type"):
         ds.join(ds, join_type="invalid_join", num_partitions=1, on=("id",))
