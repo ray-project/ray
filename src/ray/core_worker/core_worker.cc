@@ -1448,7 +1448,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     }
   }
 
-  if (!got_exception) {
+  if (!got_exception && !plasma_object_ids.empty()) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
