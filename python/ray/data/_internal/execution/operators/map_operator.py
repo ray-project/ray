@@ -36,6 +36,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -407,23 +408,13 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
-            upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
-            if upstream_op_num_outputs:
-                estimated_num_tasks = (
-                    upstream_op_num_outputs
-                    / self._metrics.num_inputs_received
-                    * self._next_data_task_idx
-                )
-                self._estimated_num_output_bundles = round(
-                    estimated_num_tasks
-                    * self._metrics.num_outputs_of_finished_tasks
-                    / self._metrics.num_tasks_finished
-                )
-                self._estimated_output_num_rows = round(
-                    estimated_num_tasks
-                    * self._metrics.rows_task_outputs_generated
-                    / self._metrics.num_tasks_finished
-                )
+            (
+                _,
+                self._estimated_num_output_bundles,
+                self._estimated_output_num_rows,
+            ) = estimate_total_num_of_blocks(
+                self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
+            )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.

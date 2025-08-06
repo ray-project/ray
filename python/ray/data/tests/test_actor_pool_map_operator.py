@@ -80,7 +80,9 @@ class TestActorPool(unittest.TestCase):
             return None
 
     def _create_actor_fn(
-        self, labels: Dict[str, Any]
+        self,
+        labels: Dict[str, Any],
+        logical_actor_id: str = "Actor1",
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()

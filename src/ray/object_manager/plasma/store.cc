@@ -43,7 +43,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -489,8 +489,11 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
-    RAY_RETURN_NOT_OK(SendGetDebugStringReply(
-        client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
+    std::stringstream output_string_stream;
+    object_lifecycle_mgr_.GetDebugDump(output_string_stream);
+    output_string_stream << "\nEviction Stats:";
+    output_string_stream << object_lifecycle_mgr_.EvictionPolicyDebugString();
+    RAY_RETURN_NOT_OK(SendGetDebugStringReply(client, output_string_stream.str()));
   } break;
   default:
     // This code should be unreachable.

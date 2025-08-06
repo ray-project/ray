@@ -40,14 +40,14 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
         }
       }
     }
-    RAY_CHECK_OK(actor_creator_.AsyncReportActorOutOfScope(
+    actor_creator_.AsyncReportActorOutOfScope(
         actor_id, num_restarts_due_to_lineage_reconstruction, [actor_id](Status status) {
           if (!status.ok()) {
             RAY_LOG(ERROR).WithField(actor_id)
                 << "Failed to report actor out of scope: " << status
                 << ". The actor will not be killed";
           }
-        }));
+        });
   };
 
   if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(
@@ -62,7 +62,7 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
 
 void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
                                                   int32_t max_pending_calls,
-                                                  bool execute_out_of_order,
+                                                  bool allow_out_of_order_execution,
                                                   bool fail_if_actor_unreachable,
                                                   bool owned) {
   bool inserted;
@@ -75,7 +75,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
     inserted = client_queues_
                    .emplace(actor_id,
                             ClientQueue(actor_id,
-                                        execute_out_of_order,
+                                        allow_out_of_order_execution,
                                         max_pending_calls,
                                         fail_if_actor_unreachable,
                                         owned))
@@ -116,7 +116,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
     // more details please see the protocol of actor management based on gcs.
     // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
     RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Creating actor via GCS";
-    RAY_CHECK_OK(actor_creator_.AsyncCreateActor(
+    actor_creator_.AsyncCreateActor(
         task_spec,
         [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
           if (status.ok() || status.IsCreationTaskError()) {
@@ -144,7 +144,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             if (status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
                   << "Actor creation cancelled";
-              task_manager_.MarkTaskCanceled(task_id);
+              task_manager_.MarkTaskNoRetry(task_id);
               if (reply.has_death_cause()) {
                 ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
               }
@@ -161,7 +161,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
                 &status,
                 ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
           }
-        }));
+        });
   });
 
   return Status::OK();
@@ -233,7 +233,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         "ActorTaskSubmitter::SubmitTask");
   } else {
     // Do not hold the lock while calling into task_manager_.
-    task_manager_.MarkTaskCanceled(task_id);
+    task_manager_.MarkTaskNoRetry(task_id);
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     {
@@ -345,7 +345,7 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
   RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
   queue->second.state = rpc::ActorTableData::RESTARTING;
   queue->second.num_restarts_due_to_lineage_reconstructions += 1;
-  RAY_CHECK_OK(actor_creator_.AsyncRestartActorForLineageReconstruction(
+  actor_creator_.AsyncRestartActorForLineageReconstruction(
       actor_id,
       queue->second.num_restarts_due_to_lineage_reconstructions,
       [this,
@@ -360,7 +360,7 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
           NotifyGCSWhenActorOutOfScope(actor_id,
                                        num_restarts_due_to_lineage_reconstructions);
         }
-      }));
+      });
 }
 
 void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -441,10 +441,10 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     for (auto &task_id : task_ids_to_fail) {
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      task_manager_.MarkTaskCanceled(task_id);
+      task_manager_.MarkTaskNoRetry(task_id);
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
-      resolver_.CancelDependencyResolution(task_id);
+      RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
       bool fail_immediatedly =
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
@@ -716,7 +716,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
-    resolver_.CancelDependencyResolution(task_id);
+    RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
 
     will_retry = GetTaskManagerWithoutMu().FailOrRetryPendingTask(
         task_id,
@@ -900,7 +900,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
       if (!dep_resolved) {
         RAY_LOG(DEBUG).WithField(task_id)
             << "Task has been resolving dependencies. Cancel to resolve dependencies";
-        resolver_.CancelDependencyResolution(task_id);
+        RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
       }
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";
