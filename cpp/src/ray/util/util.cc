@@ -26,12 +26,12 @@ namespace internal {
 
 std::string GetNodeIpAddress(const std::string &address) {
   auto parts = ParseAddress(address);
-  RAY_CHECK(parts.size() == 2);
+  RAY_CHECK(parts.has_value());
   try {
     boost::asio::io_service netService;
     boost::asio::ip::udp::resolver resolver(netService);
     boost::asio::ip::udp::resolver::query query(
-        boost::asio::ip::udp::v4(), parts[0], parts[1]);
+        boost::asio::ip::udp::v4(), (*parts)[0], (*parts)[1]);
     boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
     boost::asio::ip::udp::endpoint ep = *endpoints;
     boost::asio::ip::udp::socket socket(netService);

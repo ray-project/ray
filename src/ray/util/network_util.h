@@ -14,8 +14,9 @@
 
 #pragma once
 
+#include <array>
+#include <optional>
 #include <string>
-#include <vector>
 
 /// Build a network address string from host and port.
 /// \param host The hostname or IP address.
@@ -31,5 +32,5 @@ std::string BuildAddress(const std::string &host, const std::string &port);
 
 /// Parse a network address string into host and port.
 /// \param address The address string to parse (e.g., "localhost:8000", "[::1]:8000").
-/// \return Vector with [host, port] if port found, or [address] if no colon separator.
-std::vector<std::string> ParseAddress(const std::string &address);
+/// \return Optional array with [host, port] if port found, nullopt if no colon separator.
+std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address);

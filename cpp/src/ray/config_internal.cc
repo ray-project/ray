@@ -251,11 +251,11 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 
 void ConfigInternal::SetBootstrapAddress(std::string_view bootstrap_address) {
   auto ip_and_port = ParseAddress(std::string(bootstrap_address));
-  RAY_CHECK(ip_and_port.size() == 2);
+  RAY_CHECK(ip_and_port.has_value());
 
-  bootstrap_ip = ip_and_port[0];
-  auto ret = std::from_chars(ip_and_port[1].data(),
-                             ip_and_port[1].data() + ip_and_port[1].size(),
+  bootstrap_ip = (*ip_and_port)[0];
+  auto ret = std::from_chars((*ip_and_port)[1].data(),
+                             (*ip_and_port)[1].data() + (*ip_and_port)[1].size(),
                              bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
 }

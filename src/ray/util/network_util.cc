@@ -14,9 +14,10 @@
 
 #include "ray/util/network_util.h"
 
+#include <array>
 #include <boost/asio/ip/address.hpp>
+#include <optional>
 #include <string>
-#include <vector>
 
 #include "absl/strings/str_format.h"
 
@@ -44,10 +45,10 @@ std::string BuildAddress(const std::string &host, const std::string &port) {
   }
 }
 
-std::vector<std::string> ParseAddress(const std::string &address) {
+std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address) {
   size_t pos = address.find_last_of(":");
   if (pos == std::string::npos) {
-    return {address};
+    return std::nullopt;
   }
 
   std::string host = address.substr(0, pos);
@@ -59,9 +60,9 @@ std::vector<std::string> ParseAddress(const std::string &address) {
     } else {
       // Invalid IPv6 (missing brackets) or colon is part of the address, not a host:port
       // split.
-      return {address};
+      return std::nullopt;
     }
   }
 
-  return {host, port};
+  return std::array<std::string, 2>{host, port};
 }

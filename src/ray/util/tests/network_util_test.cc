@@ -35,43 +35,39 @@ TEST(NetworkUtilTest, TestBuildAddress) {
 TEST(NetworkUtilTest, TestParseAddress) {
   // IPv4
   auto result = ParseAddress("192.168.1.1:8080");
-  ASSERT_EQ(result.size(), 2);
-  EXPECT_EQ(result[0], "192.168.1.1");
-  EXPECT_EQ(result[1], "8080");
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ((*result)[0], "192.168.1.1");
+  EXPECT_EQ((*result)[1], "8080");
 
   // IPv6:loopback address
   result = ParseAddress("[::1]:8080");
-  ASSERT_EQ(result.size(), 2);
-  EXPECT_EQ(result[0], "::1");
-  EXPECT_EQ(result[1], "8080");
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ((*result)[0], "::1");
+  EXPECT_EQ((*result)[1], "8080");
 
   // IPv6
   result = ParseAddress("[2001:db8::1]:8080");
-  ASSERT_EQ(result.size(), 2);
-  EXPECT_EQ(result[0], "2001:db8::1");
-  EXPECT_EQ(result[1], "8080");
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ((*result)[0], "2001:db8::1");
+  EXPECT_EQ((*result)[1], "8080");
 
   // Hostname:Port
   result = ParseAddress("localhost:9000");
-  ASSERT_EQ(result.size(), 2);
-  EXPECT_EQ(result[0], "localhost");
-  EXPECT_EQ(result[1], "9000");
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ((*result)[0], "localhost");
+  EXPECT_EQ((*result)[1], "9000");
 
   // bare IP or hostname
-  // should behave similarly to absl::StrSplit(ipv4_address, ':')
+  // should return nullopt when no port is found
   result = ParseAddress("::1");
-  ASSERT_EQ(result.size(), 1);
-  EXPECT_EQ(result[0], "::1");
+  ASSERT_FALSE(result.has_value());
 
   result = ParseAddress("2001:db8::1");
-  ASSERT_EQ(result.size(), 1);
-  EXPECT_EQ(result[0], "2001:db8::1");
+  ASSERT_FALSE(result.has_value());
 
   result = ParseAddress("192.168.1.1");
-  ASSERT_EQ(result.size(), 1);
-  EXPECT_EQ(result[0], "192.168.1.1");
+  ASSERT_FALSE(result.has_value());
 
   result = ParseAddress("localhost");
-  ASSERT_EQ(result.size(), 1);
-  EXPECT_EQ(result[0], "localhost");
+  ASSERT_FALSE(result.has_value());
 }

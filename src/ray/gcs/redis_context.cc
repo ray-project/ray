@@ -407,9 +407,9 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
     return std::nullopt;
   }
   RAY_CHECK_EQ(parts.size(), 3u);
-  std::vector<std::string> ip_port = ParseAddress(parts[2]);
-  RAY_CHECK_EQ(ip_port.size(), 2u);
-  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
+  auto ip_port = ParseAddress(parts[2]);
+  RAY_CHECK(ip_port.has_value());
+  return std::make_pair((*ip_port)[0], std::stoi((*ip_port)[1]));
 }
 }  // namespace
 
