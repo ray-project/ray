@@ -108,7 +108,6 @@ class DatabricksUCDatasource(Datasource):
             )
 
         chunks = manifest.get("chunks", [])
-        # HAM
         # Make chunks metadata are ordered by index.
         chunks = sorted(chunks, key=lambda x: x["chunk_index"])
         num_chunks = len(chunks)
