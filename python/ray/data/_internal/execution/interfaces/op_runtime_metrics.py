@@ -819,7 +819,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
-        self.rows_output_of_finished_tasks += task_info.num_rows_produced
+        self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
         task_time_delta = time.perf_counter() - task_info.start_time
         self._op_task_duration_stats.add_duration(task_time_delta)
