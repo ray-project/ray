@@ -463,7 +463,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     # Should generate 404 responses
     broken_url = f"{get_application_url()}/fake_route"
 
-    _ = httpx.get(broken_url).text
+    _ = httpx.get(broken_url.replace("0.0.0.0", "127.0.0.1")).text
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
