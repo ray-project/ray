@@ -304,7 +304,7 @@ class Unbuffered(object):
     def __getattr__(self, attr):
         # Avoid endless loop when get `stream` attribtue
         if attr == "stream":
-            return super().__getattribute__('stream')
+            return super().__getattribute__("stream")
         return getattr(self.stream, attr)
 
 
