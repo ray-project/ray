@@ -66,7 +66,6 @@ def __ray_recv__(
     obj_id: str,
     src_rank: int,
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-    num_readers: int,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -81,7 +80,7 @@ def __ray_recv__(
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
-    gpu_object_store.add_object(obj_id, tensors, num_readers=num_readers)
+    gpu_object_store.add_object(obj_id, tensors)
 
 
 def __ray_get_tensor_meta__(self, obj_id: str):
@@ -119,7 +118,7 @@ class GPUObject:
     # handling cases where the same GPU object reference is passed to the
     # same actor task multiple times. For sender actors, we still rely on
     # the object store's reference counting mechanism.
-    num_readers: Optional[int] = None
+    num_readers: int = 0
 
 
 class GPUObjectStore:
@@ -156,7 +155,6 @@ class GPUObjectStore:
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
-        num_readers: Optional[int] = None,
         is_primary: bool = False,
     ):
         """
@@ -165,16 +163,12 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID of the GPU object.
             gpu_object: A list of tensors representing the GPU object.
-            num_readers: The number of readers for the GPU object. The GPU
-              object store will automatically clean up the object after
-              `num_readers` calls to `decrement_num_readers()`.
             is_primary: Whether the GPU object is the primary copy.
         """
         with self._object_present_cv:
             self._gpu_object_store[obj_id] = GPUObject(
                 gpu_object,
                 is_primary,
-                num_readers,
             )
             self._object_present_cv.notify_all()
 

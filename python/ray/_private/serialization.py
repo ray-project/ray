@@ -519,13 +519,10 @@ class SerializationContext:
                     object_id = object_ref.hex()
                     if object_id in gpu_objects:
                         gpu_object = gpu_objects[object_id]
-                        if gpu_object.num_readers is not None:
-                            gpu_object.num_readers -= 1
-                            object_tensors = gpu_object.data
-                            if gpu_object.num_readers == 0:
-                                gpu_objects.pop(object_id)
-                        else:
-                            object_tensors = gpu_objects.pop(object_id).data
+                        object_tensors = gpu_object.data
+                        gpu_object.num_readers -= 1
+                        if gpu_object.num_readers == 0:
+                            gpu_objects.pop(object_id)
                 obj = self._deserialize_object(
                     data,
                     metadata,

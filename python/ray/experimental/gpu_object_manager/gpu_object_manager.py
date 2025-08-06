@@ -4,7 +4,6 @@ import threading
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-from collections import defaultdict
 from ray._private import ray_constants
 
 
@@ -142,7 +141,6 @@ class GPUObjectManager:
         obj_id: str,
         src_rank: int,
         tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-        num_readers: int,
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
@@ -155,7 +153,7 @@ class GPUObjectManager:
         # on the same background thread to ensure that all communication
         # operations are executed in a global order.
         dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta, num_readers
+            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
     def fetch_object(self, obj_id: str):
@@ -187,7 +185,7 @@ class GPUObjectManager:
                 __ray_fetch_gpu_object__, obj_id
             )
         )
-        self.gpu_object_store.add_object(obj_id, tensors, num_readers=1)
+        self.gpu_object_store.add_object(obj_id, tensors)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -209,7 +207,7 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
-        gpu_object_ref_to_num_readers = defaultdict(int)
+        gpu_object_refs = set()
         for arg in task_args:
             # If an ObjectRef is managed, it means the actual value is a list of tensors stored
             # on a remote actor. Therefore, this function will trigger a tensor communication
@@ -217,10 +215,10 @@ class GPUObjectManager:
             if not isinstance(arg, ObjectRef):
                 continue
             if self.is_managed_object(arg.hex()):
-                gpu_object_ref_to_num_readers[arg] += 1
+                gpu_object_refs.add(arg)
 
         # Count the number of readers for each GPU object.
-        for obj_ref, num_readers in gpu_object_ref_to_num_readers.items():
+        for obj_ref in gpu_object_refs:
             # Import get_collective_groups here to avoid dependency on
             # collective libraries for default Ray installation.
             from ray.experimental.collective import get_collective_groups
@@ -267,7 +265,7 @@ class GPUObjectManager:
             obj_id = obj_ref.hex()
             self._send_object(communicator.name, src_actor, obj_id, dst_rank)
             self._recv_object(
-                communicator.name, dst_actor, obj_id, src_rank, tensor_meta, num_readers
+                communicator.name, dst_actor, obj_id, src_rank, tensor_meta
             )
 
     def get_gpu_object(self, object_id: str) -> "GPUObject":

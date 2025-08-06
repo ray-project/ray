@@ -885,6 +885,7 @@ class Worker:
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
                     object_id
                 )
+            gpu_objects[object_id].num_readers += 1
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports

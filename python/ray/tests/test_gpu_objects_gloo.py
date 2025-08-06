@@ -271,6 +271,17 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
     assert result[2] == cpu_data * 2
 
 
+def test_send_same_ref_multiple_times_intra_actor(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+
+    ref = actor.echo.remote(small_tensor)
+    result = actor.add.remote(ref, ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+
 def test_mix_cpu_gpu_data(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
