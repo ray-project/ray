@@ -71,8 +71,6 @@ from ray.data.read_api import (  # noqa: F401
     read_webdataset,
 )
 
-# SPAM
-
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
 _map_actor_context = None
