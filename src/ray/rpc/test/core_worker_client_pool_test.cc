@@ -67,7 +67,7 @@ TEST(CoreWorkerClientPoolTest, TestGC) {
   auto worker_id1 = WorkerID::FromBinary(address1.worker_id());
   auto worker_id2 = WorkerID::FromBinary(address2.worker_id());
   auto client1 = client_pool.GetOrConnect(address1);
-  const auto& client_map = client_pool.worker_client_map_;
+  const auto &client_map = client_pool.worker_client_map_;
   ASSERT_NE(client_map.find(worker_id1), client_map.end());
   auto client2 = client_pool.GetOrConnect(address2);
   ASSERT_NE(client_map.find(worker_id2), client_map.end());
@@ -166,7 +166,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   auto worker_id2 = WorkerID::FromBinary(worker_2_address.worker_id());
   auto worker_1_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_1_address).get());
-  const auto& client_map = client_pool_->worker_client_map_;
+  const auto &client_map = client_pool_->worker_client_map_;
   ASSERT_NE(client_map.find(worker_id1), client_map.end());
   auto worker_2_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_2_address).get());
@@ -235,7 +235,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
   auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_address).get());
-  const auto& client_map = client_pool_->worker_client_map_;
+  const auto &client_map = client_pool_->worker_client_map_;
   ASSERT_NE(client_map.find(worker_id), client_map.end());
 
   rpc::GcsNodeInfo node_info_alive;
