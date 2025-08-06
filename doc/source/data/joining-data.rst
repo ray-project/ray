@@ -33,10 +33,12 @@ Ray Data supports following join types (check out `Dataset.join` docs for up-to-
 - Inner, Left Outer, Right Outer, Full Outer
 
 **Semi Joins:**
-- Left Semi, Right Semi (return rows that have matches, columns from one side only)
+- Left Semi, Right Semi (returns all rows that have at least one matching row in the other table,
+only returning columns from the requested side)
 
 **Anti Joins:**
-- Left Anti, Right Anti (return rows that don't have matches, columns from one side only)
+- Left Anti, Right Anti (return rows that have no matching rows in the other table, only returning
+columns from the requested side)
 
 Internally joins are currently powered by the :ref:`hash-shuffle backend <hash-shuffle>`.
 
