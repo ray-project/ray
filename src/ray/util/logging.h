@@ -146,7 +146,7 @@ enum class RayLogLevel {
            << " Congratulations! This means you discovered a bug in Ray that made the " \
               "system behave in an unexpected way. Please report this issue at "        \
               "https://github.com/ray-project/ray/issues for extra credit points and "  \
-              "it'll (hopefully) get fixed ASAP! Check failed: " display " ")
+              "it'll get fixed ASAP! Check failed: " display " ")
 
 #define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
