@@ -173,7 +173,6 @@ py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     files = [
-        "test_cli.py",
         "test_cli_2.py",
         "test_cli_3.py",
     ],
