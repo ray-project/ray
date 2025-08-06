@@ -1,3 +1,5 @@
+import pytest
+
 from ray.train.v2._internal.execution.worker_group.poll import (
     WorkerGroupPollStatus,
     WorkerStatus,
@@ -21,3 +23,9 @@ def test_get_error_string_basic():
 
     expected_error_str = "[Rank 0, 3]: \nTest error 1\n[Rank 2]: \nTest error 2"
     assert error_str == expected_error_str
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
