@@ -16,6 +16,8 @@
 
 #include "gtest/gtest.h"
 
+namespace ray {
+
 TEST(NetworkUtilTest, TestBuildAddress) {
   // IPv4
   EXPECT_EQ(BuildAddress("192.168.1.1", 8080), "192.168.1.1:8080");
@@ -71,3 +73,5 @@ TEST(NetworkUtilTest, TestParseAddress) {
   result = ParseAddress("localhost");
   ASSERT_FALSE(result.has_value());
 }
+
+}  // namespace ray

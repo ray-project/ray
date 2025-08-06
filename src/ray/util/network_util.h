@@ -18,6 +18,8 @@
 #include <optional>
 #include <string>
 
+namespace ray {
+
 /// Build a network address string from host and port.
 /// \param host The hostname or IP address.
 /// \param port The port number.
@@ -34,3 +36,5 @@ std::string BuildAddress(const std::string &host, const std::string &port);
 /// \param address The address string to parse (e.g., "localhost:8000", "[::1]:8000").
 /// \return Optional array with [host, port] if port found, nullopt if no colon separator.
 std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address);
+
+}  // namespace ray

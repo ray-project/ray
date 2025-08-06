@@ -21,6 +21,8 @@
 
 #include "absl/strings/str_format.h"
 
+namespace ray {
+
 std::string BuildAddress(const std::string &host, int port) {
   boost::system::error_code ec;
   auto ip_addr = boost::asio::ip::make_address(host, ec);
@@ -66,3 +68,5 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
 
   return std::array<std::string, 2>{host, port};
 }
+
+}  // namespace ray

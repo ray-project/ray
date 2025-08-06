@@ -74,7 +74,7 @@ TEST(RayClusterModeTest, FullTest) {
     std::string local_ip = ray::internal::GetNodeIpAddress();
     ray::internal::ProcessHelper::GetInstance().StartRayNode(
         local_ip, port, username, password);
-    config.address = BuildAddress(local_ip, port);
+    config.address = ray::BuildAddress(local_ip, port);
     config.redis_username_ = username;
     config.redis_password_ = password;
   }
