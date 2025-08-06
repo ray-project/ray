@@ -256,7 +256,10 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl(bool auth_success) {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      service_handler_.WaitUntilInitialized();
+      if (!service_handler_initialized_) {
+        service_handler_.WaitUntilInitialized();
+        service_handler_initialized_ = true;
+      }
     }
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
@@ -354,6 +357,9 @@ class ServerCallImpl : public ServerCall {
 
   /// The service handler that handles the request.
   ServiceHandler &service_handler_;
+
+  // A boolean to track if the service handler has been initialized.
+  bool service_handler_initialized_ = false;
 
   /// Pointer to the service handler function.
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
