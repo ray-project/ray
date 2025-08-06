@@ -140,7 +140,7 @@ ray_cc_library(
         "//src/ray/protobuf:node_manager_cc_grpc",
     ] + [
         # TODO(eoakes): these three come from raylet_client.h, remove after breaking the circular dependency.
-        "//src/ray/common:network",
+        "//src/ray/ipc:client_connection",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
     ],
