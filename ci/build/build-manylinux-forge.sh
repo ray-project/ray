@@ -25,11 +25,10 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
 fi
 
 # Install bazel
-curl -L -o bazelisk https://github.com/bazelbuild/bazelisk/releases/v1.19.0/download/bazelisk-linux-amd64
-chmod +x bazelisk
 mkdir -p "$HOME"/bin
-sudo cp bazelisk /usr/local/bin/bazel
-ln -sf /usr/local/bin/bazel "$HOME"/bin/bazel
+curl -L -o "$HOME"/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
+chmod +x "$HOME"/bin/bazelisk
+cp "$HOME"/bin/bazelisk "$HOME"/bin/bazel
 
 # Use python3.9 as default python3
 sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
