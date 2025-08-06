@@ -30,10 +30,9 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(ray::Status, ActorCreationTaskDone, (), (override));
   MOCK_METHOD(ray::Status,
-              FetchOrReconstruct,
+              AsyncGetObjects,
               (const std::vector<ObjectID> &object_ids,
-               const std::vector<rpc::Address> &owner_addresses,
-               bool fetch_only),
+               const std::vector<rpc::Address> &owner_addresses),
               (override));
   MOCK_METHOD(ray::Status, CancelGetRequest, (), (override));
   MOCK_METHOD(ray::Status, NotifyDirectCallTaskBlocked, (), (override));

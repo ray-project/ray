@@ -35,9 +35,8 @@ class FakeRayletClient : public RayletClientInterface {
 
   ray::Status ActorCreationTaskDone() override { return Status::OK(); }
 
-  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                 const std::vector<rpc::Address> &owner_addresses,
-                                 bool fetch_only) override {
+  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                              const std::vector<rpc::Address> &owner_addresses) override {
     return Status::OK();
   }
 
