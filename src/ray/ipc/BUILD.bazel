@@ -16,3 +16,19 @@ ray_cc_library(
         "//src/ray/flatbuffers:node_manager_generated",
     ],
 )
+
+ray_cc_library(
+    name = "raylet_ipc_client",
+    srcs = ["raylet_ipc_client.cc"],
+    hdrs = ["raylet_ipc_client.h"],
+    deps = [
+        ":client_connection",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:buffer",
+        "//src/ray/common:status",
+        "//src/ray/util:logging",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
