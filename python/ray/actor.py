@@ -929,7 +929,6 @@ class _ActorClassMethodMetadata(object):
         cls,
         modified_class,
         actor_creation_function_descriptor,
-        enable_tensor_transport: bool = False,
     ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
@@ -955,6 +954,19 @@ class _ActorClassMethodMetadata(object):
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
         self.method_name_to_tensor_transport: Dict[str, TensorTransportEnum] = {}
+
+        # Check whether any actor methods specify a non-default tensor transport.
+        has_tensor_transport_methods = False
+        for method_name, method in actor_methods:
+            if hasattr(method, "__ray_tensor_transport__"):
+                tensor_transport = method.__ray_tensor_transport__
+                if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+                    has_tensor_transport_methods = True
+                    break
+
+        # Store whether any actor methods specify a non-default tensor
+        # transport.
+        self.has_tensor_transport_methods = has_tensor_transport_methods
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -1018,11 +1030,6 @@ class _ActorClassMethodMetadata(object):
             method_tensor_transport = self.method_name_to_tensor_transport.get(
                 method_name, None
             )
-            if not enable_tensor_transport and method_tensor_transport is not None:
-                if method_tensor_transport != TensorTransportEnum.OBJECT_STORE:
-                    raise ValueError(
-                        f"Method {method_name} has tensor_transport={method_tensor_transport.name} but enable_tensor_transport is False"
-                    )
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -1039,6 +1046,7 @@ class _ActorClassMetadata:
         actor_creation_function_descriptor: The function descriptor for
             the actor creation task.
         class_id: The ID of this actor class.
+        method_meta: The actor method metadata.
         class_name: The name of this class.
         num_cpus: The default number of CPUs required by the actor creation
             task.
@@ -1054,14 +1062,14 @@ class _ActorClassMetadata:
             See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
-        enable_tensor_transport: Whether to enable out-of-band tensor transport for this actor.
         last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
             the actor class definition could be exported multiple times by
             different workers.
-        method_meta: The actor method metadata.
+        enable_tensor_transport: Whether to enable out-of-band tensor transport
+            for this actor.
     """
 
     def __init__(
@@ -1070,6 +1078,7 @@ class _ActorClassMetadata:
         modified_class,
         actor_creation_function_descriptor,
         class_id,
+        method_meta,
         max_restarts,
         max_task_retries,
         num_cpus,
@@ -1082,11 +1091,12 @@ class _ActorClassMetadata:
         runtime_env,
         concurrency_groups,
         scheduling_strategy: SchedulingStrategyT,
-        enable_tensor_transport: bool = False,
+        enable_tensor_transport: bool,
     ):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = actor_creation_function_descriptor
+        self.method_meta = method_meta
         self.class_name = actor_creation_function_descriptor.class_name
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
@@ -1102,13 +1112,8 @@ class _ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
-        self.enable_tensor_transport = enable_tensor_transport
         self.last_export_cluster_and_job = None
-        self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class,
-            actor_creation_function_descriptor,
-            self.enable_tensor_transport,
-        )
+        self.enable_tensor_transport = enable_tensor_transport
 
 
 @PublicAPI
@@ -1116,7 +1121,7 @@ class ActorClassInheritanceException(TypeError):
     pass
 
 
-def _process_option_dict(actor_options):
+def _process_option_dict(actor_options, has_tensor_transport_methods):
     _filled_options = {}
     arg_names = set(inspect.getfullargspec(_ActorClassMetadata.__init__)[0])
     for k, v in ray_option_utils.actor_options.items():
@@ -1125,15 +1130,27 @@ def _process_option_dict(actor_options):
     _filled_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
         _filled_options["runtime_env"]
     )
+    # If any actor method has a non-default tensor transport, automatically
+    # enable tensor transport.
+    if has_tensor_transport_methods:
+        if _filled_options["enable_tensor_transport"] is not None and not _filled_options["enable_tensor_transport"]:
+            raise ValueError(
+                "Actor class has methods with @ray.method(tensor_transport=...) decorator but @ray.remote(enable_tensor_transport=False). "
+                "Either set enable_tensor_transport=True or remove the @ray.method(tensor_transport=...) decorator from the methods."
+            )
+        _filled_options["enable_tensor_transport"] = True
 
     # Ray GPU objects requires a background thread for data transfer. However,
     # currently by default the background thread will be blocked if the main
-    # thread does not yield. For now, we explicitly create the background
-    # thread, which forces Ray to execute all tasks on background threads
-    # instead of the main thread.
+    # thread does not yield. For now, we explicitly create the background thread
+    # if `@ray.remote(enable_tensor_transport=True)` or if any methods are
+    # decorated with `@ray.method(tensor_transport=...)` and a non-default
+    # tensor transport. This forces Ray to execute all tasks on background
+    # threads instead of the main thread.
     # TODO(swang): Remove this code once
     # https://github.com/ray-project/ray/issues/54639 is fixed.
-    if _filled_options.get("enable_tensor_transport", False):
+    enable_tensor_transport = _filled_options.get("enable_tensor_transport", False)
+    if enable_tensor_transport:
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1
@@ -1249,12 +1266,17 @@ class ActorClass(Generic[T]):
             modified_class.__ray_actor_class__
         )
 
+        actor_method_meta = _ActorClassMethodMetadata.create(
+            modified_class,
+            actor_creation_function_descriptor,
+        )
         self.__ray_metadata__ = _ActorClassMetadata(
             Language.PYTHON,
             modified_class,
             actor_creation_function_descriptor,
             class_id,
-            **_process_option_dict(actor_options),
+            actor_method_meta,
+            **_process_option_dict(actor_options, actor_method_meta.has_tensor_transport_methods),
         )
         self._default_options = actor_options
         if "runtime_env" in self._default_options:
@@ -1270,12 +1292,18 @@ class ActorClass(Generic[T]):
         actor_options,
     ):
         self = ActorClass.__new__(ActorClass)
+        modified_class = None
+        actor_method_meta = _ActorClassMethodMetadata.create(
+            modified_class,
+            actor_creation_function_descriptor,
+        )
         self.__ray_metadata__ = _ActorClassMetadata(
             language,
-            None,
+            modified_class,
             actor_creation_function_descriptor,
             None,
-            **_process_option_dict(actor_options),
+            actor_method_meta,
+            **_process_option_dict(actor_options, actor_method_meta.has_tensor_transport_methods),
         )
         self._default_options = actor_options
         if "runtime_env" in self._default_options:
