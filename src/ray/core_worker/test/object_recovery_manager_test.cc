@@ -160,7 +160,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-              RAY_CHECK(memory_store_->Put(data, object_id));
+              memory_store_->Put(data, object_id);
             }) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });

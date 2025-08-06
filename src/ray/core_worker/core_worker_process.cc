@@ -537,6 +537,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto actor_manager = std::make_unique<ActorManager>(
       gcs_client, *actor_task_submitter, *reference_counter);
 
+  // For the recovery manager to lookup the addresses / ports of the nodes with secondary
+  // copies.
   auto object_lookup = [this](const ObjectID &object_id,
                               const ObjectLookupCallback &callback) {
     auto core_worker = GetCoreWorker();
@@ -551,7 +553,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
         if (node_info == nullptr) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
-          // be rare, the only reasons are:
+          // be rare, the only foreseeable reasons are:
           // 1. We filled our cache after the GCS cleared the node info due to
           //    maximum_gcs_dead_node_cached_count.
           // 2. The node is alive but we haven't received the publish yet.
