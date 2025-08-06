@@ -363,7 +363,7 @@ if setup_spec.type == SetupType.RAY:
                 "async-timeout; python_version < '3.11'",
                 "typer",
                 "hf_transfer",
-                "transformers==4.53.2",  # Due to https://github.com/vllm-project/vllm-ascend/issues/2046
+                "transformers<4.54.0",  # Due to https://github.com/vllm-project/vllm-ascend/issues/2046
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]

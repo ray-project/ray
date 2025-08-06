@@ -10,4 +10,4 @@ typer
 meson
 pybind11
 hf_transfer
-transformers==4.53.2 # Due to https://github.com/vllm-project/vllm-ascend/issues/2046
+transformers<4.54.0 # Due to https://github.com/vllm-project/vllm-ascend/issues/2046
