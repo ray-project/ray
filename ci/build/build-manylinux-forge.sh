@@ -28,7 +28,7 @@ fi
 mkdir -p "$HOME"/bin
 curl -L -o "$HOME"/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
 chmod +x "$HOME"/bin/bazelisk
-cp "$HOME"/bin/bazelisk "$HOME"/bin/bazel
+sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
 
 # Use python3.9 as default python3
 sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
