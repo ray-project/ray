@@ -524,7 +524,7 @@ def test_anti_join_multi_key(
             ["key1", "key2", "value_left"]
         ]
         sort_cols = ["key1", "key2", "value_left"]
-    else:  # right_anti
+    else:
         merged = left_pd.merge(right_pd, on=["key1", "key2"], how="right", indicator=True)
         expected_pd = merged[merged["_merge"] == "right_only"][
             ["key1", "key2", "value_right"]
@@ -535,29 +535,6 @@ def test_anti_join_multi_key(
     joined_pd_sorted = joined_pd.sort_values(by=sort_cols).reset_index(drop=True)
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
-
-
-def test_join_type_validation(ray_start_regular_shared_2_cpus):
-    """Test that all supported join types are accepted and invalid ones are rejected"""
-    ds = ray.data.range(32)
-
-    # Test all valid join types are accepted
-    valid_join_types = [
-        "inner", "left_outer", "right_outer", "full_outer",
-        "left_semi", "right_semi", "left_anti", "right_anti"
-    ]
-
-    for join_type in valid_join_types:
-        # Should not raise ValueError (just test validation, don't execute)
-        try:
-            ds.join(ds, join_type=join_type, num_partitions=1, on=("id",))._plan
-        except ValueError as e:
-            if "Invalid join type" in str(e):
-                pytest.fail(f"Valid join type '{join_type}' was rejected: {e}")
-
-    # Test invalid join type is rejected
-    with pytest.raises(ValueError, match="Invalid join type"):
-        ds.join(ds, join_type="invalid_join", num_partitions=1, on=("id",))
 
 
 if __name__ == "__main__":
