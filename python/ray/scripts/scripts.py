@@ -32,12 +32,12 @@ from ray._private.label_utils import (
     parse_node_labels_string,
 )
 from ray._private.utils import (
-    check_ray_client_dependencies_installed,
+    get_ray_client_dependency_error,
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
-import ray._private.usage.usage_constants as usage_constant
+from ray._common.usage import usage_lib
+import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
@@ -788,7 +788,7 @@ def start(
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
@@ -2647,6 +2647,22 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@cli.command(hidden=True)
+def sanity_check():
+    """Run a sanity check to check that the Ray installation works.
+
+    This is not a public API and is intended to be used by Ray developers only.
+    """
+
+    @ray.remote
+    def get_version() -> str:
+        return ray.__version__
+
+    v = ray.get(get_version.remote())
+    assert v == ray.__version__
+    cli_logger.success(f"Success! Ray version: {v}")
+
+
 @click.group(name="metrics")
 def metrics_group():
     pass
@@ -2704,6 +2720,7 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (

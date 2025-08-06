@@ -90,7 +90,9 @@ def _build_dataset(
     # - The consumer op has `num_blocks` tasks, each of which consumes 1 block.
     ctx = ray.data.DataContext.get_current()
     ctx.target_max_block_size = block_size
-    ctx.execution_options.resource_limits.object_store_memory = obj_store_limit
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=obj_store_limit
+    )
 
     def producer(batch):
         for i in range(num_blocks):
@@ -208,7 +210,11 @@ def test_no_deadlock_with_preserve_order(
     data_context.target_max_block_size = block_size
     data_context._max_num_blocks_in_streaming_gen_buffer = 1
     data_context.execution_options.preserve_order = True
-    data_context.execution_options.resource_limits.object_store_memory = 5 * block_size
+    data_context.execution_options.resource_limits = (
+        data_context.execution_options.resource_limits.copy(
+            object_store_memory=5 * block_size
+        )
+    )
 
     # Some tasks are slower than others.
     # The faster tasks will finish first and occupy Map op's internal output buffer.
@@ -272,7 +278,9 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
 
     source = CountingRangeDatasource()
     ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.resource_limits.object_store_memory = 10e6
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=10e6
+    )
 
     # 10GiB dataset.
     ds = ray.data.read_datasource(source, n=10000, override_num_blocks=1000)

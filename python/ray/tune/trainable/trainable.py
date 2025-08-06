@@ -647,7 +647,7 @@ class Trainable:
 
         return True
 
-    def reset_config(self, new_config: Dict):
+    def reset_config(self, new_config: Dict) -> bool:
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms

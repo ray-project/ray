@@ -7,7 +7,7 @@ import ray.cloudpickle as ray_pickle
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 
 
 @pytest.mark.parametrize(
@@ -127,7 +127,7 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
 @pytest.mark.parametrize(
     "error",
     [
-        TrainingFailedError(
+        WorkerGroupError(
             "Training failed on multiple workers",
             {0: ValueError("worker 0 failed"), 1: RuntimeError("worker 1 failed")},
         ),
@@ -135,9 +135,9 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
     ],
 )
 def test_exceptions_are_picklable(error):
-    """Test that TrainingFailedError and ControllerError are picklable."""
+    """Test that WorkerGroupError and ControllerError are picklable."""
 
-    # Test pickle/unpickle for TrainingFailedError
+    # Test pickle/unpickle for WorkerGroupError
     pickled_error = ray_pickle.dumps(error)
     unpickled_error = ray_pickle.loads(pickled_error)
 

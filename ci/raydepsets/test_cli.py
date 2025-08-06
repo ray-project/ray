@@ -9,12 +9,16 @@ from ci.raydepsets.cli import (
     load,
     DependencySetManager,
     uv_binary,
+    _override_uv_flags,
+    _append_uv_flags,
+    _flatten_flags,
     Depset,
     DEFAULT_UV_FLAGS,
 )
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
+from networkx import topological_sort
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -30,7 +34,7 @@ class TestCli(unittest.TestCase):
         result = CliRunner().invoke(
             load,
             [
-                "fake_path/test.config.yaml",
+                "fake_path/test.depsets.yaml",
                 "--workspace-dir",
                 "/ci/raydepsets/test_data",
             ],
@@ -43,7 +47,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             assert manager is not None
@@ -60,7 +64,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
@@ -95,13 +99,13 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -123,13 +127,13 @@ class TestCli(unittest.TestCase):
             )
             shutil.copy(compiled_file, output_file)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -145,7 +149,7 @@ class TestCli(unittest.TestCase):
             result = CliRunner().invoke(
                 load,
                 [
-                    "test.config.yaml",
+                    "test.depsets.yaml",
                     "--workspace-dir",
                     tmpdir,
                     "--name",
@@ -171,14 +175,14 @@ class TestCli(unittest.TestCase):
                 ["six==1.16.0"],
             )
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             # Compile general_depset with requirements_test.txt and requirements_test_subset.txt
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
@@ -186,7 +190,7 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset",
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="subset_general_depset",
                 output="requirements_compiled_subset_general.txt",
             )
@@ -206,13 +210,13 @@ class TestCli(unittest.TestCase):
                 ["six==1.16.0"],
             )
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
@@ -221,7 +225,7 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset",
                     requirements=["requirements_compiled_test.txt"],
-                    args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                    append_flags=["--no-annotate", "--no-header"],
                     name="subset_general_depset",
                     output="requirements_compiled_subset_general.txt",
                 )
@@ -230,7 +234,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             source_depset = Depset(
@@ -239,6 +243,8 @@ class TestCli(unittest.TestCase):
                 requirements=["requirements_1.txt", "requirements_2.txt"],
                 constraints=["requirement_constraints_1.txt"],
                 output="requirements_compiled_general.txt",
+                append_flags=[],
+                override_flags=[],
             )
             with self.assertRaises(RuntimeError):
                 manager.check_subset_exists(
@@ -250,14 +256,13 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(RuntimeError):
                 manager.compile(
                     constraints=[],
                     requirements=["requirements_test_bad.txt"],
-                    args=[],
                     name="general_depset",
                     output="requirements_compiled_general.txt",
                 )
@@ -266,13 +271,204 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             assert (
                 manager.get_path("requirements_test.txt")
                 == f"{tmpdir}/requirements_test.txt"
             )
+
+    def test_append_uv_flags(self):
+        assert _append_uv_flags(
+            ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
+        ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
+
+    def test_override_uv_flag_single_flag(self):
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--extra-index-url")
+        expected_flags.remove("https://download.pytorch.org/whl/cpu")
+        expected_flags.extend(
+            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"]
+        )
+        assert (
+            _override_uv_flags(
+                ["--extra-index-url https://download.pytorch.org/whl/cu128"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
+
+    def test_override_uv_flag_multiple_flags(self):
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("ray")
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("grpcio-tools")
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("setuptools")
+        expected_flags.extend(["--unsafe-package", "dummy"])
+        assert (
+            _override_uv_flags(
+                ["--unsafe-package dummy"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
+
+    def test_flatten_flags(self):
+        assert _flatten_flags(["--no-annotate", "--no-header"]) == [
+            "--no-annotate",
+            "--no-header",
+        ]
+        assert _flatten_flags(
+            [
+                "--no-annotate",
+                "--no-header",
+                "--extra-index-url https://download.pytorch.org/whl/cu128",
+            ]
+        ) == [
+            "--no-annotate",
+            "--no-header",
+            "--extra-index-url",
+            "https://download.pytorch.org/whl/cu128",
+        ]
+
+    def test_build_graph(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager.build_graph is not None
+            assert len(manager.build_graph.nodes()) == 5
+            assert len(manager.build_graph.edges()) == 3
+            assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
+            assert (
+                manager.build_graph.nodes["subset_general_depset"]["operation"]
+                == "subset"
+            )
+            assert (
+                manager.build_graph.nodes["expand_general_depset"]["operation"]
+                == "expand"
+            )
+
+            sorted_nodes = list(topological_sort(manager.build_graph))
+            assert sorted_nodes[0] == "ray_base_test_depset"
+            assert sorted_nodes[1] == "general_depset"
+            assert sorted_nodes[2] == "expanded_depset"
+
+    def test_build_graph_bad_operation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
+                f.write(
+                    """
+depsets:
+    - name: invalid_op_depset
+      operation: invalid_op
+      requirements:
+          - requirements_test.txt
+      output: requirements_compiled_invalid_op.txt
+                """
+                )
+            with self.assertRaises(ValueError):
+                DependencySetManager(
+                    config_path="test.depsets.yaml",
+                    workspace_dir=tmpdir,
+                )
+
+    def test_execute(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+
+    def test_expand(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six"],
+            )
+            _save_file_as(
+                Path(tmpdir) / "requirement_constraints_test.txt",
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+            )
+            _append_to_file(
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+                "six==1.17.0",
+            )
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_expanded.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="expanded_depset",
+                output="requirements_compiled_expanded.txt",
+            )
+            manager.expand(
+                depsets=["general_depset", "expanded_depset"],
+                constraints=["requirement_constraints_expand.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                requirements=[],
+                name="expand_general_depset",
+                output="requirements_compiled_expand_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
+
+    def test_expand_with_requirements(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six"],
+            )
+            _save_file_as(
+                Path(tmpdir) / "requirement_constraints_test.txt",
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+            )
+            _append_to_file(
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+                "six==1.17.0",
+            )
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+            manager.expand(
+                depsets=["general_depset"],
+                requirements=["requirements_expanded.txt"],
+                constraints=["requirement_constraints_expand.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="expand_general_depset",
+                output="requirements_compiled_expand_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
 
 
 def _copy_data_to_tmpdir(tmpdir):
@@ -297,6 +493,18 @@ def _save_packages_to_file(filepath, packages):
     with open(filepath, "w") as f:
         for package in packages:
             f.write(package + "\n")
+
+
+def _save_file_as(input_file, output_file):
+    with open(input_file, "rb") as f:
+        contents = f.read()
+    with open(output_file, "wb") as f:
+        f.write(contents)
+
+
+def _append_to_file(filepath, new):
+    with open(filepath, "a") as f:
+        f.write(new + "\n")
 
 
 if __name__ == "__main__":

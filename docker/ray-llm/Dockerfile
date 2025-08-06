@@ -35,7 +35,8 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 mkdir -p "${ROOT_DIR}"
 
-CUDA_HOME=`dirname $(dirname $(which nvcc))`
+CUDACXX=$(which nvcc)
+CUDA_HOME=$(dirname $(dirname ${CUDACXX}))
 
 TEMP_DIR="nixl_installer"
 mkdir -p "${TEMP_DIR}"
@@ -121,8 +122,82 @@ NIXL_VERSION="0.3.1"
 )
 sudo rm -rf "${TEMP_DIR}"
 
+EP_TEMP_DIR=$(pwd)/"ep_temp_dir"
+mkdir -p "${EP_TEMP_DIR}"
+
+NVSHMEM_VERSION="3.2.5-1"
+(
+    echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
+
+    # install dependencies if not installed
+    pip3 install cmake
+
+    cd "${EP_TEMP_DIR}"
+    mkdir -p nvshmem_src
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_${NVSHMEM_VERSION}.txz
+    tar -xvf nvshmem_src_${NVSHMEM_VERSION}.txz -C nvshmem_src --strip-components=1
+    cd nvshmem_src
+    # using a specific commit to make the build deterministic:
+    # https://github.com/deepseek-ai/DeepEP/commit/bdd119f8b249953cab366f4d737ad39d4246fd7e
+    wget https://github.com/deepseek-ai/DeepEP/raw/bdd119f8b249953cab366f4d737ad39d4246fd7e/third-party/nvshmem.patch
+    git init
+    git apply -vvv nvshmem.patch
+    wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
+    git apply --reject --whitespace=fix eep_nvshmem.patch
+
+    # disable all features except IBGDA
+    export NVSHMEM_IBGDA_SUPPORT=1
+    export NVSHMEM_SHMEM_SUPPORT=0
+    export NVSHMEM_UCX_SUPPORT=0
+    export NVSHMEM_USE_NCCL=0
+    export NVSHMEM_PMIX_SUPPORT=0
+    export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
+    export NVSHMEM_USE_GDRCOPY=0
+    export NVSHMEM_IBRC_SUPPORT=0
+    export NVSHMEM_BUILD_TESTS=0
+    export NVSHMEM_BUILD_EXAMPLES=0
+    export NVSHMEM_MPI_SUPPORT=0
+    export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
+    export NVSHMEM_BUILD_TXZ_PACKAGE=0
+
+    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
+    cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
+)
+
+# Install PPLX Kernels
+(
+    echo "Installing PPLX Kernels"
+
+    cd "${EP_TEMP_DIR}"
+
+    export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
+
+    # build and install pplx, require pytorch installed
+    git clone --depth 1 --no-checkout https://github.com/ppl-ai/pplx-kernels
+    cd pplx-kernels
+    # using a specific commit to make the build deterministic:
+    # https://github.com/ppl-ai/pplx-kernels/commit/1d76f488d794f01dc0e895cd746b235392379757
+    git fetch --depth 1 origin 1d76f488d794f01dc0e895cd746b235392379757
+    git checkout 1d76f488d794f01dc0e895cd746b235392379757
+    # see https://github.com/pypa/pip/issues/9955#issuecomment-838065925
+    # PIP_NO_BUILD_ISOLATION=0 disables build isolation
+    PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
+)
+
+rm -rf "${EP_TEMP_DIR}"
+
 EOF
 
-ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+# Q: Why add paths that don't exist in the base image, like /usr/local/nvidia/lib64
+# and /usr/local/nvidia/bin?
+# A: The NVIDIA GPU operator version used by GKE injects these into the container
+# after it's mounted to a pod.
+# Issue is tracked here:
+# https://github.com/GoogleCloudPlatform/compute-gpu-installation/issues/46
+# More context here:
+# https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
+# and here:
+# https://gitlab.com/nvidia/container-images/cuda/-/issues/27
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"

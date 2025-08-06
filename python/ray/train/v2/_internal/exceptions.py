@@ -86,6 +86,14 @@ class WorkerGroupStartupFailedError(RayTrainError):
     """
 
 
+class InsufficientClusterResourcesError(RayTrainError):
+    """Exception raised when the cluster has insufficient resources.
+
+    Example scenario: A worker that requires 1 GPU is scheduled onto a cluster
+    that only has CPU worker node types.
+    """
+
+
 class CheckpointManagerInitializationError(RayTrainError):
     """Exception raised when the checkpoint manager fails to initialize from a snapshot.
 
