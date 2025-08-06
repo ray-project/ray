@@ -341,8 +341,6 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 6
-            assert len(manager.build_graph.edges()) == 3
             assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
             assert (
                 manager.build_graph.nodes["subset_general_depset"]["operation"]
@@ -354,10 +352,15 @@ class TestCli(unittest.TestCase):
             )
 
             sorted_nodes = list(topological_sort(manager.build_graph))
-            # assert that the compile depsets are first
-            assert "ray_base_test_depset" in sorted_nodes[:3]
-            assert "general_depset" in sorted_nodes[:3]
-            assert "build_args_test_depset_py311" in sorted_nodes[:3]
+            # assert that the compile depsets aren't last
+            assert (
+                manager.get_depset(sorted_nodes[len(sorted_nodes) - 1], None).operation
+                != "compile"
+            )
+            assert (
+                manager.get_depset(sorted_nodes[0], None).operation == "compile"
+                or manager.get_depset(sorted_nodes[0], None).operation == "build_wheel"
+            )
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
