@@ -33,6 +33,8 @@ if is_v2_enabled():
         prepare_data_loader,
         prepare_model,
         prepare_optimizer,
+        get_device,
+        get_devices,
     )
 
 

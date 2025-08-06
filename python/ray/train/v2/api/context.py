@@ -536,6 +536,5 @@ def get_context() -> TrainContext:
     # instead of raising an exception if the train context does not exist.
     global _train_context
     with _context_lock:
-        if _train_context is not None:
-            return _train_context
-    return DistributedTrainContext()
+        assert _train_context is not None, "TrainContext is not initialized."
+        return _train_context

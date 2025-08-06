@@ -1,7 +1,10 @@
 import asyncio
-from typing import Dict, Set
+from typing import Dict, Set, List
+import os
+import sys
 
 import ray
+import torch
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train import DataConfig
@@ -179,3 +182,32 @@ async def finish_worker_and_wait(provider_actor: ActorHandle, local_rank: int) -
         local_rank: The rank/ID of the worker that finished.
     """
     await provider_actor.mark_worker_finished.remote(local_rank)
+
+
+
+def launched_by_torchrun() -> bool:
+    """Return True if this process looks like it came from `torchrun`."""
+    env_markers = {
+        "LOCAL_RANK",
+        "LOCAL_WORLD_SIZE",
+        "WORLD_SIZE",
+        "TORCHELASTIC_RUN_ID",
+    }  # torchrun ≥1.10
+    argv_markers = (
+        "--local-rank",
+        "--local_rank",
+    )  # torchrun always passes one of these
+
+    # Any of the env vars *or* the CLI flag counts as evidence
+    return bool(
+        (env_markers & os.environ.keys())
+        or any(a.startswith(argv_markers) for a in sys.argv)
+    )
+
+
+def local_running_get_devices() -> List[torch.device]:
+    """Return a list of devices to use for training."""
+    if torch.cuda.is_available():
+        return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+    else:
+        return [torch.device("cpu")]

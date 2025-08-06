@@ -23,6 +23,7 @@ from ray.train.base_trainer import (
 )
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.v2.api.context import TrainContext, set_train_context
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -50,6 +51,7 @@ from ray.train.v2._internal.execution.failure_handling import create_failure_pol
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
+from ray.train.v2.api.context import DistributedTrainContext, set_train_context
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -78,6 +80,7 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        train_context: Optional[TrainContext] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
@@ -95,6 +98,7 @@ class DataParallelTrainer:
             datasets=self.datasets,
             dataset_config=self.data_config,
         )
+        set_train_context(train_context if train_context is not None else DistributedTrainContext())
 
         if resume_from_checkpoint is not None:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
@@ -115,12 +119,7 @@ class DataParallelTrainer:
             ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
             ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
         """
-        train_fn = construct_train_func(
-            self.train_loop_per_worker,
-            config=self.train_loop_config,
-            train_func_context=self.backend_config.train_func_context,
-            fn_arg_name="train_loop_per_worker",
-        )
+        train_fn = self._get_train_func()
         train_fn_ref = ObjectRefWrapper(train_fn)
 
         result = self._initialize_and_run_controller(
@@ -219,6 +218,14 @@ class DataParallelTrainer:
             controller = TrainController(**controller_init_kwargs)
             asyncio.run(controller.run())
             return controller.get_result()
+
+    def _get_train_func(self) -> Callable[[], None]:
+        return construct_train_func(
+            self.train_loop_per_worker,
+            config=self.train_loop_config,
+            train_func_context=self.backend_config.train_func_context,
+            fn_arg_name="train_loop_per_worker",
+        )
 
     def _register_sigint_handler(self, controller: ActorHandle[TrainController]):
         """Register SIGINT handler so user Ctrl C gracefully aborts run."""

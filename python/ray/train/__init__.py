@@ -37,7 +37,6 @@ if is_v2_enabled():
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
         get_checkpoint,
-        get_context,
         get_dataset_shard,
         report,
     )
