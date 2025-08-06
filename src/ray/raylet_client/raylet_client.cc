@@ -135,16 +135,15 @@ Status RayletClient::ActorCreationTaskDone() {
   return conn_->WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
-Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                        const std::vector<rpc::Address> &owner_addresses,
-                                        bool fetch_only) {
+Status RayletClient::AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                                     const std::vector<rpc::Address> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto message = protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses), fetch_only);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
+  return conn_->WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
 }
 
 Status RayletClient::CancelGetRequest() {
