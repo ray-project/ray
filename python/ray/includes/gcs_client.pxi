@@ -23,8 +23,6 @@ from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
-    CStatusCode,
-    CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
