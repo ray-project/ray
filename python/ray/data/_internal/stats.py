@@ -1,5 +1,4 @@
 import collections
-import enum
 import logging
 import threading
 import time
@@ -14,6 +13,7 @@ import numpy as np
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
     MetricsGroup,
@@ -21,7 +21,11 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NodeMetrics,
     OpRuntimeMetrics,
 )
-from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
+from ray.data._internal.metadata_exporter import (
+    DatasetMetadata,
+    Topology,
+    get_dataset_metadata_exporter,
+)
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
@@ -170,6 +174,7 @@ class _StatsActor:
 
         # Initialize the metadata exporter
         self._metadata_exporter = get_dataset_metadata_exporter()
+        self.dataset_metadatas: Dict[str, DatasetMetadata] = {}
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -477,7 +482,7 @@ class _StatsActor:
         start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
-            "state": DatasetState.RUNNING.name,
+            "state": DatasetState.PENDING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
@@ -485,7 +490,7 @@ class _StatsActor:
             "end_time": None,
             "operators": {
                 operator: {
-                    "state": DatasetState.RUNNING.name,
+                    "state": DatasetState.PENDING.name,
                     "progress": 0,
                     "total": 0,
                     "queued_blocks": 0,
@@ -494,16 +499,19 @@ class _StatsActor:
             },
         }
         if self._metadata_exporter is not None:
-            from ray.data._internal.metadata_exporter import DatasetMetadata
-
-            dataset_metadata = DatasetMetadata(
+            self.dataset_metadatas[dataset_tag] = DatasetMetadata(
                 job_id=job_id,
                 topology=topology,
                 dataset_id=dataset_tag,
                 start_time=start_time,
                 data_context=data_context,
+                execution_start_time=None,
+                execution_end_time=None,
+                state=DatasetState.PENDING.name,
             )
-            self._metadata_exporter.export_dataset_metadata(dataset_metadata)
+            self._metadata_exporter.export_dataset_metadata(
+                self.dataset_metadatas[dataset_tag]
+            )
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -553,6 +561,53 @@ class _StatsActor:
         if not job_id:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
+
+    def update_dataset_metadata_state(self, dataset_id: str, new_state: str):
+        if dataset_id not in self.dataset_metadatas:
+            return
+        update_time = time.time()
+        dataset_metadata = self.dataset_metadatas[dataset_id]
+        if dataset_metadata.state == new_state:
+            return
+        dataset_metadata.state = new_state
+        if new_state == DatasetState.RUNNING.name:
+            dataset_metadata.execution_start_time = update_time
+        elif new_state in (DatasetState.FINISHED.name, DatasetState.FAILED.name):
+            dataset_metadata.execution_end_time = update_time
+            # Update metadata of running operators
+            for operator in dataset_metadata.topology.operators:
+                if operator.state == DatasetState.RUNNING.name:
+                    operator.state = new_state
+                    operator.execution_end_time = update_time
+
+        self._metadata_exporter.export_dataset_metadata(dataset_metadata)
+
+    def update_dataset_metadata_operator_state(
+        self, dataset_id: str, operator_uuid: str, new_state: str
+    ):
+        if dataset_id not in self.dataset_metadatas:
+            return
+        update_time = time.time()
+        dataset_metadata = self.dataset_metadatas[dataset_id]
+        operator_metadata = None
+        for operator in dataset_metadata.topology.operators:
+            if operator.uuid == operator_uuid:
+                operator_metadata = operator
+                break
+
+        if operator_metadata is None or operator_metadata.state == new_state:
+            return
+        operator_metadata.state = new_state
+        if new_state == DatasetState.RUNNING.name:
+            operator_metadata.execution_start_time = update_time
+        elif new_state in (DatasetState.FINISHED.name, DatasetState.FAILED.name):
+            operator_metadata.execution_end_time = update_time
+            # Handle outlier case for InputDataBuffer, which is marked as finished immediately and does not have a RUNNING state.
+            # Set the execution time the same as its end time
+            if not operator_metadata.execution_start_time:
+                operator_metadata.execution_start_time = update_time
+
+        self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
     def _create_tags(
         self,
@@ -633,24 +688,45 @@ class _StatsManager:
         self._update_thread: Optional[threading.Thread] = None
         self._update_thread_lock: threading.Lock = threading.Lock()
 
-    def _stats_actor(self, create_if_not_exists=True) -> Optional[ActorHandle]:
+    def _get_stats_actor(self, skip_cache: bool = False) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
-            raise RuntimeError("Global node is not initialized.")
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
+
         current_cluster_id = ray._private.worker._global_node.cluster_id
+
         if (
             self._stats_actor_handle is None
             or self._stats_actor_cluster_id != current_cluster_id
+            or skip_cache
         ):
-            if create_if_not_exists:
-                self._stats_actor_handle = _get_or_create_stats_actor()
-            else:
-                try:
-                    self._stats_actor_handle = ray.get_actor(
-                        name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
-                    )
-                except ValueError:
-                    return None
+            try:
+                self._stats_actor_handle = ray.get_actor(
+                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
+                )
+            except ValueError:
+                return None
             self._stats_actor_cluster_id = current_cluster_id
+
+        return self._stats_actor_handle
+
+    def _get_or_create_stats_actor(self) -> Optional[ActorHandle]:
+        if ray._private.worker._global_node is None:
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
+
+        # NOTE: In some cases (for ex, when registering dataset) actor might be gone
+        #       (for ex, when prior driver disconnects) and therefore to avoid using
+        #       stale handle we force looking up the actor with Ray to determine if
+        #       we should create a new one.
+        actor = self._get_stats_actor(skip_cache=True)
+
+        if actor is None:
+            self._stats_actor_handle = _get_or_create_stats_actor()
+            self._stats_actor_cluster_id = ray._private.worker._global_node.cluster_id
+
         return self._stats_actor_handle
 
     def _start_thread_if_not_running(self):
@@ -667,9 +743,7 @@ class _StatsManager:
                                 # this thread can be running even after the cluster is
                                 # shutdown. Creating an actor will automatically start
                                 # a new cluster.
-                                stats_actor = self._stats_actor(
-                                    create_if_not_exists=False
-                                )
+                                stats_actor = self._get_stats_actor()
                                 if stats_actor is None:
                                     continue
                                 stats_actor.update_metrics.remote(
@@ -740,7 +814,7 @@ class _StatsManager:
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
-            self._stats_actor().update_execution_metrics.remote(*args)
+            self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
             with self._stats_lock:
                 self._last_execution_stats[dataset_tag] = args
@@ -787,7 +861,7 @@ class _StatsManager:
             topology: Optional Topology representing the DAG structure to export
             data_context: The DataContext attached to the dataset
         """
-        self._stats_actor().register_dataset.remote(
+        self._get_or_create_stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
@@ -797,34 +871,24 @@ class _StatsManager:
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:
-            return ray.get(self._stats_actor().get_dataset_id.remote())
+            return ray.get(self._get_or_create_stats_actor().get_dataset_id.remote())
         except Exception:
             # Getting dataset id from _StatsActor may fail, in this case
             # fall back to uuid4
             return uuid4().hex
 
+    def update_dataset_metadata_state(self, dataset_id: str, new_state: str):
+        self._stats_actor().update_dataset_metadata_state.remote(dataset_id, new_state)
+
+    def update_dataset_metadata_operator_state(
+        self, dataset_id: str, operator_uuid: str, new_state: str
+    ):
+        self._stats_actor().update_dataset_metadata_operator_state.remote(
+            dataset_id, operator_uuid, new_state
+        )
+
 
 StatsManager = _StatsManager()
-
-
-class DatasetState(enum.IntEnum):
-    """Enum representing the possible states of a dataset during execution."""
-
-    UNKNOWN = 0
-    RUNNING = 1
-    FINISHED = 2
-    FAILED = 3
-
-    def __str__(self):
-        return self.name
-
-    @classmethod
-    def from_string(cls, text):
-        """Get enum by name."""
-        try:
-            return cls[text]  # This uses the name to lookup the enum
-        except KeyError:
-            return cls.UNKNOWN
 
 
 class DatasetStats:

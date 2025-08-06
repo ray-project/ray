@@ -111,7 +111,6 @@ class CoreWorkerProcess {
   ///
   /// \param[in] quick_exit If set to true, quick exit if uninitialized without
   /// crash.
-  /// \return Void.
   static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
