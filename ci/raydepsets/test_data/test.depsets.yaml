@@ -47,7 +47,7 @@ depsets:
   - name: build_wheel_depset
     operation: build_wheel
     setup_path: python
-    output_dir: dist/
+    output: dist
     python_version: ${PY_VER}
     build_arg_sets:
       - py311_cpu

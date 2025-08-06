@@ -242,14 +242,12 @@ class DependencySetManager:
         append_flags: Optional[List[str]] = None,
     ):
         args = []
-        print(f"Building wheel with setup path: {setup_path}")
         if setup_path:
             args.extend(["--directory", setup_path])
         if append_flags:
             args.extend(append_flags)
         if output:
             args.extend(["-o", output])
-        print(f"Building wheel with args: {args}")
         self.exec_uv_cmd(["build"], ["--wheel", *args])
 
     def get_path(self, path: str) -> str:

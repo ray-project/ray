@@ -574,6 +574,24 @@ depsets:
         )
         assert substituted_depset["name"] == "test_depset_py311_cu128"
 
+    def test_build_wheel(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+
+            manager.build_wheel(
+                setup_path="dummy_wheel",
+                output=".",
+                append_flags=["--python", "311"],
+            )
+            output_file = (
+                Path(tmpdir) / "dummy_wheel" / "dummy_package-0.1.0-py3-none-any.whl"
+            )
+            assert output_file.is_file()
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
