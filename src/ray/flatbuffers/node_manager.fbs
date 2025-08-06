@@ -19,14 +19,9 @@
 namespace ray.protocol;
 
 enum MessageType:int {
-  // Task is submitted to the raylet. This is sent from a worker to a
-  // raylet.
-  SubmitTask = 1,
   // Notify the raylet that a task has finished. This is sent from a
   // worker to a raylet.
   ActorCreationTaskDone,
-  // Log a message to the event table. This is sent from a worker to a raylet.
-  EventLogMessage,
   // Send an initial connection message to the raylet. This is sent
   // from a worker or driver to a raylet.
   RegisterClientRequest,
@@ -43,9 +38,6 @@ enum MessageType:int {
   // Notify the client that the raylet has deregistered this client.
   // The client should block until it receives this message before closing the socket.
   DisconnectClientReply,
-  // Tell a worker to execute a task. This is sent from a raylet to a
-  // worker.
-  ExecuteTask,
   // Request the Raylet to pull a set of objects to the local node.
   // a raylet.
   AsyncGetObjectsRequest,
@@ -68,26 +60,8 @@ enum MessageType:int {
   PushErrorRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
-  // A node manager requests to connect to another node manager.
-  ConnectClient,
   // Subscribe to Plasma updates.
   SubscribePlasmaReady,
-}
-
-table Task {
-  task_specification: string;
-}
-
-// This message describes a given resource that is reserved for a worker.
-table ResourceIdSetInfo {
-  // The name of the resource.
-  resource_name: string;
-  // The resource IDs reserved for this worker.
-  resource_ids: [long];
-  // The fraction of each resource ID that is reserved for this worker. Note
-  // that the length of this list must be the same as the length of
-  // resource_ids.
-  resource_fractions: [double];
 }
 
 // This message is sent from a worker to the node manager.
@@ -102,19 +76,13 @@ table DisconnectClientRequest {
 
 table DisconnectClientReply {}
 
-table ResourceIdSetInfos {
-  resource_infos: [ResourceIdSetInfo];
-}
-
 // This struct is used to register a new worker with the raylet.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
   // Type of the worker.
   // TODO(suquark): Use `WorkerType` in `common.proto`.
   worker_type: int;
-  // The ID of the worker or driver.
   worker_id: string;
-  // The process ID of this worker.
   worker_pid: long;
   // The startup token of the process assigned to
   // it during startup as a command line argument.
@@ -126,27 +94,20 @@ table RegisterClientRequest {
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
-  // IP address of this worker.
   ip_address: string;
-  // Port that this worker is listening on.
   port: int;
   // The config bytes of this job serialized with protobuf.
   serialized_job_config: string;
 }
 
 table RegisterClientReply {
-  // Whether the registration succeeded.
   success: bool;
-  // The reason of registration failure.
   failure_reason: string;
-  // GCS NodeID of the local node manager.
   raylet_id: string;
-  // Port that this worker should listen on.
   port: int;
 }
 
 table AnnounceWorkerPort {
-  // Port that this worker is listening on.
   port: int;
   // The entrypoint of the job. Only populated if the worker is a driver.
   entrypoint: string;
@@ -171,7 +132,6 @@ table Address {
 table AsyncGetObjectsRequest {
   // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
-  // Owner RPC addresses for the objects in the object_ids list.
   owner_addresses: [Address];
 }
 
@@ -185,14 +145,11 @@ table NotifyDirectCallTaskUnblocked {
 }
 
 table WaitRequest {
-  // List of object ids we'll be waiting on.
   object_ids: [string];
-  // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
   // Minimum number of objects to wait for before returning.
   // At most this many objects will be returned even if more are ready.
   num_required_objects: int;
-  // timeout
   timeout: long;
 }
 
@@ -204,9 +161,7 @@ table WaitReply {
 }
 
 table WaitForActorCallArgsRequest {
-  // List of object ids we'll be waiting on.
   object_ids: [string];
-  // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
   // Id used to uniquely identify this request. This is sent back to the core
   // worker to notify the wait has completed.
@@ -233,14 +188,8 @@ table FreeObjectsRequest {
   object_ids: [string];
 }
 
-table ConnectClient {
-  // ID of the connecting client.
-  client_id: string;
-}
-
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
-  // The owner address for the ObjectID
   owner_address: Address;
 }

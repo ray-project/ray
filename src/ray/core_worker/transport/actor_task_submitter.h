@@ -384,7 +384,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] task_spec The task to send.
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
-  /// \return Void.
   void PushActorTask(ClientQueue &queue,
                      const TaskSpecification &task_spec,
                      bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -400,7 +399,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// wait until the notification is received to decide whether we should
   /// fail pending tasks or restart the actor.
   /// \param[in] actor_id Actor ID.
-  /// \return Void.
   void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.

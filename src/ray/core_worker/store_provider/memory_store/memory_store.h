@@ -130,14 +130,12 @@ class CoreWorkerMemoryStore {
   /// \param[out] plasma_ids_to_delete This will be extended to
   /// include the IDs of the plasma objects to delete, based on the
   /// in-memory objects that contained InPlasmaError.
-  /// \return Void.
   void Delete(const absl::flat_hash_set<ObjectID> &object_ids,
               absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
 
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
-  /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
   /// Check whether this store contains the object.

@@ -232,7 +232,6 @@ class CoreWorker {
   /// \param exit_detail The detailed reason for a given exit.
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
-  /// \return Void.
   void Disconnect(const rpc::WorkerExitType &exit_type,
                   const std::string &exit_detail,
                   const std::shared_ptr<LocalMemoryBuffer>
@@ -243,11 +242,9 @@ class CoreWorker {
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
-  /// \return void.
   void Shutdown();
 
   /// Start receiving and executing tasks.
-  /// \return void.
   void RunTaskExecutionLoop();
 
   const WorkerID &GetWorkerID() const;
@@ -1291,7 +1288,6 @@ class CoreWorker {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_user_callback The user-provided Python callback object that
   /// will be called inside of `success_callback`.
-  /// \return void
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
                 void *python_user_callback);
