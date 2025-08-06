@@ -185,6 +185,10 @@ enum class RayLogLevel {
       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
 
+#define RAY_LOG_ONCE(level)                  \
+  static std::once_flag<bool> once_log_flag; \
+  std::call_once(once_log_flag, []() { RAY_LOG(level); });
+
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
