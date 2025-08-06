@@ -94,7 +94,7 @@ kernel and stride may be single ints (width and height are the same) or 2-tuples
 (int, int) for width and height (different values).
 """
 
-FromConfigSpec = Union[Dict[str, Any | type | str], type, str]
+FromConfigSpec = Union[Dict[str, Union[Any, type, str]], type, str]
 """
 Objects that can be created through the `from_config()` util method
 need a config dict with a "type" key, a class path (str), or a type directly.
@@ -272,7 +272,7 @@ SampleBatchType = Union["SampleBatch", "MultiAgentBatch", Dict[str, Any]]
 """Some kind of sample batch."""
 
 SpaceStruct = Union[
-    gym.spaces.Space, dict[str, gym.spaces.Space], tuple[gym.spaces.Space, ...]
+    gym.spaces.Space, Dict[str, gym.spaces.Space], Tuple[gym.spaces.Space, ...]
 ]
 """
 A (possibly nested) space struct: Either a gym.spaces.Space or a (possibly
