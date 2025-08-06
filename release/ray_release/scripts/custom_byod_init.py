@@ -121,8 +121,6 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    logger.info("Build anyscale base BYOD images")
-    build_anyscale_base_byod_images(tests)
     logger.info("Build anyscale custom BYOD images")
     custom_byod_images = set()
     for test in tests:
@@ -162,6 +160,12 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
                 f"python release/ray_release/scripts/custom_byod_build.py --image-name {image} --base-image {base_image} --post-build-script {post_build_script}"
             ],
         }
+        if "ray-ml" in image:
+            step["depends_on"] = "anyscalemlbuild"
+        elif "ray-llm" in image:
+            step["depends_on"] = "anyscalellmbuild"
+        else:
+            step["depends_on"] = "anyscalebuild"
         build_config["steps"].append(step)
 
     with open(".buildkite/release/custom_byod_build.rayci.yml", "w") as f:

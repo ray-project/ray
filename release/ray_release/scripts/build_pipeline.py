@@ -123,8 +123,6 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    logger.info("Build anyscale base BYOD images")
-    build_anyscale_base_byod_images(tests)
     logger.info("Build anyscale custom BYOD images")
     # custom_byod_images = set()
     # for test in tests:
