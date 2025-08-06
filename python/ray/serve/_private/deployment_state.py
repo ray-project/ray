@@ -272,8 +272,6 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._ingress: bool = False
 
-        self._update_rank_ref: Optional[ObjectRef] = None
-
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -582,7 +580,12 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def reconfigure(self, version: DeploymentVersion) -> bool:
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
@@ -590,17 +593,26 @@ class ActorReplicaWrapper:
         Returns: whether the actor is being updated.
         """
         updating = False
-        if self._version.requires_actor_reconfigure(version):
-            # Call into replica actor reconfigure() with updated user config and
-            # graceful_shutdown_wait_loop_s
-            updating = True
+
+        # Determine if we need heavyweight reconfiguration (deployment config changes)
+        # vs lightweight updates (rank/world_size only)
+        needs_actor_reconfigure = self._version.requires_actor_reconfigure(version)
+        has_rank_world_size_changes = rank is not None or world_size is not None
+
+        if needs_actor_reconfigure or has_rank_world_size_changes:
+            # Call into replica actor reconfigure() with updated user config,
+            # graceful_shutdown_wait_loop_s, and rank/world_size
             deployment_config = copy(version.deployment_config)
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
             )
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                deployment_config
+                deployment_config, rank=rank, world_size=world_size
             )
+
+            # Only set updating=True for heavyweight deployment config changes
+            # Rank/world_size changes are lightweight and don't require UPDATING state
+            updating = needs_actor_reconfigure
 
         self._version = version
         return updating
@@ -947,20 +959,6 @@ class ActorReplicaWrapper:
 
         return self._healthy
 
-    def check_active_update_rank(self) -> bool:
-        """Check if the active update rank (if any)."""
-        if self._update_rank_ref is not None and check_obj_ref_ready_nowait(
-            self._update_rank_ref
-        ):
-            try:
-                res = ray.get(self._update_rank_ref)
-                return res
-            except Exception:
-                logger.warning(f"Failed to update rank for replica {self._replica_id}")
-                return False
-        # pass health check when rank has not been assigned yet
-        return True
-
     def get_routing_stats(self) -> Dict[str, Any]:
         """Get the routing stats for the replica."""
         if self._record_routing_stats_ref is None:
@@ -1014,21 +1012,6 @@ class ActorReplicaWrapper:
             ray.kill(ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE))
         except ValueError:
             pass
-
-    def update_rank(self, rank: int, world_size: int) -> bool:
-        """Update the replica's rank with the provided rank value.
-
-        Args:
-            rank: The current rank of this replica.
-            world_size: The current number of running replicas in the deployment.
-
-        Returns:
-            bool: True if rank update was successful, False otherwise.
-        """
-        self._update_rank_ref = self._actor_handle.update_replica_rank.remote(
-            rank, world_size
-        )
-        return True
 
 
 class DeploymentReplica:
@@ -1150,14 +1133,19 @@ class DeploymentReplica:
         self.update_actor_details(start_time_s=self._start_time)
         return replica_scheduling_request
 
-    def reconfigure(self, version: DeploymentVersion) -> bool:
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
 
         Returns: whether the actor is being updated.
         """
-        return self._actor.reconfigure(version)
+        return self._actor.reconfigure(version, rank=rank, world_size=world_size)
 
     def recover(self) -> bool:
         """
@@ -1241,19 +1229,7 @@ class DeploymentReplica:
 
         Returns `True` if the replica is healthy, else `False`.
         """
-        return self._actor.check_health() and self._actor.check_active_update_rank()
-
-    def update_rank(self, rank: int, world_size: int) -> bool:
-        """Update the replica's rank with the provided rank value.
-
-        Args:
-            rank: The current rank of this replica.
-            world_size: The current number of running replicas in the deployment.
-
-        Returns:
-            bool: True if rank update was successful, False otherwise.
-        """
-        return self._actor.update_rank(rank, world_size)
+        return self._actor.check_health()
 
     def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
@@ -2471,7 +2447,17 @@ class DeploymentState:
         # After replica state updates, check if we need to reassign ranks
         # This handles cases where replicas have been stopped and we need
         # to maintain rank contiguity
-        self._check_and_reassign_ranks_if_needed()
+        # Only do rank assignment when deployment is stable (not during active updates)
+        if not self._has_outdated_version_replicas():
+            self._check_and_reassign_ranks_if_needed()
+
+    def _has_outdated_version_replicas(self) -> bool:
+        """Check if there are any replicas with outdated versions.
+
+        Returns True if there are replicas that don't match the target version,
+        indicating that the deployment is in the middle of a version update.
+        """
+        return self._replicas.count(exclude_version=self._target_state.version) > 0
 
     def _check_and_reassign_ranks_if_needed(self):
         """Check if rank reassignment is needed and perform it if so.
@@ -2506,7 +2492,7 @@ class DeploymentState:
             )
             rank_changes = self._assign_ranks_to_new_replicas(unranked_replica_ids)
             if rank_changes:
-                self._notify_replicas_of_rank_changes(rank_changes)
+                self._reconfigure_replicas_with_ranks(rank_changes)
 
         # Check if we need full reassignment (only during scaling operations)
         needs_full_reassignment = False
@@ -2525,7 +2511,7 @@ class DeploymentState:
         if needs_full_reassignment:
             logger.info(f"Triggering full rank reassignment for deployment {self._id}")
             rank_changes = self._reassign_ranks_for_scaling()
-            self._notify_replicas_of_rank_changes(rank_changes)
+            self._reconfigure_replicas_with_ranks(rank_changes)
 
     def _assign_ranks_to_new_replicas(self, unranked_replica_ids):
         """Assign ranks to new replicas without affecting existing replica ranks.
@@ -2760,17 +2746,17 @@ class DeploymentState:
 
         return new_assignments
 
-    def _notify_replicas_of_rank_changes(self, rank_changes):
-        """Notify replicas of their new ranks after reassignment.
+    def _reconfigure_replicas_with_ranks(self, rank_changes):
+        """Reconfigure replicas with their new ranks after reassignment.
 
-        This calls the update_rank method on running replicas
-        to ensure they have the latest rank information.
+        This uses the reconfigure() mechanism to update replicas with
+        their latest rank and world_size information.
         """
         if not rank_changes:
             return
 
         logger.info(
-            f"Notifying {len(rank_changes)} replicas of rank changes in deployment {self._id}"
+            f"Reconfiguring {len(rank_changes)} replicas with rank changes in deployment {self._id}"
         )
 
         # Create a mapping of replica_id to new_rank for easy lookup
@@ -2780,7 +2766,7 @@ class DeploymentState:
             if old_rank is None or old_rank != new_rank:
                 rank_updates[replica_id] = new_rank
 
-        # Find the corresponding replica objects and update their ranks
+        # Find the corresponding replica objects and reconfigure them with new ranks
         updated_count = 0
         current_world_size = len(
             self._replica_ranks
@@ -2792,19 +2778,20 @@ class DeploymentState:
             replica_id = replica.replica_id.unique_id
             if replica_id in rank_updates:
                 new_rank = rank_updates[replica_id]
-                # Pass the actual rank value and current world size to the replica
-                if replica.update_rank(new_rank, current_world_size):
-                    updated_count += 1
-                    logger.debug(
-                        f"Successfully updated rank for replica {replica.replica_id} to {new_rank} (world_size={current_world_size})"
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to update rank for replica {replica.replica_id} to {new_rank}"
-                    )
+                # Use reconfigure() to update both rank and world_size
+                # Pass the current version but with updated rank/world_size
+                _ = replica.reconfigure(
+                    self._target_state.version,
+                    rank=new_rank,
+                    world_size=current_world_size,
+                )
+                updated_count += 1
+                logger.debug(
+                    f"Successfully reconfigured replica {replica.replica_id} with rank {new_rank} (world_size={current_world_size})"
+                )
 
         logger.info(
-            f"Successfully updated ranks for {updated_count} replicas in deployment {self._id}"
+            f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
         )
 
     def _stop_one_running_replica_for_testing(self):

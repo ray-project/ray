@@ -718,27 +718,12 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def update_replica_rank(self, rank: int, world_size: int) -> bool:
-        """Update replica rank with the provided rank value.
-
-        This is called by the deployment state to notify replicas of their
-        current rank after autoscaling operations.
-
-        Args:
-            rank: The current rank of this replica.
-            world_size: The current number of running replicas in the deployment.
-
-        Returns:
-            True if rank update was successful, False otherwise.
-        """
-        self._rank = rank
-        self._world_size = world_size
-        self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper._callable,
-        )
-        return True
-
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(
+        self,
+        deployment_config: DeploymentConfig,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -747,6 +732,13 @@ class ReplicaBase(ABC):
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
             )
+
+            # Update rank and world_size if provided
+            if rank is not None:
+                self._rank = rank
+            if world_size is not None:
+                self._world_size = world_size
+
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
                 self._version, deployment_config
@@ -767,7 +759,7 @@ class ReplicaBase(ABC):
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config.
+            # deployment_config and rank/world_size.
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable
             )
@@ -1028,23 +1020,15 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def update_replica_rank(self, rank: int, world_size: int) -> bool:
-        """Update replica rank with the provided rank value.
-
-        This can be called remotely to refresh the replica's rank after
-        autoscaling operations.
-
-        Args:
-            rank: The current rank of this replica.
-            world_size: The current number of running replicas in the deployment.
-
-        Returns:
-            bool: True if rank update was successful, False otherwise.
-        """
-        return await self._replica_impl.update_replica_rank(rank, world_size)
-
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config)
+    async def reconfigure(
+        self,
+        deployment_config,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ) -> ReplicaMetadata:
+        await self._replica_impl.reconfigure(
+            deployment_config, rank=rank, world_size=world_size
+        )
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(

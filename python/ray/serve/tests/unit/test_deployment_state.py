@@ -235,7 +235,12 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
         )
 
-    def reconfigure(self, version: DeploymentVersion):
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
         self.version = version
@@ -288,12 +293,6 @@ class MockReplicaActorWrapper:
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
-
-    def update_rank(self, rank: int, world_size: int):
-        pass
-
-    def check_active_update_rank(self) -> bool:
-        return True
 
 
 def deployment_info(
