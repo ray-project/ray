@@ -31,7 +31,7 @@ namespace core {
  */
 class SequentialActorSubmitQueue : public IActorSubmitQueue {
  public:
-  explicit SequentialActorSubmitQueue();
+  SequentialActorSubmitQueue();
   /// Add a task into the queue.
   void Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) override;
   /// If a task exists.

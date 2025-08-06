@@ -34,7 +34,7 @@ namespace core {
  */
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
-  explicit OutofOrderActorSubmitQueue();
+  OutofOrderActorSubmitQueue();
   /// Add a task into the queue.
   void Emplace(uint64_t position, const TaskSpecification &spec) override;
   /// If a task exists.
