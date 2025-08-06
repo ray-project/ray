@@ -154,8 +154,9 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
             "key": f"custom_build_" + image.replace("/", "_").replace(":", "_").replace(".", "_")[-40:],
             "instance_type": "release-medium",
             "commands": [
-                f"pip3 install --user --no-deps -e release/",
-                f"pip3 install click",
+                "pip3 install --user -U pip",
+                "pip3 install --user -r release/requirements_buildkite.txt",
+                "pip3 install --user --no-deps -e release/",
                 f"python release/ray_release/scripts/custom_byod_build.py --image-name {image} --base-image {base_image} --post-build-script {post_build_script}"
             ],
         }
