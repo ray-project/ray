@@ -2355,9 +2355,7 @@ def start_ray_client_server(
         root_ray_dir, "_private", "workers", ray_constants.SETUP_WORKER_FILENAME
     )
 
-    ray_client_server_host = (
-        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
-    )
+    ray_client_server_host = ray_client_server_ip
     command = [
         sys.executable,
         setup_worker_path,
