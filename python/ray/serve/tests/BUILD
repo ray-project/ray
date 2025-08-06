@@ -151,7 +151,6 @@ py_test_module_list(
 
 # CLI tests need extra time for deployments - test_cli.py gets longer timeout
 py_test_module_list(
-    size = "large",
     size = "enormous",
     timeout = "eternal",
     data = glob(["test_config_files/**/*"]),
