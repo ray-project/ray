@@ -231,7 +231,7 @@ class GcsServer {
   /// The `ClientCallManager` object that is shared by all `RayletClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
-  std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
+  rpc::RayletClientPool raylet_client_pool_;
   // Core worker client pool.
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.

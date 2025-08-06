@@ -556,7 +556,11 @@ int main(int argc, char *argv[]) {
 
     raylet_client_pool =
         std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
-          return std::make_shared<ray::raylet::RayletClient>(addr, *client_call_manager);
+          return std::make_shared<ray::raylet::RayletClient>(
+              addr,
+              *client_call_manager,
+              ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                  gcs_client.get(), raylet_client_pool.get(), addr));
         });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
