@@ -3983,7 +3983,7 @@ py_test(
         "--num-cpus=11",
         "--num-envs-per-env-runner=5",
         "--stop-iters=20",
-        "--stop-reward=-21.0"
+        "--stop-reward=-21.0",
     ],
     main = "examples/curriculum/atari_pong_curriculum_learning.py",
     tags = [
