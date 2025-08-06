@@ -131,9 +131,15 @@ def test_simple_left_right_outer_semi_anti_join(
 
     # Join using Pandas (to assert against)
     if join_type == "left_outer":
-        expected_pd = doubles_pd.join(squares_pd.set_index("id"), on="id", how="left").reset_index(drop=True)
+        expected_pd = doubles_pd.join(
+            squares_pd.set_index("id"), on="id", how="left"
+        ).reset_index(drop=True)
     elif join_type == "right_outer":
-        expected_pd = doubles_pd.set_index("id").join(squares_pd, on="id", how="right").reset_index(drop=True)
+        expected_pd = (
+            doubles_pd.set_index("id")
+            .join(squares_pd, on="id", how="right")
+            .reset_index(drop=True)
+        )
     elif join_type == "left_semi":
         # Left semi: left rows that have matches in right (left columns only)
         merged = doubles_pd.merge(squares_pd, on="id", how="inner")
@@ -145,11 +151,15 @@ def test_simple_left_right_outer_semi_anti_join(
     elif join_type == "left_anti":
         # Left anti: left rows that don't have matches in right
         merged = doubles_pd.merge(squares_pd, on="id", how="left", indicator=True)
-        expected_pd = merged[merged["_merge"] == "left_only"][["id", "double"]].reset_index(drop=True)
+        expected_pd = merged[merged["_merge"] == "left_only"][
+            ["id", "double"]
+        ].reset_index(drop=True)
     elif join_type == "right_anti":
         # Right anti: right rows that don't have matches in left
         merged = doubles_pd.merge(squares_pd, on="id", how="right", indicator=True)
-        expected_pd = merged[merged["_merge"] == "right_only"][["id", "square"]].reset_index(drop=True)
+        expected_pd = merged[merged["_merge"] == "right_only"][
+            ["id", "square"]
+        ].reset_index(drop=True)
     else:
         raise ValueError(f"Unsupported join type: {join_type}")
 
@@ -488,7 +498,7 @@ def test_anti_join_all_matches(
 
     # Should get empty result
     assert len(joined_pd) == 0
-    
+
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_multi_key(
@@ -503,8 +513,8 @@ def test_anti_join_multi_key(
     left_ds = ray.data.range(32).map(
         lambda row: {
             "id": row["id"],
-            "oddness": row["id"] % 2, # Even
-            "10x": row["id"] * 10
+            "oddness": row["id"] % 2,  # Even
+            "10x": row["id"] * 10,
         }
     )
 
@@ -513,7 +523,7 @@ def test_anti_join_multi_key(
         lambda row: {
             "id": row["id"] % 2,
             "oddness": row["id"] % 2 + 1,  # odd
-            "100x": row["id"] * 100
+            "100x": row["id"] * 100,
         }
     )
 
@@ -526,7 +536,7 @@ def test_anti_join_multi_key(
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
-    
+
     # Create expected data for pandas comparison
     left_pd = left_ds.to_pandas()
     right_pd = right_ds.to_pandas()
@@ -535,16 +545,22 @@ def test_anti_join_multi_key(
     if join_type == "left_anti":
         expected_cols = ["id", "oddness", "10x"]
 
-        merged = left_pd.merge(right_pd, on=["id", "oddness"], how="left", indicator=True)
+        merged = left_pd.merge(
+            right_pd, on=["id", "oddness"], how="left", indicator=True
+        )
         expected_pd = merged[merged["_merge"] == "left_only"][expected_cols]
     else:
         expected_cols = ["id", "oddness", "100x"]
 
-        merged = left_pd.merge(right_pd, on=["id", "oddness"], how="right", indicator=True)
+        merged = left_pd.merge(
+            right_pd, on=["id", "oddness"], how="right", indicator=True
+        )
         expected_pd = merged[merged["_merge"] == "right_only"][expected_cols]
 
     # Sort resulting frames and reset index (to be able to compare with expected one)
-    expected_pd_sorted = expected_pd.sort_values(by=expected_cols).reset_index(drop=True)
+    expected_pd_sorted = expected_pd.sort_values(by=expected_cols).reset_index(
+        drop=True
+    )
     joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
