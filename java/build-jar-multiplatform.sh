@@ -34,8 +34,8 @@ build_jars() {
   mkdir -p "$JAR_DIR"
   for p in "${JAVA_DIRS_PATH[@]}"; do
     cd "$WORKSPACE_DIR/$p"
-    bazel build ":copy_pom_files"
-    bazel build ":cp_java_generated"
+    bazel run ":gen_pom_files"
+    bazel run ":gen_proto_files"
     if [[ $bazel_build == "true" ]]; then
       echo "Starting building java native dependencies for $p"
       bazel build ":gen_maven_deps"
