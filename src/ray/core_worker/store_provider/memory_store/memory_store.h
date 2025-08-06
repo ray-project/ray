@@ -66,9 +66,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  /// \return Whether the object was put into the memory store. If false, then
-  /// this is because the object was promoted to and stored in plasma instead.
-  bool Put(const RayObject &object, const ObjectID &object_id);
+  void Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///

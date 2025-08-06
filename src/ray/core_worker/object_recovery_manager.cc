@@ -50,7 +50,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   bool requires_recovery = pinned_at.IsNil() && !spilled;
   if (requires_recovery) {
     {
-      absl::MutexLock lock(&mu_);
+      absl::MutexLock lock(&objects_pending_recovery_mu_);
       // Mark that we are attempting recovery for this object to prevent
       // duplicate restarts of the same object.
       already_pending_recovery = !objects_pending_recovery_.insert(object_id).second;
@@ -62,7 +62,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     in_memory_store_.GetAsync(
         object_id, [this, object_id](const std::shared_ptr<RayObject> &obj) {
           {
-            absl::MutexLock lock(&mu_);
+            absl::MutexLock lock(&objects_pending_recovery_mu_);
             RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
           }
           RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
@@ -83,8 +83,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     // (core_worker.cc removes the object from memory store before calling this method),
     // we need to add it back to indicate that it's available.
     // If the object is already in the memory store then the put is a no-op.
-    RAY_CHECK(
-        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   }
   return true;
 }
@@ -123,8 +122,8 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
           [this, object_id, other_locations = std::move(other_locations), node_id](
               const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
             if (status.ok() && reply.successes(0)) {
-              RAY_CHECK(in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                             object_id));
+              in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                   object_id);
               reference_counter_.UpdateObjectPinnedAtRaylet(object_id, node_id);
             } else {
               RAY_LOG(INFO).WithField(object_id)

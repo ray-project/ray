@@ -131,8 +131,9 @@ class ObjectRecoveryManager {
 
   /// Objects that are currently pending recovery. Calls to RecoverObject for
   /// objects currently in this set are idempotent.
-  absl::Mutex mu_;
-  absl::flat_hash_set<ObjectID> objects_pending_recovery_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex objects_pending_recovery_mu_;
+  absl::flat_hash_set<ObjectID> objects_pending_recovery_
+      ABSL_GUARDED_BY(objects_pending_recovery_mu_);
 };
 
 }  // namespace core
