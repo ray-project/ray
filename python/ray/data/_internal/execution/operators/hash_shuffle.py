@@ -509,6 +509,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             int, Dict[int, _PartitionStats]
         ] = defaultdict(dict)
 
+        self._health_monitoring_started: bool = False
+        self._health_monitoring_start_time: float = 0.0
+        self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
+
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
 
@@ -1096,6 +1100,18 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         return aggregator_total_memory_required
 
 
+@dataclass
+class AggregatorHealthInfo:
+    """Health information about aggregators for issue detection."""
+
+    started_at: float
+    ready_aggregators: int
+    total_aggregators: int
+    has_unready_aggregators: bool
+    wait_time: float
+    required_cpus: float
+
+
 class AggregatorPool:
     def __init__(
         self,
@@ -1282,11 +1298,11 @@ class AggregatorPool:
 
         self._aggregators.clear()
 
-    def get_aggregator_health_info(self) -> Optional[dict]:
+    def check_aggregator_health(self) -> Optional[AggregatorHealthInfo]:
         """Get health information about aggregators for issue detection.
 
         Returns:
-            Dict with health info or None if monitoring hasn't started.
+            AggregatorHealthInfo with health info or None if monitoring hasn't started.
         """
         if (
             not hasattr(self, "_health_monitoring_started")
@@ -1316,14 +1332,14 @@ class AggregatorPool:
             self._aggregator_ray_remote_args.get("num_cpus", 1) * self._num_aggregators
         )
 
-        return {
-            "started_at": self._health_monitoring_start_time,
-            "ready_aggregators": ready_aggregators,
-            "total_aggregators": self._num_aggregators,
-            "has_unready_aggregators": len(unready_refs) > 0,
-            "wait_time": current_time - self._health_monitoring_start_time,
-            "required_cpus": required_cpus,
-        }
+        return AggregatorHealthInfo(
+            started_at=self._health_monitoring_start_time,
+            ready_aggregators=ready_aggregators,
+            total_aggregators=self._num_aggregators,
+            has_unready_aggregators=len(unready_refs) > 0,
+            wait_time=current_time - self._health_monitoring_start_time,
+            required_cpus=required_cpus,
+        )
 
     def start_health_monitoring(self):
         """Start health monitoring (without separate actor)."""
