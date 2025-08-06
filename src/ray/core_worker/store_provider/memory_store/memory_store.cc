@@ -16,7 +16,6 @@
 
 #include <algorithm>
 #include <condition_variable>
-#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -248,7 +247,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   // https://github.com/ray-project/ray/issues/47649 for more details.
   io_context_.post(
       [async_callbacks = std::move(async_callbacks), object_entry]() {
-        std::cout << "Running io_context_.post() in Put()" << std::endl;
         for (const auto &cb : async_callbacks) {
           cb(object_entry);
         }

@@ -281,9 +281,9 @@ CoreWorker::CoreWorker(
     std::shared_ptr<experimental::MutableObjectProviderInterface>
         experimental_mutable_object_provider,
     std::unique_ptr<FutureResolver> future_resolver,
-    std::shared_ptr<TaskManagerInterface> task_manager,
+    std::shared_ptr<TaskManager> task_manager,
     std::shared_ptr<ActorCreatorInterface> actor_creator,
-    std::unique_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
+    std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
     std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
     std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
     std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,

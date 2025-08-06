@@ -13,11 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include <functional>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
 #include "gmock/gmock.h"
 #include "ray/core_worker/task_manager_interface.h"
 
@@ -82,63 +77,6 @@ class MockTaskManagerInterface : public TaskManagerInterface {
               (override));
   MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
   MOCK_METHOD(void, MarkGeneratorFailedAndResubmit, (const TaskID &task_id), (override));
-
-  MOCK_METHOD(void, DrainAndShutdown, (std::function<void()> shutdown), (override));
-
-  MOCK_METHOD(void, RecordMetrics, (), (override));
-
-  MOCK_METHOD(std::vector<TaskID>,
-              GetPendingChildrenTasks,
-              (const TaskID &parent_task_id),
-              (const, override));
-
-  MOCK_METHOD(bool, TryDelObjectRefStream, (const ObjectID &generator_id), (override));
-
-  MOCK_METHOD(Status,
-              TryReadObjectRefStream,
-              (const ObjectID &generator_id, ObjectID *object_id_out),
-              (override));
-
-  MOCK_METHOD(bool,
-              StreamingGeneratorIsFinished,
-              (const ObjectID &generator_id),
-              (const, override));
-
-  MOCK_METHOD((std::pair<ObjectID, bool>),
-              PeekObjectRefStream,
-              (const ObjectID &generator_id),
-              (override));
-
-  MOCK_METHOD(bool,
-              HandleReportGeneratorItemReturns,
-              (const rpc::ReportGeneratorItemReturnsRequest &request,
-               const std::function<void(Status, int64_t)> &execution_signal_callback),
-              (override));
-
-  MOCK_METHOD(bool, ObjectRefStreamExists, (const ObjectID &generator_id), (override));
-
-  MOCK_METHOD(bool,
-              TemporarilyOwnGeneratorReturnRefIfNeeded,
-              (const ObjectID &object_id, const ObjectID &generator_id),
-              (override));
-
-  MOCK_METHOD(ObjectID, TaskGeneratorId, (const TaskID &task_id), (const, override));
-
-  MOCK_METHOD((std::unordered_map<rpc::LineageReconstructionTask, uint64_t>),
-              GetOngoingLineageReconstructionTasks,
-              (const ActorManager &actor_manager),
-              (const, override));
-
-  MOCK_METHOD(size_t, NumSubmissibleTasks, (), (const, override));
-
-  MOCK_METHOD(void, AddTaskStatusInfo, (rpc::CoreWorkerStats * stats), (const, override));
-
-  MOCK_METHOD(void,
-              FillTaskInfo,
-              (rpc::GetCoreWorkerStatsReply * reply, const int64_t limit),
-              (const, override));
-
-  MOCK_METHOD(size_t, NumPendingTasks, (), (const, override));
 };
 
 }  // namespace core
