@@ -23,6 +23,7 @@ ray_cc_test(
     srcs = ["cgroup_v2_utils_unprivileged_test.cc"],
     tags = [
         "exclusive",
+        "no_windows",
         "team:core",
     ],
     deps = [
@@ -39,6 +40,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "no_windows",
         "//src/ray/common/cgroup:fake_cgroup_setup",
         "//src/ray/common/test:testing",
         "@com_google_googletest//:gtest_main",
@@ -50,6 +52,7 @@ ray_cc_test(
     srcs = ["cgroup_v2_setup_test.cc"],
     tags = [
         "cgroup",
+        "no_windows",
         "team:core",
     ],
     deps = [
