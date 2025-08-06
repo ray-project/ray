@@ -27,6 +27,10 @@ class GPUTestActor:
             return data.apply(lambda x: x * 2)
         return data * 2
 
+    def increment(self, data):
+        data += 1
+        return data
+
     def get_gpu_object(self, obj_id: str, timeout=None):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -420,6 +424,25 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
     assert len(ret_val_src) == 2
     assert torch.equal(ret_val_src[0], td["action"])
     assert torch.equal(ret_val_src[1], td["reward"])
+
+
+def test_duplicate_objectref_transfer(ray_start_regular):
+    """
+    This test checks that passes a GPU object ref to the same actor and a different actor.
+    """
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    actor0, actor1 = actors[0], actors[1]
+
+    small_tensor = torch.randn((1,))
+
+    ref = actor0.echo.remote(small_tensor)
+    result1 = actor0.increment.remote(ref)
+    result2 = actor1.increment.remote(ref)
+    assert ray.get(result1) == pytest.approx(small_tensor + 1)
+    assert ray.get(result2) == pytest.approx(small_tensor + 2)
 
 
 if __name__ == "__main__":
