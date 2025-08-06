@@ -48,7 +48,7 @@ class CoreWorkerClientPool {
       const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
-  /// if it does not. The returned pointer is borrowed, and expected to be used
+  /// if it does not. The returned pointer is expected to be used
   /// briefly.
   std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
@@ -60,14 +60,11 @@ class CoreWorkerClientPool {
   /// Removes connections to all workers on a node.
   void Disconnect(ray::NodeID node_id);
 
-  /// For testing.
-  size_t Size() {
-    absl::MutexLock lock(&mu_);
-    RAY_CHECK_EQ(client_list_.size(), worker_client_map_.size());
-    return client_list_.size();
-  }
-
  private:
+  friend void AssertID(WorkerID worker_id,
+                       CoreWorkerClientPool &client_pool,
+                       bool contains);
+
   /// Try to remove some idle clients to free memory.
   /// It doesn't go through the entire list and remove all idle clients.
   /// Instead, it tries to remove idle clients from the end of the list

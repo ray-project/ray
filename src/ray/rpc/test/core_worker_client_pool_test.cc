@@ -56,6 +56,17 @@ rpc::Address CreateRandomAddress(const std::string &addr) {
 
 }  // namespace
 
+void AssertID(WorkerID worker_id, CoreWorkerClientPool &client_pool, bool contains) {
+  absl::MutexLock lock(&client_pool.mu_);
+  if (contains) {
+    ASSERT_NE(client_pool.worker_client_map_.find(worker_id),
+              client_pool.worker_client_map_.end());
+  } else {
+    ASSERT_EQ(client_pool.worker_client_map_.find(worker_id),
+              client_pool.worker_client_map_.end());
+  }
+}
+
 TEST(CoreWorkerClientPoolTest, TestGC) {
   // Test to make sure idle clients are removed eventually.
 
@@ -64,20 +75,22 @@ TEST(CoreWorkerClientPoolTest, TestGC) {
 
   rpc::Address address1 = CreateRandomAddress("1");
   rpc::Address address2 = CreateRandomAddress("2");
+  auto worker_id1 = WorkerID::FromBinary(address1.worker_id());
+  auto worker_id2 = WorkerID::FromBinary(address2.worker_id());
   auto client1 = client_pool.GetOrConnect(address1);
-  ASSERT_EQ(client_pool.Size(), 1);
+  AssertID(worker_id1, client_pool, true);
   auto client2 = client_pool.GetOrConnect(address2);
-  ASSERT_EQ(client_pool.Size(), 2);
-  client_pool.Disconnect(WorkerID::FromBinary(address2.worker_id()));
-  ASSERT_EQ(client_pool.Size(), 1);
-  ASSERT_EQ(client1.get(), client_pool.GetOrConnect(address1).get());
-  ASSERT_EQ(client_pool.Size(), 1);
+  AssertID(worker_id2, client_pool, true);
+  client_pool.Disconnect(worker_id2);
+  AssertID(worker_id2, client_pool, false);
+  AssertID(worker_id1, client_pool, true);
   client2 = client_pool.GetOrConnect(address2);
-  ASSERT_EQ(client_pool.Size(), 2);
+  AssertID(worker_id2, client_pool, true);
   dynamic_cast<MockCoreWorkerClient *>(client1.get())->is_idle_after_rpcs = true;
   // Client 1 will be removed since it's idle.
-  ASSERT_EQ(client2.get(), client_pool.GetOrConnect(address2).get());
-  ASSERT_EQ(client_pool.Size(), 1);
+  client_pool.GetOrConnect(address2);
+  AssertID(worker_id2, client_pool, true);
+  AssertID(worker_id1, client_pool, false);
 }
 
 class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
@@ -118,7 +131,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
   DefaultUnavailableTimeoutCallbackTest()
       : is_subscribed_to_node_change_(GetParam()),
         gcs_client_(is_subscribed_to_node_change_),
-        raylet_client_pool_(std::make_shared<RayletClientPool>([](const rpc::Address &) {
+        raylet_client_pool_(std::make_unique<RayletClientPool>([](const rpc::Address &) {
           return std::make_shared<MockRayletClientInterface>();
         })),
         client_pool_(
@@ -133,7 +146,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
 
   bool is_subscribed_to_node_change_;
   MockGcsClient gcs_client_;
-  std::shared_ptr<RayletClientPool> raylet_client_pool_;
+  std::unique_ptr<RayletClientPool> raylet_client_pool_;
   std::unique_ptr<CoreWorkerClientPool> client_pool_;
 };
 
@@ -159,12 +172,14 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
 
   auto worker_1_address = CreateRandomAddress("1");
   auto worker_2_address = CreateRandomAddress("2");
+  auto worker_id1 = WorkerID::FromBinary(worker_1_address.worker_id());
+  auto worker_id2 = WorkerID::FromBinary(worker_2_address.worker_id());
   auto worker_1_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_1_address).get());
-  ASSERT_EQ(client_pool_->Size(), 1);
+  AssertID(worker_id1, *client_pool_, true);
   auto worker_2_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_2_address).get());
-  ASSERT_EQ(client_pool_->Size(), 2);
+  AssertID(worker_id2, *client_pool_, true);
 
   auto worker_1_node_id = NodeID::FromBinary(worker_1_address.raylet_id());
   auto worker_2_node_id = NodeID::FromBinary(worker_2_address.raylet_id());
@@ -211,13 +226,13 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
           }));
 
   worker_1_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 2);
+  AssertID(worker_id1, *client_pool_, true);
   worker_1_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 2);
+  AssertID(worker_id1, *client_pool_, true);
   worker_1_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 1);
+  AssertID(worker_id1, *client_pool_, false);
   worker_2_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 0);
+  AssertID(worker_id2, *client_pool_, false);
 }
 
 TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
@@ -226,9 +241,10 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
   // 2nd call - Node is alive and worker is dead, client should be disconnected.
 
   auto worker_address = CreateRandomAddress("1");
+  auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
       client_pool_->GetOrConnect(worker_address).get());
-  ASSERT_EQ(client_pool_->Size(), 1);
+  AssertID(worker_id, *client_pool_, true);
 
   rpc::GcsNodeInfo node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
@@ -267,9 +283,9 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
 
   // Disconnects the second time.
   core_worker_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 1);
+  AssertID(worker_id, *client_pool_, true);
   core_worker_client->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 0);
+  AssertID(worker_id, *client_pool_, false);
 }
 
 INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,

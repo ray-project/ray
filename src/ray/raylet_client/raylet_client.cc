@@ -57,16 +57,19 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 namespace ray::raylet {
 
 RayletClient::RayletClient(const rpc::Address &address,
-                           rpc::ClientCallManager &client_call_manager)
+                           rpc::ClientCallManager &client_call_manager,
+                           std::function<void()> raylet_unavailable_timeout_callback)
     : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
-          new rpc::NodeManagerClient(address, client_call_manager))) {}
+          new rpc::NodeManagerClient(address,
+                                     client_call_manager,
+                                     std::move(raylet_unavailable_timeout_callback)))) {}
 
 RayletClient::RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
                            const rpc::Address &address,
                            rpc::ClientCallManager &client_call_manager,
                            const WorkerID &worker_id)
     : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
-          new rpc::NodeManagerClient(address, client_call_manager))),
+          new rpc::NodeManagerClient(address, client_call_manager, [] {}))),
       worker_id_(worker_id),
       conn_(std::move(raylet_conn)) {}
 
