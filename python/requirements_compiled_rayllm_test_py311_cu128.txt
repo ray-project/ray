@@ -1944,9 +1944,9 @@ memray==1.10.0 ; sys_platform != 'win32' \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   -r python/requirements.txt
-meson==1.8.2 \
-    --hash=sha256:274b49dbe26e00c9a591442dd30f4ae9da8ce11ce53d0f4682cd10a45d50f6fd \
-    --hash=sha256:c105816d8158c76b72adcb9ff60297719096da7d07f6b1f000fd8c013cd387af
+meson==1.8.3 \
+    --hash=sha256:ef02b806ce0c5b6becd5bb5dc9fa67662320b29b337e7ace73e4354500590233 \
+    --hash=sha256:f118aa910fc0a137cc2dd0122232dbf82153d9a12fb5b0f5bb64896f6a157abf
     # via -r python/requirements/llm/llm-requirements.txt
 mistral-common==1.8.3 \
     --hash=sha256:0d1979d82227b625f6d71b3c828176f059da8d0f5a3307cdf53b48409a3970a4 \
@@ -2238,6 +2238,12 @@ ninja==1.11.1.4 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   vllm
     #   xgrammar
+nixl==0.3.1 \
+    --hash=sha256:20428ad2668062a79045fae83cc5cba1f4019d4a2c7053cc8549c3a1533f8a75 \
+    --hash=sha256:70b8932b50ccf1a13ac8fa2e10a4b78290baae9f963bfecfa67684104331a94b \
+    --hash=sha256:8c144839484b3076f0b34ad8ceaeaff05c23399cf57ca85f2a94b44e1475a39b \
+    --hash=sha256:ff59996ad05a7e4ba6c8beba0f1d8ac2f9e53df696a15af0d3340028e2f16081
+    # via -r python/requirements/llm/llm-requirements.txt
 notebook==6.5.7 \
     --hash=sha256:04eb9011dfac634fbd4442adaf0a8c27cd26beef831fe1d19faf930c327768e4 \
     --hash=sha256:a6afa9a4ff4d149a0771ff8b8c881a7a73b3835f9add0606696d6e9d98ac1cd0
@@ -2318,6 +2324,7 @@ numpy==1.26.4 \
     #   gymnasium
     #   imageio
     #   mistral-common
+    #   nixl
     #   numba
     #   opencv-python-headless
     #   pandas
@@ -4171,6 +4178,7 @@ torch==2.7.1+cu128 \
     --hash=sha256:f112465fdf42eb1297c6dddda1a8b7f411914428b704e1b8a47870c52e290909
     # via
     #   compressed-tensors
+    #   nixl
     #   torchaudio
     #   torchvision
     #   vllm
