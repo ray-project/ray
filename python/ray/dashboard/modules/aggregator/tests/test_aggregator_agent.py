@@ -1,6 +1,5 @@
 import sys
 import json
-import time
 import base64
 
 import pytest
@@ -109,8 +108,7 @@ def test_aggregator_agent_receive_publish_events_normally(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     req, _ = httpserver.log[0]
@@ -179,8 +177,7 @@ def test_aggregator_agent_receive_event_full(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     req, _ = httpserver.log[0]
@@ -200,8 +197,8 @@ def test_aggregator_agent_receive_multiple_events(
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
     request = AddEventsRequest(
         events_data=RayEventsData(
@@ -228,8 +225,7 @@ def test_aggregator_agent_receive_multiple_events(
             ),
         )
     )
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
@@ -262,8 +258,8 @@ def test_aggregator_agent_receive_multiple_events_failures(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
     request = AddEventsRequest(
         events_data=RayEventsData(
@@ -295,8 +291,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
             ],
         )
     )
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
@@ -321,8 +316,7 @@ def test_aggregator_agent_receive_empty_events(
             ),
         )
     )
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
 
 
 @_with_aggregator_port
@@ -337,8 +331,8 @@ def test_aggregator_agent_profile_events_not_exposed(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
     request = AddEventsRequest(
@@ -360,8 +354,7 @@ def test_aggregator_agent_profile_events_not_exposed(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
 
     # Wait for exactly one event to be received (the TASK_DEFINITION_EVENT)
     wait_for_condition(lambda: len(httpserver.log) == 1)
@@ -408,8 +401,7 @@ def test_aggregator_agent_receive_profile_events(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
