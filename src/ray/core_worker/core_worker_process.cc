@@ -542,36 +542,65 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto actor_manager = std::make_unique<ActorManager>(
       gcs_client, *actor_task_submitter, *reference_counter);
 
-  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
-      object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
-                                                   const ObjectLookupCallback &callback) {
-        auto core_worker = GetCoreWorker();
-        std::vector<rpc::Address> locations;
-        const std::optional<absl::flat_hash_set<NodeID>> object_locations =
-            core_worker->reference_counter_->GetObjectLocations(object_id);
-        if (object_locations.has_value()) {
-          locations.reserve(object_locations.value().size());
-          for (const auto &node_id : object_locations.value()) {
-            std::optional<rpc::Address> addr = node_addr_factory(node_id);
-            if (addr.has_value()) {
-              locations.emplace_back(std::move(addr.value()));
-              continue;
-            }
-            // We're getting potentially stale locations directly from the reference
-            // counter, so the location might be a dead node.
-            RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-                << "Object location is dead, not using it in the recovery of object";
-          }
+  // For the recovery manager to lookup the addresses / ports of the nodes with secondary
+  // copies.
+  auto object_lookup = [this](const ObjectID &object_id,
+                              const ObjectLookupCallback &callback) {
+    auto core_worker = GetCoreWorker();
+    std::vector<rpc::Address> locations;
+    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
+        core_worker->reference_counter_->GetObjectLocations(object_id);
+    std::vector<NodeID> nodes_to_lookup;
+    if (object_locations.has_value()) {
+      locations.reserve(object_locations->size());
+      for (const auto &node_id : *object_locations) {
+        auto *node_info =
+            core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+        if (node_info == nullptr) {
+          // Unsure if the node is dead, so we need to confirm with the GCS. This should
+          // be rare, the only foreseeable reasons are:
+          // 1. We filled our cache after the GCS cleared the node info due to
+          //    maximum_gcs_dead_node_cached_count.
+          // 2. The node is alive but we haven't received the publish yet.
+          nodes_to_lookup.push_back(node_id);
+          continue;
         }
-        callback(object_id, std::move(locations));
-        return Status::OK();
-      };
+        if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
+          continue;
+        }
+        rpc::Address addr;
+        addr.set_raylet_id(node_info->node_id());
+        addr.set_ip_address(node_info->node_manager_address());
+        addr.set_port(node_info->node_manager_port());
+        locations.push_back(std::move(addr));
+      }
+    }
+    if (nodes_to_lookup.empty()) {
+      callback(object_id, std::move(locations));
+      return;
+    }
+    core_worker->gcs_client_->Nodes().AsyncGetAll(
+        [callback, object_id, locations = std::move(locations)](
+            const Status &, const std::vector<rpc::GcsNodeInfo> &node_infos) mutable {
+          for (const auto &node_info : node_infos) {
+            if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
+              rpc::Address addr;
+              addr.set_raylet_id(node_info.node_id());
+              addr.set_ip_address(node_info.node_manager_address());
+              addr.set_port(node_info.node_manager_port());
+              locations.push_back(std::move(addr));
+            }
+          }
+          callback(object_id, std::move(locations));
+        },
+        -1,
+        nodes_to_lookup);
+  };
 
   auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
       rpc_address,
       raylet_client_pool,
-      local_raylet_client,
-      object_lookup_fn,
+      std::move(object_lookup),
       *task_manager,
       *reference_counter,
       *memory_store,
