@@ -15,12 +15,13 @@ class LocalTorchTrainer:
             dist.init_process_group(backend="nccl" if torch.cuda.is_available() else "gloo")
             self.local_world_size = dist.get_world_size()
             self.local_rank = dist.get_rank()
+            torch.cuda.set_device(self.local_rank)
         else:
             self.local_world_size = 1
             self.local_rank = 0
 
         self.datasets = datasets
-        self.dataset_shards = asyncio.run(self._set_local_running_train_context_and_data_shard(self.local_world_size, self.local_rank))
+        self.dataset_shards = asyncio.run(self._set_local_running_train_context_and_data_shard())
         self.context = LocalRunningTrainContext(
             experiment_name="local-training",
             local_world_size=self.local_world_size,
@@ -41,4 +42,4 @@ class LocalTorchTrainer:
         train_func()
         if self.launched_by_torchrun:
             dist.destroy_process_group()
-        return Result(metrics={}, checkpoint=None, checkpoint_dir_name=None)
+        return Result(metrics={}, checkpoint=None, path=None, error=None)
