@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
+from ray.data._internal.batcher import BatcherInterface, create_batcher
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -37,6 +38,7 @@ def iter_batches(
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
     prefetch_batches: int = 1,
+    batcher_fn: Optional[Callable[..., BatcherInterface]] = None,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from an iterator of block object references and
     corresponding metadata.
@@ -103,6 +105,9 @@ def iter_batches(
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
+        batcher_fn: A function to create a batcher, which is a subclass of
+            `BatcherInterface`. If None, a default batcher will be created based on the
+            given parameters.
 
     Returns:
         An iterator over record batches.
@@ -119,6 +124,14 @@ def iter_batches(
         prefetcher = WaitBlockPrefetcher()
 
     eager_free = clear_block_after_read and DataContext.get_current().eager_free
+
+    batcher = create_batcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=shuffle_buffer_min_size,
+        shuffle_seed=shuffle_seed,
+        ensure_copy=ensure_copy,
+        batcher_fn=batcher_fn,
+    )
 
     def _async_iter_batches(
         ref_bundles: Iterator[RefBundle],
@@ -138,12 +151,9 @@ def iter_batches(
         # Step 3: Batch and shuffle the resolved blocks.
         batch_iter = blocks_to_batches(
             block_iter=block_iter,
+            batcher=batcher,
             stats=stats,
-            batch_size=batch_size,
             drop_last=drop_last,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-            ensure_copy=ensure_copy,
         )
 
         # Step 4: Use a threadpool for formatting and collation.
