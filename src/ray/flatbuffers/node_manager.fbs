@@ -46,9 +46,9 @@ enum MessageType:int {
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
-  // Reconstruct or fetch possibly lost objects. This is sent from a worker to
+  // Request the Raylet to pull a set of objects to the local node.
   // a raylet.
-  FetchOrReconstruct,
+  AsyncGetObjectsRequest,
   // Cancel outstanding get requests from the worker.
   CancelGetRequest,
   // Notify the current worker is blocked. This is only used by direct task calls;
@@ -168,13 +168,11 @@ table Address {
   worker_id: string;
 }
 
-table FetchOrReconstruct {
-  // List of object IDs of the objects that we want to reconstruct or fetch.
+table AsyncGetObjectsRequest {
+  // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
-  // The RPC addresses of the workers that own the objects in object_ids.
+  // Owner RPC addresses for the objects in the object_ids list.
   owner_addresses: [Address];
-  // Do we only want to fetch the objects or also reconstruct them?
-  fetch_only: bool;
 }
 
 table CancelGetRequest {
