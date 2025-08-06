@@ -285,7 +285,6 @@ A list of batches of RNN states.
 Each item in this list has dimension [B, S] (S=state vector size)
 """
 
-# Format of data output from policy forward pass.
 # __sphinx_doc_begin_policy_output_type__
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]  # @OldAPIStack
 """Format of data output from policy forward pass."""
