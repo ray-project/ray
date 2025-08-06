@@ -1205,9 +1205,9 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class CeleryConfig(BaseModel):
+class CeleryAdapterConfig(BaseModel):
     """
-    Celery config. You can use it to configure the Celery task processor for your Serve application.
+    Celery adapter config. You can use it to configure the Celery task processor for your Serve application.
     """
 
     broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
@@ -1232,7 +1232,7 @@ class TaskProcessorConfig(BaseModel):
     queue_name: str = Field(
         ..., description="The name of the queue to use for task processing."
     )
-    adapter_config: Union[CeleryConfig] = Field(
+    adapter_config: Union[CeleryAdapterConfig] = Field(
         ..., description="The adapter config. Currently only Celery is supported."
     )
     max_retry: Optional[int] = Field(

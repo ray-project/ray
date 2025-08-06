@@ -64,9 +64,9 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
                 try:
                     self._adapter.start_consumer()
-                    logger.info("Celery consumer started successfully")
+                    logger.info("task consumer started successfully")
                 except Exception as e:
-                    logger.error(f"Failed to start Celery consumer: {e}")
+                    logger.error(f"Failed to start task consumer: {e}")
                     raise
 
             def __del__(self):

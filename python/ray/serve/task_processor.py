@@ -8,7 +8,7 @@ from celery import Celery
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import (
-    CeleryConfig,
+    CeleryAdapterConfig,
     TaskProcessorConfig,
     TaskResult,
 )
@@ -76,9 +76,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _worker_thread: Optional[threading.Thread] = None
 
     def __init__(self, config: TaskProcessorConfig):
-        if not isinstance(config.adapter_config, CeleryConfig):
+        if not isinstance(config.adapter_config, CeleryAdapterConfig):
             raise TypeError(
-                "TaskProcessorConfig.adapter_config must be an instance of CeleryConfig"
+                "TaskProcessorConfig.adapter_config must be an instance of CeleryAdapterConfig"
             )
 
         self._config = config
@@ -109,7 +109,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
                 broker_transport_options=config.adapter_config.broker_transport_options,
             )
 
-        ### TODO(harshit|2025-07-22): add the failed_task_queue_name and unprocessable_task_queue_name business logic here
+        ### TODO(harshit|SERVE-987): add the failed_task_queue_name and unprocessable_task_queue_name business logic here
 
     def register_task_handle(self, func, name=None):
         if name:
@@ -138,7 +138,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     async def enqueue_task_async(
         self, task_name, args=None, kwargs=None, **options
     ) -> TaskResult:
-        raise NotImplementedError("Async task enqueue is not supported for Celery yet")
+        raise NotImplementedError("Celery does not support async task.")
 
     def get_task_status_sync(self, task_id) -> TaskResult:
         task_details = self._app.AsyncResult(task_id)
@@ -149,7 +149,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         )
 
     async def get_task_status_async(self, task_id) -> TaskResult:
-        raise NotImplementedError("Async task status is not supported for Celery yet")
+        raise NotImplementedError(
+            "Celery does not support async task status retrieval."
+        )
 
     async def cancel_task(self, task_id) -> bool:
         return self._app.AsyncResult(task_id).cancel()
@@ -220,7 +222,7 @@ def get_task_adapter(config: TaskProcessorConfig) -> TaskProcessorAdapter:
         ValueError: If the adapter_config type is not recognized.
     """
 
-    if isinstance(config.adapter_config, CeleryConfig):
+    if isinstance(config.adapter_config, CeleryAdapterConfig):
         adapter = CeleryTaskProcessorAdapter(config=config)
         adapter.initialize(config=config)
 

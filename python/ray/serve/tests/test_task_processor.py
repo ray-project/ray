@@ -10,12 +10,20 @@ from starlette.responses import JSONResponse
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve.schema import CeleryConfig, TaskProcessorConfig
+from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig
 from ray.serve.task_consumer import (
     get_task_adapter,
     task_consumer,
     task_handler,
 )
+
+
+@ray.remote
+def send_request_to_queue(data, processor_config: TaskProcessorConfig):
+    celery_adapter = get_task_adapter(config=processor_config)
+    result = celery_adapter.enqueue_task_sync("process_request", args=[data])
+    assert result.id is not None
+    return result.id
 
 
 @pytest.fixture(scope="function")
@@ -78,7 +86,7 @@ class TestTaskConsumerWithRayServe:
 
         config_params = {
             "queue_name": cls.DEFAULT_QUEUE_NAME,
-            "adapter_config": CeleryConfig(
+            "adapter_config": CeleryAdapterConfig(
                 broker_url=cls.DEFAULT_BROKER_URL,
                 backend_url=f"file://{results_path}",
                 broker_transport_options=transport_options,
@@ -88,27 +96,11 @@ class TestTaskConsumerWithRayServe:
 
         return TaskProcessorConfig(**config_params)
 
-    @staticmethod
-    def _create_send_request_to_queue_remote(processor_config):
-        """Create a Ray remote function for sending requests to the queue."""
-
-        @ray.remote
-        def send_request_to_queue(data):
-            celery_adapter = get_task_adapter(config=processor_config)
-            result = celery_adapter.enqueue_task_sync("process_request", args=[data])
-            assert result.id is not None
-            return result.id
-
-        return send_request_to_queue
-
     def test_task_consumer_as_serve_deployment(
         self, temp_queue_directory, serve_instance
     ):
         """Test that task consumers can be used as Ray Serve deployments."""
         processor_config = self._create_processor_config(temp_queue_directory)
-        send_request_to_queue = self._create_send_request_to_queue_remote(
-            processor_config
-        )
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
@@ -138,7 +130,7 @@ class TestTaskConsumerWithRayServe:
 
         # Deploy the consumer as a Serve deployment
         serve.run(ServeTaskConsumer.bind())
-        send_request_to_queue.remote("test_data_1")
+        send_request_to_queue.remote("test_data_1", processor_config)
 
         def assert_result():
             response = httpx.get("http://localhost:8000/assert-result")
@@ -157,10 +149,6 @@ class TestTaskConsumerWithRayServe:
             temp_queue_directory, failed_task_queue_name="my_failed_task_queue"
         )
 
-        send_request_to_queue = self._create_send_request_to_queue_remote(
-            processor_config
-        )
-
         @ray.remote
         def get_task_status(task_id):
             celery_adapter = get_task_adapter(config=processor_config)
@@ -174,7 +162,7 @@ class TestTaskConsumerWithRayServe:
                 raise ValueError("Task failed as expected")
 
         serve.run(ServeTaskConsumer.bind())
-        task_id_ref = send_request_to_queue.remote("test_data_1")
+        task_id_ref = send_request_to_queue.remote("test_data_1", processor_config)
         task_id = ray.get(task_id_ref)
 
         def assert_result():

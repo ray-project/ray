@@ -383,7 +383,7 @@ Content-Type: application/json
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
-   schema.CeleryConfig
+   schema.CeleryAdapterConfig
    schema.TaskProcessorConfig
    schema.TaskResult
 ```
