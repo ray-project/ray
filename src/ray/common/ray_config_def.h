@@ -957,5 +957,5 @@ RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
 // The number of grpc threads spun up on the worker process. This config is consumed
 // by the raylet and then broadcast to the worker process at time of the worker
 // process getting spawned.  Setting to zero or less maintains the default
-// number of threads grpc will spawn
+// number of threads grpc will spawn.
 RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)

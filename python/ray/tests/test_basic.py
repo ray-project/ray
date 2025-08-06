@@ -253,7 +253,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
     monkeypatch.setenv("RAY_num_server_call_thread", "1")
 
-    # TODO: The for loop and the 'assert ... in {..,..}' complicates this
+    # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
     # test unnecessarily. We should only need to call the assert after
     # a single call to the worker.  However, because the thread count
     # per worker today isn't entirely static, we need to allow for this
