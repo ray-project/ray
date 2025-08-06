@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
+        GPUObject,
     )
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -269,11 +270,9 @@ class GPUObjectManager:
                 communicator.name, dst_actor, obj_id, src_rank, tensor_meta, num_readers
             )
 
-    def get_out_of_band_tensors(
-        self, object_id: str
-    ) -> "ray.experimental.gpu_object_manager.GPUObject":
+    def get_gpu_object(self, object_id: str) -> "GPUObject":
         """
-        Get the out-of-band tensors for a given object ID.
+        Get the GPU object for a given object ID.
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):

@@ -81,9 +81,6 @@ def __ray_recv__(
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
-    print(
-        f"__ray_recv__ tensors: {tensors}, obj_id: {obj_id}, num_readers: {num_readers}"
-    )
     gpu_object_store.add_object(obj_id, tensors, num_readers=num_readers)
 
 

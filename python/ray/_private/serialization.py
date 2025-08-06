@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 if TYPE_CHECKING:
     import torch
 
+    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObject
+
 import google.protobuf.message
 
 import ray._private.utils
@@ -498,7 +500,7 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        out_of_band_tensors: Dict[str, "ray.experimental.gpu_object_manager.GPUObject"],
+        gpu_objects: Dict[str, "GPUObject"],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
@@ -515,16 +517,15 @@ class SerializationContext:
                 object_tensors = None
                 if object_ref is not None:
                     object_id = object_ref.hex()
-                    if object_id in out_of_band_tensors:
-                        gpu_object = out_of_band_tensors[object_id]
+                    if object_id in gpu_objects:
+                        gpu_object = gpu_objects[object_id]
                         if gpu_object.num_readers is not None:
                             gpu_object.num_readers -= 1
+                            object_tensors = gpu_object.data
                             if gpu_object.num_readers == 0:
-                                out_of_band_tensors.pop(object_id)
-                            object_tensors = gpu_object.data
+                                gpu_objects.pop(object_id)
                         else:
-                            gpu_object = out_of_band_tensors.pop(object_id)
-                            object_tensors = gpu_object.data
+                            object_tensors = gpu_objects.pop(object_id).data
                 obj = self._deserialize_object(
                     data,
                     metadata,

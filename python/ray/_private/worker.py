@@ -870,7 +870,7 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        out_of_band_tensors: Dict[str, GPUObject] = {}
+        gpu_objects: Dict[str, GPUObject] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
@@ -881,10 +881,10 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            if object_id not in out_of_band_tensors:
-                out_of_band_tensors[
+            if object_id not in gpu_objects:
+                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
                     object_id
-                ] = self.gpu_object_manager.get_out_of_band_tensors(object_id)
+                )
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -893,7 +893,7 @@ class Worker:
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(
-                serialized_objects, object_refs, out_of_band_tensors
+                serialized_objects, object_refs, gpu_objects
             )
 
     def get_objects(
