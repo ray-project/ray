@@ -9,7 +9,6 @@ import platform
 import shutil
 import socket
 import subprocess
-import signal
 import tempfile
 import time
 from contextlib import contextmanager
@@ -1461,14 +1460,19 @@ def random_ascii_file(request):
         yield fp
 
 
-def pytest_sessionfinish(session, exitstatus):
+def pytest_sessionstart(session):
     """Called after the Session object has been created and before performing collection and entering the run test loop."""
 
-    def handle_sigterm(signum, frame):
-        print("[pytest] Caught SIGTERM! Cleaning up...")
-        session.shouldstop = True  # Gracefully stop pytest
+    # Shutdown Ray.
+    ray.shutdown()
+    # Kill the Ray cluster.
+    subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._common.utils.reset_ray_address()
 
-    signal.signal(signal.SIGTERM, handle_sigterm)
+
+def pytest_sessionfinish(session, exitstatus):
+    """Called after the test run is finished."""
 
     # Shutdown Ray.
     ray.shutdown()
