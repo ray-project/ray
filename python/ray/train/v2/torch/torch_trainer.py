@@ -210,13 +210,8 @@ class TorchTrainer(DataParallelTrainer):
         self.local_torch_trainer = None
         self.train_context = None
         if self.local_running_mode:
-            self.local_torch_trainer = LocalTorchTrainer()
-            self.train_context = LocalRunningTrainContext(
-                experiment_name=run_config.name,
-                local_world_size = self.local_torch_trainer.local_world_size,
-                local_rank = self.local_torch_trainer.local_rank,
-                dataset_shards = self.local_torch_trainer.dataset_shards,
-            )
+            self.local_torch_trainer = LocalTorchTrainer(datasets=datasets)
+            self.train_context = self.local_torch_trainer.context
         else:
             self.train_context = DistributedTrainContext()
 
