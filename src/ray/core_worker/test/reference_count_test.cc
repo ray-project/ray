@@ -834,12 +834,12 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
   // Tests putting an object with no references is ignored.
-  RAY_CHECK(store.Put(buffer, id2));
+  store.Put(buffer, id2);
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
   rc->AddLocalReference(id1, "");
-  RAY_CHECK(store.Put(buffer, id1));
+  store.Put(buffer, id1);
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
