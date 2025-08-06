@@ -748,6 +748,7 @@ def test_status_multi_app(serve_instance):
         status = yaml.safe_load(remove_ansi_escape_sequences(status_response.decode()))[
             "applications"
         ]
+
         return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
     wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
