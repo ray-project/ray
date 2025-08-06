@@ -1478,12 +1478,16 @@ def clean_up_ray():
     ray._common.utils.reset_ray_address()
 
 
+# Clean up Ray cluster before the test run starts, since sometimes bazel test times out
+# and kill the test process, without cleaning up the Ray cluster.
 def pytest_sessionstart(session):
     """Called after the Session object has been created and before performing collection and entering the run test loop."""
 
     clean_up_ray()
 
 
+# Clean up Ray cluster after the test run is finished, but this may not work if the
+# test run is killed.
 def pytest_sessionfinish(session, exitstatus):
     """Called after the test run is finished."""
 
