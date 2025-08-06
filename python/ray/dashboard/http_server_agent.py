@@ -120,9 +120,7 @@ class HttpServerAgent:
 
         self.http_host, self.http_port, *_ = site._server.sockets[0].getsockname()
         logger.info(
-            "Dashboard agent http address: %s:%s",
-            self.http_host,
-            self.http_port,
+            "Dashboard agent http address: %s:%s", self.http_host, self.http_port
         )
 
         # Dump registered http routes.
