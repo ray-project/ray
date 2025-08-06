@@ -5,15 +5,32 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 ARG PIP_REQUIREMENTS
-ARG DEBIAN_REQUIREMENTS
 
-COPY "$DEBIAN_REQUIREMENTS" .
 RUN <<EOF
 #!/bin/bash
 
-sudo apt-get update -y \
-    && sudo apt-get install -y --no-install-recommends $(cat requirements_debian_byod.txt) \
-    && sudo apt-get autoclean
+set -euo pipefail
+
+DEBIAN_REQUIREMENTS=(
+    apt-transport-https
+    ca-certificates
+    curl
+    htop
+    gnupg
+    google-cloud-sdk
+    libaio1
+    libgl1-mesa-glx
+    libglfw3
+    libjemalloc-dev
+    libosmesa6-dev
+    patchelf
+    unzip
+    zip
+)
+
+sudo apt-get update -y
+sudo apt-get install -y --no-install-recommends "${DEBIAN_REQUIREMENTS[@]}"
+sudo apt-get autoclean
 
 rm -rf /tmp/wrk
 git clone --branch 4.2.0 https://github.com/wg/wrk.git /tmp/wrk

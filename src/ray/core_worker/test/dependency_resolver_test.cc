@@ -112,6 +112,8 @@ class MockTaskManager : public MockTaskManagerInterface {
 
   void MarkTaskCanceled(const TaskID &task_id) override {}
 
+  void MarkTaskNoRetry(const TaskID &task_id) override {}
+
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
     return task;
@@ -143,29 +145,21 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   };
 
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+  void AsyncRegisterActor(const TaskSpecification &task_spec,
+                          gcs::StatusCallback callback) override {}
 
-  Status AsyncCreateActor(
+  void AsyncCreateActor(
       const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
-    return Status::OK();
-  }
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
 
-  Status AsyncRestartActorForLineageReconstruction(
+  void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+      gcs::StatusCallback callback) override {}
 
-  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                    uint64_t num_restarts_due_to_lineage_reconstruction,
-                                    gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+  void AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                  uint64_t num_restarts_due_to_lineage_reconstruction,
+                                  gcs::StatusCallback callback) override {}
 
   void AsyncWaitForActorRegisterFinish(const ActorID &,
                                        gcs::StatusCallback callback) override {
@@ -449,7 +443,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
 
-  resolver.CancelDependencyResolution(task.TaskId());
+  ASSERT_TRUE(resolver.CancelDependencyResolution(task.TaskId()));
   // Callback is not called.
   ASSERT_FALSE(ok);
   // Should not have inlined any dependencies.
