@@ -143,10 +143,10 @@ enum class RayLogLevel {
   ? RAY_IGNORE_EXPR(0)                                                                  \
   : ::ray::Voidify() &                                                                  \
           (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL)                   \
-           << " Congratulations! This means you discovered a bug in Ray that made the " \
+           << " Congratulations! You've discovered a bug in Ray that made the " \
               "system behave in an unexpected way. Please report this issue at "        \
-              "https://github.com/ray-project/ray/issues for extra credit points and "  \
-              "it'll get fixed ASAP! Check failed: " display " ")
+              "https://github.com/ray-project/ray/issues and we'll try to fix it ASAP! " \ 
+               "Check failed: " display " ")
 
 #define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
