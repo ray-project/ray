@@ -950,3 +950,6 @@ RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1
 /// for tasks with smaller sequence numbers to show up. If timed out, the task will
 /// be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
+
+/// Timeout for raylet grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)

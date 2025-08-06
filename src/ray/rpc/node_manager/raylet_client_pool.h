@@ -23,6 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 
@@ -33,13 +34,19 @@ using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class RayletClientPool {
  public:
-  /// Return an existing RayletClient if exists or connect to one if it does
-  /// not. The returned pointer is borrowed, and expected to be used briefly.
-  std::optional<std::shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(
-      ray::NodeID id);
+  /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
+  /// raylet.
+  static std::function<void()> GetDefaultUnavailableTimeoutCallback(
+      gcs::GcsClient *gcs_client,
+      rpc::RayletClientPool *raylet_client_pool,
+      const rpc::Address &addr);
+
+  /// Return an existing RayletClient if exists or nullptr if it does not.
+  /// The returned pointer is expected to be used briefly.
+  std::shared_ptr<ray::RayletClientInterface> GetByID(ray::NodeID id);
 
   /// Return an existing RayletClient if exists or connect to one if it does
-  /// not. The returned pointer is borrowed, and expected to be used briefly.
+  /// not. The returned pointer is expected to be used briefly.
   /// The function is guaranteed to return the non-nullptr.
   std::shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(
       const rpc::Address &address);
