@@ -275,7 +275,6 @@ class GPUObjectManager:
         """
         Get the out-of-band tensors for a given object ID.
         """
-        print(f"get_out_of_band_tensors object_id: {object_id}")
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
             self.fetch_object(object_id)

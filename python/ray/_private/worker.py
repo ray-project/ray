@@ -101,7 +101,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
-    pass
+    from ray.experimental.gpu_object_manager import GPUObject
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -870,9 +870,7 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        out_of_band_tensors: Dict[
-            str, "ray.experimental.gpu_object_manager.GPUObject"
-        ] = {}
+        out_of_band_tensors: Dict[str, GPUObject] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.

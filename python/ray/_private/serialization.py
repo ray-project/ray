@@ -276,8 +276,6 @@ class SerializationContext:
         ctx = ChannelContext.get_current().serialization_context
         enable_gpu_objects = out_of_band_tensors is not None
         if enable_gpu_objects:
-            # TODO:
-            print(f"reset_out_of_band_tensors: {out_of_band_tensors}")
             ctx.reset_out_of_band_tensors(out_of_band_tensors)
 
         try:
@@ -527,7 +525,6 @@ class SerializationContext:
                         else:
                             gpu_object = out_of_band_tensors.pop(object_id)
                             object_tensors = gpu_object.data
-                print(f"object_tensors: {object_tensors}")
                 obj = self._deserialize_object(
                     data,
                     metadata,
