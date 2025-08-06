@@ -1,5 +1,5 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
-vllm>=0.9.2
+vllm>=0.10.0
 # For json mode
 jsonref>=1.1.0
 jsonschema

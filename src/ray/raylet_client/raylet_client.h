@@ -24,10 +24,10 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet_client/raylet_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
@@ -297,14 +297,12 @@ class RayletClient : public RayletClientInterface {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
-                                 bool fetch_only,
-                                 const TaskID &current_task_id);
+                                 bool fetch_only);
 
-  /// Notify the raylet that this client (worker) is no longer blocked.
+  /// Tell the Raylet to cancel the get request from this worker.
   ///
-  /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
+  ray::Status CancelGetRequest();
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
@@ -325,7 +323,6 @@ class RayletClient : public RayletClientInterface {
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::StatusOr containing error status or the set of object ids that were
@@ -334,8 +331,7 @@ class RayletClient : public RayletClientInterface {
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
-      int64_t timeout_milliseconds,
-      const TaskID &current_task_id);
+      int64_t timeout_milliseconds);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.

@@ -3,6 +3,8 @@ import sys
 import pytest
 import subprocess
 import tempfile
+from unittest.mock import patch
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
@@ -133,7 +135,7 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
     try:
         cluster.start()
         ray.init()
-        wait_for_condition(lambda: len(ray.nodes()) == 2)
+        wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=20)
 
         for node in ray.nodes():
             if node["Resources"].get("CPU", 0) == 1:
@@ -179,6 +181,33 @@ def test_get_default_ray_node_labels(shutdown_only, monkeypatch):
     assert labels.get("ray.io/availability-region") == "us-central2"
     assert labels.get("ray.io/availability-zone") == "us-central2-b"
     assert labels.get("ray.io/accelerator-type") == "TPU-V4"
+
+
+def test_get_default_tpu_labels(shutdown_only, monkeypatch):
+    # Set env vars for this test
+    monkeypatch.setenv("TPU_NAME", "slice-0")
+    monkeypatch.setenv("TPU_WORKER_ID", "0")
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-32")
+    monkeypatch.setenv("TPU_TOPOLOGY", "4x8")
+
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["TPU"],
+    ), patch(
+        "ray._private.accelerators.get_accelerator_manager_for_resource",
+        return_value=TPUAcceleratorManager(),
+    ):
+        ray.init(resources={"TPU": 4})
+        node_info = ray.nodes()[0]
+        labels = node_info["Labels"]
+
+    assert labels.get("ray.io/accelerator-type") == "TPU-V6E"
+
+    # TPU specific labels for SPMD
+    assert labels.get("ray.io/tpu-slice-name") == "slice-0"
+    assert labels.get("ray.io/tpu-worker-id") == "0"
+    assert labels.get("ray.io/tpu-topology") == "4x8"
+    assert labels.get("ray.io/tpu-pod-type") == "v6e-32"
 
 
 if __name__ == "__main__":
