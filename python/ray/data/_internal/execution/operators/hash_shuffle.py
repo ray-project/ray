@@ -1304,10 +1304,7 @@ class AggregatorPool:
         Returns:
             AggregatorHealthInfo with health info or None if monitoring hasn't started.
         """
-        if (
-            not hasattr(self, "_health_monitoring_started")
-            or not self._health_monitoring_started
-        ):
+        if not self._health_monitoring_started:
             return None
 
         if self._pending_aggregators_refs is None:
