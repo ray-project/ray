@@ -143,6 +143,7 @@ from ray.includes.common cimport (
     kWorkerSetupHookKeyName,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
+    PythonGetResourcesAvailable,
     kGcsPidKey,
     CTensorTransport,
     TENSOR_TRANSPORT_OBJECT_STORE,
