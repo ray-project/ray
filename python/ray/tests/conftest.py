@@ -1467,8 +1467,8 @@ def random_ascii_file(request):
         yield fp
 
 
-def pytest_sessionstart(session):
-    """Called after the Session object has been created and before performing collection and entering the run test loop."""
+def clean_up_ray():
+    """Clean up Ray cluster."""
 
     # Shutdown Ray.
     ray.shutdown()
@@ -1476,17 +1476,18 @@ def pytest_sessionstart(session):
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
     ray._common.utils.reset_ray_address()
+
+
+def pytest_sessionstart(session):
+    """Called after the Session object has been created and before performing collection and entering the run test loop."""
+
+    clean_up_ray()
 
 
 def pytest_sessionfinish(session, exitstatus):
     """Called after the test run is finished."""
 
-    # Shutdown Ray.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
-    # Delete the cluster address just in case.
-    ray._common.utils.reset_ray_address()
+    clean_up_ray()
 
 
 """
