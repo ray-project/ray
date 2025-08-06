@@ -27,7 +27,6 @@ class RLlibGateway:
     example C++, you should be able to use the simulator very easily in connection with
     an RLlib experiment.
 
-    C++ example:
     You should use the gateway as follows in your C++ code:
 
     .. code-block:: c++
@@ -64,8 +63,8 @@ class RLlibGateway:
                 {
                     py::gil_scoped_acquire gil;
                     py::object action = rllib.attr("get_action")(
-                        env.reward,  // 0.0 if episode just started with a reset-obs.
-                        env.observation,
+                        env.reward,
+                        env.observation
                     );
                     // Apply the locally computed action in the simulation.
                     env.step(action.cast<int>());
