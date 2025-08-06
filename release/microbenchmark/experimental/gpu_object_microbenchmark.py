@@ -2,7 +2,7 @@
 import argparse
 import time
 import os
-from typing import Tuple
+from typing import Tuple, Optional
 
 import socket
 import numpy as np
@@ -11,51 +11,58 @@ import ray
 import json
 from ray._private.ray_microbenchmark_helpers import timeit
 from ray.experimental.collective import create_collective_group
-
+from dataclasses import dataclass
 
 DTYPE = torch.float16
 NUM_ITERS = 5
 
 
+@dataclass
+class BackendConfig:
+    init_actor_kwargs: dict
+    send_method_kwargs: dict
+    device: torch.device
+    collective_group_backend: Optional[str]
+
+
+BACKEND_CONFIG = {
+    "gloo": BackendConfig(
+        init_actor_kwargs={"enable_tensor_transport": True},
+        send_method_kwargs={"tensor_transport": "gloo"},
+        device=torch.device("cpu"),
+        collective_group_backend="torch_gloo",
+    ),
+    "object": BackendConfig(
+        init_actor_kwargs={},
+        send_method_kwargs={},
+        device=torch.device("cpu"),
+        collective_group_backend=None,
+    ),
+    "nccl": BackendConfig(
+        init_actor_kwargs={
+            "num_gpus": 1,
+            "num_cpus": 0,
+            "enable_tensor_transport": True,
+        },
+        send_method_kwargs={"tensor_transport": "nccl"},
+        device=torch.device("cuda:0"),
+        collective_group_backend="nccl",
+    ),
+}
+
+
 @ray.remote
-class GlooActor:
-    def __init__(self) -> None:
-        self.device = torch.device("cpu")
-
-    @ray.method(tensor_transport="gloo")
-    def send(self, shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor:
-        seed = int(np.random.randint(100))
-        return torch.ones(shape, dtype=dtype, device=self.device) * seed
-
-    def recv(self, tensor: torch.Tensor) -> torch.Tensor:
-        return tensor
-
-
-@ray.remote
-class ObjectStoreActor:
-    def __init__(self) -> None:
-        self.device = torch.device("cpu")
+class Actor:
+    def __init__(self, device: torch.device) -> None:
+        self.device = device
 
     def send(self, shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor:
         seed = int(np.random.randint(100))
         return torch.ones(shape, dtype=dtype, device=self.device) * seed
 
     def recv(self, tensor: torch.Tensor) -> torch.Tensor:
-        return tensor
-
-
-@ray.remote(num_gpus=1, num_cpus=0)
-class NCCLActor:
-    def __init__(self) -> None:
-        self.device = torch.device("cuda")
-
-    @ray.method(tensor_transport="nccl")
-    def send(self, shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor:
-        seed = int(np.random.randint(100))
-        return torch.ones(shape, dtype=dtype, device=self.device) * seed
-
-    def recv(self, tensor: torch.Tensor) -> torch.Tensor:
-        return tensor
+        assert tensor.device == self.device
+        return b"x"
 
 
 def _exec_p2p_transfer(
@@ -65,23 +72,27 @@ def _exec_p2p_transfer(
     sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
     receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
 ):
-    BACKEND_CONFIG = {
-        "gloo": (GlooActor, "torch_gloo"),
-        "object": (ObjectStoreActor, None),
-        "nccl": (NCCLActor, "nccl"),
-    }
     if backend not in BACKEND_CONFIG:
         raise ValueError(f"Unsupported backend: {backend}")
-    actor_cls, group_backend = BACKEND_CONFIG[backend]
-    sender = actor_cls.options(scheduling_strategy=sender_hint).remote()
-    receiver = actor_cls.options(scheduling_strategy=receiver_hint).remote()
-    if group_backend is not None:
-        create_collective_group([sender, receiver], backend=group_backend)
+    backend_config = BACKEND_CONFIG[backend]
+    device = backend_config.device
+    init_actor_kwargs = backend_config.init_actor_kwargs
+    send_method_kwargs = backend_config.send_method_kwargs
+    collective_group_backend = backend_config.collective_group_backend
+    sender = Actor.options(scheduling_strategy=sender_hint, **init_actor_kwargs).remote(
+        device
+    )
+    receiver = Actor.options(
+        scheduling_strategy=receiver_hint, **init_actor_kwargs
+    ).remote(device)
+    if collective_group_backend is not None:
+        create_collective_group([sender, receiver], backend=collective_group_backend)
 
     def _run():
-        ref = sender.send.remote(shape, DTYPE)
+        ref = sender.send.options(**send_method_kwargs).remote(shape, DTYPE)
         ref2 = receiver.recv.remote(ref)
-        ray.get(ref2)
+        result = ray.get(ref2)
+        assert result == b"x"
 
     results = timeit(label, _run)
 
@@ -135,7 +146,7 @@ def main() -> None:
     p.add_argument(
         "--tensor-size-bytes",
         type=int,
-        default=1_000_000,
+        default=100_000_000,
     )
     p.add_argument(
         "--distributed",
@@ -150,7 +161,6 @@ def main() -> None:
             "env_vars": {
                 # "NCCL_DEBUG": "INFO",
                 # "UCX_TLS": "^gdr_copy",
-                "RAY_worker_register_timeout_seconds": "120",
                 # Needed for torch distributed.
                 "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
                 "MASTER_PORT": "8888",
