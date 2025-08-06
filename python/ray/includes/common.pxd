@@ -44,10 +44,8 @@ cdef extern from * namespace "polyfill" nogil:
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    # TODO(ryw) in Cython 3.x we can directly use `cdef enum class CStatusCode`
-    cdef cppclass CStatusCode "ray::StatusCode":
+    cdef enum class CStatusCode "ray::StatusCode":
         pass
-    cdef CStatusCode CStatusCode_OK "ray::StatusCode::OK"
     c_bool operator==(CStatusCode lhs, CStatusCode rhs)
 
     cdef cppclass CRayStatus "ray::Status":
