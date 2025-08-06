@@ -21,8 +21,8 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/ipc/client_connection.h"
 
 namespace ray::raylet {
 
