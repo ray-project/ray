@@ -30,7 +30,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   if (task_spec.IsActorCreationTask()) {
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
-               task_spec.ExecuteOutOfOrder());
+               task_spec.AllowOutOfOrderExecution());
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -163,7 +163,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         }
       }
     }
-    if (status.ShouldExitWorker()) {
+    if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
+        status.IsCreationTaskError()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
@@ -174,8 +175,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
+      RAY_CHECK_OK(status);
       RAY_CHECK(objects_valid);
-      send_reply_callback(status, nullptr, nullptr);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
 
@@ -196,28 +198,29 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
-      if (execute_out_of_order_) {
-        it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::make_unique<OutOfOrderActorSchedulingQueue>(
-                              task_execution_service_,
-                              waiter_,
-                              task_event_buffer_,
-                              pool_manager_,
-                              fiber_state_manager_,
-                              is_asyncio_,
-                              fiber_max_concurrency_,
-                              concurrency_groups_))
-                 .first;
-      } else {
-        it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::make_unique<ActorSchedulingQueue>(task_execution_service_,
-                                                                 waiter_,
-                                                                 task_event_buffer_,
-                                                                 pool_manager_))
-                 .first;
-      }
+      it = actor_scheduling_queues_
+               .emplace(
+                   task_spec.CallerWorkerId(),
+                   allow_out_of_order_execution_
+                       ? std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<OutOfOrderActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 fiber_state_manager_,
+                                 is_asyncio_,
+                                 fiber_max_concurrency_,
+                                 concurrency_groups_))
+                       : std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<ActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 RayConfig::instance()
+                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
+               .first;
     }
 
     it->second->Add(request.sequence_number(),
@@ -269,19 +272,18 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
-/// Note that this method is only used for asyncio actor.
 void TaskReceiver::SetupActor(bool is_asyncio,
                               int fiber_max_concurrency,
-                              bool execute_out_of_order) {
+                              bool allow_out_of_order_execution) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
-  // Note: It's possible to have execute_out_of_order as false but max_concurrency > 1,
-  // from the C++ / Java API's.
-  RAY_CHECK(is_asyncio ? execute_out_of_order : true)
-      << "execute_out_of_order must be true if is_asyncio is true";
+  // Note: It's possible to have allow_out_of_order_execution as false but max_concurrency
+  // > 1, from the C++ / Java API's.
+  RAY_CHECK(is_asyncio ? allow_out_of_order_execution : true)
+      << "allow_out_of_order_execution must be true if is_asyncio is true";
   is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
-  execute_out_of_order_ = execute_out_of_order;
+  allow_out_of_order_execution_ = allow_out_of_order_execution;
 }
 
 void TaskReceiver::Stop() {

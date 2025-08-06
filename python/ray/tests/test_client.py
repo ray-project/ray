@@ -107,8 +107,6 @@ def test_client_thread_safe(call_ray_start_shared):
         b.join()
 
 
-# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-# @pytest.mark.skip()
 def test_client_mode_hook_thread_safe(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared):
         with enable_client_mode():
@@ -653,7 +651,7 @@ def test_startup_retry(call_ray_start_shared):
     thread = threading.Thread(target=run_client, daemon=True)
     thread.start()
     time.sleep(3)
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     thread.join()
     server.stop(0)
     ray_client._inside_client_test = False
@@ -673,7 +671,7 @@ def test_dataclient_server_drop(call_ray_start_shared):
         time.sleep(2)
         server.stop(0)
 
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     ray_client.connect("localhost:50051")
     thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()

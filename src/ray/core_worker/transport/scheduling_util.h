@@ -40,12 +40,12 @@ class InboundRequest {
 
   void Accept();
   void Cancel(const Status &status);
-  bool CanExecute() const;
   ray::TaskID TaskID() const;
   uint64_t AttemptNumber() const;
   const std::string &ConcurrencyGroupName() const;
   ray::FunctionDescriptor FunctionDescriptor() const;
-  void MarkDependenciesSatisfied();
+  bool DependenciesResolved() const;
+  void MarkDependenciesResolved();
   const std::vector<rpc::ObjectReference> &PendingDependencies() const;
   const TaskSpecification &TaskSpec() const;
 
@@ -71,7 +71,7 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  explicit DependencyWaiterImpl(DependencyWaiterInterface &dependency_client);
+  explicit DependencyWaiterImpl(RayletClientInterface &dependency_client);
 
   void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override;
@@ -82,7 +82,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   absl::flat_hash_map<int64_t, std::function<void()>> requests_;
-  DependencyWaiterInterface &dependency_client_;
+  RayletClientInterface &dependency_client_;
 };
 
 }  // namespace core

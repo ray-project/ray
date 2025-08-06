@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -26,7 +27,8 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/task_finisher.h"
+#include "ray/core_worker/task_manager_interface.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -37,14 +39,6 @@ namespace ray {
 namespace core {
 
 class ActorManager;
-
-class TaskResubmissionInterface {
- public:
-  virtual std::optional<rpc::ErrorType> ResubmitTask(
-      const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
-
-  virtual ~TaskResubmissionInterface() = default;
-};
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
@@ -173,16 +167,20 @@ class ObjectRefStream {
   int64_t total_num_object_consumed_{};
 };
 
-class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
+class TaskManager : public TaskManagerInterface {
  public:
-  TaskManager(CoreWorkerMemoryStore &in_memory_store,
-              ReferenceCounter &reference_counter,
-              PutInLocalPlasmaCallback put_in_local_plasma_callback,
-              RetryTaskCallback retry_task_callback,
-              std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
-              PushErrorCallback push_error_callback,
-              int64_t max_lineage_bytes,
-              worker::TaskEventBuffer &task_event_buffer)
+  TaskManager(
+      CoreWorkerMemoryStore &in_memory_store,
+      ReferenceCounter &reference_counter,
+      PutInLocalPlasmaCallback put_in_local_plasma_callback,
+      RetryTaskCallback retry_task_callback,
+      std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
+      PushErrorCallback push_error_callback,
+      int64_t max_lineage_bytes,
+      worker::TaskEventBuffer &task_event_buffer,
+      std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
+          client_factory,
+      std::shared_ptr<gcs::GcsClient> gcs_client)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -190,7 +188,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         queue_generator_resubmit_(std::move(queue_generator_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
-        task_event_buffer_(task_event_buffer) {
+        task_event_buffer_(task_event_buffer),
+        get_actor_rpc_client_callback_(std::move(client_factory)),
+        gcs_client_(std::move(gcs_client)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -208,36 +208,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         });
   }
 
-  /// Add a task that is pending execution.
-  ///
-  /// The local ref count for all return refs (excluding actor creation tasks)
-  /// will be initialized to 1 so that the ref is considered in scope before
-  /// returning to the language frontend. The caller is responsible for
-  /// decrementing the ref count once the frontend ref has gone out of scope.
-  ///
-  /// \param[in] caller_address The rpc address of the calling task.
-  /// \param[in] spec The spec of the pending task.
-  /// \param[in] max_retries Number of times this task may be retried
-  /// on failure.
-  /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
                                                    const TaskSpecification &spec,
                                                    const std::string &call_site,
-                                                   int max_retries = 0);
+                                                   int max_retries = 0) override;
 
-  /// Resubmit a task that has completed execution before. This is used to
-  /// reconstruct objects stored in Plasma that were lost.
-  ///
-  /// \param[in] task_id The ID of the task to resubmit.
-  /// \param[out] task_deps The object dependencies of the resubmitted task,
-  /// i.e. all arguments that were not inlined in the task spec. The caller is
-  /// responsible for making sure that these dependencies become available, so
-  /// that the resubmitted task can run. This is only populated if the task was
-  /// not already pending and was successfully resubmitted.
-  /// \return nullopt if the task was successfully resubmitted (task or actor being
-  /// scheduled, but no guarantee on completion), or was already pending. Return the
-  /// appopriate error type to propagate for the object if the task was not successfully
-  /// resubmitted.
   std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
                                              std::vector<ObjectID> *task_deps) override;
 
@@ -246,13 +221,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
 
-  /// Write return objects for a pending task to the memory store.
-  ///
-  /// \param[in] task_id ID of the pending task.
-  /// \param[in] reply Proto response to a direct actor or task call.
-  /// \param[in] worker_addr Address of the worker that executed the task.
-  /// \param[in] is_application_error Whether this is an Exception return.
-  /// \return Void.
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr,
@@ -434,33 +402,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Called by submitter when a generator task marked for resubmission for intermediate
-  /// object recovery comes back from the executing worker. We mark the attempt as failed
-  /// and resubmit it, so we can recover the intermediate return.
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override;
 
-  /// Returns true if task can be retried.
-  ///
-  /// \param[in] task_id ID of the task to be retried.
-  /// \return true if task is scheduled to be retried.
   bool RetryTaskIfPossible(const TaskID &task_id,
                            const rpc::RayErrorInfo &error_info) override;
 
-  /// A pending task failed. This will either retry the task or mark the task
-  /// as failed if there are no retries left.
-  ///
-  /// \param[in] task_id ID of the pending task.
-  /// \param[in] error_type The type of the specific error.
-  /// \param[in] status Optional status message.
-  /// \param[in] ray_error_info The error information of a given error type.
-  /// Nullptr means that there's no error information.
-  /// TODO(sang): Remove nullptr case. Every error message should have metadata.
-  /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed. If this is set to false, then the caller is
-  /// responsible for later failing or completing the task.
-  /// \param[in] fail_immediately whether to fail the task and ignore
-  /// the retries that are available.
-  /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,
@@ -468,16 +414,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override;
 
-  /// A pending task failed. This will mark the task as failed.
-  /// This doesn't always mark the return object as failed
-  /// depending on mark_task_object_failed.
-  ///
-  /// \param[in] task_id ID of the pending task.
-  /// \param[in] error_type The type of the specific error.
-  /// \param[in] status Optional status message.
-  /// \param[in] ray_error_info The error information of a given error type.
-  /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed.
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status = nullptr,
@@ -495,25 +431,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       const rpc::RayErrorInfo *ray_error_info,
       const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// A task's dependencies were inlined in the task spec. This will decrement
-  /// the ref count for the dependency IDs. If the dependencies contained other
-  /// ObjectIDs, then the ref count for these object IDs will be incremented.
-  ///
-  /// \param[in] inlined_dependency_ids The args that were originally passed by
-  /// reference into the task, but have now been inlined.
-  /// \param[in] contained_ids Any ObjectIDs that were newly inlined in the
-  /// task spec, because a serialized copy of the ID was contained in one of
-  /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
-  /// Set number of retries to zero for a task that is being canceled.
-  ///
-  /// \param[in] task_id to cancel.
-  /// \return Whether the task was pending and was marked for cancellation.
-  bool MarkTaskCanceled(const TaskID &task_id) override;
+  void MarkTaskNoRetry(const TaskID &task_id) override;
 
-  /// Return the spec for a pending task.
+  void MarkTaskCanceled(const TaskID &task_id) override;
+
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
@@ -525,10 +449,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Whether the task can be submitted for execution.
   bool IsTaskSubmissible(const TaskID &task_id) const;
 
-  /// Return whether the task is pending.
-  ///
-  /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const override;
 
   /// Return whether the task is scheduled adn waiting for execution.
@@ -550,17 +470,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     return total_lineage_footprint_bytes_;
   }
 
-  /// Record that the given task's dependencies have been created and the task
-  /// can now be scheduled for execution.
-  ///
-  /// \param[in] task_id The task that is now scheduled.
   void MarkDependenciesResolved(const TaskID &task_id) override;
 
-  /// Record that the given task is scheduled and wait for execution.
-  ///
-  /// \param[in] task_id The task that is will be running.
-  /// \param[in] node_id The node id that this task wil be running.
-  /// \param[in] worker_id The worker id that this task wil be running.
   void MarkTaskWaitingForExecution(const TaskID &task_id,
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override;
@@ -690,6 +601,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Whether this is a task retry due to task failure.
     bool is_retry_ = false;
   };
+
+  /// Set the task retry number to 0. If canceled is true, mark the task as
+  // canceled.
+  void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. Returns true if the task's return object was returned
@@ -872,8 +788,23 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
 
+  /// Callback to get the actor RPC client.
+  std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(
+      const ActorID &actor_id)>
+      get_actor_rpc_client_callback_;
+
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   friend class TaskManagerTest;
 };
+
+/// Extract plasma dependencies from a task specification.
+/// This includes arguments passed by reference, inlined GPU objects,
+/// inlined references, and actor creation dummy object IDs.
+///
+/// \param[in] spec The task specification to extract dependencies from.
+/// \return Vector of ObjectIDs representing plasma dependencies.
+std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec);
 
 }  // namespace core
 }  // namespace ray

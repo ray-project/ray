@@ -22,12 +22,12 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "gtest/gtest_prod.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
@@ -46,6 +46,7 @@ class WorkerInterface {
   virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
+  virtual void KillAsync(instrumented_io_context &io_service, bool force = false) = 0;
   virtual void MarkBlocked() = 0;
   virtual void MarkUnblocked() = 0;
   virtual bool IsBlocked() const = 0;
@@ -136,7 +137,7 @@ class WorkerInterface {
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
-class Worker : public WorkerInterface {
+class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
@@ -154,6 +155,12 @@ class Worker : public WorkerInterface {
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
+  /// Kill the worker process. This is idempotent.
+  /// \param io_service for scheduling the graceful period timer.
+  /// \param force true to kill immediately, false to give time for the worker to clean up
+  /// and exit gracefully.
+  /// \return Void.
+  void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -295,8 +302,8 @@ class Worker : public WorkerInterface {
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;
-  /// Whether the worker is dead.
-  bool dead_;
+  /// Whether the worker is being killed by the KillAsync or MarkDead method.
+  std::atomic<bool> killing_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;

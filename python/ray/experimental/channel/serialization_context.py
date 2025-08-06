@@ -144,12 +144,17 @@ class _SerializationContext:
         target_device: Device,
     ):
 
-        # Found a placeholder for a tensor that was serialized via NCCL.
+        # Found a placeholder for a tensor that was serialized via accelerator.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
             placeholder = val
             self._deserialized_tensor_placeholders.add(placeholder)
-            assert placeholder < len(self._out_of_band_tensors)
+            assert placeholder < len(self._out_of_band_tensors), (
+                "placeholder",
+                placeholder,
+                "out_of_band_tensors",
+                self._out_of_band_tensors,
+            )
             tensor = self._out_of_band_tensors[placeholder]
             if target_device == Device.CPU:
                 tensor = tensor.to("cpu")
