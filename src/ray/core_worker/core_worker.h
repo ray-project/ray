@@ -1288,7 +1288,6 @@ class CoreWorker {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_user_callback The user-provided Python callback object that
   /// will be called inside of `success_callback`.
-
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
                 void *python_user_callback);

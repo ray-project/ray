@@ -379,7 +379,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
-
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Register a new driver.

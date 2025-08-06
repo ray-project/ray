@@ -279,15 +279,15 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  .void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+  void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
   /// \param spilled_url The url of the spilled object.
-  .void PushFromFilesystem(const ObjectID &object_id,
-                           const NodeID &node_id,
-                           const std::string &spilled_url);
+  void PushFromFilesystem(const ObjectID &object_id,
+                          const NodeID &node_id,
+                          const std::string &spilled_url);
 
   /// The internal implementation of pushing an object.
   ///
@@ -350,12 +350,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param end_time_us The time when the object manager finished sending the
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
-  .void HandleSendFinished(const ObjectID &object_id,
-                           const NodeID &node_id,
-                           uint64_t chunk_index,
-                           double start_time_us,
-                           double end_time_us,
-                           ray::Status status);
+  void HandleSendFinished(const ObjectID &object_id,
+                          const NodeID &node_id,
+                          uint64_t chunk_index,
+                          double start_time_us,
+                          double end_time_us,
+                          ray::Status status);
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);

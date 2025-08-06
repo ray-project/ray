@@ -510,8 +510,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  .void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
+  void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
+                                   const uint8_t *message_data);
 
   /// Handle a `GetResourceLoad` request.
   void HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
