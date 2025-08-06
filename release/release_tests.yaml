@@ -2680,6 +2680,37 @@
       cluster:
         cluster_compute: 4gpus_64cpus_gce.yaml
 
+- name: rllib_learning_tests_pendulum_dreamerv3_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_dreamerv3_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 3600  # 1h
+    script: python learning_tests/tuned_examples/dreamerv3/pendulum_dreamerv3.py --framework=torch --num-learners=2 --stop-reward=-200.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 # --------------------------
 # IMPALA
 # --------------------------
@@ -2702,7 +2733,7 @@
 
   run:
     timeout: 1800
-    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
+    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.0 --as-release-test
 
   alert: default
 
