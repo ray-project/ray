@@ -479,6 +479,6 @@ class ResourceAndLabelSpec:
                     )
 
             if num_accelerators > 0:
-                return accelerator_manager, num_accelerators
+                return accelerator_manager(), num_accelerators
 
         return None, 0

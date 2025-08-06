@@ -10,7 +10,7 @@ import pandas as pd
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.train.v2._internal.callbacks.accelerators import (
-    create_placement_group_with_spmd,
+    reserve_tpu_slice,
 )
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
@@ -283,20 +283,17 @@ class TrainController:
             ControllerError if the worker group failed to start.
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
-        placement_group_specs = None
+        placement_group = None
         backend_config = self._train_run_context.backend_config
-        run_config = self._train_run_context.run_config
 
         if getattr(backend_config, "use_tpu", False):
             try:
-                placement_group_specs = create_placement_group_with_spmd(
+                placement_group = reserve_tpu_slice(
                     num_workers=num_workers,
                     resources_per_worker=resources_per_worker,
-                    backend_config=backend_config,
-                    run_config=run_config,
+                    topology=getattr(backend_config, "topology", None),
+                    accelerator_type=getattr(backend_config, "accelerator_type", None),
                 )
-                if placement_group_specs is None:
-                    raise RuntimeError("Failed to create placement group specs.")
             except Exception as e:
                 return ControllerError(e)
 
@@ -306,7 +303,7 @@ class TrainController:
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            placement_group_specs=placement_group_specs,
+            placement_group=placement_group,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
