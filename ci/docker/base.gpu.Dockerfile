@@ -7,6 +7,7 @@ ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
 ARG PYTHON=3.9
+ARG RAY_INSTALL_JAVA=false
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -17,7 +18,7 @@ ENV CI=true
 ENV PYTHON=$PYTHON
 ENV RAY_USE_RANDOM_PORTS=1
 ENV RAY_DEFAULT_BUILD=1
-ENV RAY_INSTALL_JAVA=0
+ENV RAY_INSTALL_JAVA=$RAY_INSTALL_JAVA
 ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
@@ -40,6 +41,14 @@ apt-get install -y -qq \
 ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
 ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy
 ln -s /usr/bin/clang-12 /usr/bin/clang
+
+# Conditionally install Java + Maven
+if [[ "$RAY_INSTALL_JAVA" == "1" || "$RAY_INSTALL_JAVA" == "true" ]]; then
+  echo "Installing OpenJDK + Maven..."
+  apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
+else
+  echo "Skipping Java installation (RAY_INSTALL_JAVA=$RAY_INSTALL_JAVA)"
+fi
 
 # Install docker CLI
 mkdir -p /etc/apt/keyrings
