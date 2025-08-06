@@ -145,9 +145,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     auto task_manager = std::make_shared<TaskManager>(
         *memory_store_,
         *reference_counter_,
-        [this](const RayObject &object, const ObjectID &object_id) {
-          return Status::OK();
-        },
+        [](const RayObject &object, const ObjectID &object_id) { return Status::OK(); },
         [](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {},
         [](const TaskSpecification &spec) { return false; },
         [](const JobID &job_id,
@@ -203,7 +201,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         *task_manager,
         *actor_creator,
         /*tensor_transport_getter=*/
-        [this](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
         [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
         io_service_,
         reference_counter_);
