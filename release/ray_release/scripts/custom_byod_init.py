@@ -155,8 +155,10 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
             "instance_type": "release-medium",
             "commands": [
                 "pip3 install --user -U pip",
-                "pip3 install --user -r release/requirements_buildkite.txt",
+                "pip3 install --user -r release/requirements_buildkite.txt", 
                 "pip3 install --user --no-deps -e release/",
+                "pip3 install --user awscli",
+                "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
                 f"python release/ray_release/scripts/custom_byod_build.py --image-name {image} --base-image {base_image} --post-build-script {post_build_script}"
             ],
         }
