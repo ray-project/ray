@@ -213,13 +213,23 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
-def test_optimize_reorder(ray_start_regular_shared):
-    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
-    print("Stats", ds.stats())
+def test_optimize_randomize_block_order(ray_start_regular_shared):
+    """Test that randomize_block_order is not fused with other operators."""
+    ds = (
+        ray.data.range(10)
+        .map_batches(dummy_map)
+        .randomize_block_order()
+        .map_batches(dummy_map)
+        .materialize()
+    )
     expect_stages(
         ds,
         2,
-        ["ReadRange->MapBatches(dummy_map)", "RandomizeBlockOrder"],
+        [
+            "ReadRange->MapBatches(dummy_map)",
+            "RandomizeBlockOrder",
+            "MapBatches(dummy_map)",
+        ],
     )
 
     ds2 = (
