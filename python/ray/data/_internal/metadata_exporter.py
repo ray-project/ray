@@ -16,11 +16,11 @@ from ray._private.event.export_event_logger import (
 from ray.core.generated.export_dataset_metadata_pb2 import (
     ExportDatasetMetadata as ProtoDatasetMetadata,
 )
-from ray.data.context import DataContext
 from ray.dashboard.modules.metrics.dashboards.common import Panel
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     OPERATOR_PANELS,
 )
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data import DataContext
