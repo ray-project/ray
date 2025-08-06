@@ -61,9 +61,9 @@ class CoreWorkerClientPool {
   void Disconnect(ray::NodeID node_id);
 
  private:
-  FRIEND_TEST(CoreWorkerClientPoolTest, TestGC);
-  FRIEND_TEST(DefaultUnavailableTimeoutCallbackTest, NodeDeath);
-  FRIEND_TEST(DefaultUnavailableTimeoutCallbackTest, WorkerDeath);
+  friend void AssertID(WorkerID worker_id,
+                       CoreWorkerClientPool &client_pool,
+                       bool contains);
 
   /// Try to remove some idle clients to free memory.
   /// It doesn't go through the entire list and remove all idle clients.
