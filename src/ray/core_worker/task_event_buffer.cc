@@ -396,8 +396,8 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   send_ray_events_to_aggregator_enabled_ =
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
 
-  // We want to make sure that only one of the event export mechanism is enables. And
-  // if both are enables, we will use the event aggregator instead of the export API.
+  // We want to make sure that only one of the event export mechanism is enabled. And
+  // if both are enabled, we will use the event aggregator instead of the export API.
   // This code will be removed when we deprecate the export API implementation.
   export_event_write_enabled_ = !send_ray_events_to_aggregator_enabled_ &&
                                 TaskEventBufferImpl::IsExportAPIEnabledTask();
