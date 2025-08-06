@@ -425,11 +425,7 @@ def test_databricks_uc_datasource_empty_result():
                 override_num_blocks=1,
             )
 
-            result_batches = list(ds.iter_batches(batch_format="pyarrow"))
-            assert len(result_batches) == 1
-            batch = result_batches[0]
-            assert isinstance(batch, pa.Table)
-            assert batch.num_rows == 0
+            assert ds.count() == 0
 
 
 if __name__ == "__main__":

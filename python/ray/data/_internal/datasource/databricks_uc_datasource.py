@@ -108,6 +108,7 @@ class DatabricksUCDatasource(Datasource):
             )
 
         chunks = manifest.get("chunks", [])
+
         # Make chunks metadata are ordered by index.
         chunks = sorted(chunks, key=lambda x: x["chunk_index"])
         num_chunks = len(chunks)
@@ -127,7 +128,7 @@ class DatabricksUCDatasource(Datasource):
                 )
 
                 def empty_read_fn():
-                    yield pa.Table.from_batches([])
+                    yield pa.Table.from_pydict({})
 
                 return ReadTask(read_fn=empty_read_fn, metadata=metadata)
 
