@@ -241,7 +241,9 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     return proto_dataset_metadata
 
 
-def _to_proto_dashboard_panel(panel: Panel) -> ProtoDatasetMetadata.DashboardPanelMetadata:
+def _to_proto_dashboard_panel(
+    panel: Panel,
+) -> ProtoDatasetMetadata.DashboardPanelMetadata:
     """Convert Dashboard Panel to protobuf format."""
     proto_panel = ProtoDatasetMetadata.DashboardPanelMetadata(
         id=str(panel.id),
