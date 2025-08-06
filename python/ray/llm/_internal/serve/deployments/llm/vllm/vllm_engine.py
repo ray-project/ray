@@ -56,7 +56,11 @@ def _get_vllm_engine_config(
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    from vllm.usage.usage_lib import UsageContext
+
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
