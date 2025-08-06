@@ -6,8 +6,7 @@ Joining datasets
 
 .. note:: This is a new feature released in Ray 2.46. Note, this is an experimental feature and some things might not work as expected.
 
-Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types (left/right/full outer, inner, etc) based
-on the provided key columns like following:
+Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types (inner, outer, semi, anti) based on the provided key columns like following:
 
 .. testcode::
 
@@ -27,6 +26,19 @@ on the provided key columns like following:
         num_partitions=2,
         on=("id",),
     )
+
+Ray Data supports following join types (check out `Dataset.join` docs for up-to-date list):
+
+**Inner/Outer Joins:**
+- Inner, Left Outer, Right Outer, Full Outer
+
+**Semi Joins:**
+- Left Semi, Right Semi (returns all rows that have at least one matching row in the other table,
+only returning columns from the requested side)
+
+**Anti Joins:**
+- Left Anti, Right Anti (return rows that have no matching rows in the other table, only returning
+columns from the requested side)
 
 Internally joins are currently powered by the :ref:`hash-shuffle backend <hash-shuffle>`.
 
