@@ -48,7 +48,7 @@ MAX_STEPS = MAX_EPOCHS * STEPS_PER_EPOCH
 # Transformers Traienr Configurations
 CONFIGURATIONS = {
     "epoch_gpu": {
-        "evaluation_strategy": "epoch",
+        "eval_strategy": "epoch",
         "save_strategy": "epoch",
         "logging_strategy": "epoch",
         "eval_steps": None,
@@ -57,7 +57,7 @@ CONFIGURATIONS = {
         "no_cuda": False,
     },
     "steps_gpu": {
-        "evaluation_strategy": "steps",
+        "eval_strategy": "steps",
         "save_strategy": "steps",
         "logging_strategy": "steps",
         "eval_steps": STEPS_PER_EPOCH,
@@ -66,7 +66,7 @@ CONFIGURATIONS = {
         "no_cuda": False,
     },
     "steps_cpu": {
-        "evaluation_strategy": "steps",
+        "eval_strategy": "steps",
         "save_strategy": "steps",
         "logging_strategy": "steps",
         "eval_steps": STEPS_PER_EPOCH,
@@ -103,7 +103,7 @@ def train_func(config):
     # HF Transformers Trainer
     training_args = TrainingArguments(
         f"{MODEL_NAME}-wikitext2",
-        evaluation_strategy=config["evaluation_strategy"],
+        eval_strategy=config["eval_strategy"],
         logging_strategy=config["logging_strategy"],
         save_strategy=config["save_strategy"],
         eval_steps=config["eval_steps"],

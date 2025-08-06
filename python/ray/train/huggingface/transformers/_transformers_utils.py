@@ -53,12 +53,12 @@ class RayTrainReportCallback(TrainerCallback):
     Suppose the monitoring metric is reported from evaluation stage:
 
     Some valid configurations:
-        - evaluation_strategy == save_strategy == "epoch"
-        - evaluation_strategy == save_strategy == "steps", save_steps % eval_steps == 0
+        - eval_strategy == save_strategy == "epoch"
+        - eval_strategy == save_strategy == "steps", save_steps % eval_steps == 0
 
     Some invalid configurations:
-        - evaluation_strategy != save_strategy
-        - evaluation_strategy == save_strategy == "steps", save_steps % eval_steps != 0
+        - eval_strategy != save_strategy
+        - eval_strategy == save_strategy == "steps", save_steps % eval_steps != 0
 
     """
 
