@@ -9,6 +9,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -37,7 +38,7 @@ from ray.data._internal.logging import (
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
 
@@ -86,6 +87,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_id = dataset_id
+        self._has_op_scheduled: Optional[Dict[PhysicalOperator, bool]] = None
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
@@ -187,6 +189,7 @@ class StreamingExecutor(Executor, threading.Thread):
             execution_id=self._dataset_id,
         )
 
+        self._has_op_scheduled = dict.fromkeys(self._topology, False)
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
         self._output_node = dag, self._topology[dag]
@@ -260,11 +263,17 @@ class StreamingExecutor(Executor, threading.Thread):
                 # Set the appropriate description that summarizes
                 # the result of dataset execution.
                 if exception is None:
+                    StatsManager.update_dataset_metadata_state(
+                        self._dataset_id, DatasetState.FINISHED.name
+                    )
                     prog_bar_msg = (
                         f"{OK_PREFIX} Dataset {self._dataset_id} execution finished in "
                         f"{self._final_stats.time_total_s:.2f} seconds"
                     )
                 else:
+                    StatsManager.update_dataset_metadata_state(
+                        self._dataset_id, DatasetState.FAILED.name
+                    )
                     prog_bar_msg = (
                         f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
                     )
@@ -314,6 +323,9 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the output node's outqueue.
         """
         exc: Optional[Exception] = None
+        StatsManager.update_dataset_metadata_state(
+            self._dataset_id, DatasetState.RUNNING.name
+        )
         try:
             # Run scheduling loop until complete.
             while True:
@@ -453,6 +465,11 @@ class StreamingExecutor(Executor, threading.Thread):
                 break
 
             topology[op].dispatch_next_task()
+            if not self._has_op_scheduled.get(op, False):
+                StatsManager.update_dataset_metadata_operator_state(
+                    self._dataset_id, op.id, DatasetState.RUNNING.name
+                )
+                self._has_op_scheduled[op] = True
 
             self._resource_manager.update_usages()
 
@@ -475,6 +492,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Log metrics of newly completed operators.
         for op in topology:
             if op.completed() and not self._has_op_completed[op]:
+                StatsManager.update_dataset_metadata_operator_state(
+                    self._dataset_id, op.id, DatasetState.FINISHED.name
+                )
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
@@ -548,7 +568,9 @@ class StreamingExecutor(Executor, threading.Thread):
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
             "total_rows": last_op.num_output_rows_total(),
-            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
+            "end_time": time.time()
+            if state in (DatasetState.FINISHED.name, DatasetState.FAILED.name)
+            else None,
             "operators": {
                 f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
