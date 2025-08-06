@@ -3320,8 +3320,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // NOTE: This needs to be done after adding reference to reference counter
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgObjectId(i)));
+        memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                           task.ArgObjectId(i));
       }
     } else {
       // A pass-by-value argument.
