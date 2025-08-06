@@ -785,41 +785,15 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
->>>>>>> 60c9e0c4ea (uncomment tests)
-=======
->>>>>>> afaa8accf6 (update)
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
-<<<<<<< HEAD
-<<<<<<< HEAD
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
               CompareRayEventsData(request.events_data(), expected_ray_events_data);
             }),
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
-=======
-                       const rpc::ClientCallback<rpc::events::AddEventsReply>
-                       &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_events_data);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status),
-                std::move(reply)))));
->>>>>>> 60c9e0c4ea (uncomment tests)
-=======
-                       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_events_data);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
->>>>>>> afaa8accf6 (update)
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
