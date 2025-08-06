@@ -153,18 +153,7 @@ class GPUObjectStore:
 
     def get_object(self, obj_id: str) -> Optional[GPUObject]:
         with self._lock:
-            gpu_object_metadata = self._gpu_object_store[obj_id]
-            print(
-                f"get_object obj_id: {obj_id}, gpu_object_metadata: {gpu_object_metadata}"
-            )
-            # If the GPU object is the primary copy, it means the transfer
-            # is intra-actor. In this case, we should not remove the GPU
-            # object after it is consumed `num_readers` times, because the
-            # GPU object reference may be used again. Instead, we should
-            # wait for the GC callback to clean it up.
-            if not gpu_object_metadata.is_primary:
-                self._decrement_num_readers(obj_id)
-            return gpu_object_metadata
+            return self._gpu_object_store[obj_id]
 
     def add_object(
         self,
@@ -249,12 +238,10 @@ class GPUObjectStore:
                 present in the GPU object store. If not specified, wait
                 indefinitely.
         """
-        print(f"_wait_object obj_id: {obj_id}, timeout: {timeout}")
         with self._object_present_cv:
             present = self._object_present_cv.wait_for(
                 lambda: obj_id in self._gpu_object_store, timeout=timeout
             )
-            print(f"_wait_object present: {present}")
             if not present:
                 raise TimeoutError(
                     f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
@@ -273,20 +260,3 @@ class GPUObjectStore:
         """
         with self._lock:
             return len(self._gpu_object_store)
-
-    def _decrement_num_readers(self, obj_id: str):
-        """
-        Decrement the number of readers for a GPU object.
-        If `num_readers` reaches 0, the GPU object will be removed from the
-        GPU object store.
-
-        Args:
-            obj_id: The object ID of the GPU object.
-        """
-        with self._lock:
-            assert (
-                obj_id in self._gpu_object_store
-            ), f"obj_id={obj_id} not found in GPU object store"
-            self._gpu_object_store[obj_id].num_readers -= 1
-            if self._gpu_object_store[obj_id].num_readers == 0:
-                del self._gpu_object_store[obj_id]
