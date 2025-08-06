@@ -138,11 +138,15 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK_WITH_DISPLAY(condition, display)                                 \
-  RAY_PREDICT_TRUE((condition))                                                    \
-  ? RAY_IGNORE_EXPR(0)                                                             \
-  : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                        << " Check failed: " display " ")
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                     \
+  RAY_PREDICT_TRUE((condition))                                                        \
+  ? RAY_IGNORE_EXPR(0)                                                                 \
+  : ::ray::Voidify() &                                                                 \
+          (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL)                  \
+           << " Check failed, this means you discovered a bug in Ray that made the "   \
+              "system behave in an unexpected way. Please report this issue at "       \
+              "https://github.com/ray-project/ray/issues for extra credit points and " \
+              "it'll (hopefully) get fixed ASAP! : " display " ")
 
 #define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
