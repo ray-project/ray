@@ -90,11 +90,11 @@ parser.add_argument(
     "You need to specify the same port inside your UE5 `RLlibClient` plugin.",
 )
 parser.add_argument(
-    "--no-gateway",
+    "--use-dummy-gateway",
     action="store_true",
-    help="If set, the script runs without the RLlibGateway and dummy external "
-    "simulator. This is usefule, if you want to connect on your own using "
-    "an RLlibGateway instance, for example from within your C++-based simulation.",
+    help="If set, the script runs with its own RLlibGateway acting as a dummy external "
+    "simulator. Otherwise connect on your own from your C++ application using "
+    "an RLlibGateway instance.",
 )
 
 
@@ -103,9 +103,11 @@ if __name__ == "__main__":
 
     # Start the dummy CartPole "simulation", which uses a (python) RLlibGateway
     # instance.
-    if not args.no_gateway:
+    if args.use_dummy_gateway:
         rllib_gateway = RLlibGateway(
             address="localhost",
+            # Connect to the first remote EnvRunner, of - if there is no remote one -
+            # to the local EnvRunner.
             port=(
                 args.port
                 + (args.num_env_runners if args.num_env_runners is not None else 1)
@@ -121,7 +123,7 @@ if __name__ == "__main__":
             eps = 0
 
             while True:
-                action = rllib_gateway.get_action(reward, obs, False, False)
+                action = rllib_gateway.get_action(reward, obs)
                 obs, reward, terminated, truncated, infos = env.step(action)
                 episode_return += reward
 
@@ -130,7 +132,7 @@ if __name__ == "__main__":
                 if terminated or truncated:
                     print(f"Episode {eps} return: {episode_return}")
                     # Log terminated/truncated (episode end) and reset.
-                    rllib_gateway.get_action(reward, obs, terminated, truncated)
+                    rllib_gateway.episode_done(reward, obs, truncated)
                     episode_return = 0.0
                     reward = 0.0
                     eps += 1
