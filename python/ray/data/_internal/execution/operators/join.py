@@ -18,6 +18,10 @@ _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.LEFT_OUTER: "left outer",
     JoinType.RIGHT_OUTER: "right outer",
     JoinType.FULL_OUTER: "full outer",
+    JoinType.LEFT_SEMI: "left semi",
+    JoinType.RIGHT_SEMI: "right semi",
+    JoinType.LEFT_ANTI: "left anti",
+    JoinType.RIGHT_ANTI: "right anti",
 }
 
 
