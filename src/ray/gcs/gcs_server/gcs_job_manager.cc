@@ -106,8 +106,9 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     RAY_CHECK(thread_checker_.IsOnSameThread());
 
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
-                     << ", driver pid = " << job_table_data.driver_pid();
+      RAY_LOG(ERROR).WithField(job_id).WithField("driver_pid",
+                                                 job_table_data.driver_pid())
+          << "Failed to register job.";
     } else {
       RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, /*done=*/nullptr));
       if (job_table_data.config().has_runtime_env_info()) {
@@ -115,8 +116,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                                              job_table_data.config().runtime_env_info());
       }
       function_manager_.AddJobReference(job_id);
-      RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
-                    << ", driver pid = " << job_table_data.driver_pid();
+      RAY_LOG(DEBUG).WithField(job_id) << "Finished adding job.";
       cached_job_configs_[job_id] =
           std::make_shared<rpc::JobConfig>(job_table_data.config());
 
