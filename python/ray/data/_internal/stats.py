@@ -878,12 +878,14 @@ class _StatsManager:
             return uuid4().hex
 
     def update_dataset_metadata_state(self, dataset_id: str, new_state: str):
-        self._stats_actor().update_dataset_metadata_state.remote(dataset_id, new_state)
+        self._get_or_create_stats_actor().update_dataset_metadata_state.remote(
+            dataset_id, new_state
+        )
 
     def update_dataset_metadata_operator_state(
         self, dataset_id: str, operator_uuid: str, new_state: str
     ):
-        self._stats_actor().update_dataset_metadata_operator_state.remote(
+        self._get_or_create_stats_actor().update_dataset_metadata_operator_state.remote(
             dataset_id, operator_uuid, new_state
         )
 

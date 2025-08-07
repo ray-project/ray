@@ -10,6 +10,7 @@ import time
 import pytest
 
 import ray
+import psutil
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
@@ -230,6 +231,39 @@ def test_default_worker_import_dependency(shutdown_only):
             assert x not in sys.modules
 
     ray.get(f.remote())
+
+
+def test_worker_thread_count(monkeypatch, shutdown_only):
+    """This test will fail if the number of threads spawned by a worker process
+    increases. If you find that a patch is now causing this test to fail,
+    consider if this thread count change is expected and adjust the test
+    (or your patch) accordingly!
+    """
+
+    @ray.remote
+    class Actor:
+        def get_thread_count(self):
+            try:
+                process = psutil.Process(os.getpid())
+                return process.num_threads()
+            except ImportError:
+                return None
+
+    # Set the environment variables used by the raylet and worker
+    monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
+    monkeypatch.setenv("RAY_num_server_call_thread", "1")
+
+    # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
+    # test unnecessarily. We should only need to call the assert after
+    # a single call to the worker.  However, because the thread count
+    # per worker today isn't entirely static, we need to allow for this
+    # flexibility.  https://github.com/ray-project/ray/issues/55215
+    actor = Actor.remote()
+    for _ in range(5):
+        ray.get(actor.get_thread_count.remote())
+    # Lowering these numbers in this assert should be celebrated,
+    # increasing these numbers should be scrutinized
+    assert ray.get(actor.get_thread_count.remote()) in {24, 25}
 
 
 # https://github.com/ray-project/ray/issues/7287
