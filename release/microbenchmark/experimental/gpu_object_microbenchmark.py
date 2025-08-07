@@ -45,7 +45,7 @@ BACKEND_CONFIG = {
             "enable_tensor_transport": True,
         },
         send_method_kwargs={"tensor_transport": "nccl"},
-        device=torch.device("cuda:0"),
+        device=torch.device("cuda"),
         collective_group_backend="nccl",
     ),
 }
@@ -68,7 +68,7 @@ class Actor:
         return torch.ones(self.shape, dtype=self.dtype, device=self.device) * seed
 
     def recv(self, tensor: torch.Tensor) -> torch.Tensor:
-        assert tensor.device == self.device
+        assert tensor.device.type == self.device.type
         return b"x"
 
 
