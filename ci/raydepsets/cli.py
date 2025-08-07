@@ -52,7 +52,10 @@ class DependencySetManager:
         self.config = self.workspace.load_config(config_path)
         self.build_graph = DiGraph()
         self._build()
-        self._uv_binary = _uv_binary()
+        try:
+            self._uv_binary = _uv_binary()
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize uv binary: {e}") from e
 
     def _build(self):
         for depset in self.config.depsets:
