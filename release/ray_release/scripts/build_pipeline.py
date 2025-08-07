@@ -123,16 +123,6 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    logger.info("Build anyscale custom BYOD images")
-    # custom_byod_images = set()
-    # for test in tests:
-    #     if not test.require_custom_byod_image():
-    #         continue
-    #     custom_byod_image = test.get_anyscale_byod_image()
-    #     custom_byod_images.append(custom_byod_image)
-    # create_custom_build_yaml
-    for test in tests:
-        build_anyscale_custom_byod_image(test)
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
