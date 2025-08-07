@@ -1,7 +1,5 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from ray.data import DataIterator
-from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
@@ -212,67 +210,3 @@ class TrainContext:
         without notice between minor versions.
         """
         return get_internal_train_context().get_storage()
-
-    @DeveloperAPI
-    def report(
-        self,
-        metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
-        checkpoint_dir_name: Optional[str] = None,
-    ) -> None:
-        """Upload checkpoint to remote storage and put a training result on the result queue.
-
-        This method is used by the public API function :func:`ray.train.report`.
-        Users should typically call ``ray.train.report()`` instead of calling this method directly.
-
-        Args:
-            metrics: The metrics to report.
-            checkpoint: The checkpoint to report.
-            checkpoint_dir_name: The name of the checkpoint dir
-                in this iteration. Note: If not set, the checkpoint will
-                be stored in the default storage path. If set, make sure
-                this value is unique for each iteration.
-        """
-        return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name
-        )
-
-    @DeveloperAPI
-    def get_synchronization_actor(self):
-        """Get the synchronization actor for collective operations among training workers.
-
-        This actor is used by collective functions like :func:`ray.train.collective.barrier` and
-        :func:`ray.train.collective.broadcast_from_rank_zero` to synchronize
-        data across all workers.
-
-        Returns:
-            The synchronization actor used for collective operations.
-        """
-        return get_internal_train_context().get_synchronization_actor()
-
-    @DeveloperAPI
-    def get_checkpoint(self):
-        """Get the latest checkpoint to resume training from.
-
-        This method is used by the public API function :func:`ray.train.get_checkpoint`.
-        Users should typically call ``ray.train.get_checkpoint()`` instead of calling this method directly.
-
-        Returns:
-            The latest checkpoint if available, None otherwise.
-        """
-        return get_internal_train_context().get_checkpoint()
-
-    @DeveloperAPI
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
-        """Get the dataset shard for this worker.
-
-        This method is used by the public API function :func:`ray.train.get_dataset_shard`.
-        Users should typically call ``ray.train.get_dataset_shard()`` instead of calling this method directly.
-
-        Args:
-            dataset_name: The name of the dataset to get the shard for.
-
-        Returns:
-            The DataIterator shard for this worker.
-        """
-        return get_internal_train_context().get_dataset_shard(dataset_name)
