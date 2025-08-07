@@ -482,6 +482,7 @@ ray_cc_library(
     hdrs = ["future_resolver.h"],
     deps = [
         ":memory_store",
+        ":reference_count",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/rpc:core_worker_client",
