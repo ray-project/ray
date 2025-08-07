@@ -22,6 +22,12 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
+// Configuration options for Serve's autoscaling policy
+message AutoscalingPolicyConfig {
+  // Name of the policy function or the import path of the policy if user passed a string
+  string name = 1;
+}
+
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
@@ -75,11 +81,6 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscaling_factor = 15;
-}
-
-message AutoscalingPolicyConfig {
-  // Name of the policy function or the import path of the policy if user passed a string
-  string name = 1;
 }
 
 //[Begin] LOGGING CONFIG
