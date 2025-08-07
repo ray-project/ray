@@ -37,8 +37,7 @@ namespace observability {
 // This class is thread safe.
 class RayEventRecorder : public RayEventRecorderInterface {
  public:
-  RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                   instrumented_io_context &io_service);
+  RayEventRecorder(instrumented_io_context &io_service, int dashboard_agent_port);
   virtual ~RayEventRecorder() = default;
 
   // Start exporting events to the event aggregator by periodically sending events to
@@ -51,7 +50,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
 
  private:
-  rpc::EventAggregatorClient &event_aggregator_client_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
@@ -62,6 +62,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   // Export events to the event aggregator. This is called periodically by the
   // PeriodicalRunner.
   void ExportEvents();
+
+  friend class RayEventRecorderTest;
 };
 
 }  // namespace observability

@@ -108,10 +108,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   });
             });
       }),
-      event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
-          config_.metrics_agent_port, client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
-          *event_aggregator_client_, io_context_provider_.GetDefaultIOContext())),
+          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          config_.metrics_agent_port)),
       pubsub_periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
       periodical_runner_(

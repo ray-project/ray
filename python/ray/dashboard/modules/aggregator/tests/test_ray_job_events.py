@@ -14,6 +14,7 @@ from ray._private import ray_constants
 
 _RAY_EVENT_PORT = 12345
 
+
 @pytest.fixture(scope="session")
 def httpserver_listen_address():
     return ("127.0.0.1", _RAY_EVENT_PORT)
