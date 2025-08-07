@@ -43,7 +43,7 @@ ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
 # Conditionally install Java + Maven
-if [[ "$RAY_INSTALL_JAVA" == "1" || "$RAY_INSTALL_JAVA" == "true" ]]; then
+if [[ "${RAY_INSTALL_JAVA,,}" == "true" || "$RAY_INSTALL_JAVA" == "1" ]]; then
   echo "Installing OpenJDK + Maven..."
   apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
 else
