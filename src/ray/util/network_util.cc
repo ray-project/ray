@@ -15,11 +15,14 @@
 #include "ray/util/network_util.h"
 
 #include <array>
+#include <boost/asio.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <optional>
 #include <string>
 
 #include "absl/strings/str_format.h"
+
+using boost::asio::ip::tcp;
 
 namespace ray {
 
@@ -67,6 +70,16 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
   }
 
   return std::array<std::string, 2>{host, port};
+}
+
+bool CheckPortFree(int port) {
+  boost::asio::io_context io_service;
+  tcp::socket socket(io_service);
+  socket.open(tcp::v4());
+  boost::system::error_code ec;
+  socket.bind(tcp::endpoint(tcp::v4(), port), ec);
+  socket.close();
+  return !ec.failed();
 }
 
 }  // namespace ray

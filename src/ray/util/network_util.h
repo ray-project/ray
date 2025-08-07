@@ -37,4 +37,10 @@ std::string BuildAddress(const std::string &host, const std::string &port);
 /// \return Optional array with [host, port] if port found, nullopt if no colon separator.
 std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address);
 
+/// Check whether the given port is available, via attempt to bind a socket to the port.
+/// Notice, the check could be non-authentic if there're concurrent port assignments.
+/// \param port The port number to check.
+/// \return true if the port is available, false otherwise.
+bool CheckPortFree(int port);
+
 }  // namespace ray
