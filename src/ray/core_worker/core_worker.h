@@ -1739,7 +1739,7 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  // XXX.
+  // Client to the local Raylet that goes over a local socket.
   std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
