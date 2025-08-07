@@ -14,7 +14,9 @@ py_library(
     srcs = [
         "cli.py",
     ],
-    data = ["@uv_x86_64//:file"],
+    data = [
+        "@uv_x86_64//:file",
+    ],
     deps = [
         ":workspace",
         ci_require("bazel-runfiles"),
@@ -35,6 +37,8 @@ py_test(
     name = "test_cli",
     srcs = ["test_cli.py"],
     data = [
+        "test_data/dummy_wheel/pyproject.toml",
+        "test_data/dummy_wheel/setup.py",
         "test_data/requirement_constraints_test.txt",
         "test_data/requirements_compiled_test.txt",
         "test_data/requirements_compiled_test_expand.txt",

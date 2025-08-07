@@ -1,3 +1,10 @@
+build_arg_sets:
+  - name: py311_cpu
+    build_args:
+      CUDA_VERSION: cpu
+      PYTHON_VERSION: py311
+      PY_VER: 311
+
 depsets:
   - name: ray_base_test_depset
     operation: compile
@@ -11,6 +18,13 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
+  - name: build_args_test_depset_${PYTHON_VERSION}
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_general_${PYTHON_VERSION}_${CUDA_VERSION}.txt
+    build_arg_sets:
+      - py311_cpu
   - name: subset_general_depset
     operation: subset
     source_depset: general_depset
@@ -30,3 +44,10 @@ depsets:
     constraints:
       - requirement_constraints_expand.txt
     output: requirements_compiled_expand_general.txt
+  - name: build_wheel_depset
+    operation: build_wheel
+    setup_path: python
+    output: dist
+    python_version: ${PY_VER}
+    build_arg_sets:
+      - py311_cpu
