@@ -162,6 +162,12 @@ class RequestRouterConfig(BaseModel):
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
+class AutoscalingPolicyConfig(BaseModel):
+    name: Union[str, Callable] = (
+        DEFAULT_AUTOSCALING_POLICY  # Name of the policy function or the import path of the policy if user passed a string
+    )
+
+
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
@@ -174,7 +180,7 @@ class AutoscalingConfig(BaseModel):
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
 
-    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
 
     metrics_interval_s: PositiveFloat = Field(
         default=DEFAULT_METRICS_INTERVAL_S,
@@ -222,8 +228,9 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
-    # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
+    _policy: Optional[AutoscalingPolicyConfig] = Field(
+        default_factory=AutoscalingPolicyConfig
+    )  # Custom autoscaling config. This policy is deployment scoped. Defaults to the request-based autoscaler.
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -273,18 +280,18 @@ class AutoscalingConfig(BaseModel):
         """
         values = self.dict()
         policy = values.get("_policy")
-        if isinstance(policy, Callable):
-            policy = f"{policy.__module__}.{policy.__name__}"
+        policy_name = policy.name
+        if isinstance(policy_name, Callable):
+            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
 
-        if not policy:
-            policy = DEFAULT_AUTOSCALING_POLICY
+        if not policy_name:
+            policy_name = DEFAULT_AUTOSCALING_POLICY
 
-        policy_path = policy
-        policy = import_attr(policy)
+        policy = import_attr(policy_name)
 
-        if not values.get("_serialized_policy_def"):
+        if not self._serialized_policy_def:
             self._serialized_policy_def = cloudpickle.dumps(policy)
-        self._policy = policy_path
+        self._policy.name = policy_name
 
     @classmethod
     def default(cls):
