@@ -233,6 +233,7 @@ def test_default_worker_import_dependency(shutdown_only):
     ray.get(f.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows thread count not policed.")
 def test_worker_thread_count(monkeypatch, shutdown_only):
     """This test will fail if the number of threads spawned by a worker process
     increases. If you find that a patch is now causing this test to fail,
