@@ -171,7 +171,7 @@ def main(
         "group": "tests",
         "steps": steps,
     }
-    with open(f"{PIPELINE_ARTIFACT_PATH}/tests.rayci.yml", "w") as f:
+    with open(f".buildkite/release/tests.rayci.yml", "w") as f:
         yaml.dump(test_yaml, f, default_flow_style=False, sort_keys=False)
 
     print(steps_str)
