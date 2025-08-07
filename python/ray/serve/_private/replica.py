@@ -465,7 +465,10 @@ class ReplicaBase(ABC):
             # we pre-compute it here since context evaluation is expensive and this context
             # will be reused for multiple access log entries.
             ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
-            # remove task level log keys from ray core logging context
+            # remove task level log keys from ray core logging context, it would be nice
+            # to have task level log keys here but we are letting those go in favor of
+            # performance optimization. Also we cannot include task level log keys here because
+            # they would referance the current task (__init__) and not the task that is logging.
             for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
                 ray_core_logging_context.pop(key, None)
             self._access_log_context = {
@@ -1202,6 +1205,7 @@ class UserCallableWrapper:
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
+        # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None

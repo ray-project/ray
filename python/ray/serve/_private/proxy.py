@@ -1071,7 +1071,10 @@ class ProxyActor:
             # we pre-compute it here since context evaluation is expensive and this context
             # will be reused for multiple access log entries.
             ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
-            # remove task level log keys from ray core logging context
+            # remove task level log keys from ray core logging context, it would be nice
+            # to have task level log keys here but we are letting those go in favor of
+            # performance optimization. Also we cannot include task level log keys here because
+            # they would referance the current task (__init__) and not the task that is logging.
             for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
                 ray_core_logging_context.pop(key, None)
             access_log_context = {
