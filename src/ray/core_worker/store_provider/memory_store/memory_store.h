@@ -207,10 +207,10 @@ class CoreWorkerMemoryStore {
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
-  ReferenceCounter *ref_counter_ = nullptr;
+  ReferenceCounter *ref_counter_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_ = nullptr;
+  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
