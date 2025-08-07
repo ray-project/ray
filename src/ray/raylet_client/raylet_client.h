@@ -362,36 +362,15 @@ class RayletClient : public RayletClientInterface {
   explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager);
 
-  /// Notify the raylet that this client is disconnecting gracefully. This
-  /// is used by actors to exit gracefully so that the raylet doesn't
-  /// propagate an error message to the driver.
-  ///
-  /// It's a blocking call.
-  ///
-  /// \param disconnect_type The reason why this worker process is disconnected.
-  /// \param disconnect_detail The detailed reason for a given exit.
-  /// \return ray::Status.
   ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
                          const std::string &exit_detail,
                          const std::shared_ptr<LocalMemoryBuffer>
                              &creation_task_exception_pb_bytes) override;
 
-  /// Tell the raylet which port this worker's gRPC server is listening on.
-  ///
-  /// \param port The port.
-  /// \return ray::Status.
   Status AnnounceWorkerPortForWorker(int port) override;
 
-  /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
-  ///
-  /// \param port The port.
-  /// \param entrypoint The entrypoint of the driver's job.
-  /// \return ray::Status.
   Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override;
 
-  /// Tell the raylet that the client has finished executing a task.
-  ///
-  /// \return ray::Status.
   ray::Status ActorCreationTaskDone() override;
 
   /// Ask the Raylet to pull a set of objects to the local node.
@@ -404,67 +383,26 @@ class RayletClient : public RayletClientInterface {
   ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
                               const std::vector<rpc::Address> &owner_addresses) override;
 
-  /// Tell the Raylet to cancel the get request from this worker.
-  ///
-  /// \return ray::Status.
   ray::Status CancelGetRequest() override;
 
-  /// Notify the raylet that this client is blocked. This is only used for direct task
-  /// calls. Note that ordering of this with respect to Unblock calls is important.
-  ///
-  /// \return ray::Status.
   ray::Status NotifyDirectCallTaskBlocked() override;
 
-  /// Notify the raylet that this client is unblocked. This is only used for direct task
-  /// calls. Note that ordering of this with respect to Block calls is important.
-  ///
-  /// \return ray::Status.
   ray::Status NotifyDirectCallTaskUnblocked() override;
 
-  /// Wait for the given objects until timeout expires or num_return objects are
-  /// found.
-  ///
-  /// \param object_ids The objects to wait for.
-  /// \param owner_addresses The addresses of the workers that own the objects.
-  /// \param num_returns The number of objects to wait for.
-  /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param result A pair with the first element containing the object ids that were
-  /// found, and the second element the objects that were not found.
-  /// \return ray::StatusOr containing error status or the set of object ids that were
-  /// found.
   ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
       int64_t timeout_milliseconds) override;
 
-  /// Wait for the given objects, asynchronously. The core worker is notified when
-  /// the wait completes.
-  ///
-  /// \param references The objects to wait for.
-  /// \param tag Value that will be sent to the core worker via gRPC on completion.
-  /// \return ray::Status.
   ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
                                    int64_t tag) override;
 
-  /// Push an error to the relevant driver.
-  ///
-  /// \param The ID of the job_id that the error is for.
-  /// \param The type of the error.
-  /// \param The error message.
-  /// \param The timestamp of the error.
-  /// \return ray::Status.
   ray::Status PushError(const ray::JobID &job_id,
                         const std::string &type,
                         const std::string &error_message,
                         double timestamp) override;
 
-  /// Free a list of objects from object stores.
-  ///
-  /// \param object_ids A list of ObjectsIDs to be deleted.
-  /// \param local_only Whether keep this request with local object store
-  /// or send it to all the object stores.
-  /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
                           bool local_only) override;
 
