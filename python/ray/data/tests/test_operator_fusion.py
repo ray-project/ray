@@ -438,9 +438,6 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
 ):
     # Note: We currently do not fuse MapBatches->RandomizeBlocks.
     # This test is to ensure that we don't accidentally fuse them.
-    # There is also an additional optimization rule, under ReorderRandomizeBlocksRule,
-    # which collapses RandomizeBlocks operators, so we should not be fusing them
-    # to begin with.
     def fn(batch):
         return {"id": [x + 1 for x in batch["id"]]}
 
