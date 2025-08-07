@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Any
 import os
 from string import Template
 
@@ -23,6 +23,21 @@ class Depset:
     source_depset: Optional[str] = None
     build_arg_set: BuildArgSet = None
     depsets: Optional[List[str]] = None
+
+
+def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
+    if isinstance(obj, str):
+        return Template(obj).substitute(build_arg_set.build_args)
+    if isinstance(obj, dict):
+        return {
+            key: _substitute_build_args(value, build_arg_set)
+            for key, value in obj.items()
+        }
+    if isinstance(obj, list):
+        return [
+            _substitute_build_args(item, build_arg_set) for item in obj
+        ]
+    return obj
 
 
 @dataclass
@@ -60,7 +75,7 @@ class Config:
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_name} not found")
 
-                    depset_yaml = Config.substitute_build_args(depset, build_arg_set)
+                    depset_yaml = _substitute_build_args(depset, build_arg_set)
 
                     depsets.append(Config.dict_to_depset(depset_yaml, build_arg_set))
             else:
@@ -81,21 +96,6 @@ class Config:
             override_flags=depset.get("override_flags", []),
             append_flags=depset.get("append_flags", []),
         )
-
-    def substitute_build_args(depset, build_arg_set: BuildArgSet):
-        if isinstance(depset, str):
-            return Template(depset).substitute(build_arg_set.build_args)
-        elif isinstance(depset, dict):
-            return {
-                key: Config.substitute_build_args(value, build_arg_set)
-                for key, value in depset.items()
-            }
-        elif isinstance(depset, list):
-            return [
-                Config.substitute_build_args(item, build_arg_set) for item in depset
-            ]
-        else:
-            return depset
 
 
 class Workspace:

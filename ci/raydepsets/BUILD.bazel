@@ -9,6 +9,20 @@ py_library(
     ],
 )
 
+py_test(
+    name = "test_workspace",
+    srcs = ["test_workspace.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":workspace",
+    ],
+)
+
 py_library(
     name = "raydepsets_lib",
     srcs = [
