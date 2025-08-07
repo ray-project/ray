@@ -353,5 +353,26 @@ def test_get_current_node_tpu_topology_from_metadata():
         assert topology == "2x2x4"
 
 
+@pytest.mark.parametrize(
+    "topology, accelerator_type, expected_pod_type",
+    [
+        ("2x4", "TPU-V6E", "v6e-8"),
+        ("2x2x2", "TPU-V4", "v4-8"),
+        ("2x4x4", "TPU-V3", "v3-32"),
+        ("4x4", "TPU-V5P", "v5p-16"),
+        ("8x16", "TPU-V6E", "v6e-128"),
+        ("", "TPU-V3", None),
+        ("4x", "TPU-V3", None),
+    ],
+)
+def test_infer_tpu_pod_type_from_topology(
+    topology, accelerator_type, expected_pod_type
+):
+    assert (
+        tpu.infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        == expected_pod_type
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
