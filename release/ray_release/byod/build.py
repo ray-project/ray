@@ -30,14 +30,6 @@ REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
 
-def build_custom_image(
-    image_name: str, base_image: str, post_build_script: str
-) -> None:
-    if _image_exist(image_name):
-        logger.info(f"Image {image_name} already exists")
-        return
-
-
 def build_anyscale_custom_byod_image(
     image: str, base_image: str, post_build_script: str
 ) -> None:
@@ -75,17 +67,12 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     to_be_built = {}
     built = set()
     for test in tests:
-        if test.get_anyscale_base_byod_image().startswith("us-west1-docker.pkg.dev"):
-            continue
         to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
     start = int(time.time())
     # ray images are built on post-merge, so we can wait for them to be available
-    logger.info(f"To be built: {len(to_be_built)}")
-    for byod_image, test in to_be_built.items():
-        logger.info(byod_image)
     while (
         len(built) < len(to_be_built)
         and int(time.time()) - start < BASE_IMAGE_WAIT_TIMEOUT
@@ -98,7 +85,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                 byod_requirements = f"{REQUIREMENTS_LLM_BYOD}_{py_version}.txt"
             else:
                 byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
-            logger.info(f"Looking for image {byod_image}: {_image_exist(byod_image)}")
             if _image_exist(byod_image):
                 logger.info(f"Image {byod_image} already exists")
                 built.add(byod_image)
