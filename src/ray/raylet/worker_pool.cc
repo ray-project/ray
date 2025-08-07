@@ -1825,7 +1825,7 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
 }
 
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
-  RAY_LOG(ERROR) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
+  RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
         serialized_runtime_env, [serialized_runtime_env](bool successful) {
