@@ -137,6 +137,7 @@ ray_cc_library(
         ":client_call",
         ":grpc_client",
         "//src/ray/common:id",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:node_manager_cc_grpc",
     ] + [
         # TODO(eoakes): these three come from raylet_client.h, remove after breaking the circular dependency.
