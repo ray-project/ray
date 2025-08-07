@@ -21,10 +21,23 @@ namespace telemetry {
 
 template <typename TEventData>
 RayEventRecorderBase<TEventData>::RayEventRecorderBase(
-    rpc::EventAggregatorClient &event_aggregator_client,
+    std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     instrumented_io_context &io_service)
-    : event_aggregator_client_(event_aggregator_client),
+    : event_aggregator_client_(std::move(event_aggregator_client)),
       periodical_runner_(PeriodicalRunner::Create(io_service)) {}
+
+template <typename TEventData>
+RayEventRecorderBase<TEventData>::RayEventRecorderBase(
+    instrumented_io_context &io_service, int dashboard_agent_port)
+    : periodical_runner_(PeriodicalRunner::Create(io_service)) {
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      io_service,
+      /*record_stats=*/true,
+      ClusterID::Nil(),
+      RayConfig::instance().gcs_server_rpc_client_thread_num());
+  event_aggregator_client_ = std::make_unique<rpc::EventAggregatorClientImpl>(
+      dashboard_agent_port, *client_call_manager_);
+}
 
 template <typename TEventData>
 void RayEventRecorderBase<TEventData>::StartExportingEvents() {
@@ -54,7 +67,7 @@ void RayEventRecorderBase<TEventData>::ExportEvents() {
   *request.mutable_events_data() = std::move(ray_event_data);
   buffer_.clear();
 
-  event_aggregator_client_.AddEvents(
+  event_aggregator_client_->AddEvents(
       request, [](Status status, rpc::events::AddEventsReply reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();

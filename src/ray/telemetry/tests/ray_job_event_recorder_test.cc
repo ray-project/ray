@@ -45,8 +45,9 @@ class MockEventAggregatorClient : public rpc::EventAggregatorClient {
 class RayJobEventRecorderTest : public ::testing::Test {
  public:
   RayJobEventRecorderTest() {
-    mock_client_ = std::make_unique<MockEventAggregatorClient>(recorded_events_);
-    recorder_ = std::make_unique<RayJobEventRecorder>(*mock_client_, io_service_);
+    auto mock_client = std::make_unique<MockEventAggregatorClient>(recorded_events_);
+    recorder_ = std::unique_ptr<RayJobEventRecorder>(
+        new RayJobEventRecorder(std::move(mock_client), io_service_));
   }
 
   void SetUp() override {
@@ -58,7 +59,6 @@ class RayJobEventRecorderTest : public ::testing::Test {
  protected:
   instrumented_io_context io_service_;
   std::vector<rpc::events::RayEvent> recorded_events_;
-  std::unique_ptr<MockEventAggregatorClient> mock_client_;
   std::unique_ptr<RayJobEventRecorder> recorder_;
 };
 
