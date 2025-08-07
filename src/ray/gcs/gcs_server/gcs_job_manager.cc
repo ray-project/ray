@@ -124,7 +124,14 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       // multiple times and requires idempotency (i.e. due to retry).
       running_job_start_times_.insert({job_id, job_table_data.start_time()});
     }
+
+    // Send driver job event to export API.
+    // TODO(can-anyscale): to be deprecated once the event aggregator is stable.
     WriteDriverJobExportEvent(job_table_data);
+
+    // Send driver job event to the event aggregator.
+    ray_job_event_recorder_.AddEvents({job_table_data});
+
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
@@ -156,7 +163,13 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     function_manager_.RemoveJobReference(job_id);
+
+    // Send driver job event to export API.
+    // TODO(can-anyscale): to be deprecated once the event aggregator is stable.
     WriteDriverJobExportEvent(job_table_data);
+
+    // Send driver job event to the event aggregator.
+    ray_job_event_recorder_.AddEvents({job_table_data});
 
     // Update running job status.
     // Note: This operation must be idempotent since MarkJobFinished can be called
