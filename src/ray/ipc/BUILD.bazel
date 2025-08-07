@@ -24,13 +24,13 @@ ray_cc_library(
     deps = [
         ":client_connection",
         "//src/ray/common:asio",
-        "//src/ray/common:id",
         "//src/ray/common:buffer",
+        "//src/ray/common:id",
         "//src/ray/common:status",
+        "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util:logging",
         "//src/ray/util:process",
-        "//src/ray/flatbuffers:node_manager_generated",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
