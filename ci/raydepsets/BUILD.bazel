@@ -7,9 +7,7 @@ py_library(
         "cli.py",
         "workspace.py",
     ],
-    data = [
-        "@uv_x86_64//:file",
-    ],
+    data = ["@uv_x86_64//:file"],
     deps = [
         ci_require("bazel-runfiles"),
         ci_require("click"),
