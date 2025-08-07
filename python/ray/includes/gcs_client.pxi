@@ -343,7 +343,7 @@ cdef class InnerGcsClient:
             status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
         status = status_or.value().status()
         if status_or.value().ok():
-            reply = status_or.value().value()
+            reply = move(status_or.value().value())
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
