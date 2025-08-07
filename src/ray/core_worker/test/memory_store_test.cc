@@ -45,7 +45,6 @@ inline std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
 }
 
 TEST(TestMemoryStore, TestReportUnhandledErrors) {
-  std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   int unhandled_count = 0;
 
@@ -54,7 +53,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
           io_context.GetIoService(),
-          /*should_delete_object_on_put=*/[](const ObjectID &object_id){ return false; },
+          /*should_delete_object_on_put=*/[](const ObjectID &object_id) { return false; },
           nullptr,
           nullptr,
           nullptr,
@@ -77,10 +76,12 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   unhandled_count = 0;
 
   // Check delete after get.
+  bool got_exception;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   memory_store->Put(obj1, id1);
   memory_store->Put(obj1, id2);
-  RAY_UNUSED(memory_store->Get({id1}, 1, 100, context, false, &results));
-  RAY_UNUSED(memory_store->Get({id2}, 1, 100, context, false, &results));
+  RAY_UNUSED(memory_store->Get({id1}, -1, context, &results, &got_exception));
+  RAY_UNUSED(memory_store->Get({id2}, -1, context, &results, &got_exception));
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 
@@ -209,12 +210,13 @@ TEST(TestMemoryStore, TestObjectAllocator) {
   InstrumentedIOContextWithThread io_context("TestObjectAllocator");
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
-          /*should_delete_object_on_put=*/[](const ObjectID &object_id){ return false; },
-                                              nullptr,
-                                              nullptr,
-                                              nullptr,
-                                              std::move(my_object_allocator));
+      std::make_shared<CoreWorkerMemoryStore>(
+          io_context.GetIoService(),
+          /*should_delete_object_on_put=*/[](const ObjectID &object_id) { return false; },
+          nullptr,
+          nullptr,
+          nullptr,
+          std::move(my_object_allocator));
   const int32_t max_rounds = 1000;
   const std::string hello = "hello";
   for (auto i = 0; i < max_rounds; ++i) {
@@ -241,9 +243,9 @@ class TestMemoryStoreWait : public ::testing::Test {
   TestMemoryStoreWait()
       : io_context("TestWait"),
         memory_store(std::make_shared<CoreWorkerMemoryStore>(
-              io_context.GetIoService(), 
-              /*should_delete_object_on_put=*/[](const ObjectID &object_id){ return false; },
-              )),
+            io_context.GetIoService(),
+            /*should_delete_object_on_put=*/[](const ObjectID
+                                                   &object_id) { return false; })),
         ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1)),
         buffer("hello"),
         memory_store_object(
