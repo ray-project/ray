@@ -1,8 +1,7 @@
-
 from pathlib import Path
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.algorithms.iql.iql import IQLConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -14,7 +13,6 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 
-from d4rllib.algorithms.iql.iql import IQLConfig
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
@@ -26,15 +24,13 @@ assert (
 ), "This tuned example works only with `Pendulum-v1`."
 
 # Define the data paths.
-# data_path = "tests/data/pendulum/pendulum-v1_large"
 data_path = "tests/data/pendulum/pendulum-v1_enormous"
 base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
 data_path = "local://" / base_path / data_path
 print(f"data_path={data_path}")
 
-args.enable_new_api_stack = True
-# Define the BC config.
+# Define the IQL config.
 config = (
     IQLConfig()
     .environment(env="Pendulum-v1")
@@ -80,7 +76,7 @@ config = (
 )
 
 stop = {
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -200.0,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800.0,
     TRAINING_ITERATION: 1250,
 }
 

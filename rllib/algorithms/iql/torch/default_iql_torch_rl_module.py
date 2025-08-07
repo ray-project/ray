@@ -1,6 +1,8 @@
 import gymnasium as gym
 from typing import Any, Dict, Optional
 
+from ray.rllib.algorithms.iql.default_iql_rl_module import DefaultIQLRLModule
+from ray.rllib.algorithms.iql.iql_learner import VF_PREDS_NEXT, QF_TARGET_PREDS
 from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
     DefaultSACTorchRLModule,
 )
@@ -9,9 +11,6 @@ from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
-
-from d4rllib.algorithms.iql.default_iql_rl_module import DefaultIQLRLModule
-from d4rllib.algorithms.iql.iql_learner import VF_PREDS_NEXT, QF_TARGET_PREDS
 
 torch, nn = try_import_torch()
 
@@ -28,14 +27,17 @@ class DefaultIQLTorchRLModule(DefaultSACTorchRLModule, DefaultIQLRLModule):
                 "Trying to train a module that is not a learner module. Set the "
                 "flag `inference_only=False` when building the module."
             )
-        if isinstance(self.action_space, gym.spaces.Discrete):
+        if not isinstance(self.action_space, gym.spaces.Box):
             raise ValueError(
                 f"Unsupported action space type: {type(self.action_space)}. "
                 "Only continuous action spaces are supported."
             )
 
+        # Call the forward pass of the SAC module.
         output = super()._forward_train(batch, **kwargs)
 
+        # Create batches for the forward passes of the target Q-networks and the
+        # value function.
         batch_curr = {
             Columns.OBS: batch[Columns.OBS],
             Columns.ACTIONS: batch[Columns.ACTIONS],
@@ -46,6 +48,7 @@ class DefaultIQLTorchRLModule(DefaultSACTorchRLModule, DefaultIQLRLModule):
         output[QF_TARGET_PREDS] = self._qf_forward_train_helper(
             batch_curr, encoder=self.target_qf_encoder, head=self.target_qf
         )
+        # If a twin-Q architecture is used run its target Q-network.
         if self.twin_q:
             output[QF_TARGET_PREDS] = torch.min(
                 output[QF_TARGET_PREDS],
@@ -54,6 +57,7 @@ class DefaultIQLTorchRLModule(DefaultSACTorchRLModule, DefaultIQLRLModule):
                 ),
             )
 
+        # Compute values for the current observations.
         output[Columns.VF_PREDS] = self.compute_values(batch_curr)
         # The values of the next observations are needed for the critic loss.
         output[VF_PREDS_NEXT] = self.compute_values(batch_next)

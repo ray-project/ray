@@ -15,16 +15,16 @@ from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 
 
 class IQLConfig(MARWILConfig):
-    """Defines a configuration class from which a new BC Algorithm can be built
+    """Defines a configuration class from which a new IQL Algorithm can be built
 
     .. testcode::
         :skipif: True
 
-        from ray.rllib.algorithms.bc import BCConfig
+        from ray.rllib.algorithms.iql import IQLConfig
         # Run this from the ray directory root.
-        config = BCConfig().training(lr=0.00001, gamma=0.99)
+        config = IQLConfig().training(lr=0.00001, gamma=0.99)
         config = config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json")
+            input_="./rllib/tests/data/pendulum/pendulum-v1_enormous")
 
         # Build an Algorithm object from the config and run 1 training iteration.
         algo = config.build()
@@ -33,9 +33,9 @@ class IQLConfig(MARWILConfig):
     .. testcode::
         :skipif: True
 
-        from ray.rllib.algorithms.bc import BCConfig
+        from ray.rllib.algorithms.iql import IQLConfig
         from ray import tune
-        config = BCConfig()
+        config = IQLConfig()
         # Print out some default values.
         print(config.beta)
         # Update the config object.
@@ -45,14 +45,14 @@ class IQLConfig(MARWILConfig):
         # Set the config object's data path.
         # Run this from the ray directory root.
         config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json"
+            input_="./rllib/tests/data/pendulum-v1_enormous"
         )
         # Set the config object's env, used for evaluation.
-        config.environment(env="CartPole-v1")
+        config.environment(env="Pendulum-v1")
         # Use to_dict() to get the old-style python config dict
         # when running with tune.
         tune.Tuner(
-            "BC",
+            "IQL",
             param_space=config.to_dict(),
         ).fit()
     """
@@ -62,21 +62,25 @@ class IQLConfig(MARWILConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        # No need to calculate advantages (or do anything else with the rewards).
+        # The temperature for the actor loss.
         self.beta = 0.1
 
         # The expectile to use in expectile regression.
         self.expectile = 0.8
 
+        # The learning rates for the actor, critic and value network(s).
         self.actor_lr = 3e-4
         self.critic_lr = 3e-4
         self.value_lr = 3e-4
         # Set `lr` parameter to `None` and ensure it is not used.
         self.lr = None
 
+        # If a twin-Q architecture should be used (advisable).
         self.twin_q = True
 
+        # How often the target network should be updated.
         self.target_network_update_freq = 0
+        # The weight for Polyak averaging.
         self.tau = 1.0
 
         # __sphinx_doc_end__
@@ -117,7 +121,7 @@ class IQLConfig(MARWILConfig):
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
-            from d4rllib.algorithms.iql.torch.iql_torch_learner import IQLTorchLearner
+            from ray.rllib.algorithms.iql.torch.iql_torch_learner import IQLTorchLearner
 
             return IQLTorchLearner
         else:
@@ -129,7 +133,7 @@ class IQLConfig(MARWILConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from d4rllib.algorithms.iql.torch.default_iql_torch_rl_module import (
+            from ray.rllib.algorithms.iql.torch.default_iql_torch_rl_module import (
                 DefaultIQLTorchRLModule,
             )
 
@@ -171,9 +175,14 @@ class IQLConfig(MARWILConfig):
         # Call super's validation method.
         super().validate()
 
+        # Ensure hyperparameters are meaningful.
         if self.beta == 0.0:
             self._value_error(
                 "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
+            )
+        if not 0.0 < self.expectile < 1.0:
+            self._value_error(
+                "For meaningful results, `expectile` parameter must be in (0, 1)."
             )
 
     @property
@@ -182,9 +191,9 @@ class IQLConfig(MARWILConfig):
 
 
 class IQL(MARWIL):
-    """Behavioral Cloning (derived from MARWIL).
+    """Implicit Q-learning (derived from MARWIL).
 
-    Uses MARWIL with beta force-set to 0.0.
+    Uses MARWIL training step.
     """
 
     @classmethod

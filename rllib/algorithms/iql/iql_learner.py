@@ -14,11 +14,10 @@ VF_LOSS = "value_loss"
 
 
 class IQLLearner(DQNLearner):
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(DQNLearner)
     def build(self) -> None:
-        # Define the expectile parameter.
+        # Define the expectile parameter(s).
         self.expectile: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 # Note, we want to train with a certain expectile.
@@ -41,11 +40,12 @@ class IQLLearner(DQNLearner):
         # Keys=(module_id, optimizer_name), values=loss tensors (in-graph).
         self._temp_losses = {}
 
-        # Build the DQNLearner (builds the target network).
+        # Build the `DQNLearner` (builds the target network).
         super().build()
 
     @override(DQNLearner)
     def remove_module(self, module_id: ModuleID) -> None:
         """Removes the expectile."""
         super().remove_module(module_id)
+        # Remove the expectile from the mapping.
         self.expectile.pop(module_id, None)
