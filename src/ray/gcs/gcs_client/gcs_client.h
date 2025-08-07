@@ -32,6 +32,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
@@ -65,11 +66,11 @@ class GcsClientOptions {
       : cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
-    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    auto address = ParseAddress(gcs_address);
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
-    RAY_CHECK(address.size() == 2);
-    gcs_address_ = address[0];
-    gcs_port_ = std::stoi(address[1]);
+    RAY_CHECK(address.has_value());
+    gcs_address_ = (*address)[0];
+    gcs_port_ = std::stoi((*address)[1]);
   }
 
   GcsClientOptions() {}

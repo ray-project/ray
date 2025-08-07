@@ -10,7 +10,7 @@ from typing import Any
 @dataclass
 class BuildArgSet:
     name: str
-    build_args: List[str]
+    build_args: dict
 
 
 @dataclass
