@@ -792,10 +792,10 @@ class Dataset:
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
             >>> ds.with_column("id_2", (col("id") * 2)).schema()
-            Column    Type
-            ------    ----
-            id        int64
-            id_2      int64
+            Column  Type
+            ------  ----
+            id      int64
+            id_2    int64
 
         Args:
             column_name: The name of the new column.
