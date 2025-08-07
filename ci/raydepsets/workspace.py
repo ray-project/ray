@@ -41,7 +41,7 @@ def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
         return obj
 
 
-def _dict_to_depset(depset: dict, build_arg_sets: BuildArgSet = None) -> Depset:
+def _dict_to_depset(depset: dict, build_arg_sets: Optional[List[BuildArgSet]] = None) -> Depset:
     return Depset(
         name=depset.get("name"),
         requirements=depset.get("requirements", []),
