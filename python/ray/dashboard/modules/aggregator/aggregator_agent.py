@@ -29,6 +29,9 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2_grpc,
     events_base_event_pb2,
 )
+from ray._private.gcs_utils import create_gcs_channel
+from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import gcs_service_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,9 @@ EVENT_SEND_ADDR = os.environ.get(
 )
 # Port of the external service to send events
 EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
+)
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -123,6 +129,12 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
+    events_published_to_gcs = Counter(
+        f"{metrics_prefix}_events_published_to_gcs",
+        "Total number of events successfully published to GCS.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
 
 
 class AggregatorAgent(
@@ -131,18 +143,81 @@ class AggregatorAgent(
 ):
     """
     AggregatorAgent is a dashboard agent module that collects events sent with
-    gRPC from other components, buffers them, and periodically sends them to an
+    gRPC from other components, buffers them, and periodically sends them to GCS and an
     external service with HTTP POST requests for further processing or storage
     """
+
+    class AccumulatedTaskMetadata:
+        """
+        Helper class to manage accumulated task events metadata with efficient deduplication.
+        """
+
+        def __init__(self):
+            self.metadata = events_event_aggregator_service_pb2.TaskEventsMetadata()
+            self._dropped_attempts_set = set()
+            self._lock = threading.Lock()
+
+        def merge(self, new_metadata) -> None:
+            """
+            Merge new task metadata, avoiding duplicates.
+
+            Args:
+                new_metadata: TaskEventsMetadata from incoming request
+            """
+            if not new_metadata:
+                return
+
+            with self._lock:
+                for new_attempt in new_metadata.dropped_task_attempts:
+                    attempt_key = (new_attempt.task_id, new_attempt.attempt_number)
+                    if attempt_key not in self._dropped_attempts_set:
+                        # Add to both protobuf and set
+                        merged_attempt = self.metadata.dropped_task_attempts.add()
+                        merged_attempt.CopyFrom(new_attempt)
+                        self._dropped_attempts_set.add(attempt_key)
+
+        def get_and_reset(self):
+            """
+            Get current metadata and reset for next batch.
+
+            Returns:
+                TaskEventsMetadata or None if empty
+            """
+            with self._lock:
+                if len(self.metadata.dropped_task_attempts) == 0:
+                    return None
+
+                # Create copy of current metadata
+                current_metadata = (
+                    events_event_aggregator_service_pb2.TaskEventsMetadata()
+                )
+                current_metadata.CopyFrom(self.metadata)
+
+                # Reset both structures efficiently
+                self.metadata.Clear()
+                self._dropped_attempts_set.clear()
+
+                return current_metadata
+
+        def is_empty(self) -> bool:
+            """Check if metadata is empty."""
+            with self._lock:
+                return len(self.metadata.dropped_task_attempts) == 0
 
     def __init__(self, dashboard_agent) -> None:
         super().__init__(dashboard_agent)
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
         self._event_buffer = queue.Queue(maxsize=MAX_EVENT_BUFFER_SIZE)
+        # Use the helper class for metadata management
+        self._accumulated_task_metadata = self.AccumulatedTaskMetadata()
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
+        )
+        self._gcs_channel = create_gcs_channel(self.gcs_address)
+        self._gcs_event_stub = gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
+            self._gcs_channel
         )
 
         self._http_session = Session()
@@ -164,6 +239,7 @@ class AggregatorAgent(
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
         self._events_filtered_out_since_last_metrics_update = 0
+        self._events_published_to_gcs_since_last_metrics_update = 0
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -192,10 +268,16 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
-        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
-        # metadata (e.g. dropped task attempts) to help with event processing at the
-        # downstream
         events_data = request.events_data
+        task_events_metadata = (
+            events_data.task_events_metadata
+            if events_data.HasField("task_events_metadata")
+            else None
+        )
+
+        # Merge metadata using helper class
+        self._accumulated_task_metadata.merge(task_events_metadata)
+
         for event in events_data.events:
             with self._lock:
                 self._events_received_since_last_metrics_update += 1
@@ -230,22 +312,87 @@ class AggregatorAgent(
             in self._exposable_event_types
         )
 
-    def _send_events_to_external_service(self, event_batch) -> None:
+    def _create_ray_events_data(self, event_batch, task_events_metadata=None):
+        """
+        Helper method to create RayEventsData from event batch and metadata.
+
+        Args:
+            event_batch: List of RayEvent protobuf objects
+            task_events_metadata: TaskEventsMetadata object (optional)
+
+        Returns:
+            RayEventsData protobuf object
+        """
+        events_data = events_event_aggregator_service_pb2.RayEventsData()
+        events_data.events.extend(event_batch)
+
+        if task_events_metadata:
+            events_data.task_events_metadata.CopyFrom(task_events_metadata)
+
+        return events_data
+
+    def _send_events_to_gcs(self, event_batch, task_events_metadata=None) -> bool:
+        """
+        Sends a batch of events to GCS via the GCS grpc client.
+
+        Args:
+            event_batch: List of RayEvent protobuf objects
+            task_events_metadata: TaskEventsMetadata object (optional)
+        """
+        if not PUBLISH_EVENTS_TO_GCS:
+            return True
+
+        if not event_batch and len(task_events_metadata.dropped_task_attempts) == 0:
+            return True
+
+        try:
+            # Create RayEventsData from the event batch
+            events_data = self._create_ray_events_data(
+                event_batch, task_events_metadata
+            )
+
+            # Create the request
+            request = events_event_aggregator_service_pb2.AddEventsRequest(
+                events_data=events_data
+            )
+
+            # Call GCS service
+            response = self._gcs_event_stub.AddEvents(request)
+
+            # Check response status
+            if response.status.code != 0:
+                logger.error(f"GCS AddEvents failed: {response.status.message}")
+                return False
+
+            with self._lock:
+                self._events_published_to_gcs_since_last_metrics_update += len(
+                    event_batch
+                )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send events to GCS: {e}")
+            return False
+
+    def _send_events_to_external_service(self, event_batch) -> bool:
         """
         Sends a batch of events to the external service via HTTP POST request
+
+        Returns:
+            bool: True if successful, False if failed
         """
         if not event_batch:
-            return
+            return True
 
         filtered_event_batch = [
             event for event in event_batch if self._can_expose_event(event)
         ]
         if not filtered_event_batch:
-            # All events were filtered out, update metrics and return to avoid an empty POST.
+            # All events were filtered out, update metrics and return success
             with self._lock:
                 self._events_filtered_out_since_last_metrics_update += len(event_batch)
-            event_batch.clear()
-            return
+            return True
 
         # Convert protobuf objects to JSON dictionaries for HTTP POST
         filtered_event_batch_json = [
@@ -264,15 +411,18 @@ class AggregatorAgent(
                 self._events_filtered_out_since_last_metrics_update += len(
                     event_batch
                 ) - len(filtered_event_batch)
-            event_batch.clear()
+            return True  # Success
         except Exception as e:
             logger.error("Failed to send events to external service. Error: %s", e)
+            return False  # Failure
 
     def _publish_events(self) -> None:
         """
-        Continuously publishes events from the event buffer to the external service
+        Continuously publishes events from the event buffer to both GCS and external service
         """
         event_batch = []
+        task_events_metadata = events_event_aggregator_service_pb2.TaskEventsMetadata()
+        published_events_to_gcs = False
 
         while True:
             while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
@@ -283,15 +433,53 @@ class AggregatorAgent(
                     break
 
             if event_batch:
-                # Send the batch of events to the external service.
-                # If failed, event_batch will be reused in the next iteration.
-                # Retry sending with other events in the next iteration.
-                self._send_events_to_external_service(event_batch)
+                if not published_events_to_gcs:
+                    # Get task events metadata only when starting a new batch (not on retries)
+                    # This need not be in sync with the event batch.
+                    if len(task_events_metadata.dropped_task_attempts) == 0:
+                        task_events_metadata = (
+                            self._accumulated_task_metadata.get_and_reset()
+                        )
+
+                    published_events_to_gcs = self._send_events_to_gcs(
+                        event_batch, task_events_metadata
+                    )
+
+                    # If GCS fails, don't attempt external service publish - retry in next iteration
+                    if not published_events_to_gcs:
+                        logger.warning(
+                            f"GCS publication failed for {len(event_batch)} events, will retry"
+                        )
+                        continue  # Retry same batch in next iteration
+
+                # GCS succeeded, now try external service
+                external_success = self._send_events_to_external_service(event_batch)
+
+                if external_success:
+                    # Both Publish succeeded - move to next batch
+                    event_batch.clear()
+                    if task_events_metadata:
+                        task_events_metadata.Clear()
+                    published_events_to_gcs = False
+                else:
+                    # GCS succeeded but external svc publish failed - retry only external service
+                    logger.warning(
+                        f"External service publication failed for {len(event_batch)} events, will retry external only"
+                    )
+
             else:
+                # No events in batch
                 should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
                 if should_stop:
-                    # Send any remaining events before stopping.
-                    self._send_events_to_external_service(event_batch)
+                    # Send any remaining inflight events before stopping
+                    if event_batch:
+                        if not published_events_to_gcs:
+                            if len(task_events_metadata.dropped_task_attempts) == 0:
+                                task_events_metadata = (
+                                    self._accumulated_task_metadata.get_and_reset()
+                                )
+                            self._send_events_to_gcs(event_batch, task_events_metadata)
+                        self._send_events_to_external_service(event_batch)
                     return
 
     def _update_metrics(self) -> None:
@@ -311,12 +499,16 @@ class AggregatorAgent(
             )
             _events_published = self._events_published_since_last_metrics_update
             _events_filtered_out = self._events_filtered_out_since_last_metrics_update
+            _events_published_to_gcs = (
+                self._events_published_to_gcs_since_last_metrics_update
+            )
 
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
             self._events_filtered_out_since_last_metrics_update = 0
+            self._events_published_to_gcs_since_last_metrics_update = 0
 
         labels = {
             "ip": self._ip,
@@ -334,6 +526,7 @@ class AggregatorAgent(
         )
         events_published.labels(**labels).inc(_events_published)
         events_filtered_out.labels(**labels).inc(_events_filtered_out)
+        events_published_to_gcs.labels(**labels).inc(_events_published_to_gcs)
 
     def _check_main_thread_liveness(self) -> None:
         """
@@ -374,7 +567,11 @@ class AggregatorAgent(
             except:  # noqa: E722
                 break
 
-        self._send_events_to_external_service(event_batch)
+        if event_batch:
+            # Get any remaining accumulated metadata
+            task_events_metadata = self._accumulated_task_metadata.get_and_reset()
+            self._send_events_to_gcs(event_batch, task_events_metadata)
+            self._send_events_to_external_service(event_batch)
 
         for thread in self._publisher_threads:
             thread.join()
