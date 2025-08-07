@@ -4,7 +4,7 @@
 # with this location. Example usage:
 #
 # (Repository root) $ ci/env/install-llvm-binaries.sh <optional URL to LLVM> <optional target directory>
-# (Repository root) $ bazel build --config=llvm //:ray_pkg
+# (Repository root) $ bazel run --config=llvm //:gen_ray_pkg
 #
 # If the arguments are unspecified, the default ${LLVM_URL} and ${TARGET_DIR} are used. They are set to be
 # suitable for CI, but may not be suitable under other environments.

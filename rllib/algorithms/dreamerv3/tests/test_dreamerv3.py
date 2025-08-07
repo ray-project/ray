@@ -16,12 +16,20 @@ import unittest
 
 import gymnasium as gym
 import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.env.wrappers.dm_control_wrapper import ActionClip, DMCEnv
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.test_utils import check
 from ray import tune
+
+torch, nn = try_import_torch()
 
 
 class TestDreamerV3(unittest.TestCase):
@@ -39,8 +47,7 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
-            .framework(eager_tracing=False)
-            .env_runners(num_env_runners=2)
+            .env_runners(num_env_runners=0)
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
@@ -52,7 +59,7 @@ class TestDreamerV3(unittest.TestCase):
                 use_float16=False,
             )
             .learners(
-                num_learners=2,  # Try with 2 Learners.
+                num_learners=2,
                 num_cpus_per_learner=1,
                 num_gpus_per_learner=0,
             )
@@ -61,29 +68,62 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 3
 
         for env in [
+            # "DMC/cartpole/swingup",  # causes strange MuJoCo error(s) on CI
             "FrozenLake-v1",
             "CartPole-v1",
             "ale_py:ALE/MsPacman-v5",
             "Pendulum-v1",
         ]:
             print("Env={}".format(env))
+
             # Add one-hot observations for FrozenLake env.
             if env == "FrozenLake-v1":
+                config.env_runners(
+                    env_to_module_connector=(
+                        lambda env, spaces, device: FlattenObservations()
+                    )
+                )
+            else:
+                config.env_runners(env_to_module_connector=None)
 
-                def env_creator(ctx):
-                    import gymnasium as gym
-                    from ray.rllib.algorithms.dreamerv3.utils.env_runner import (
-                        OneHot,
+            # Add Atari preprocessing.
+            if env == "ale_py:ALE/MsPacman-v5":
+
+                def env_creator(cfg):
+                    return wrap_atari_for_new_api_stack(
+                        gym.make(env, **cfg, render_mode="rgb_array"),
+                        # No frame-stacking. DreamerV3 processes color images with a
+                        # GRU, so partial observability is ok.
+                        framestack=None,
+                        grayscale=False,
                     )
 
-                    return OneHot(gym.make("FrozenLake-v1"))
+                tune.register_env("env", env_creator)
+                env = "env"
 
-                tune.register_env("frozen-lake-one-hot", env_creator)
-                env = "frozen-lake-one-hot"
+            elif env.startswith("DMC"):
+                parts = env.split("/")
+                assert len(parts) == 3, (
+                    "ERROR: DMC env must be formatted as 'DMC/[task]/[domain]', e.g. "
+                    f"'DMC/cartpole/swingup'! You provided '{env}'."
+                )
+
+                def env_creator(cfg):
+                    return ActionClip(
+                        DMCEnv(
+                            parts[1],
+                            parts[2],
+                            from_pixels=True,
+                            channels_first=False,
+                        )
+                    )
+
+                tune.register_env("env", env_creator)
+                env = "env"
 
             config.environment(env)
-            algo = config.build()
-            obs_space = algo.env_runner.env.single_observation_space
+            algo = config.build_algo()
+            obs_space = algo.env_runner._env_to_module.observation_space
             act_space = algo.env_runner.env.single_action_space
             rl_module = algo.env_runner.module
 
@@ -92,12 +132,18 @@ class TestDreamerV3(unittest.TestCase):
                 print(results)
             # Test dream trajectory w/ recreated observations.
             sample = algo.replay_buffer.sample()
+            start_states = rl_module.dreamer_model.get_initial_state()
+            start_states = tree.map_structure(
+                # Repeat only the batch dimension (B times).
+                lambda s: s.unsqueeze(0).repeat(1, *([1] * len(s.shape))),
+                start_states,
+            )
             dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
-                start_states=rl_module.dreamer_model.get_initial_state(),
+                start_states=start_states,
                 timesteps_burn_in=5,
                 timesteps_H=45,
-                observations=sample["obs"][:1],  # B=1
-                actions=(
+                observations=torch.from_numpy(sample["obs"][:1]),  # B=1
+                actions=torch.from_numpy(
                     one_hot(
                         sample["actions"],
                         depth=act_space.n,
@@ -108,19 +154,19 @@ class TestDreamerV3(unittest.TestCase):
                     :1
                 ],  # B=1
             )
-            self.assertTrue(
-                dream["actions_dreamed_t0_to_H_BxT"].shape
-                == (46, 1)
+            check(
+                dream["actions_dreamed_t0_to_H_BxT"].shape,
+                (46, 1)
                 + (
                     (act_space.n,)
                     if isinstance(act_space, gym.spaces.Discrete)
                     else tuple(act_space.shape)
-                )
+                ),
             )
-            self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
-            self.assertTrue(
-                dream["observations_dreamed_t0_to_H_BxT"].shape
-                == [46, 1] + list(obs_space.shape)
+            check(dream["continues_dreamed_t0_to_H_BxT"].shape, (46, 1))
+            check(
+                dream["observations_dreamed_t0_to_H_BxT"].shape,
+                [46, 1] + list(obs_space.shape),
             )
             algo.stop()
 
@@ -133,11 +179,43 @@ class TestDreamerV3(unittest.TestCase):
         # encoder/decoder nets with 5x1024 nodes (which corresponds to XL) regardless of
         # the `model_size` settings (iff >="S").
         expected_num_params_world_model = {
+            # XS encoder
+            # kernel=[4, 256], (no bias), layernorm=[256],[256]
+            # XS reward_predictor
+            # kernel=[1280, 256], (no bias), layernorm[256],[256]
+            # kernel=[256, 255] bias=[255]
+            # 1280=1024 (z-state) + 256 (h-state)
+            # XS continue_predictor
+            # kernel=[1280, 256], (no bias), layernorm=[256],[256]
+            # kernel=[256, 1] bias=[1]
+            # XS sequence_model
+            # [
+            # pre-MLP: kernel=[1026, 256], (no bias), layernorm=[256],[256], silu
+            # custom GRU: kernel=[512, 768], (no bias), layernorm=[768],[768]
+            # ]
+            # XS decoder
+            # kernel=[1280, 256], (no bias), layernorm=[256],[256]
+            # kernel=[256, 4] bias=[4]
+            # XS posterior_mlp
+            # kernel=[512, 256], (no bias), layernorm=[256],[256]
+            # XS posterior_representation_layer
+            # kernel=[256, 1024], bias=[1024]
             "XS_cartpole": 2435076,
             "S_cartpole": 7493380,
             "M_cartpole": 16206084,
             "L_cartpole": 37802244,
             "XL_cartpole": 108353796,
+            # XS encoder (atari)
+            # cnn kernel=[4, 4, 3, 24], (no bias), layernorm=[24],[24],
+            # cnn kernel=[4, 4, 24, 48], (no bias), layernorm=[48],[48],
+            # cnn kernel=[4, 4, 48, 96], (no bias), layernorm=[96],[96],
+            # cnn kernel=[4, 4, 96, 192], (no bias), layernorm=[192],[192],
+            # XS decoder (atari)
+            # init dense kernel[1280, 3072] bias=[3072] -> reshape into image
+            # [4, 4, 96, 192], [96], [96]
+            # [4, 4, 48, 96], [48], [48],
+            # [4, 4, 24, 48], [24], [24],
+            # [4, 4, 3, 24], [3] <- no layernorm at end
             "XS_atari": 7538979,
             "S_atari": 15687811,
             "M_atari": 32461635,
@@ -209,24 +287,27 @@ class TestDreamerV3(unittest.TestCase):
                 # Count the generated RLModule's parameters and compare to the
                 # paper's reported numbers ([1] and [3]).
                 num_params_world_model = sum(
-                    np.prod(v.shape.as_list())
-                    for v in rl_module.world_model.trainable_variables
+                    np.prod(v.shape)
+                    for v in rl_module.world_model.parameters()
+                    if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_world_model,
                     expected_num_params_world_model[f"{model_size}_{env_name}"],
                 )
                 num_params_actor = sum(
-                    np.prod(v.shape.as_list())
-                    for v in rl_module.actor.trainable_variables
+                    np.prod(v.shape)
+                    for v in rl_module.actor.parameters()
+                    if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_actor,
                     expected_num_params_actor[f"{model_size}_{env_name}"],
                 )
                 num_params_critic = sum(
-                    np.prod(v.shape.as_list())
-                    for v in rl_module.critic.trainable_variables
+                    np.prod(v.shape)
+                    for v in rl_module.critic.parameters()
+                    if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_critic,
