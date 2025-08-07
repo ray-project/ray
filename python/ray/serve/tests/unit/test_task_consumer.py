@@ -32,21 +32,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     ) -> TaskResult:
         pass
 
-    async def enqueue_task_async(
-        self, task_name, args=None, kwargs=None, **options
-    ) -> TaskResult:
-        pass
-
     def get_task_status_sync(self, task_id) -> TaskResult:
-        pass
-
-    async def get_task_status_async(self, task_id) -> TaskResult:
-        pass
-
-    async def cancel_task(self, task_id) -> bool:
-        pass
-
-    async def get_metrics(self) -> Dict[str, Any]:
         pass
 
     def start_consumer(self, **kwargs):
@@ -58,7 +44,13 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     def shutdown(self):
         self._shutdown_received = True
 
-    async def health_check(self) -> List[Dict]:
+    def cancel_task_sync(self, task_id) -> bool:
+        pass
+
+    def get_metrics_sync(self) -> Dict[str, Any]:
+        pass
+
+    def health_check_sync(self) -> List[Dict]:
         pass
 
 
