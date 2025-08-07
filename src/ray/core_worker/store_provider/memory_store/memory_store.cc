@@ -237,7 +237,7 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     if (!async_callbacks.empty()) {
       object_entry->SetAccessed();
     } else {
-      return true;
+      return;
     }
   }
 
