@@ -2,8 +2,7 @@ import sys
 import json
 import time
 import base64
-import threading
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -27,15 +26,12 @@ from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
 from ray.core.generated.events_event_aggregator_service_pb2 import (
     AddEventsRequest,
     AddEventsReply,
-    AddEventsStatus,
     RayEventsData,
     TaskEventsMetadata,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
-from ray.core.generated.common_pb2 import TaskAttempt
-
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 

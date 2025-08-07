@@ -31,7 +31,6 @@ from ray.core.generated import (
 )
 from ray._private.gcs_utils import create_gcs_channel
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import gcs_service_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -160,9 +159,6 @@ class AggregatorAgent(
         def merge(self, new_metadata) -> None:
             """
             Merge new task metadata, avoiding duplicates.
-
-            Args:
-                new_metadata: TaskEventsMetadata from incoming request
             """
             if not new_metadata:
                 return
@@ -192,9 +188,6 @@ class AggregatorAgent(
         def get_and_reset(self):
             """
             Get current metadata and reset for next batch.
-
-            Returns:
-                TaskEventsMetadata or None if empty
             """
             with self._lock:
                 if len(self.metadata.dropped_task_attempts) == 0:
@@ -326,13 +319,6 @@ class AggregatorAgent(
     def _create_ray_events_data(self, event_batch, task_events_metadata=None):
         """
         Helper method to create RayEventsData from event batch and metadata.
-
-        Args:
-            event_batch: List of RayEvent protobuf objects
-            task_events_metadata: TaskEventsMetadata object (optional)
-
-        Returns:
-            RayEventsData protobuf object
         """
         events_data = events_event_aggregator_service_pb2.RayEventsData()
         events_data.events.extend(event_batch)
@@ -345,10 +331,6 @@ class AggregatorAgent(
     def _send_events_to_gcs(self, event_batch, task_events_metadata=None) -> bool:
         """
         Sends a batch of events to GCS via the GCS grpc client.
-
-        Args:
-            event_batch: List of RayEvent protobuf objects
-            task_events_metadata: TaskEventsMetadata object (optional)
         """
         if not PUBLISH_EVENTS_TO_GCS:
             return True
@@ -387,10 +369,7 @@ class AggregatorAgent(
 
     def _send_events_to_external_service(self, event_batch) -> bool:
         """
-        Sends a batch of events to the external service via HTTP POST request
-
-        Returns:
-            bool: True if successful, False if failed
+        Sends a batch of events to the external service via HTTP POST request.
         """
         if not event_batch:
             return True
