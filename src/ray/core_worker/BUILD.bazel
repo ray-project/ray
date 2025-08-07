@@ -330,6 +330,7 @@ ray_cc_library(
         ":core_worker_context",
         ":dependency_resolver",
         ":out_of_order_actor_submit_queue",
+        ":reference_count",
         ":sequential_actor_submit_queue",
         "//src/ray/common:asio",
         "//src/ray/common:id",
