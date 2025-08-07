@@ -705,8 +705,9 @@ def get_tensor_device_list(tensors):
     """
     if not isinstance(tensors, list):
         raise RuntimeError(
-            "Expect ta list of tensors eeach locates on a NPU device. "
+            "Expect a list of tensors each locates on a NPU device. "
             f"Got: {type(tensors)}"
+        )
         )
     devices = [get_tensor_device(t) for t in tensors]
     return devices
