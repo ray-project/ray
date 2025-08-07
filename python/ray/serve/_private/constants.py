@@ -426,6 +426,17 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = get_env_int(
     "RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", 100
 )
 
+# Interval at which metrics will be fetched by each replica, to later be reported to the serve controller.
+# Set to `0` to disable metrics fetching.
+RAY_SERVE_METRICS_FETCH_INTERVAL_MS = int(
+    os.environ.get("RAY_SERVE_METRICS_FETCH_INTERVAL_MS", "1000")
+)
+
+# Limit for all metrics_sources before timout error is thrown
+RAY_SERVE_METRICS_FETCH_TIMEOUT_MS = int(
+    os.environ.get("RAY_SERVE_METRICS_FETCH_TIMEOUT_MS", "5000")
+)
+
 # The default request router class to use if none is specified.
 DEFAULT_REQUEST_ROUTER_PATH = (
     "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"

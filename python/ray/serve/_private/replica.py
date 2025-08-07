@@ -5,6 +5,7 @@ import inspect
 import logging
 import os
 import pickle
+import random
 import threading
 import time
 import traceback
@@ -37,6 +38,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
+from ray.types import ObjectRef
 from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
@@ -53,6 +55,8 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
+    RAY_SERVE_METRICS_FETCH_INTERVAL_MS,
+    RAY_SERVE_METRICS_FETCH_TIMEOUT_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -94,6 +98,7 @@ from ray.serve._private.utils import (
     Semaphore,
     get_component_file_name,  # noqa: F401
     parse_import_path,
+    check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
@@ -172,6 +177,13 @@ class ReplicaMetricsManager:
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+
+        # Autoscaling metrics and fetching intervals
+        self._autoscaling_metrics: Dict[str, Any] = {}
+        self._record_autoscaling_metrics_ref: Optional[ObjectRef] = None
+        self._last_record_autoscaling_metrics_time: float = 0.0
+        self._autoscaling_metrics_period_s: float = RAY_SERVE_METRICS_FETCH_INTERVAL_MS
+        self._autoscaling_metrics_timeout_s: float = RAY_SERVE_METRICS_FETCH_TIMEOUT_MS
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -336,8 +348,80 @@ class ReplicaMetricsManager:
             send_timestamp=time.time(),
         )
 
+    def _should_record_autoscaling_metrics(self) -> bool:
+        """Determines if a new record autoscaling metrics should be kicked off.
+
+        A record autoscaling metrics will be started if:
+            1) There is not already an active record autoscaling metrics.
+            2) It has been more than autoscaling_metrics_period_s since
+               the previous record autoscaling metrics was *started*.
+
+        This assumes that self._record_autoscaling_metrics_ref is reset to `None`
+        when an active record autoscaling metrics succeeds or fails (due to
+        returning or timeout).
+        """
+        if self._record_autoscaling_metrics_ref is not None:
+            # There's already an active record autoscaling metrics.
+            return False
+
+        # If there's no active record autoscaling metrics, kick off another and
+        # reset the timer if it's been long enough since the last record
+        # autoscaling metrics. Add some randomness to avoid synchronizing across
+        # all replicas.
+        time_since_last = time.time() - self._last_record_autoscaling_metrics_time
+        randomized_period = self._autoscaling_metrics_period_s * random.uniform(
+            0.9, 1.1
+        )
+        return time_since_last > randomized_period
+
+    def get_autoscaling_metrics(self) -> Dict[str, Any]:
+        """Get the autoscaling metrics for the replica."""
+        if self._record_autoscaling_metrics_ref is None:
+            # There's no active record autoscaling metrics.
+            pass
+        elif check_obj_ref_ready_nowait(self._record_autoscaling_metrics_ref):
+            # Object ref is ready, ray.get it to check for exceptions.
+            try:
+                self._autoscaling_metrics = ray.get(self._record_autoscaling_metrics_ref)
+            except Exception:
+                logger.exception(
+                    "Exception when trying to get autoscaling metrics:\n"
+                    + traceback.format_exc()
+                )
+            self._record_autoscaling_metrics_ref = None
+        elif (
+            time.time() - self._last_record_autoscaling_metrics_time
+            > self._autoscaling_metrics_timeout_s
+        ):
+            # Record autoscaling metrics hasn't returned and the timeout is up, retrying.
+            logger.warning(
+                "Didn't receive autoscaling metrics response for replica "
+                f"{self._replica_id} after "
+                f"{self._autoscaling_metrics_timeout_s}s, retrying."
+            )
+            self._record_autoscaling_metrics_ref = None
+
+        if self._should_record_autoscaling_metrics():
+            self._last_record_autoscaling_metrics_time = time.time()
+            # Call the remote method on the replica actor
+            self._record_autoscaling_metrics_ref = (
+                self._actor_handle.record_autoscaling_metrics.remote()
+            )
+
+        return self._autoscaling_metrics
+
+    def pull_autoscaling_metrics(self) -> Optional[Dict[str, Any]]:
+        """Get the latest response from the autoscaling metrics on the replica.
+
+        Returns None if the replica is still calculating the metrics.
+        """
+        return self.get_autoscaling_metrics()
+
     def _add_autoscaling_metrics_point(self, metrics_sources: Dict[str, Union[str, Callable]]) -> None:
-        
+        """Add autoscaling metrics point using periodic fetching mechanism."""
+        # Get the autoscaling metrics from prometheus using the periodic fetching mechanism
+        autoscaling_metrics = self.get_autoscaling_metrics()
+
         # Use the metrics threads to fetch the updated metrics
         from concurrent.futures import ThreadPoolExecutor
 
@@ -353,10 +437,13 @@ class ReplicaMetricsManager:
                     # Optionally log or handle the exception
                     results[key] = None
 
+        # Merge the fetched autoscaling metrics with the thread pool results
+        all_metrics = {**autoscaling_metrics, **results}
+
         # Add the collected metrics to the metrics store
-        self._metrics_store.add_metrics_point(results, time.time())
+        self._metrics_store.add_metrics_point(all_metrics, time.time())
 
-
+        # Also add the ongoing requests metric
         self._metrics_store.add_metrics_point(
             {self._replica_id: self._num_ongoing_requests},
             time.time(),
@@ -912,6 +999,14 @@ class ReplicaBase(ABC):
             logger.warning("Replica record routing stats failed.")
             raise e from None
 
+    async def record_autoscaling_metrics(self) -> Dict[str, Any]:
+        """Record autoscaling metrics for the replica."""
+        # This would be implemented to call user-defined autoscaling metrics collection
+        # For now, return empty dict as placeholder
+
+
+        return {}
+
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
@@ -1066,6 +1161,9 @@ class ReplicaActor:
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
+
+    async def record_autoscaling_metrics(self) -> Dict[str, Any]:
+        return await self._replica_impl.record_autoscaling_metrics()
 
     async def reconfigure(
         self, deployment_config, route_prefix: Optional[str] = None

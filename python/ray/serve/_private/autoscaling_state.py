@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.common import ReplicaID, DeploymentID
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -77,6 +78,43 @@ class ReplicaMetricReport:
     running_requests: float
     timestamp: float
 
+@dataclass
+class AutoscalingContext:
+    """Rich context provided to custom autoscaling policies."""
+
+    # Deployment information
+    deployment_id: DeploymentID
+    deployment_name: str
+    app_name: Optional[str]
+
+    # Current state
+    current_num_replicas: int
+    target_num_replicas: int
+    running_replicas: List[ReplicaID]
+
+    # Built-in metrics
+    total_num_requests: float
+    requests_per_replica: Dict[ReplicaID, float]
+    queued_requests: float
+
+    # Custom metrics (aggregated over look_back_period using user defined agg function)
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    # Custom metrics (vector over look_back_period)
+    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]]
+
+    # Capacity and bounds
+    min_replicas: int
+    max_replicas: int
+    capacity_adjusted_min_replicas: int
+    capacity_adjusted_max_replicas: int
+
+    # Policy state for stateful logic
+    policy_state: Dict[str, Any]
+
+    # Timestamps for historical information
+    last_scale_up_time: Optional[float]
+    last_scale_down_time: Optional[float]
+    current_time: float
 
 @dataclass
 class AutoscalingContext:
