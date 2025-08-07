@@ -51,10 +51,19 @@ class PublisherTest : public ::testing::Test {
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[this]() { return current_time_; },
-        /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
-        /*batch_size*/ 100,
         kDefaultPublisherId);
+
+    // Set the mock time function for testing
+    RayConfig::instance().initialize(
+        R"(
+    {
+      "publish_batch_size": 100,
+      "subscriber_timeout_ms": 30000
+    }
+    )");
+
+    publisher_->SetTimeFunction([this]() { return current_time_; });
+
     current_time_ = 0;
     request_.set_subscriber_id(subscriber_id_.Binary());
     request_.set_publisher_id(kDefaultPublisherId.Binary());
