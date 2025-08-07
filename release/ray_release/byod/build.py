@@ -29,11 +29,21 @@ REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
-def build_custom_byod_image(image_name: str, base_image: str, post_build_script: str) -> None:
+
+def build_custom_image(
+    image_name: str, base_image: str, post_build_script: str
+) -> None:
     if _image_exist(image_name):
         logger.info(f"Image {image_name} already exists")
         return
 
+
+def build_anyscale_custom_byod_image(
+    image: str, base_image: str, post_build_script: str
+) -> None:
+    if _image_exist(image):
+        logger.info(f"Image {image} already exists")
+        return
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
     subprocess.check_call(
@@ -46,7 +56,7 @@ def build_custom_byod_image(image_name: str, base_image: str, post_build_script:
             "--build-arg",
             f"POST_BUILD_SCRIPT={post_build_script}",
             "-t",
-            image_name,
+            image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
             RELEASE_BYOD_DIR,
@@ -54,38 +64,7 @@ def build_custom_byod_image(image_name: str, base_image: str, post_build_script:
         stdout=sys.stderr,
         env=env,
     )
-    _validate_and_push(image_name)
-
-def build_anyscale_custom_byod_image(test: Test) -> None:
-    if not test.require_custom_byod_image():
-        logger.info(f"Test {test.get_name()} does not require a custom byod image")
-        return
-    byod_image = test.get_anyscale_byod_image()
-    if _image_exist(byod_image):
-        logger.info(f"Image {byod_image} already exists")
-        return
-
-    env = os.environ.copy()
-    env["DOCKER_BUILDKIT"] = "1"
-    subprocess.check_call(
-        [
-            "docker",
-            "build",
-            "--progress=plain",
-            "--build-arg",
-            f"BASE_IMAGE={test.get_anyscale_base_byod_image()}",
-            "--build-arg",
-            f"POST_BUILD_SCRIPT={test.get_byod_post_build_script()}",
-            "-t",
-            byod_image,
-            "-f",
-            os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
-            RELEASE_BYOD_DIR,
-        ],
-        stdout=sys.stderr,
-        env=env,
-    )
-    _validate_and_push(byod_image)
+    _validate_and_push(image)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> None:

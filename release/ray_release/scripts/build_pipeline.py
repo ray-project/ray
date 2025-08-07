@@ -166,13 +166,6 @@ def main(
             json.dump(settings, fp)
 
     steps_str = json.dumps(steps)
-    logger.info(steps_str)
-    for step in steps:
-        group_name = step["group"].lower().replace(" ", "_").replace("/", "_").replace(":", "_").replace(".", "_")
-        logger.info(f"Writing pipeline file to {os.getcwd()}/.buildkite/release/tests_{group_name}.rayci.yml")
-        with open(f".buildkite/release/tests_{group_name}.rayci.yml", "w") as f:
-            yaml.dump(step, f, default_flow_style=False, sort_keys=False)
-
     print(steps_str)
 
 
