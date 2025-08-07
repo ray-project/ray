@@ -604,7 +604,7 @@ so multiple tasks and actors can share the same accelerator.
     .. tab-item:: Rebellions RBLN
         :sync: Rebellions RBLN
 
-        Rebellions RBLN doesn't support fractional resource.
+        Rebellions RBLN doesn't support fractional resources.
 
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
