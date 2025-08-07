@@ -11,7 +11,10 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_assertion,
 )
-from ray._private.metrics_agent import WORKER_ID_TAG_KEY
+from ray._private.telemetry.metric_cardinality import (
+    WORKER_ID_TAG_KEY,
+    TASK_OR_ACTOR_NAME_TAG_KEY,
+)
 
 
 try:
@@ -20,19 +23,29 @@ except ImportError:
     prometheus_client = None
 
 
-_TO_TEST_METRICS = ["ray_tasks", "ray_actors"]
+_TO_TEST_METRICS = ["ray_tasks", "ray_actors", "ray_running_jobs"]
+_COMPONENT_TAG_KEY = "Component"
 
 
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
+    global _CARDINALITY_LEVEL
+    _CARDINALITY_LEVEL = None
     core_metric_cardinality_level = request.param
     os.environ["RAY_metric_cardinality_level"] = core_metric_cardinality_level
     cluster = ray_start_cluster
     cluster.add_node(
         _system_config={
-            "metrics_report_interval_ms": 1000,
             "enable_metrics_collection": True,
             "metric_cardinality_level": core_metric_cardinality_level,
+            "experimental_enable_open_telemetry_on_agent": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_agent"
+            )
+            == "1",
+            "experimental_enable_open_telemetry_on_core": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_core"
+            )
+            == "1",
         }
     )
     cluster.wait_for_nodes()
@@ -66,13 +79,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     ray.get(obj_refs)
 
 
-@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
-@pytest.mark.parametrize(
-    "_setup_cluster_for_test,cardinality_level",
-    [("recommended", "recommended"), ("legacy", "legacy")],
-    indirect=["_setup_cluster_for_test"],
-)
-def test_cardinality_levels(_setup_cluster_for_test, cardinality_level):
+def _cardinality_level_test(_setup_cluster_for_test, cardinality_level):
     """
     Test that the ray_tasks and ray_actors metric are reported with the expected cardinality level
     """
@@ -97,14 +104,61 @@ def test_cardinality_levels(_setup_cluster_for_test, cardinality_level):
                     assert (
                         sample.labels.get(WORKER_ID_TAG_KEY) is not None
                     ), f"Sample {sample} does not contain WorkerId tag"
+                    if metric == "ray_tasks" or metric == "ray_actors":
+                        assert (
+                            sample.labels.get(TASK_OR_ACTOR_NAME_TAG_KEY) is not None
+                        ), f"Sample {sample} does not contain Name tag"
+                elif cardinality_level == "low":
+                    # If the cardinality level is low, the WorkerId and Name tags should
+                    # be removed
+                    assert (
+                        sample.labels.get(WORKER_ID_TAG_KEY) is None
+                    ), f"Sample {sample} contains WorkerId tag"
+                    if metric == "ray_tasks" or metric == "ray_actors":
+                        assert (
+                            sample.labels.get(TASK_OR_ACTOR_NAME_TAG_KEY) is None
+                        ), f"Sample {sample} contains Name tag"
                 else:
                     raise ValueError(f"Unknown cardinality level: {cardinality_level}")
+
+                # The Component tag should be present on all cardinality levels
+                assert (
+                    sample.labels.get(_COMPONENT_TAG_KEY) is not None
+                ), f"Sample {sample} does not contain Component tag"
 
     wait_for_assertion(
         _validate,
         timeout=TEST_TIMEOUT_S,
         retry_interval_ms=1000,  # Yield resource for other processes
     )
+
+
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize(
+    "_setup_cluster_for_test,cardinality_level",
+    [("recommended", "recommended"), ("legacy", "legacy")],
+    indirect=["_setup_cluster_for_test"],
+)
+def test_cardinality_recommended_and_legacy_levels(
+    _setup_cluster_for_test, cardinality_level
+):
+    _cardinality_level_test(_setup_cluster_for_test, cardinality_level)
+
+
+# We only enable low cardinality test for open telemetry because the legacy opencensus
+# implementation doesn't support low cardinality.
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.skipif(
+    os.getenv("RAY_experimental_enable_open_telemetry_on_agent") != "1",
+    reason="OpenTelemetry is not enabled on agent",
+)
+@pytest.mark.parametrize(
+    "_setup_cluster_for_test,cardinality_level",
+    [("low", "low")],
+    indirect=["_setup_cluster_for_test"],
+)
+def test_cardinality_low_levels(_setup_cluster_for_test, cardinality_level):
+    _cardinality_level_test(_setup_cluster_for_test, cardinality_level)
 
 
 if __name__ == "__main__":
