@@ -22,15 +22,15 @@ namespace ray {
 
 /// Build a network address string from host and port.
 /// \param host The hostname or IP address.
-/// \param port The port number.
-/// \return Formatted address string (e.g., "localhost:8000" or "[::1]:8000").
-std::string BuildAddress(const std::string &host, int port);
-
-/// Build a network address string from host and port.
-/// \param host The hostname or IP address.
 /// \param port The port as a string.
 /// \return Formatted address string (e.g., "localhost:8000" or "[::1]:8000").
 std::string BuildAddress(const std::string &host, const std::string &port);
+
+/// Build a network address string from host and port.
+/// \param host The hostname or IP address.
+/// \param port The port number.
+/// \return Formatted address string (e.g., "localhost:8000" or "[::1]:8000").
+std::string BuildAddress(const std::string &host, int port);
 
 /// Parse a network address string into host and port.
 /// \param address The address string to parse (e.g., "localhost:8000", "[::1]:8000").

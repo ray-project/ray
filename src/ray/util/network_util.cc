@@ -16,7 +16,6 @@
 
 #include <array>
 #include <boost/asio.hpp>
-#include <boost/asio/ip/address.hpp>
 #include <optional>
 #include <string>
 
@@ -26,28 +25,18 @@ using boost::asio::ip::tcp;
 
 namespace ray {
 
-std::string BuildAddress(const std::string &host, int port) {
-  boost::system::error_code ec;
-  auto ip_addr = boost::asio::ip::make_address(host, ec);
-  if (!ec && ip_addr.is_v6()) {
-    // IPv6 address
-    return absl::StrFormat("[%s]:%d", host, port);
-  } else {
-    // IPv4 address or hostname
-    return absl::StrFormat("%s:%d", host, port);
-  }
-}
-
 std::string BuildAddress(const std::string &host, const std::string &port) {
-  boost::system::error_code ec;
-  auto ip_addr = boost::asio::ip::make_address(host, ec);
-  if (!ec && ip_addr.is_v6()) {
+  if (host.find(':') != std::string::npos) {
     // IPv6 address
     return absl::StrFormat("[%s]:%s", host, port);
   } else {
     // IPv4 address or hostname
     return absl::StrFormat("%s:%s", host, port);
   }
+}
+
+std::string BuildAddress(const std::string &host, int port) {
+  return BuildAddress(host, std::to_string(port));
 }
 
 std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address) {
