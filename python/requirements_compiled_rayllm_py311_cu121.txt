@@ -3425,11 +3425,12 @@ tqdm==4.67.1 \
     #   openai
     #   transformers
     #   vllm
-transformers==4.54.1 \
-    --hash=sha256:b2551bb97903f13bd90c9467d0a144d41ca4d142defc044a99502bb77c5c1052 \
-    --hash=sha256:c89965a4f62a0d07009d45927a9c6372848a02ab9ead9c318c3d082708bab529
+transformers==4.53.2 \
+    --hash=sha256:6c3ed95edfb1cba71c4245758f1b4878c93bf8cde77d076307dacb2cbbd72be2 \
+    --hash=sha256:db8f4819bb34f000029c73c3c557e7d06fc1b8e612ec142eecdae3947a9c78bf
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   -r python/requirements/llm/llm-requirements.txt
     #   compressed-tensors
     #   vllm
     #   xgrammar
