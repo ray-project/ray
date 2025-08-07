@@ -256,7 +256,6 @@ ray_cc_library(
     hdrs = ["store_provider/memory_store.h"],
     deps = [
         ":core_worker_context",
-        ":reference_count",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",

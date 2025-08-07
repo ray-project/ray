@@ -124,14 +124,14 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
-    const std::shared_ptr<ReferenceCounter> &reference_counter,
+    std::function<bool(const ObjectID)> should_delete_object_on_put,
     const std::shared_ptr<raylet::RayletClient> &raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
-      reference_counter_(reference_counter),
+      should_delete_object_on_put_(should_delete_object_on_put),
       raylet_client_(raylet_client),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
@@ -198,7 +198,6 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
       object_async_get_requests_.erase(async_callback_it);
     }
 
-    bool should_add_entry = true;
     auto object_request_iter = object_get_requests_.find(object_id);
     if (object_request_iter != object_get_requests_.end()) {
       auto &get_requests = object_request_iter->second;
@@ -206,12 +205,13 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         get_request->Set(object_id, object_entry);
       }
     }
-    // Don't put it in the store, since we won't get a callback for deletion.
-    if (reference_counter_ != nullptr && !reference_counter_->HasReference(object_id)) {
-      should_add_entry = false;
+
+    bool delete_object_immediately = false;
+    if (should_delete_object_on_put_(object_id)) {
+      delete_object_immediately = true;
     }
 
-    if (should_add_entry) {
+    if (!delete_object_immediately) {
       // If there is no existing get request, then add the `RayObject` to map.
       EmplaceObjectAndUpdateStats(object_id, object_entry);
     } else {
@@ -274,13 +274,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       // Only wait sets at_most_num_objects to false.
       if (num_found >= num_objects && at_most_num_objects) {
         break;
-      }
-    }
-
-    // Clean up the objects if ref counting is off.
-    if (reference_counter_ == nullptr) {
-      for (const auto &object_id : ids_to_remove) {
-        EraseObjectAndUpdateStats(object_id);
       }
     }
 

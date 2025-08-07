@@ -54,6 +54,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
           io_context.GetIoService(),
+          /*should_delete_object_on_put=*/[](const ObjectID &object_id){ return false; },
           nullptr,
           nullptr,
           nullptr,
@@ -209,7 +210,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
-                                              nullptr,
+          /*should_delete_object_on_put=*/[](const ObjectID &object_id){ return false; },
                                               nullptr,
                                               nullptr,
                                               nullptr,
@@ -239,7 +240,10 @@ class TestMemoryStoreWait : public ::testing::Test {
  protected:
   TestMemoryStoreWait()
       : io_context("TestWait"),
-        memory_store(std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService())),
+        memory_store(std::make_shared<CoreWorkerMemoryStore>(
+              io_context.GetIoService(), 
+              /*should_delete_object_on_put=*/[](const ObjectID &object_id){ return false; },
+              )),
         ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1)),
         buffer("hello"),
         memory_store_object(
