@@ -94,9 +94,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   mutable_job_table_data.set_start_time(time);
   mutable_job_table_data.set_timestamp(time);
   const JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
-  RAY_LOG(INFO) << "Adding job, job id = " << job_id
-                << ", driver pid = " << mutable_job_table_data.driver_pid();
-
+  RAY_LOG(INFO).WithField(job_id).WithField("driver_pid", mutable_job_table_data.driver_pid() << "Registering job.";
   auto on_done = [this,
                   job_id,
                   job_table_data = mutable_job_table_data,
@@ -116,7 +114,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                                              job_table_data.config().runtime_env_info());
       }
       function_manager_.AddJobReference(job_id);
-      RAY_LOG(DEBUG).WithField(job_id) << "Finished adding job.";
+      RAY_LOG(DEBUG).WithField(job_id) << "Registered job successfully.";
       cached_job_configs_[job_id] =
           std::make_shared<rpc::JobConfig>(job_table_data.config());
 
