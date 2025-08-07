@@ -1,6 +1,5 @@
 """Metadata exporter API for Ray Data datasets."""
 
-import json
 import logging
 import os
 from abc import ABC, abstractmethod
