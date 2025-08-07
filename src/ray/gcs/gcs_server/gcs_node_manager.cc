@@ -393,8 +393,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     auto death_info = removed_node->mutable_death_info();
     death_info->CopyFrom(node_death_info);
 
-    RAY_LOG(INFO).WithField(node_id)
-        << "Removing node, node name = " << removed_node->node_name()
+    RAY_LOG(INFO).WithField(node_id).WithField("node_name", removed_node->node_name())
         << ", death reason = " << rpc::NodeDeathInfo_Reason_Name(death_info->reason())
         << ", death message = " << death_info->reason_message();
     // Record stats that there's a new removed node.
