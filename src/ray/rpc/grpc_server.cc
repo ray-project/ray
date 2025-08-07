@@ -61,8 +61,7 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
-                             std::to_string(port_));
+  std::string server_address(ip_address_ + ":" + std::to_string(port_));
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and

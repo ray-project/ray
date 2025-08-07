@@ -107,7 +107,7 @@ ObjectManager::ObjectManager(
       rpc_work_(rpc_service_.get_executor()),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
-                             config_.object_manager_address == "127.0.0.1",
+                             config_.object_manager_address,
                              ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,

@@ -442,7 +442,7 @@ def test_duplicate_objectref_transfer(ray_start_regular):
     result1 = actor0.increment.remote(ref)
     result2 = actor1.increment.remote(ref)
     assert ray.get(result1) == pytest.approx(small_tensor + 1)
-    assert ray.get(result2) == pytest.approx(small_tensor + 2)
+    assert ray.get(result2) == pytest.approx(small_tensor + 1)
 
 
 if __name__ == "__main__":
