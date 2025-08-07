@@ -171,7 +171,20 @@ class AggregatorAgent(
                 for new_attempt in new_metadata.dropped_task_attempts:
                     attempt_key = (new_attempt.task_id, new_attempt.attempt_number)
                     if attempt_key not in self._dropped_attempts_set:
-                        # Add to both protobuf and set
+                        # Check if we need to enforce buffer size limit
+                        if (
+                            len(self.metadata.dropped_task_attempts)
+                            >= MAX_EVENT_BUFFER_SIZE
+                        ):
+                            # Remove the oldest attempt to make room for the new one
+                            oldest_attempt = self.metadata.dropped_task_attempts.pop(0)
+                            oldest_key = (
+                                oldest_attempt.task_id,
+                                oldest_attempt.attempt_number,
+                            )
+                            self._dropped_attempts_set.discard(oldest_key)
+
+                        # Add the new attempt to both protobuf and set
                         merged_attempt = self.metadata.dropped_task_attempts.add()
                         merged_attempt.CopyFrom(new_attempt)
                         self._dropped_attempts_set.add(attempt_key)
