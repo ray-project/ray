@@ -630,7 +630,6 @@ def build(build_python, build_java, build_cpp):
         # And we put it here so that does not change behavior of
         # conda-forge build.
         bazel_flags.append("--incompatible_strict_action_env")
-        bazel_flags.append("--remote_download_minimal")
 
     bazel_targets = []
     bazel_targets += ["//:gen_ray_pkg"] if build_python else []
