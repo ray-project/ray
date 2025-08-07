@@ -1,10 +1,8 @@
-import os
 import atexit
 import logging
+import os
 
-import ray
-from ray import serve
-from ray.serve import get_replica_context
+import httpx
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -12,7 +10,9 @@ import docker
 from docker.models.containers import Container
 from docker.types import DeviceRequest
 
-import httpx
+import ray
+from ray import serve
+from ray.serve import get_replica_context
 
 logger = logging.getLogger("ray_serve_vllm")
 logger.setLevel(logging.DEBUG)
@@ -44,7 +44,11 @@ def start_vllm_container(
             ],
             name=name,
             runtime="nvidia",
-            device_requests=[DeviceRequest(driver="nvidia", device_ids=[gpu_device_id], capabilities=[["gpu"]])],
+            device_requests=[
+                DeviceRequest(
+                    driver="nvidia", device_ids=[gpu_device_id], capabilities=[["gpu"]]
+                )
+            ],
             volumes={model_path: {"bind": "/models/my-model", "mode": "ro"}},
             ports={"8000/tcp": None},  # None → Docker chooses free host port
             detach=True,
@@ -228,7 +232,10 @@ class VLLMService2:
 
 
 if __name__ == "__main__":
-    ray.init(address=os.environ.get("RAY_ADDRESS", "localhost:6980"), _temp_dir="/home/arthur/ray")
+    ray.init(
+        address=os.environ.get("RAY_ADDRESS", "localhost:6980"),
+        _temp_dir="/home/arthur/ray",
+    )
     serve.start(detached=True, http_options={"host": "0.0.0.0", "port": 8787})
 
     model_path = os.environ.get("VLLM_MODEL_PATH", "/home/original_models/Qwen3-8B")

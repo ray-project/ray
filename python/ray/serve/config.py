@@ -1,9 +1,9 @@
 import json
 import logging
 import warnings
-from enum import Enum
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray import cloudpickle
 from ray._common.pydantic_compat import (
@@ -159,11 +159,13 @@ class RequestRouterConfig(BaseModel):
         """Deserialize the request router from cloudpickled bytes."""
         return cloudpickle.loads(self._serialized_request_router_cls)
 
+
 @dataclass
 class AutoscalingPolicyConfig:
     name: Union[str, Callable]
     timeout_s: float = 5.0
     dry_run: bool = False
+
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
@@ -235,8 +237,10 @@ class AutoscalingConfig(BaseModel):
     )
 
     # New fields for custom autoscaling
-    agg_function: str = "mean" # "mean", "min", "max", "sum" how to aggregate metrics within look_back_period_s
-    custom_policy: Optional[AutoscalingPolicyConfig] = None # this policy is deployment scoped 
+    agg_function: str = "mean"  # "mean", "min", "max", "sum" how to aggregate metrics within look_back_period_s
+    custom_policy: Optional[
+        AutoscalingPolicyConfig
+    ] = None  # this policy is deployment scoped
     prometheus_custom_metrics: Optional[List[Tuple[str, str]]] = None
 
     # Cloudpickled policy definition.
@@ -339,8 +343,6 @@ class AutoscalingConfig(BaseModel):
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
-
-
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
