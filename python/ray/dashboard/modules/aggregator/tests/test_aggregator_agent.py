@@ -39,6 +39,16 @@ def httpserver_listen_address():
     return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
+@pytest.fixture
+def fake_timestamp():
+    """
+    Returns a fake proto timestamp and the expected timestamp string in the event JSON.
+    """
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    return Timestamp(seconds=seconds, nanos=nanos), "2025-06-30T16:50:30.130457542Z"
+
+
 _with_aggregator_port = pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
@@ -78,7 +88,7 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
 
 @_with_aggregator_port
 def test_aggregator_agent_receive_publish_events_normally(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -87,10 +97,6 @@ def test_aggregator_agent_receive_publish_events_normally(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    test_time = 1751302230130457542
-    seconds, nanos = divmod(test_time, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
-
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -98,7 +104,7 @@ def test_aggregator_agent_receive_publish_events_normally(
                     event_id=b"1",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="hello",
                 ),
@@ -121,7 +127,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
     assert req_json[0]["severity"] == "INFO"
     assert req_json[0]["message"] == "hello"
-    assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
+    assert req_json[0]["timestamp"] == fake_timestamp[1]
 
 
 @pytest.mark.parametrize(
@@ -139,7 +145,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     indirect=True,
 )
 def test_aggregator_agent_receive_event_full(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -148,10 +154,6 @@ def test_aggregator_agent_receive_event_full(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    test_time = 1751302230130457542
-    seconds, nanos = divmod(test_time, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
-
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -159,7 +161,7 @@ def test_aggregator_agent_receive_event_full(
                     event_id=b"2",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="hello",
                 ),
@@ -167,7 +169,7 @@ def test_aggregator_agent_receive_event_full(
                     event_id=b"3",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="hello",
                 ),
@@ -190,7 +192,7 @@ def test_aggregator_agent_receive_event_full(
 
 @_with_aggregator_port
 def test_aggregator_agent_receive_multiple_events(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -198,9 +200,6 @@ def test_aggregator_agent_receive_multiple_events(
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    test_time = 1751302230130457542
-    seconds, nanos = divmod(test_time, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -208,7 +207,7 @@ def test_aggregator_agent_receive_multiple_events(
                     event_id=b"4",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="event1",
                 ),
@@ -216,7 +215,7 @@ def test_aggregator_agent_receive_multiple_events(
                     event_id=b"5",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="event2",
                 ),
@@ -252,16 +251,13 @@ def test_aggregator_agent_receive_multiple_events(
     indirect=True,
 )
 def test_aggregator_agent_receive_multiple_events_failures(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    test_time = 1751302230130457542
-    seconds, nanos = divmod(test_time, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -269,7 +265,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
                     event_id=b"1",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="event1",
                 ),
@@ -277,7 +273,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
                     event_id=b"2",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="event2",
                 ),
@@ -285,7 +281,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
                     event_id=b"3",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="event3",
                 ),
@@ -322,7 +318,7 @@ def test_aggregator_agent_receive_empty_events(
 
 @_with_aggregator_port
 def test_aggregator_agent_profile_events_not_exposed(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     """Test that profile events are not sent when not in exposable event types."""
     cluster = ray_start_cluster_head_with_env_vars
@@ -331,20 +327,15 @@ def test_aggregator_agent_profile_events_not_exposed(
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-
-    test_time = 1751302230130457542
-    seconds, nanos = divmod(test_time, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
-
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
-                _create_profile_event_request(),
+                _create_profile_event_request(fake_timestamp[0]),
                 RayEvent(
                     event_id=b"1",
                     source_type=RayEvent.SourceType.CORE_WORKER,
                     event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
+                    timestamp=fake_timestamp[0],
                     severity=RayEvent.Severity.INFO,
                     message="event1",
                 ),
@@ -384,7 +375,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     indirect=True,
 )
 def test_aggregator_agent_receive_profile_events(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -395,7 +386,7 @@ def test_aggregator_agent_receive_profile_events(
 
     request = AddEventsRequest(
         events_data=RayEventsData(
-            events=[_create_profile_event_request()],
+            events=[_create_profile_event_request(fake_timestamp[0])],
             task_events_metadata=TaskEventsMetadata(
                 dropped_task_attempts=[],
             ),
@@ -409,14 +400,11 @@ def test_aggregator_agent_receive_profile_events(
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
 
-    _verify_profile_event_json(req_json)
+    _verify_profile_event_json(req_json, fake_timestamp[1])
 
 
-def _create_profile_event_request():
+def _create_profile_event_request(timestamp):
     """Helper function to create a profile event request."""
-    test_time = 1751302230130457542
-    seconds, nanos = (test_time // 10**9, test_time % 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
     return RayEvent(
         event_id=b"1",
@@ -446,7 +434,7 @@ def _create_profile_event_request():
     )
 
 
-def _verify_profile_event_json(req_json):
+def _verify_profile_event_json(req_json, expected_timestamp):
     """Helper function to verify profile event JSON structure."""
     assert len(req_json) == 1
     assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
@@ -454,7 +442,7 @@ def _verify_profile_event_json(req_json):
     assert req_json[0]["eventType"] == "TASK_PROFILE_EVENT"
     assert req_json[0]["severity"] == "INFO"
     assert req_json[0]["message"] == "profile event test"
-    assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
+    assert req_json[0]["timestamp"] == expected_timestamp
 
     # Verify task profile event specific fields
     assert "taskProfileEvents" in req_json[0]
