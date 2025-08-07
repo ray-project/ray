@@ -787,11 +787,18 @@ def call_ray_start_context(request):
         parameter = parameter.get("cmd", default_cmd)
 
     command_args = parameter.split(" ")
-
     try:
         out = ray._common.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
+    # If the exit code is non-zero subprocess.check_output raises a CalledProcessError
+    except subprocess.CalledProcessError as e:
+        print("Ray start cmd failed!")
+        print(f"Command: {' '.join(e.cmd)}")
+        print(f"Exit code: {e.returncode}")
+        if e.output:
+            print(f"Output:\n{e.output.decode()}")
+        raise
     except Exception as e:
         print(type(e), e)
         raise
@@ -841,7 +848,7 @@ def call_ray_start_with_external_redis(request):
 def init_and_serve():
     import ray.util.client.server.server as ray_client_server
 
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle, _ = ray_client_server.init_and_serve("localhost", 50051)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
