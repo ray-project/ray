@@ -6,12 +6,12 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
-    OperatorOptions,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.context import DataContext
+from ray.data.operation_options import OperatorOptions
 
 
 class TaskPoolMapOperator(MapOperator):
