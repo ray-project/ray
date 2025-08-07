@@ -254,6 +254,7 @@ ray_cc_library(
     name = "memory_store",
     srcs = ["store_provider/memory_store.cc"],
     hdrs = ["store_provider/memory_store.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":core_worker_context",
         "//src/ray/common:asio",
@@ -264,7 +265,6 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
-    visibility = [":__subpackages__"]
 )
 
 ray_cc_library(
