@@ -30,14 +30,6 @@ message SubStage {
 
 // Represents a data processing operator in the DAG
 message Operator {
-  enum OperatorState {
-    UNKNOWN = 0;
-    RUNNING = 1;
-    FINISHED = 2;
-    FAILED = 3;
-    PENDING = 4;
-  }
-
   // Name of the operator
   string name = 1;
 
@@ -61,15 +53,6 @@ message Operator {
   // can be found in `_get_logical_args`, and is used to help understand how a
   // user's arguments lead to a dataset's state execution
   google.protobuf.Struct args = 6;
-
-  // The timestamp when execution starts (in seconds since epoch)
-  double execution_start_time = 7;
-
-  // The timestamp when execution ends (in seconds since epoch)
-  double execution_end_time = 8;
-
-  // The state of the operator
-  OperatorState state = 9;
 }
 
 // Represents the complete structure of the operator DAG
@@ -80,14 +63,6 @@ message Topology {
 
 // Top-level message containing full metadata about a Ray Data execution
 message ExportDatasetMetadata {
-  enum DatasetState {
-    UNKNOWN = 0;
-    RUNNING = 1;
-    FINISHED = 2;
-    FAILED = 3;
-    PENDING = 4;
-  }
-
   // The operator DAG structure
   Topology topology = 1;
 
@@ -97,18 +72,9 @@ message ExportDatasetMetadata {
   // The Ray Job ID
   string job_id = 3;
 
-  // The timestamp when dataset is registered (in seconds since epoch)
+  // The timestamp when execution started (in seconds since epoch)
   double start_time = 4;
 
   // The data context attached to the dataset.
   google.protobuf.Struct data_context = 5;
-
-  // The timestamp when execution starts (in seconds since epoch)
-  double execution_start_time = 6;
-
-  // The timestamp when execution ends (in seconds since epoch)
-  double execution_end_time = 7;
-
-  // The state of the dataset
-  DatasetState state = 8;
 }
