@@ -79,13 +79,22 @@ print("success")
         result = True
         print("list of idle workers:")
         for proc in psutil.process_iter():
-            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
-                print(f"{proc}")
-                result = False
+            try:
+                if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+                    print(f"{proc}")
+                    result = False
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Between the time psutil.process_iter() returns a process
+                # and when we call proc.name(), the process can terminate.
+                # The test would crash with psutil.NoSuchProcess when processes
+                # terminated during iteration -- see https://github.com/ray-project/ray/issues/55292.
+                # We can safely ignore these cases because worker cleanup is expected but
+                # timing could be too aggressive in CI environments.
+                pass
         return result
 
     # Check that workers are eventually cleaned up.
-    wait_for_condition(all_workers_exited, timeout=15, retry_interval_ms=1000)
+    wait_for_condition(all_workers_exited, timeout=30, retry_interval_ms=1000)
 
 
 def test_error_isolation(call_ray_start):
