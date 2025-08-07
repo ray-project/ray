@@ -34,7 +34,7 @@ LLMServer
 
 The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
 
-LLMRouter
+OpenAiIngress
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
 
@@ -60,8 +60,8 @@ The :class:`LLMConfig <ray.serve.llm.LLMConfig>` class specifies model details s
 Quickstart Examples
 -------------------
 
-Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Deployment through :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
@@ -100,7 +100,9 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig
+            from ray.serve.llm.deployment import LLMServer
+            from ray.serve.llm.ingress import OpenAiIngress
 
             llm_config = LLMConfig(
                 model_loading_config=dict(
@@ -122,7 +124,7 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
 
             # Deploy the application
             deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-            llm_app = LLMRouter.as_deployment().bind([deployment])
+            llm_app = OpenAiIngress.as_deployment().bind([deployment])
             serve.run(llm_app, blocking=True)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
@@ -164,7 +166,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
 
-For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.serve.llm.LLMConfig>` objects to the :class:`LLMRouter <ray.serve.llm.LLMRouter>` deployment:
+For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.serve.llm.LLMConfig>` objects to the :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>` deployment:
 
 .. tab-set::
 
@@ -213,7 +215,9 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig
+            from ray.serve.llm.deployment import LLMServer
+            from ray.serve.llm.ingress import OpenAiIngress
 
             llm_config1 = LLMConfig(
                 model_loading_config=dict(
@@ -244,7 +248,7 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
             # Deploy the application
             deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
             deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
-            llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
+            llm_app = OpenAiIngress.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app, blocking=True)
 
 See also :ref:`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
@@ -825,7 +829,9 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+    from ray.serve.llm import LLMConfig
+    from ray.serve.llm.deployment import LLMServer
+    from ray.serve.llm.ingress import OpenAiIngress
     import os
 
     llm_config = LLMConfig(
@@ -849,7 +855,7 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
 
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = LLMRouter.as_deployment().bind([deployment])
+    llm_app = OpenAiIngress.as_deployment().bind([deployment])
     serve.run(llm_app, blocking=True)
 
 Why is downloading the model so slow?
@@ -862,7 +868,9 @@ If you are using huggingface models, you can enable fast download by setting `HF
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+    from ray.serve.llm import LLMConfig
+    from ray.serve.llm.deployment import LLMServer
+    from ray.serve.llm.ingress import OpenAiIngress
     import os
 
     llm_config = LLMConfig(
@@ -887,7 +895,7 @@ If you are using huggingface models, you can enable fast download by setting `HF
 
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = LLMRouter.as_deployment().bind([deployment])
+    llm_app = OpenAiIngress.as_deployment().bind([deployment])
     serve.run(llm_app, blocking=True)
 
 How to configure tokenizer pool size so it doesn't hang?
