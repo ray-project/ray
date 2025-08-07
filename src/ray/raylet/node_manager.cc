@@ -1019,7 +1019,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::AnnounceWorkerPort: {
+  case ray::protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
   case protocol::MessageType::ActorCreationTaskDone: {

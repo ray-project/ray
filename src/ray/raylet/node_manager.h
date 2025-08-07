@@ -32,6 +32,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/ipc/client_connection.h"
+#include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
