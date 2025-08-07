@@ -216,6 +216,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
           nullptr,
           nullptr,
           nullptr,
+          nullptr,
           std::move(my_object_allocator));
   const int32_t max_rounds = 1000;
   const std::string hello = "hello";
