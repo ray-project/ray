@@ -31,17 +31,13 @@
 #include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
 
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-
 using MessageType = ray::protocol::MessageType;
 
 namespace ray {
 
 namespace ipc {
 
-/// XXX.
+/// XXX: comment.
 class RayletIPCClient {
  public:
   /// Connect to the Raylet over a local socket.
@@ -57,7 +53,7 @@ class RayletIPCClient {
                   // XXX: rename this!
                   int64_t timeout);
 
-  /// XXX.
+  /// XXX: comment.
   ray::Status RegisterClient(const WorkerID &worker_id,
                              rpc::WorkerType worker_type,
                              const JobID &job_id,
@@ -148,7 +144,6 @@ class RayletIPCClient {
   /// Wait for the given objects asynchronously.
   ///
   /// The core worker is notified when the wait completes.
-  /// XXX: how is it notified? Please tell me it's not over gRPC.
   ///
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
@@ -176,7 +171,7 @@ class RayletIPCClient {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  // XXX: add comment and remove rpc:: dependency.
+  // XXX: add comment.
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
 
  private:
@@ -190,15 +185,13 @@ class RayletIPCClient {
                                  std::vector<uint8_t> *reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
-  // XXX! AREN'T THERE RACE CONDITIONS HERE???? WTF?
-  //      and shouldn't it just go in client connection?
-  /// A mutex to protect stateful operations of the raylet client.
+  /// Protects read operations on the socket.
   std::mutex mutex_;
-  /// A mutex to protect write operations of the raylet client.
+
+  /// Protects write operations on the socket.
   std::mutex write_mutex_;
 
   /// The local socket connection to the Raylet.
-  /// XXX: unique_ptr.
   std::shared_ptr<ServerConnection> conn_;
 };
 
