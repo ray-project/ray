@@ -16,7 +16,6 @@ deploy-vm
 multi-app-container
 custom-request-router
 multi-node-gpu-troubleshooting
-pd-dissagregation
 ```
 
 If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-getting-started).
