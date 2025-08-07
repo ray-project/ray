@@ -131,7 +131,7 @@ class HCCLGroup(BaseGroup):
 
         # record used NPU IDs.
         self._used_npu_indices = set()
-        self.libhccl = ctypes.CDLL("libhccl.so")
+        self.libhccl = libhccl
 
     def destroy_group(self):
         if len(self._dev_comm_map.keys()) > 0:
