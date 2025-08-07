@@ -122,7 +122,11 @@ class RLlibGateway:
     the latest model weights and connector states.
     """
 
-    def __init__(self, address: str = "localhost", port: int = 5556):
+    def __init__(
+        self,
+        address: str = "localhost",
+        port: int = 5556,
+    ):
         """Initializes a RLlibGateway instance.
 
         Args:
@@ -151,29 +155,36 @@ class RLlibGateway:
         self._prev_action = None
         self._prev_extra_model_outputs = None
 
+        self._is_initialized = False
+
         threading.Thread(
             target=self._connect_to_server_thread_func,
             args=(address, port),
         ).start()
 
+    @property
+    def is_initialized(self):
+        """Returns True, if this Gateway has an RLModule and connectors."""
+        return self._is_initialized
+
     def get_action(
         self,
         prev_reward,
-        next_observation,
+        prev_observation,
     ):
         """Computes and returns a new action, given an observation.
 
         Args:
             prev_reward: The reward received after the previously computed action
                 (returned from this method in the previous call).
-            next_observation: The current observation, from which the action should be
+            prev_observation: The current observation, from which the action should be
                 computed. Note that first, `observation`, the previously returned
                 action, `prev_reward`, and `terminated/truncated` are logged with the running
                 episdode through `Episode.add_env_step()`, then the env-to-module
                 connector creates the inference forward batch for the RLModule based on
                 this running episode.
         """
-        return self._step_helper(prev_reward, next_observation)
+        return self._step_helper(prev_reward, prev_observation)
 
     def episode_done(self, final_reward, final_observation, truncated: bool):
         """Logs the last step in an episode and starts a new one.
@@ -196,74 +207,89 @@ class RLlibGateway:
         )
 
     def _connect_to_server_thread_func(self, address, port):
-        # Try connecting to server.
+        # Try initializing the Gateway.
         while True:
-            try:
-                logger.info(f"Trying to connect to {address}:{port} ...")
-                self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._sock.settimeout(120.0)
-                print(f"address={address} port={port}")
-                self._sock.connect((address, port))
-                break
-            except ConnectionRefusedError:
-                time.sleep(5)
+            # Try connecting to (RLlib) server.
+            while True:
+                try:
+                    logger.info(f"Trying to connect to {address}:{port} ...")
+                    self._sock = socket.socket(
+                        socket.AF_INET,
+                        socket.SOCK_STREAM,
+                    )
+                    self._sock.settimeout(120.0)
+                    self._sock.connect((address, port))
+                    break
+                except ConnectionRefusedError:
+                    time.sleep(5)
 
-        logger.info(f"Connected to server at {address}:{port} ...")
+            logger.info(f"Connected to server at {address}:{port} ...")
 
-        # Send ping-pong.
-        send_rllink_message(self._sock, {"type": RLlink.PING.name})
-        msg_type, msg_body = get_rllink_message(self._sock)
-        assert msg_type == RLlink.PONG
+            # Send ping-pong.
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {"type": RLlink.PING.name},
+            )
+            # Error -> Retry connecting to server.
+            if msg_type != RLlink.PONG:
+                continue
+            logger.info("\tPING/PONG ok ...")
 
-        logger.info("\tPING/PONG ok ...")
+            # Request config.
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {"type": RLlink.GET_CONFIG.name}
+            )
+            # Error -> Retry connecting to server.
+            if msg_type != RLlink.SET_CONFIG:
+                continue
+            # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
+            #  Checkpointable with a pickle-independent state.
+            self._config = pickle.loads(msg_body["config"])
+            # Create the RLModule and connector pipelines.
+            self._env_to_module = self._config.build_env_to_module_connector()
+            rl_module_spec = self._config.get_rl_module_spec()
+            self._rl_module = rl_module_spec.build()
+            self._module_to_env = self._config.build_module_to_env_connector()
+            logger.info("\tGET_CONFIG ok (built connectors and module) ...")
 
-        # Request config.
-        send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
-        msg_type, msg_body = get_rllink_message(self._sock)
-        assert msg_type == RLlink.SET_CONFIG
-        # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
-        #  Checkpointable with a pickle-independent state.
-        self._config = pickle.loads(msg_body["config"])
-        # Create the RLModule and connector pipelines.
-        self._env_to_module = self._config.build_env_to_module_connector()
-        rl_module_spec = self._config.get_rl_module_spec()
-        self._rl_module = rl_module_spec.build()
-        self._module_to_env = self._config.build_module_to_env_connector()
+            # Request EnvRunner state (incl. model weights).
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {"type": RLlink.GET_STATE.name}
+            )
+            # Error -> Retry connecting to server.
+            if msg_type != RLlink.SET_STATE:
+                continue
+            self._set_state(msg_body["state"])
+            logger.info("\tSET_STATE ok ...")
 
-        logger.info("\tGET_CONFIG ok (built connectors and module) ...")
-
-        # Request EnvRunner state (incl. model weights).
-        send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
-        msg_type, msg_body = get_rllink_message(self._sock)
-        assert msg_type == RLlink.SET_STATE
-        self._set_state(msg_body["state"])
-
-        logger.info("\tSET_STATE ok ...")
+            # Set this Gateway to `initialized` and return from the thread.
+            self._is_initialized = True
+            return
 
     def _step_helper(
         self,
         prev_reward,
-        next_observation,
+        prev_observation,
         terminated: bool = False,
         truncated: bool = False,
     ):
-        # TODO (sven): Block until we have created our model.
-        while self._module_to_env is None:
-            time.sleep(0.01)
+        # Block until we are initialized (no RLModule and no action space to
+        # compute anything).
+        while not self.is_initialized:
+            time.sleep(0.1)
 
         # C++ may send observation tensors as std::vector<float> (which get translated
         # into python lists).
-        if isinstance(next_observation, list):
-            next_observation = np.array(next_observation, np.float32)
+        if isinstance(prev_observation, list):
+            prev_observation = np.array(prev_observation, np.float32)
 
         # Episode logging.
         if len(self._episodes) == 0 or self._episodes[-1].is_done:
             self._episodes.append(SingleAgentEpisode())
-            self._episodes[-1].add_env_reset(observation=next_observation)
+            self._episodes[-1].add_env_reset(observation=prev_observation)
         else:
             # Log timestep to current episode.
             self._episodes[-1].add_env_step(
-                observation=next_observation,
+                observation=prev_observation,
                 action=self._prev_action,
                 reward=prev_reward,
                 terminated=terminated,
@@ -285,19 +311,23 @@ class RLlibGateway:
                 # this may halt the simulation calling this function (`get_action`) for
                 # a while.
                 if True:  # force_on_policy:
-                    send_rllink_message(
-                        self._sock,
+                    msg_type, msg_body = self._try_send_receive_rllink_msg(
                         {
                             "type": RLlink.EPISODES_AND_GET_STATE.name,
-                            "episodes": [e.get_state() for e in self._episodes],
+                            "episodes": [e.get_state() for e in
+                                         self._episodes],
                             "timesteps": self._timesteps,
                         },
                     )
                     # We are forced to sample on-policy. Have to wait for a response
                     # with the state (weights) in it.
-                    msg_type, msg_body = get_rllink_message(self._sock)
-                    assert msg_type == RLlink.SET_STATE
-                    self._set_state(msg_body["state"])
+                    if msg_type != RLlink.SET_STATE:
+                        logger.warning(
+                            "Can't SET_STATE! Connection error to RLlib "
+                            f"server. {msg_body}"
+                        )
+                    else:
+                        self._set_state(msg_body["state"])
 
                 # Sampling doesn't have to be on-policy -> continue collecting
                 # samples.
@@ -350,3 +380,20 @@ class RLlibGateway:
         # self._module_to_env.set_state(msg_body[COMPONENT_MODULE_TO_ENV_CONNECTOR])
         self._rl_module.set_state(msg_body[COMPONENT_RL_MODULE])
         self._weights_seq_no = msg_body[WEIGHTS_SEQ_NO]
+
+    def _try_send_receive_rllink_msg(self, msg):
+        try:
+            send_rllink_message(self._sock, msg)
+            msg_type, msg_body = get_rllink_message(self._sock)
+        except ConnectionError as e:
+            msg_type = e.__class__
+            msg_body = str(e)
+            # Try closing and invalidating socket.
+            try:
+                self._sock.close()
+                self._sock = None
+            except Exception:
+                time.sleep(1)
+            time.sleep(2)
+
+        return msg_type, msg_body
