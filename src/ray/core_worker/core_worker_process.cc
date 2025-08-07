@@ -242,8 +242,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_raylet_id, options.node_ip_address, options.node_manager_port);
+  // XXX: better callback?
   auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_address), *client_call_manager, worker_context->GetWorkerID());
+      std::move(raylet_address), *client_call_manager, /*raylet_unavailable_timeout_callback=*/[]{});
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,

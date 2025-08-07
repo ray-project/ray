@@ -579,7 +579,7 @@ void CoreWorker::Disconnect(
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
     if (local_raylet_client_) {
-      Status status = local_raylet_client_->Disconnect(
+      Status status = raylet_ipc_client_->Disconnect(
           exit_type, exit_detail, creation_task_exception_pb_bytes);
       if (status.ok()) {
         RAY_LOG(INFO) << "Disconnected from the local raylet.";
@@ -1820,7 +1820,7 @@ Status CoreWorker::PushError(const JobID &job_id,
         << " at time: " << timestamp;
     return Status::OK();
   }
-  return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
+  return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
 }
 
 json CoreWorker::OverrideRuntimeEnv(const json &child,
@@ -4431,7 +4431,7 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
   // when the object is local (and it will fire the callback immediately if the object
   // exists). CoreWorker::HandlePlasmaObjectReady handles such request.
   auto owner_address = GetOwnerAddressOrDie(object_id);
-  local_raylet_client_->SubscribeToPlasma(object_id, owner_address);
+  raylet_ipc_client_->SubscribeToPlasma(object_id, owner_address);
 }
 
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
