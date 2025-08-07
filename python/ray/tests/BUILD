@@ -5,6 +5,7 @@ py_library(
     name = "conftest",
     srcs = glob(["**/conftest.py"]),
     visibility = [
+        "//python/ray/_common/tests:__subpackages__",
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
@@ -476,7 +477,6 @@ py_test_module_list(
     size = "large",
     files = [
         "test_output.py",
-        "test_usage_stats.py",
     ],
     tags = [
         "exclusive",
@@ -500,6 +500,7 @@ py_test_module_list(
         "accelerators/test_intel_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
+        "accelerators/test_rbln.py",
         "accelerators/test_tpu.py",
         "test_actor_lineage_reconstruction.py",
         "test_actor_out_of_order.py",

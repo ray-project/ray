@@ -62,7 +62,6 @@
 #include <vector>
 
 #include "ray/util/macros.h"
-#include "ray/util/string_utils.h"
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -186,6 +185,10 @@ enum class RayLogLevel {
       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
 
+#define RAY_LOG_ONCE_PER_PROCESS(level)                   \
+  static std::atomic_bool once_log_flag##__LINE__(false); \
+  if (!once_log_flag##__LINE__.exchange(true)) RAY_LOG(level)
+
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
@@ -258,14 +261,6 @@ class RayLog {
 
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
-
-  /// Get filepath to dump log from [log_dir] and [app_name].
-  /// If [log_dir] empty, return empty filepath.
-  static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
-                                                 const std::string &app_name);
-
-  static std::string GetErrLogFilepathFromDirectory(const std::string &log_dir,
-                                                    const std::string &app_name);
 
   /// The init function of ray log for a program which should be called only once.
   ///

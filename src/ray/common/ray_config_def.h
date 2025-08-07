@@ -751,7 +751,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -921,6 +921,17 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 // Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
 RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 
+// Whether the task events from the core worker are sent to GCS directly.
+// TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
+// migrated to the event aggregator.
+RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+
+// Whether to enable the ray event to send to the event aggregator.
+// Currently, only task events are supported.
+// TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
+// event aggregator.
+RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 
@@ -935,7 +946,16 @@ RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
 // disconnects.
 RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
 
-/// The maximum time in seconds that an actor task can wait in the scheduling queue
-/// for tasks with smaller sequence numbers to show up. If timed out, the task will
-/// be cancelled.
+// The maximum time in seconds that an actor task can wait in the scheduling queue
+// for tasks with smaller sequence numbers to show up. If timed out, the task will
+// be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
+
+/// Timeout for raylet grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
+
+// The number of grpc threads spun up on the worker process. This config is consumed
+// by the raylet and then broadcast to the worker process at time of the worker
+// process getting spawned.  Setting to zero or less maintains the default
+// number of threads grpc will spawn.
+RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
