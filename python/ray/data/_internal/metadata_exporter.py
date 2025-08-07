@@ -159,14 +159,20 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     elif isinstance(obj, Sequence):
         return [sanitize_for_struct(v, truncate_length) for v in obj]
     else:
+        from dataclasses import is_dataclass
+
+        if is_dataclass(obj):
+            try:
+                from dataclasses import asdict
+
+                return sanitize_for_struct(asdict(obj), truncate_length)
+            except Exception:
+                pass
         # Convert unhandled types to string
         try:
-            return _add_ellipsis(json.dumps(obj), truncate_length)
-        except (TypeError, OverflowError):
-            try:
-                return _add_ellipsis(str(obj), truncate_length)
-            except Exception:
-                return UNKNOWN
+            return _add_ellipsis(str(obj), truncate_length)
+        except Exception:
+            return UNKNOWN
 
 
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
