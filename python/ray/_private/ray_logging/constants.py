@@ -45,7 +45,7 @@ class LogKey(str, Enum):
     ACTOR_NAME = "actor_name"
     TASK_NAME = "task_name"
     TASK_FUNCTION_NAME = "task_func_name"
-    PID = "pid"
+    PID = "process"
 
     # Logger built-in context
     ASCTIME = "asctime"
