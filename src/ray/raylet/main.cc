@@ -809,7 +809,9 @@ int main(int argc, char *argv[]) {
                                                    is_head_node,
                                                    *node_manager);
 
-    // Initialize stats. This should be done after the node manager is initialized.
+    // Initializing stats should be done after the node manager is initialized because
+    // <explain why>. Metrics exported before this call will be buffered until `Init` is
+    // called.
     const ray::stats::TagsType global_tags = {
         {ray::stats::ComponentKey, "raylet"},
         {ray::stats::WorkerIdKey, ""},
