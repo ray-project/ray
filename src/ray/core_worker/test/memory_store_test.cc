@@ -56,6 +56,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
           /*should_delete_object_on_put=*/[](const ObjectID &object_id) { return false; },
           nullptr,
           nullptr,
+          nullptr,
           [&](const RayObject &obj) { unhandled_count++; });
   RayObject obj1(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);

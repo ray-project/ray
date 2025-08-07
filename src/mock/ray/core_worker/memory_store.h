@@ -46,10 +46,7 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
  private:
   explicit DefaultCoreWorkerMemoryStoreWithThread(
       std::unique_ptr<InstrumentedIOContextWithThread> io_context)
-      : CoreWorkerMemoryStore(
-            io_context->GetIoService(),
-            /*should_delete_object_on_put=*/[](const ObjectID
-                                                   &object_id) { return false; }),
+      : CoreWorkerMemoryStore(io_context->GetIoService()),
         io_context_(std::move(io_context)) {}
 
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;

@@ -125,17 +125,25 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     std::function<bool(const ObjectID)> should_delete_object_on_put,
-    const std::shared_ptr<raylet::RayletClient> &raylet_client,
+    std::function<void()> release_resources,
+    std::function<void()> reacquire_resources,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
-      should_delete_object_on_put_(should_delete_object_on_put),
-      raylet_client_(raylet_client),
-      check_signals_(std::move(check_signals)),
-      unhandled_exception_handler_(std::move(unhandled_exception_handler)),
-      object_allocator_(std::move(object_allocator)) {}
+      should_delete_object_on_put_(should_delete_object_on_put != nullptr
+                                       ? should_delete_object_on_put
+                                       : [](const ObjectID &object_id) { return false; }),
+      release_resources_(release_resources != nullptr ? release_resources : []() {}),
+      reacquire_resources_(reacquire_resources != nullptr ? reacquire_resources
+                                                          : []() {}),
+      check_signals_(check_signals != nullptr ? check_signals
+                                              : []() { return Status::OK(); }),
+      unhandled_exception_handler_(unhandled_exception_handler != nullptr
+                                       ? unhandled_exception_handler
+                                       : [](const RayObject &obj) {}),
+      object_allocator_(object_allocator) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -294,12 +302,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  // Only send block/unblock IPCs for non-actor tasks on the main thread.
-  bool should_notify_raylet =
-      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
-  // Wait for remaining objects (or timeout).
-  if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+  bool should_release_resources = ctx.ShouldReleaseResourcesOnBlockingCalls();
+  if (should_release_resources) {
+    release_resources_();
   }
 
   bool done = false;
@@ -318,9 +323,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // is reached.
   while (!timed_out && signal_status.ok() &&
          !(done = get_request->Wait(iteration_timeout))) {
-    if (check_signals_) {
-      signal_status = check_signals_();
-    }
+    signal_status = check_signals_();
 
     if (remaining_timeout >= 0) {
       remaining_timeout -= iteration_timeout;
@@ -329,8 +332,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+  if (should_release_resources) {
+    reacquire_resources_();
   }
 
   {
@@ -482,7 +485,7 @@ inline bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
 }
 
 void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
-  if (IsUnhandledError(obj) && unhandled_exception_handler_ != nullptr) {
+  if (IsUnhandledError(obj)) {
     unhandled_exception_handler_(*obj);
   }
 }
@@ -494,8 +497,7 @@ void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
   int count = 0;
   while (it != objects_.end() && count < kMaxUnhandledErrorScanItems) {
     const auto &obj = it->second;
-    if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold &&
-        unhandled_exception_handler_ != nullptr) {
+    if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold) {
       obj->SetAccessed();
       unhandled_exception_handler_(*obj);
     }
