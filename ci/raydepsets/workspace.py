@@ -1,9 +1,9 @@
-import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
 from string import Template
 
+import yaml
 
 @dataclass
 class BuildArgSet:
