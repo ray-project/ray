@@ -407,8 +407,6 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
   const auto node_id_binary = NodeID::FromHex(node_id_hex_str).Binary();
 
   std::vector<rpc::GcsNodeInfo> node_infos;
-  // TODO(dayshah): This being a while is pretty useless right now. There's a while where
-  // this is actually used in Python land.
   while (true) {
     rpc::GetAllNodeInfoRequest::NodeSelector selector;
     selector.set_node_id(node_id_binary);
