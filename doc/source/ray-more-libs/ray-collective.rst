@@ -34,42 +34,51 @@ See below the current support matrix for all collective calls with different bac
      -
      - `nccl <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`_
      -
+     - `hccl <https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha001/devguide/hccl/hcclug/hcclug_000001.html>`_
    * - Device
      - CPU
      - GPU
      - CPU
      - GPU
+     - NPU
    * - send
      - ✔
      - ✘
      - ✘
+     - ✔
      - ✔
    * - recv
      - ✔
      - ✘
      - ✘
      - ✔
+     - ✔
    * - broadcast
      - ✔
      - ✘
      - ✘
+     - ✔
      - ✔
    * - allreduce
      - ✔
      - ✘
      - ✘
      - ✔
+     - ✔
    * - reduce
      - ✔
      - ✘
      - ✘
+     - ✔
      - ✔
    * - allgather
      - ✔
      - ✘
      - ✘
      - ✔
+     - ✔
    * - gather
+     - ✘
      - ✘
      - ✘
      - ✘
@@ -79,12 +88,15 @@ See below the current support matrix for all collective calls with different bac
      - ✘
      - ✘
      - ✘
+     - ✘
    * - reduce_scatter
      - ✔
      - ✘
      - ✘
      - ✔
+     - ✔
    * - all-to-all
+     - ✘
      - ✘
      - ✘
      - ✘
@@ -93,6 +105,7 @@ See below the current support matrix for all collective calls with different bac
      - ✔
      - ✘
      - ✘
+     - ✔
      - ✔
 
 
