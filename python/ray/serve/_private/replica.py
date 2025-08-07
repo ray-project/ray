@@ -460,25 +460,27 @@ class ReplicaBase(ABC):
         )
 
         if logging_config.encoding == EncodingType.JSON:
-            # we are creating this context to be used in the access log
-            # logging_utils has inherent functionality to add ray core logging context
-            # and serve access log context, but we are doing it here as a optimization
-            # because evaluating context is expensive.
+            # Create logging context for access logs as a performance optimization.
+            # While logging_utils can automatically add Ray core and Serve access log context,
+            # we pre-compute it here since context evaluation is expensive and this context
+            # will be reused for multiple access log entries.
             ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
             # remove task level log keys from ray core logging context
             for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
                 ray_core_logging_context.pop(key, None)
             self._access_log_context = {
+                **ray_core_logging_context,
                 SERVE_LOG_DEPLOYMENT: self._component_name,
                 SERVE_LOG_REPLICA: self._component_id,
                 SERVE_LOG_COMPONENT: ServeComponentType.REPLICA,
                 SERVE_LOG_APPLICATION: self._deployment_id.app_name,
                 "skip_context_filter": True,
-                **ray_core_logging_context,
+                "serve_access_log": True,
             }
         else:
             self._access_log_context = {
                 "skip_context_filter": True,
+                "serve_access_log": True,
             }
 
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
@@ -566,7 +568,7 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        # mutating self._access_log_context is not thread safe, but since this
+        # Mutating self._access_log_context is not thread safe, but since this
         # is only called from the same thread, it is safe. Mutating the same object
         # because creating a new dict is expensive.
         self._access_log_context[SERVE_LOG_ROUTE] = http_route
@@ -1200,7 +1202,7 @@ class UserCallableWrapper:
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
-
+        self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
 
@@ -1654,6 +1656,12 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_http_entrypoint")
 
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{user_method_info.name}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
+
         if user_method_info.is_asgi_app:
             request_args = (scope, receive, send)
         elif not user_method_info.takes_any_args:
@@ -1782,6 +1790,12 @@ class UserCallableWrapper:
             or inspect.isasyncgenfunction(callable)
         )
 
+        if self._is_enabled_for_debug:
+            logger.info(
+                f"Started executing request to method '{user_method_info.name}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
+
         async def _call_generator_async() -> AsyncGenerator[Any, None]:
             gen = callable(*request_args, **request_kwargs)
             if inspect.iscoroutine(gen):
@@ -1835,6 +1849,12 @@ class UserCallableWrapper:
         `RayTaskError`.
         """
         self._raise_if_not_initialized("call_user_method")
+
+        if self._is_enabled_for_debug:
+            logger.info(
+                f"Started executing request to method '{request_metadata.call_method}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, _ = await self._call_func_or_gen(

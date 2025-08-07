@@ -1066,10 +1066,10 @@ class ProxyActor:
             component_name="proxy", component_id=node_ip_address
         )
         if logging_config.encoding == EncodingType.JSON:
-            # we are creating this context to be used in the access log
-            # logging_utils has inherent functionality to add ray core logging context
-            # and serve access log context, but we are doing it here as a optimization
-            # because evaluating context is expensive.
+            # Create logging context for access logs as a performance optimization.
+            # While logging_utils can automatically add Ray core and Serve access log context,
+            # we pre-compute it here since context evaluation is expensive and this context
+            # will be reused for multiple access log entries.
             ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
             # remove task level log keys from ray core logging context
             for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
@@ -1080,11 +1080,13 @@ class ProxyActor:
                 SERVE_LOG_COMPONENT_ID: self._node_ip_address,
                 "log_to_stderr": False,
                 "skip_context_filter": True,
+                "serve_access_log": True,
             }
         else:
             access_log_context = {
                 "log_to_stderr": False,
                 "skip_context_filter": True,
+                "serve_access_log": True,
             }
 
         is_head = self._node_id == get_head_node_id()

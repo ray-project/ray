@@ -14,6 +14,11 @@ class CoreContextFilter(logging.Filter):
 
     @classmethod
     def get_ray_core_logging_context(cls) -> Dict[str, Any]:
+        """
+        Get the ray core logging context as a dict.
+        Only use this function if you need include the attributes to the log record
+        yourself by bypassing the filter.
+        """
         if not ray.is_initialized():
             # There is no additional context if ray is not initialized
             return {}

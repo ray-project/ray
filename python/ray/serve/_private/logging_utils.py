@@ -34,9 +34,14 @@ from ray.serve.schema import EncodingType, LoggingConfig
 buildin_print = builtins.print
 
 
+def should_skip_context_filter(record: logging.LogRecord) -> bool:
+    """Check if the log record should skip the context filter."""
+    return getattr(record, "skip_context_filter", False)
+
+
 class ServeCoreContextFilter(CoreContextFilter):
-    def filter(self, record):
-        if hasattr(record, "skip_context_filter") and record.skip_context_filter:
+    def filter(self, record: logging.LogRecord) -> bool:
+        if should_skip_context_filter(record):
             return True
         return super().filter(record)
 
@@ -63,7 +68,7 @@ class ServeComponentFilter(logging.Filter):
         Note: the filter doesn't do any filtering, it only adds the component
         attributes.
         """
-        if hasattr(record, "skip_context_filter") and record.skip_context_filter:
+        if should_skip_context_filter(record):
             return True
         if self.component_type and self.component_type == ServeComponentType.REPLICA:
             setattr(record, SERVE_LOG_DEPLOYMENT, self.component_name)
@@ -86,7 +91,7 @@ class ServeContextFilter(logging.Filter):
     """
 
     def filter(self, record):
-        if hasattr(record, "skip_context_filter") and record.skip_context_filter:
+        if should_skip_context_filter(record):
             return True
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
@@ -380,6 +385,8 @@ def configure_component_logger(
         file_handler.setFormatter(serve_formatter)
 
     if logging_config.enable_access_log is False:
+        # TODO (abrar): There is a bug here. if serve_access_log is False
+        # the filter will evaluate to true and the log will be logged.
         file_handler.addFilter(log_access_log_filter)
     else:
         file_handler.addFilter(ServeContextFilter())
