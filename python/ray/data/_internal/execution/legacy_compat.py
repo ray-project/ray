@@ -30,16 +30,12 @@ logger = logging.getLogger(__name__)
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
-    dag_rewrite=None,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
-            This is currently used as a legacy hack to inject the OutputSplit operator
-            for `Dataset.streaming_split()`.
 
     Returns:
         The output as a bundle iterator.
@@ -49,8 +45,6 @@ def execute_to_legacy_bundle_iterator(
         plan,
         preserve_order=False,
     )
-    if dag_rewrite:
-        dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
 
