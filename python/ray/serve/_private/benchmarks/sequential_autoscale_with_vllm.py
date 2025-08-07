@@ -28,7 +28,7 @@ def start_vllm_container(
     Start vLLM in Docker, binding container:8000 to a random host port.
     Returns (container_obj, host_port).
     """
-    name = f"vllm_{replica_id}"
+    name = f"ray_vllm_{replica_id}"
     image = "vllm/vllm-openai:latest"
 
     try:
@@ -228,7 +228,7 @@ class VLLMService2:
 
 
 if __name__ == "__main__":
-    ray.init(address=os.environ.get("RAY_ADDRESS", "10.10.100.8:6980"), _temp_dir="/home/arthur/ray")
+    ray.init(address=os.environ.get("RAY_ADDRESS", "localhost:6980"), _temp_dir="/home/arthur/ray")
     serve.start(detached=True, http_options={"host": "0.0.0.0", "port": 8787})
 
     model_path = os.environ.get("VLLM_MODEL_PATH", "/home/original_models/Qwen3-8B")

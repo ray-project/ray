@@ -981,6 +981,13 @@ class ActorReplicaWrapper:
 
         return self._routing_stats
 
+    def get_autoscaling_metrics(self) -> Dict[str, Any]:
+        """Get the autoscaling metrics for the replica."""
+        # For now, return empty dict as placeholder
+        # This would be implemented similar to get_routing_stats when autoscaling metrics
+        # are properly integrated with the deployment state
+        return {}
+
     def force_stop(self, log_shutdown_message: bool = False):
         """Force the actor to exit without shutting down gracefully."""
         if (
@@ -1053,6 +1060,16 @@ class DeploymentReplica:
         """
         if routing_stats is not None:
             self._routing_stats = routing_stats
+
+    def record_autoscaling_metrics(self, autoscaling_metrics: Optional[Dict[str, Any]]):
+        """Record the autoscaling metrics for this replica.
+
+        Recording autoscaling_metrics as an empty dictionary is valid. But skip
+        update if the autoscaling_metrics is None.
+        """
+        # This would store autoscaling metrics similar to routing stats
+        # For now, this is a placeholder
+        pass
 
     @property
     def multiplexed_model_ids(self) -> List[str]:
@@ -1219,6 +1236,13 @@ class DeploymentReplica:
         Returns None if the replica is still calculating the stats.
         """
         return self._actor.get_routing_stats()
+
+    def pull_autoscaling_metrics(self) -> Optional[Dict[str, Any]]:
+        """Get the latest response from the autoscaling metrics on the replica.
+
+        Returns None if the replica is still calculating the metrics.
+        """
+        return self._actor.get_autoscaling_metrics()
 
     def update_state(self, state: ReplicaState) -> None:
         """Updates state in actor details."""
@@ -2274,6 +2298,8 @@ class DeploymentState:
                 )
                 routing_stats = replica.pull_routing_stats()
                 replica.record_routing_stats(routing_stats)
+                autoscaling_metrics = replica.pull_autoscaling_metrics()
+                replica.record_autoscaling_metrics(autoscaling_metrics)
             else:
                 logger.warning(
                     f"Replica {replica.replica_id} failed health check, stopping it."
