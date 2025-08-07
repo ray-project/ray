@@ -277,6 +277,16 @@ _context_lock = threading.Lock()
 
 
 def get_train_context() -> TrainContext:
+    """Get the internal train context.
+
+    Note:
+        This should not be used directly by user-facing APIs. User-facing APIs should
+        call :class:`~ray.train.v2._internal.execution.train_fn_utils.TrainFnUtils`
+        or use :class:`~ray.train.v2.api.context.TrainContext` instead.
+
+    Returns:
+        The internal TrainContext for this worker.
+    """
     with _context_lock:
         if _train_context is None:
             raise RuntimeError("TrainContext has not been initialized.")
