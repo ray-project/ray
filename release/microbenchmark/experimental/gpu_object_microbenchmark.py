@@ -1,6 +1,4 @@
-# coding: utf-8
 import argparse
-import time
 import os
 from typing import Tuple, Optional
 
@@ -11,10 +9,12 @@ import ray
 import json
 from ray._private.ray_microbenchmark_helpers import timeit
 from ray.experimental.collective import create_collective_group
+from ray._private.test_utils import (
+    kill_actor_and_wait_for_failure,
+)
 from dataclasses import dataclass
 
 DTYPE = torch.float16
-NUM_ITERS = 5
 
 
 @dataclass
@@ -53,12 +53,19 @@ BACKEND_CONFIG = {
 
 @ray.remote
 class Actor:
-    def __init__(self, device: torch.device) -> None:
+    def __init__(
+        self,
+        shape: Tuple[int],
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> None:
         self.device = device
+        self.dtype = dtype
+        self.shape = shape
 
-    def send(self, shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor:
+    def send(self) -> torch.Tensor:
         seed = int(np.random.randint(100))
-        return torch.ones(shape, dtype=dtype, device=self.device) * seed
+        return torch.ones(self.shape, dtype=self.dtype, device=self.device) * seed
 
     def recv(self, tensor: torch.Tensor) -> torch.Tensor:
         assert tensor.device == self.device
@@ -80,25 +87,24 @@ def _exec_p2p_transfer(
     send_method_kwargs = backend_config.send_method_kwargs
     collective_group_backend = backend_config.collective_group_backend
     sender = Actor.options(scheduling_strategy=sender_hint, **init_actor_kwargs).remote(
-        device
+        shape, DTYPE, device
     )
     receiver = Actor.options(
         scheduling_strategy=receiver_hint, **init_actor_kwargs
-    ).remote(device)
+    ).remote(shape, DTYPE, device)
     if collective_group_backend is not None:
         create_collective_group([sender, receiver], backend=collective_group_backend)
 
     def _run():
-        ref = sender.send.options(**send_method_kwargs).remote(shape, DTYPE)
+        ref = sender.send.options(**send_method_kwargs).remote()
         ref2 = receiver.recv.remote(ref)
         result = ray.get(ref2)
         assert result == b"x"
 
     results = timeit(label, _run)
 
-    ray.kill(sender)
-    ray.kill(receiver)
-    time.sleep(1)
+    kill_actor_and_wait_for_failure(sender)
+    kill_actor_and_wait_for_failure(receiver)
 
     return results
 
