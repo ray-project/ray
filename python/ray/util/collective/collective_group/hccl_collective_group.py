@@ -53,26 +53,23 @@ class hcclDataTypeEnum:
     HCCL_DATA_TYPE_BFP16 = 11
 
     @classmethod
+    @classmethod
     def from_torch(cls, dtype: torch.dtype) -> int:
-        if dtype == torch.int8:
-            return cls.HCCL_DATA_TYPE_INT8
-        if dtype == torch.int16:
-            return cls.HCCL_DATA_TYPE_INT16
-        if dtype == torch.int32:
-            return cls.HCCL_DATA_TYPE_INT32
-        if dtype == torch.float16:
-            return cls.HCCL_DATA_TYPE_FP16
-        if dtype == torch.float32:
-            return cls.HCCL_DATA_TYPE_FP32
-        if dtype == torch.int64:
-            return cls.HCCL_DATA_TYPE_INT64
-        if dtype == torch.uint8:
-            return cls.HCCL_DATA_TYPE_UINT8
-        if dtype == torch.float64:
-            return cls.HCCL_DATA_TYPE_FP64
-        if dtype == torch.bfloat16:
-            return cls.HCCL_DATA_TYPE_BFP16
-        raise ValueError(f"Unsupported dtype: {dtype}")
+        _DTYPE_MAP = {
+            torch.int8: cls.HCCL_DATA_TYPE_INT8,
+            torch.int16: cls.HCCL_DATA_TYPE_INT16,
+            torch.int32: cls.HCCL_DATA_TYPE_INT32,
+            torch.float16: cls.HCCL_DATA_TYPE_FP16,
+            torch.float32: cls.HCCL_DATA_TYPE_FP32,
+            torch.int64: cls.HCCL_DATA_TYPE_INT64,
+            torch.uint8: cls.HCCL_DATA_TYPE_UINT8,
+            torch.float64: cls.HCCL_DATA_TYPE_FP64,
+            torch.bfloat16: cls.HCCL_DATA_TYPE_BFP16,
+        }
+        hccl_dtype = _DTYPE_MAP.get(dtype)
+        if hccl_dtype is None:
+            raise ValueError(f"Unsupported dtype: {dtype}")
+        return hccl_dtype
 
 
 class hcclRedOpTypeEnum:
