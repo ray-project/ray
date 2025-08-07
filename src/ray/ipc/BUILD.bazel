@@ -24,8 +24,8 @@ ray_cc_library(
     deps = [
         ":client_connection",
         "//src/ray/common:asio",
-        "//src/ray/common:ray_object",
         "//src/ray/common:id",
+        "//src/ray/common:ray_object",
         "//src/ray/common:status",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/protobuf:common_cc_proto",
