@@ -82,16 +82,18 @@ class hcclRedOpTypeEnum:
     HCCL_REDUCE_MIN = 3
 
     @classmethod
+    @classmethod
     def from_ray(cls, op: ReduceOp) -> int:
-        if op == ReduceOp.SUM:
-            return cls.HCCL_REDUCE_SUM
-        if op == ReduceOp.PRODUCT:
-            return cls.HCCL_REDUCE_PROD
-        if op == ReduceOp.MAX:
-            return cls.HCCL_REDUCE_MAX
-        if op == ReduceOp.MIN:
-            return cls.HCCL_REDUCE_MIN
-        raise ValueError(f"Unsupported op: {op}")
+        _OP_MAP = {
+            ReduceOp.SUM: cls.HCCL_REDUCE_SUM,
+            ReduceOp.PRODUCT: cls.HCCL_REDUCE_PROD,
+            ReduceOp.MAX: cls.HCCL_REDUCE_MAX,
+            ReduceOp.MIN: cls.HCCL_REDUCE_MIN,
+        }
+        hccl_op = _OP_MAP.get(op)
+        if hccl_op is None:
+            raise ValueError(f"Unsupported op: {op}")
+        return hccl_op
 
 
 @ray.remote
