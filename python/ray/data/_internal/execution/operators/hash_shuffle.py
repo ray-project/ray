@@ -1109,7 +1109,7 @@ class AggregatorHealthInfo:
     total_aggregators: int
     has_unready_aggregators: bool
     wait_time: float
-    required_cpus: float
+    required_resources: ExecutionResources
 
 
 class AggregatorPool:
@@ -1328,6 +1328,9 @@ class AggregatorPool:
         required_cpus = (
             self._aggregator_ray_remote_args.get("num_cpus", 1) * self._num_aggregators
         )
+        required_memory = (
+            self._aggregator_ray_remote_args.get("memory", 0) * self._num_aggregators
+        )
 
         return AggregatorHealthInfo(
             started_at=self._health_monitoring_start_time,
@@ -1335,7 +1338,9 @@ class AggregatorPool:
             total_aggregators=self._num_aggregators,
             has_unready_aggregators=len(unready_refs) > 0,
             wait_time=current_time - self._health_monitoring_start_time,
-            required_cpus=required_cpus,
+            required_resources=ExecutionResources(
+                cpu=required_cpus, memory=required_memory
+            ),
         )
 
     def start_health_monitoring(self):
