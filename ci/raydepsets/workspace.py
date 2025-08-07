@@ -2,6 +2,9 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
+from string import Template
+
+from typing import Any
 
 
 @dataclass
@@ -21,6 +24,21 @@ class Depset:
     append_flags: List[str]
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
+    build_arg_sets: Optional[List[str]] = None
+
+
+def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
+    if isinstance(obj, str):
+        return Template(obj).substitute(build_arg_set.build_args)
+    elif isinstance(obj, dict):
+        return {
+            key: _substitute_build_args(value, build_arg_set)
+            for key, value in obj.items()
+        }
+    elif isinstance(obj, list):
+        return [_substitute_build_args(item, build_arg_set) for item in obj]
+    else:
+        return obj
 
 
 @dataclass
@@ -30,6 +48,7 @@ class Config:
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
+        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
         raw_depsets = data.get("depsets", [])
         depsets = [
             Depset(
@@ -42,11 +61,11 @@ class Config:
                 override_flags=values.get("override_flags", []),
                 append_flags=values.get("append_flags", []),
                 depsets=values.get("depsets", []),
+                build_arg_sets=values.get("build_arg_sets", []),
             )
             for values in raw_depsets
         ]
 
-        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
     @staticmethod
