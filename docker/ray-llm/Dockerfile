@@ -198,7 +198,7 @@ NVSHMEM_VERSION="3.2.5-1"
     git fetch --depth 1 origin dd14b36d96f197a6ae5162448c8c05cbf03f64db
     git checkout dd14b36d96f197a6ae5162448c8c05cbf03f64db
 
-    PIP_NO_BUILD_ISOLATION=0 pip install -vvv --no-deps
+    PIP_NO_BUILD_ISOLATION=0 pip install . -v --no-deps
 )
 
 # Install DeepGEMM
@@ -207,8 +207,15 @@ NVSHMEM_VERSION="3.2.5-1"
 
     cd "${EP_TEMP_DIR}"
 
-    git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git
+    git clone --depth 1 --no-checkout https://github.com/deepseek-ai/DeepGEMM.git
     cd DeepGEMM
+    # using a specific commit to make the build deterministic
+    # date of the commit: 2025-08-04
+    git fetch --depth 1 origin 7b6b5563b9d4c1ae07ffbce7f78ad3ac9204827c
+    git checkout 7b6b5563b9d4c1ae07ffbce7f78ad3ac9204827c
+
+    # Initialize and update submodules after checkout
+    git submodule update --init --recursive
 
     ./install.sh
 )
