@@ -451,6 +451,22 @@ depsets:
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
+    def test_parse_build_arg_sets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            workspace = Workspace(dir=tmpdir)
+            config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+            assert config.build_arg_sets[0].name == "py311_cpu"
+            assert config.build_arg_sets[0].build_args == {
+                "CUDA_VERSION": "cpu",
+                "PYTHON_VERSION": "py311",
+            }
+            assert config.build_arg_sets[1].name == "py311_cuda128"
+            assert config.build_arg_sets[1].build_args == {
+                "CUDA_VERSION": 128,
+                "PYTHON_VERSION": "py311",
+            }
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
