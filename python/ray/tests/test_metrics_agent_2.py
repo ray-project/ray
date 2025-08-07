@@ -1,7 +1,6 @@
 import random
 import sys
 import time
-from unittest.mock import patch
 
 import pytest
 
@@ -25,11 +24,10 @@ from opencensus.stats.aggregation_data import (
     DistributionAggregationData,
 )
 from opencensus.metrics.export.value import ValueDouble
+from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
 from ray._private.metrics_agent import (
-    MetricCardinalityLevel,
     OpenCensusProxyCollector,
     OpencensusProxyMetric,
-    WORKER_ID_TAG_KEY,
 )
 from ray.core.generated.metrics_pb2 import (
     Metric,
@@ -503,28 +501,6 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert response.count("# TYPE test_test gauge") == 1
     assert response.count("# HELP test_test2 desc") == 1
     assert response.count("# TYPE test_test2 gauge") == 1
-
-
-@patch(
-    "ray._private.metrics_agent.OpenCensusProxyCollector._get_metric_cardinality_level_setting"
-)
-def test_get_metric_cardinality_level(
-    mock_get_metric_cardinality_level_setting,
-):
-    """
-    Test the core metric cardinality level.
-    """
-    collector = OpenCensusProxyCollector("")
-    mock_get_metric_cardinality_level_setting.return_value = "recommended"
-    assert (
-        collector._get_metric_cardinality_level() == MetricCardinalityLevel.RECOMMENDED
-    )
-
-    mock_get_metric_cardinality_level_setting.return_value = "legacy"
-    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
-
-    mock_get_metric_cardinality_level_setting.return_value = "unknown"
-    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
 
 
 def _stub_node_level_metric(label: str, value: float) -> OpencensusProxyMetric:
