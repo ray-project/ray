@@ -992,7 +992,7 @@ class TestRouterMetricsManager:
     )
     @pytest.mark.asyncio
     @patch(
-        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S",
+        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S",
         0.01,
     )
     async def test_memory_cleared(self):

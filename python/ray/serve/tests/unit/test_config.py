@@ -1,8 +1,9 @@
 import sys
+import warnings
 
 import pytest
 
-from ray import cloudpickle
+from ray import cloudpickle, serve
 from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
@@ -81,6 +82,32 @@ def test_autoscaling_config_validation():
 
     # Default values should not raise an error
     AutoscalingConfig()
+
+
+def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
+    """Test that the metrics_interval_s deprecation warning is raised."""
+    # Warning is raised if we set metrics_interval_s to a non-default value
+    with pytest.warns(DeprecationWarning):
+        AutoscalingConfig(metrics_interval_s=5)
+
+    # ... even if the AutoscalingConfig is instantiated implicitly via the @serve.deployment decorator
+    with pytest.warns(DeprecationWarning):
+
+        @serve.deployment(autoscaling_config={"metrics_interval_s": 5})
+        class Foo:
+            ...
+
+    # ... or if it is deserialized from proto as part of a DeploymentConfig (presumably in the Serve Controller)
+    deployment_config_proto_bytes = DeploymentConfig(
+        autoscaling_config=AutoscalingConfig(metrics_interval_s=5)
+    ).to_proto_bytes()
+    with pytest.warns(DeprecationWarning):
+        DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
+
+    # Default settings should not raise a warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        AutoscalingConfig()
 
 
 class TestDeploymentConfig:
