@@ -32,8 +32,8 @@ class HandleMetricReport:
         queued_requests: The current number of queued requests at the
             handle, i.e. requests that haven't been assigned to any
             replica yet.
-        running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
+        running_requests: A map of replica ID to the aggregated number
+            of requests, assigned through the handle, running at that
             replica.
         timestamp: The time at which this report was received.
     """
@@ -394,7 +394,7 @@ class AutoscalingStateManager:
     def record_request_metrics_for_handle(
         self,
         *,
-        deployment_id: str,
+        deployment_id: DeploymentID,
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
