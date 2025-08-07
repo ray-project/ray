@@ -13,6 +13,69 @@ Ray automatically handles type inference for standard remote functions and basic
 However, certain patterns require specific approaches to ensure proper type annotation,
 particularly when working with actor references.
 
+Build an Actor
+----------------
+
+In Ray, the ``@ray.remote`` decorator indicates that instances of the class ``T`` are actors, with each actor running in its own Python process. However, the ``@ray.remote`` decorator will transform the class ``T`` into a ``ActorClass[T]`` type, which is not the original class type. Unfortunately, IDE and static type checkers will not be able to infer the original type of the ``ActorClass[T]``. To solve this problem, using ``ray.remote(T)`` will explcitly return a new generic class ``ActorClass[T]`` type while preserving the original class type.
+
+.. note::
+    Recommend to use ``ray.remote(T)`` to build an ``ActorClass[T]`` from class ``T`` instead of using ``@ray.remote`` decorator.
+
+.. code-block:: python
+
+    import ray
+    from ray.actor import ActorClass
+
+    class DemoRay:
+        def __init__(self, init: int):
+            self.init = init
+
+        @ray.method
+        def calculate(self, v1: int, v2: int) -> int:
+            return self.init + v1 + v2
+
+    ActorDemoRay: ActorClass[DemoRay] = ray.remote(DemoRay)
+    # DemoRay is the original class type, ActorDemoRay is the ActorClass[DemoRay] type
+
+    
+    # ActorProxy[DemoRay] can be used as the type hint for an actor.
+    @ray.remote
+    def func(actor: ActorProxy[DemoRay]) -> int:
+        b: ObjectRef[int] = actor.calculate.remote(1, 2)
+        return ray.get(b)
+
+    a = func.remote(ActorDemoRay.remote(1))
+    print(ray.get(a))
+
+
+Get Actor Remote Methods
+------------------------
+Regardless of how an ``ActorProxy[T]`` is constructed, by adding ``@ray.method`` decorator to the class methods, Ray will be able to correctly provide type hints for the remote methods of the actor through ``ActorProxy[T]`` type, including their arguments and return types.
+
+.. note::
+    ``@ray.method`` decorator is essential for actor methods as it enables Ray to properly infer method types and maintain type safety across remote calls.
+
+
+.. code-block:: python
+
+    from ray.actor import ActorClass, ActorProxy
+
+    class DemoRay:
+        def __init__(self, init: int):
+            self.init = init
+
+        @ray.method
+        def calculate(self, v1: int, v2: int) -> int:
+            return self.init + v1 + v2
+
+    ActorDemoRay: ActorClass[DemoRay] = ray.remote(DemoRay)
+    actor: ActorProxy[DemoRay] = ActorDemoRay.remote(1)
+    # IDEs will be able to correctly list the remote methods of the actor
+    # and provide type hints for the arguments and return values of the remote methods
+    a = actor.calculate.remote(1, 2)
+    print(ray.get(a))
+
+
 Remote Functions
 ----------------
 
@@ -28,94 +91,6 @@ The ``@ray.remote`` decorator preserves the original function signature and type
         return x + y
 
     # Type hints work seamlessly with remote function calls
-    result_ref = add_numbers.remote(5, 3)
-    result: int = ray.get(result_ref)
+    a = add_numbers.remote(5, 3)
+    print(ray.get(a))
 
-For remote class methods, type annotations work naturally within the class definition.
-However, to ensure proper type inference, actor methods should use the ``@ray.method`` decorator:
-
-.. code-block:: python
-
-    import ray
-
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.value = 0
-
-        @ray.method
-        def increment(self, amount: int) -> int:
-            self.value += amount
-            return self.value
-
-    # Usage maintains type safety
-    counter = Counter.remote()
-    result_ref = counter.increment.remote(5)
-    result: int = ray.get(result_ref)
-
-Actor Type Annotations
-----------------------
-
-When passing Ray actors as arguments to remote functions, special consideration is needed for proper type annotation.
-The challenge arises because the ``@ray.remote`` decorator transforms classes, making direct type annotation problematic.
-
-Problematic Approach
-~~~~~~~~~~~~~~~~~~~~
-
-The following approach appears intuitive but creates type checking issues:
-
-.. code-block:: python
-
-    import ray
-
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.value = 0
-
-        @ray.method
-        def increment(self, amount: int) -> int:
-            self.value += amount
-            return self.value
-
-    @ray.remote
-    def use_counter(counter: Counter) -> int:  # Type checker will complain
-        return ray.get(counter.increment.remote(5))
-
-This approach fails because ``Counter`` after decoration refers to an actor class,
-not the original class type, causing IDE and static type checkers to report errors.
-
-Recommended Solution
-~~~~~~~~~~~~~~~~~~~~
-
-To properly annotate actor types, separate the class definition from the remote declaration
-and use ``ray.actor.ActorProxy`` for type hints:
-
-.. code-block:: python
-
-    import ray
-    from ray.actor import ActorProxy
-
-    class Counter:
-        def __init__(self):
-            self.value = 0
-
-        @ray.method
-        def increment(self, amount: int) -> int:
-            self.value += amount
-            return self.value
-
-    # Create the remote actor class separately
-    CounterActor = ray.remote(Counter)
-
-    @ray.remote
-    def use_counter(counter: ActorProxy[Counter]) -> int:
-        return ray.get(counter.increment.remote(5))
-
-    # Usage example
-    counter_actor = CounterActor.remote()
-    result_ref = use_counter.remote(counter_actor)
-    result: int = ray.get(result_ref)
-
-The ``@ray.method`` decorator is essential for actor methods as it enables Ray to properly
-infer method types and maintain type safety across remote calls.
