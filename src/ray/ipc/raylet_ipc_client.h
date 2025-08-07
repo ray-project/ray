@@ -56,7 +56,6 @@ class RayletIPCClient {
                   int num_retries,
                   int64_t timeout);
 
-  /// XXX: comment.
   /// Register this client (worker) with the local Raylet.
   ///
   /// \param worker_id The worker_id of the connecting worker.

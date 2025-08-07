@@ -56,7 +56,6 @@ namespace ray::ipc {
 RayletIPCClient::RayletIPCClient(instrumented_io_context &io_service,
                                  const std::string &address,
                                  int num_retries,
-                                 // XXX: rename this!
                                  int64_t timeout) {
   local_stream_socket socket(io_service);
   Status s = ConnectSocketRetry(socket, address, num_retries, timeout);
@@ -64,7 +63,6 @@ RayletIPCClient::RayletIPCClient(instrumented_io_context &io_service,
     RAY_LOG(FATAL) << "Failed to connect to socket at address:" << address;
   }
 
-  // XXX: move retry logic into ServerConnection.
   conn_ = ServerConnection::Create(std::move(socket));
 }
 
