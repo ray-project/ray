@@ -789,6 +789,7 @@ class Dataset:
         Examples:
 
             >>> import ray
+            >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
             >>> ds.with_column("id_2", (col("id") * 2)).schema()
             Column    Type
