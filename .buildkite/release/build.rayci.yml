@@ -2,7 +2,7 @@ group: release build
 steps:
   - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
     tags: skip-on-premerge
-    key: anyscalebuild-{{matrix.python}}-{{matrix.platform}}
+    key: anyscalebuild
     instance_type: release-medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- anyscale

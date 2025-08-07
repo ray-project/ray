@@ -190,5 +190,15 @@ def get_step(
     full_label += f" ({label}) ({run_id})"
 
     step["label"] = full_label
+    image = test.get_anyscale_byod_image()
+    if test.require_custom_byod_image():
+        step["depends_on"] = f"custom_build_" + image.replace("/", "_").replace(":", "_").replace(".", "_")[-40:],
+    else:
+        if "ray-ml" in image:
+            step["depends_on"] = "anyscalemlbuild"
+        elif "ray-llm" in image:
+            step["depends_on"] = "anyscalellmbuild"
+        else:
+            step["depends_on"] = "anyscalebuild"
 
     return step
