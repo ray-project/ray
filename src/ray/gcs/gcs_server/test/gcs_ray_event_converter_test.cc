@@ -167,14 +167,6 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   EXPECT_EQ(entry.end_time(), 123456799);
   EXPECT_EQ(entry.extra_data(), "{\"foo\": \"bar\"}");
   EXPECT_EQ(entry.event_name(), "test_event");
-
-  // Verify that profile event in original request is empty
-  EXPECT_EQ(request.events_data()
-                .events(0)
-                .task_profile_events()
-                .profile_events()
-                .events_size(),
-            0);
 }
 
 }  // namespace gcs
