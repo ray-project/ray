@@ -12,6 +12,7 @@ py_library(
         ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
+        ci_require("networkx"),
     ],
 )
 
@@ -31,7 +32,7 @@ py_test(
         "test_data/requirements_compiled_test_expand.txt",
         "test_data/requirements_compiled_test_update.txt",
         "test_data/requirements_test.txt",
-        "test_data/test.config.yaml",
+        "test_data/test.depsets.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [

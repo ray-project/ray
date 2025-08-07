@@ -21,11 +21,11 @@
 #include <vector>
 
 #include "absl/synchronization/notification.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/util/logging.h"
 
 using MessageType = ray::protocol::MessageType;
@@ -56,19 +56,20 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 
 namespace ray::raylet {
 
-RayletClient::RayletClient(const std::string &address,
-                           const int port,
-                           rpc::ClientCallManager &client_call_manager)
+RayletClient::RayletClient(const rpc::Address &address,
+                           rpc::ClientCallManager &client_call_manager,
+                           std::function<void()> raylet_unavailable_timeout_callback)
     : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
-          new rpc::NodeManagerClient(address, port, client_call_manager))) {}
+          new rpc::NodeManagerClient(address,
+                                     client_call_manager,
+                                     std::move(raylet_unavailable_timeout_callback)))) {}
 
 RayletClient::RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
-                           const std::string &address,
-                           const int port,
+                           const rpc::Address &address,
                            rpc::ClientCallManager &client_call_manager,
                            const WorkerID &worker_id)
     : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
-          new rpc::NodeManagerClient(address, port, client_call_manager))),
+          new rpc::NodeManagerClient(address, client_call_manager, [] {}))),
       worker_id_(worker_id),
       conn_(std::move(raylet_conn)) {}
 
@@ -137,28 +138,22 @@ Status RayletClient::ActorCreationTaskDone() {
   return conn_->WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
-Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                        const std::vector<rpc::Address> &owner_addresses,
-                                        bool fetch_only,
-                                        const TaskID &current_task_id) {
+Status RayletClient::AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                                     const std::vector<rpc::Address> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto message =
-      protocol::CreateFetchOrReconstruct(fbb,
-                                         object_ids_message,
-                                         AddressesToFlatbuffer(fbb, owner_addresses),
-                                         fetch_only,
-                                         to_flatbuf(fbb, current_task_id));
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
+  return conn_->WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
 }
 
-Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+Status RayletClient::CancelGetRequest() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
+  auto message = protocol::CreateCancelGetRequest(fbb);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
+  return conn_->WriteMessage(MessageType::CancelGetRequest, &fbb);
 }
 
 Status RayletClient::NotifyDirectCallTaskBlocked() {
@@ -179,16 +174,14 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses,
     int num_returns,
-    int64_t timeout_milliseconds,
-    const TaskID &current_task_id) {
+    int64_t timeout_milliseconds) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(fbb,
                                              to_flatbuf(fbb, object_ids),
                                              AddressesToFlatbuffer(fbb, owner_addresses),
                                              num_returns,
-                                             timeout_milliseconds,
-                                             to_flatbuf(fbb, current_task_id));
+                                             timeout_milliseconds);
   fbb.Finish(message);
   std::vector<uint8_t> reply;
   RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
