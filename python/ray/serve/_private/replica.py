@@ -37,7 +37,6 @@ from ray import cloudpickle
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
-from ray.types import ObjectRef
 from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
@@ -89,9 +88,9 @@ from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import (
     Semaphore,
+    check_obj_ref_ready_nowait,
     get_component_file_name,  # noqa: F401
     parse_import_path,
-    check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
@@ -103,6 +102,7 @@ from ray.serve.exceptions import (
     RayServeException,
 )
 from ray.serve.schema import LoggingConfig
+from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -375,7 +375,9 @@ class ReplicaMetricsManager:
         elif check_obj_ref_ready_nowait(self._record_autoscaling_metrics_ref):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
-                self._autoscaling_metrics = ray.get(self._record_autoscaling_metrics_ref)
+                self._autoscaling_metrics = ray.get(
+                    self._record_autoscaling_metrics_ref
+                )
             except Exception:
                 logger.exception(
                     "Exception when trying to get autoscaling metrics:\n"
@@ -410,7 +412,9 @@ class ReplicaMetricsManager:
         """
         return self.get_autoscaling_metrics()
 
-    def _add_autoscaling_metrics_point(self, metrics_sources: Dict[str, Union[str, Callable]]) -> None:
+    def _add_autoscaling_metrics_point(
+        self, metrics_sources: Dict[str, Union[str, Callable]]
+    ) -> None:
         """Add autoscaling metrics point using periodic fetching mechanism."""
         # Get the autoscaling metrics from prometheus using the periodic fetching mechanism
         autoscaling_metrics = self.get_autoscaling_metrics()
@@ -420,13 +424,15 @@ class ReplicaMetricsManager:
 
         # Execute each callable in metrics_sources in a thread pool
         with ThreadPoolExecutor() as executor:
-            future_to_key = {executor.submit(func): key for key, func in metrics_sources.items()}
+            future_to_key = {
+                executor.submit(func): key for key, func in metrics_sources.items()
+            }
             results = {}
             for future in future_to_key:
                 key = future_to_key[future]
                 try:
                     results[key] = future.result()
-                except Exception as e:
+                except Exception:
                     # Optionally log or handle the exception
                     results[key] = None
 
@@ -960,7 +966,6 @@ class ReplicaBase(ABC):
         """Record autoscaling metrics for the replica."""
         # This would be implemented to call user-defined autoscaling metrics collection
         # For now, return empty dict as placeholder
-
 
         return {}
 
