@@ -1,6 +1,6 @@
 import sys
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -58,7 +58,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     def shutdown(self):
         self._shutdown_received = True
 
-    async def health_check(self):
+    async def health_check(self) -> List[Dict]:
         pass
 
 

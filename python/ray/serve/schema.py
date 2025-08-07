@@ -1235,9 +1235,9 @@ class TaskProcessorConfig(BaseModel):
     adapter_config: Union[CeleryAdapterConfig] = Field(
         ..., description="The adapter config. Currently only Celery is supported."
     )
-    max_retry: Optional[int] = Field(
+    max_retries: Optional[int] = Field(
         default=3,
-        description="The maximum number of retries for a task before marking it as failed.",
+        description="The maximum number of times to retry a task before marking it as failed.",
     )
     failed_task_queue_name: Optional[str] = Field(
         default=None,

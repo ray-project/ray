@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from celery import Celery
 
@@ -66,7 +66,7 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
-    async def health_check(self):
+    async def health_check(self) -> List[Dict]:
         pass
 
 
@@ -94,7 +94,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             loglevel="info",
             worker_pool="threads",
             worker_concurrency=config.adapter_config.worker_concurrency,
-            task_max_retries=config.max_retry,
+            max_retries=config.max_retries,
             task_default_queue=config.queue_name,
             # Store task results so they can be retrieved after completion
             task_ignore_result=False,
@@ -112,10 +112,18 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         ### TODO(harshit|SERVE-987): add the failed_task_queue_name and unprocessable_task_queue_name business logic here
 
     def register_task_handle(self, func, name=None):
+        task_options = {
+            "autoretry_for": (Exception,),
+            "retry_kwargs": {"max_retries": self._config.max_retries},
+            "retry_backoff": True,
+            "retry_backoff_max": 60,  # Max backoff of 60 seconds
+            "retry_jitter": False,  # Disable jitter for predictable testing
+        }
+
         if name:
-            self._app.task(name=name)(func)
+            self._app.task(name=name, **task_options)(func)
         else:
-            self._app.task(func)
+            self._app.task(**task_options)(func)
 
     def enqueue_task_sync(
         self, task_name, args=None, kwargs=None, **options
@@ -201,7 +209,12 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     def shutdown(self):
         self._app.control.shutdown()
 
-    async def health_check(self):
+    async def health_check(self) -> List[Dict]:
+        """
+        Checks the health of the Celery worker. Returns a list of dictionaries, each containing the worker name and a dictionary with the health status.
+        Example: [{'celery@192.168.1.100': {'ok': 'pong'}}]
+        More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Control.ping
+        """
         return self._app.control.ping()
 
 
