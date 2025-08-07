@@ -633,7 +633,9 @@ class _StatsManager:
         self._update_thread: Optional[threading.Thread] = None
         self._update_thread_lock: threading.Lock = threading.Lock()
 
-    def _get_or_create_stats_actor(self, skip_cache: bool = False) -> Optional[ActorHandle]:
+    def _get_or_create_stats_actor(
+        self, skip_cache: bool = False
+    ) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
             raise RuntimeError(
                 "Global node is not initialized. Driver might be not connected to Ray."
@@ -654,7 +656,9 @@ class _StatsManager:
             except ValueError:
                 # Create an actor if it doesn't exist
                 self._stats_actor_handle = _get_or_create_stats_actor()
-                self._stats_actor_cluster_id = ray._private.worker._global_node.cluster_id
+                self._stats_actor_cluster_id = (
+                    ray._private.worker._global_node.cluster_id
+                )
 
         return self._stats_actor_handle
 
