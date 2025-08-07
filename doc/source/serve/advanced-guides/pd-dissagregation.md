@@ -30,7 +30,7 @@ The NIXLConnector provides network-based KV cache transfer between prefill and d
 ### Basic Configuration
 
 ```python
-from ray.serve.llm import LLMConfig
+from ray.serve.llm import LLMConfig, build_pd_openai_app
 
 # Prefill configuration
 prefill_config = LLMConfig(
@@ -40,7 +40,7 @@ prefill_config = LLMConfig(
     engine_kwargs={
         "kv_transfer_config": {
             "kv_connector": "NixlConnector",
-            "kv_role": "kv_producer",
+            "kv_role": "kv_both",
             "engine_id": "engine1"
         }
     }
@@ -54,11 +54,19 @@ decode_config = LLMConfig(
     engine_kwargs={
         "kv_transfer_config": {
             "kv_connector": "NixlConnector",
-            "kv_role": "kv_consumer",
+            "kv_role": "kv_both",
             "engine_id": "engine2"
         }
     }
 )
+
+pd_config = dict(
+    prefill_config=prefill_config,
+    decode_config=decode_config,
+)
+
+app = build_pd_openai_app(pd_config)
+serve.run(app)
 ```
 
 ### Complete YAML Configuration Example
@@ -67,16 +75,6 @@ Here's a complete configuration file for NIXLConnector:
 
 ```{literalinclude} ../doc_code/pd_dissagregation/nixl_example.yaml
 :language: yaml
-```
-
-### Environment Variables for NIXLConnector
-
-The NIXLConnector automatically configures network settings, but you can override them:
-
-```bash
-# Optional: Set custom side channel configuration
-export VLLM_NIXL_SIDE_CHANNEL_HOST="192.168.1.100"
-export VLLM_NIXL_SIDE_CHANNEL_PORT="8080"
 ```
 
 ## LMCacheConnectorV1 Backend
@@ -176,6 +174,4 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 
 LMCache prefill/decode dissagregation official guide:
 
-- [1p1d](https://docs.lmcache.ai/disaggregated_prefill/nixl/1p1d.html)
-- [XpYd](https://docs.lmcache.ai/disaggregated_prefill/nixl/xpyd.html)
-- [Mooncake](https://docs.lmcache.ai/kv_cache/mooncake.html)
+- [dissagregated serving](https://docs.lmcache.ai/disaggregated_prefill/)

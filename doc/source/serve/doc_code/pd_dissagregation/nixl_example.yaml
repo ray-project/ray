@@ -28,6 +28,6 @@ applications:
             min_replicas: 6
             max_replicas: 10
 
-    import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
+    import_path: ray.serve.llm:build_pd_openai_app
     name: pd-disaggregation-nixl
     route_prefix: "/"

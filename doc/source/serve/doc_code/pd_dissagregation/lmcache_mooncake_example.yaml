@@ -29,6 +29,6 @@ applications:
             max_replicas: 1
         runtime_env: *runtime_env
 
-    import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
+    import_path: ray.serve.llm:build_pd_openai_app
     name: pd-disaggregation-lmcache-mooncake
     route_prefix: "/"

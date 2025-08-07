@@ -40,6 +40,6 @@ applications:
             LMCACHE_CONFIG_FILE: lmcache_decoder.yaml
             LMCACHE_USE_EXPERIMENTAL: "True"
 
-    import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
+    import_path: ray.serve.llm:build_pd_openai_app
     name: pd-disaggregation-lmcache-nixl
     route_prefix: "/"
