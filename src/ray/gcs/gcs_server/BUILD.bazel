@@ -253,6 +253,7 @@ ray_cc_library(
         "//src/ray/rpc:gcs_server",
         "//src/ray/rpc:node_manager_client",
         "//src/ray/util:counter_map",
+        "//src/ray/util:network_util",
         "//src/ray/util:thread_checker",
         "//src/ray/util:throttler",
         "//src/ray/util:type_traits",

@@ -193,6 +193,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "network_util_test",
+    size = "small",
+    srcs = ["network_util_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:network_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "proto_schema_backward_compatibility_test",
     size = "small",
     srcs = ["proto_schema_backward_compatibility_test.cc"],

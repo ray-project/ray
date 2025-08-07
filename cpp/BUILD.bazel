@@ -69,6 +69,7 @@ cc_library(
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:network_util",
         "//src/ray/util:process",
         "@boost//:callable_traits",
         "@boost//:dll",
@@ -256,6 +257,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api_lib",
+        "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
