@@ -544,21 +544,20 @@ def setup_mocks():
             mock_gcs_stub = Mock()
             mock_gcs_stub_class.return_value = mock_gcs_stub
 
-    return mock_dashboard_agent, mock_gcs_stub
+            agent = AggregatorAgent(mock_dashboard_agent)
+
+            return agent, mock_gcs_stub
 
 
 def test_aggregator_agent_gcs_publishing():
     """Test: AggregatorAgent component `_send_events_to_gcs` method in isolation with proper mocking"""
 
-    mock_dashboard_agent, mock_gcs_stub = setup_mocks()
+    agent, mock_gcs_stub = setup_mocks()
 
     # Mock successful GCS response
     gcs_reply = AddEventsReply()
     gcs_reply.status.code = 0
     mock_gcs_stub.AddEvents.return_value = gcs_reply
-
-    # Create agent
-    agent = AggregatorAgent(mock_dashboard_agent)
 
     events = [create_test_event("1"), create_test_event("2")]
     metadata = create_test_metadata(["task_X"])
@@ -588,15 +587,13 @@ def test_aggregator_agent_gcs_publishing():
 
 
 def test_aggregator_agent_gcs_publish_failure():
-    mock_dashboard_agent, mock_gcs_stub = setup_mocks()
+    agent, mock_gcs_stub = setup_mocks()
 
     # Mock GCS failure
     gcs_failure_reply = AddEventsReply()
     gcs_failure_reply.status.code = 1
     gcs_failure_reply.status.message = "GCS failure"
     mock_gcs_stub.AddEvents.return_value = gcs_failure_reply
-
-    agent = AggregatorAgent(mock_dashboard_agent)
 
     events = [create_test_event("1")]
     metadata = create_test_metadata(["task_fail"])
@@ -609,8 +606,7 @@ def test_aggregator_agent_gcs_publish_failure():
 
 
 def test_external_service_publish_mock_with_requests():
-    mock_dashboard_agent, _ = setup_mocks()
-    agent = AggregatorAgent(mock_dashboard_agent)
+    agent, _ = setup_mocks()
     # Mock the HTTP session
     with patch.object(agent, "_http_session") as mock_session:
         mock_response = Mock()
@@ -694,8 +690,7 @@ def test_publish_events_retry_scenarios(
     gcs_failures, external_failures, expected_gcs_calls, expected_external_calls
 ):
     """Test: _publish_events retry logic for various failure scenarios"""
-    mock_dashboard_agent, _ = setup_mocks()
-    agent = AggregatorAgent(mock_dashboard_agent)
+    agent, _ = setup_mocks()
 
     # Setup failure counters and mock functions
     gcs_call_count = 0

@@ -355,7 +355,10 @@ class AggregatorAgent(
         if not PUBLISH_EVENTS_TO_GCS:
             return True
 
-        if not event_batch and len(task_events_metadata.dropped_task_attempts) == 0:
+        if not event_batch and (
+            not task_events_metadata
+            or len(task_events_metadata.dropped_task_attempts) == 0
+        ):
             return True
 
         try:
@@ -449,7 +452,10 @@ class AggregatorAgent(
                 if not published_events_to_gcs:
                     # Get task events metadata only when starting a new batch (not on retries)
                     # This need not be in sync with the event batch.
-                    if len(task_events_metadata.dropped_task_attempts) == 0:
+                    if (
+                        not task_events_metadata
+                        or len(task_events_metadata.dropped_task_attempts) == 0
+                    ):
                         task_events_metadata = (
                             self._accumulated_task_metadata.get_and_reset()
                         )
@@ -487,7 +493,10 @@ class AggregatorAgent(
                     # Send any remaining inflight events before stopping
                     if event_batch:
                         if not published_events_to_gcs:
-                            if len(task_events_metadata.dropped_task_attempts) == 0:
+                            if (
+                                not task_events_metadata
+                                or len(task_events_metadata.dropped_task_attempts) == 0
+                            ):
                                 task_events_metadata = (
                                     self._accumulated_task_metadata.get_and_reset()
                                 )
