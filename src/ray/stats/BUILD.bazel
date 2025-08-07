@@ -50,6 +50,7 @@ ray_cc_library(
     deps = [
         ":stats_metric",
         "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/util:network_util",
         "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],

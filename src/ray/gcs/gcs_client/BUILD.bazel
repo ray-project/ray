@@ -20,6 +20,7 @@ ray_cc_library(
         "//src/ray/pubsub:subscriber",
         "//src/ray/rpc:gcs_client",
         "//src/ray/util:container_util",
+        "//src/ray/util:network_util",
         "//src/ray/util:sequencer",
     ],
 )

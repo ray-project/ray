@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/util.h"
 
@@ -70,7 +71,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
 
   bool CheckHealth() {
     auto channel =
-        grpc::CreateChannel(absl::StrCat("127.0.0.1:", config_.grpc_server_port),
+        grpc::CreateChannel(BuildAddress("127.0.0.1", config_.grpc_server_port),
                             grpc::InsecureChannelCredentials());
     auto stub = grpc::health::v1::Health::NewStub(channel);
     grpc::ClientContext context;
