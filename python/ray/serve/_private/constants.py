@@ -247,6 +247,7 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "serve_access_log",
     "task_id",
     "job_id",
+    "skip_context_filter",
 }
 
 RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
