@@ -55,12 +55,6 @@ RELEASE_BYOD_DIR = (
     ),
     help="Global config to use for test execution.",
 )
-@click.option(
-    "--run-per-test",
-    default=1,
-    type=int,
-    help=("The number of time we run test on the same commit"),
-)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
