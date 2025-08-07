@@ -1080,7 +1080,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   return Status::OK();
 }
 
@@ -1091,7 +1091,7 @@ Status CoreWorker::Put(const RayObject &object,
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
   if (options_.is_local_mode) {
     RAY_LOG(DEBUG).WithField(object_id) << "Put object in memory store";
-    RAY_CHECK(memory_store_->Put(object, object_id));
+    memory_store_->Put(object, object_id);
     return Status::OK();
   }
   return PutInLocalPlasmaStore(object, object_id, pin_object);
@@ -1182,8 +1182,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the
       // client will check the plasma store.
-      RAY_CHECK(
-          memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
+      memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id);
     }
   }
   return Status::OK();
@@ -1280,7 +1279,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
   }
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   return Status::OK();
 }
 
@@ -1451,7 +1450,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     }
   }
 
-  if (!got_exception) {
+  if (!got_exception && !plasma_object_ids.empty()) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
@@ -2242,7 +2241,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       }
     }
     if (actor_restart_warning) {
-      RAY_LOG(ERROR)
+      RAY_LOG_ONCE_PER_PROCESS(ERROR)
           << "Actor " << (actor_name.empty() ? "" : (actor_name + " "))
           << "with class name: '" << function.GetFunctionDescriptor()->ClassName()
           << "' and ID: '" << task_spec.ActorCreationId()
@@ -3323,8 +3322,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // NOTE: This needs to be done after adding reference to reference counter
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgObjectId(i)));
+        memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                           task.ArgObjectId(i));
       }
     } else {
       // A pass-by-value argument.
@@ -4202,7 +4201,7 @@ Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool loca
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
+    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id);
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
@@ -4348,7 +4347,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
