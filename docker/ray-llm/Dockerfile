@@ -183,6 +183,36 @@ NVSHMEM_VERSION="3.2.5-1"
     PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
 )
 
+# Install DeepEP
+(
+    echo "Installing DeepEP"
+
+    cd "${EP_TEMP_DIR}"
+
+    export NVSHMEM_DIR="${EP_TEMP_DIR}/nvshmem_install"
+
+    git clone --depth 1 --no-checkout https://github.com/deepseek-ai/DeepEP
+    cd DeepEP
+    # using a specific commit to make the build deterministic
+    # date of the commit: 2025-08-06
+    git fetch --depth 1 origin dd14b36d96f197a6ae5162448c8c05cbf03f64db
+    git checkout dd14b36d96f197a6ae5162448c8c05cbf03f64db
+
+    PIP_NO_BUILD_ISOLATION=0 pip install -vvv --no-deps
+)
+
+# Install DeepGEMM
+(
+    echo "Installing DeepGEMM"
+
+    cd "${EP_TEMP_DIR}"
+
+    git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git
+    cd DeepGEMM
+
+    ./install.sh
+)
+
 rm -rf "${EP_TEMP_DIR}"
 
 sudo rm -rf /var/lib/apt/lists/*
