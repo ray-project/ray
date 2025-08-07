@@ -222,7 +222,6 @@ class AggregatorAgent(
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
         self._event_buffer = queue.Queue(maxsize=MAX_EVENT_BUFFER_SIZE)
-        # Use the helper class for metadata management
         self._accumulated_task_metadata = self.AccumulatedTaskMetadata()
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
@@ -288,7 +287,6 @@ class AggregatorAgent(
             else None
         )
 
-        # Merge metadata using helper class
         self._accumulated_task_metadata.merge(task_events_metadata)
 
         for event in events_data.events:
@@ -367,15 +365,11 @@ class AggregatorAgent(
                 event_batch, task_events_metadata
             )
 
-            # Create the request
             request = events_event_aggregator_service_pb2.AddEventsRequest(
                 events_data=events_data
             )
-
-            # Call GCS service
             response = self._gcs_event_stub.AddEvents(request)
 
-            # Check response status
             if response.status.code != 0:
                 logger.error(f"GCS AddEvents failed: {response.status.message}")
                 return False
@@ -487,7 +481,6 @@ class AggregatorAgent(
                     )
 
             else:
-                # No events in batch
                 should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
                 if should_stop:
                     # Send any remaining inflight events before stopping
@@ -590,7 +583,6 @@ class AggregatorAgent(
                 break
 
         if event_batch:
-            # Get any remaining accumulated metadata
             task_events_metadata = self._accumulated_task_metadata.get_and_reset()
             self._send_events_to_gcs(event_batch, task_events_metadata)
             self._send_events_to_external_service(event_batch)

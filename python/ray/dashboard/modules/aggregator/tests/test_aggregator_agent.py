@@ -494,11 +494,6 @@ def _verify_profile_event_json(req_json):
     assert event_entry["extraData"] == '{"cpu_usage": 0.8}'
 
 
-# =============================================================================
-# Test Publishing events to GCS and external service using mocks
-# =============================================================================
-
-
 def create_test_event(event_id: str, message: str = "test"):
     """Helper function to create test events"""
     test_time = int(time.time() * 1_000_000_000)  # nanoseconds
