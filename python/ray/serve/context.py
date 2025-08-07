@@ -8,12 +8,12 @@ import contextvars
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Any, Optional
+from typing import Callable, Dict, Optional
 
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ReplicaID, DeploymentID
+from ray.serve._private.common import ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -59,44 +59,6 @@ class ReplicaContext:
     def replica_tag(self) -> str:
         return self.replica_id.unique_id
 
-@DeveloperAPI
-@dataclass
-class AutoscalingContext:
-    """Rich context provided to custom autoscaling policies."""
-    
-    # Deployment information
-    deployment_id: DeploymentID
-    deployment_name: str
-    app_name: Optional[str]
-    
-    # Current state
-    current_num_replicas: int
-    target_num_replicas: int
-    running_replicas: List[ReplicaID]
-    
-    # Built-in metrics
-    total_num_requests: float
-    requests_per_replica: Dict[ReplicaID, float]
-    queued_requests: float
-    
-    # Custom metrics (aggregated over look_back_period using user defined agg function)
-    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    # Custom metrics (vector over look_back_period)
-    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]]
-    
-    # Capacity and bounds
-    min_replicas: int
-    max_replicas: int
-    capacity_adjusted_min_replicas: int
-    capacity_adjusted_max_replicas: int
-
-    # Policy state for stateful logic
-    policy_state: Dict[str, Any]
-
-    # Timestamps for historical information
-    last_scale_up_time: Optional[float]
-    last_scale_down_time: Optional[float]
-    current_time: float
 
 def _get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
