@@ -643,7 +643,7 @@ def _get_comm_key_send_recv(my_rank, my_npu_idx, peer_rank, peer_npu_idx):
 
     Args:
         my_rank: the rank of the source process.
-        my_gpu_idx: the source gpu index on the process.
+        my_npu_idx: the source npu index on the process.
         peer_rank: the rank of the destination process.
         peer_npu_idx: the destination npu index on the process.
 
