@@ -1095,9 +1095,6 @@ python/ray/data/_internal/execution/interfaces/task_context.py
     DOC106: Method `TaskContext.set_current`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `TaskContext.set_current`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
-python/ray/data/_internal/execution/legacy_compat.py
-    DOC107: Function `execute_to_legacy_bundle_iterator`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
 python/ray/data/_internal/execution/operators/base_physical_operator.py
     DOC101: Method `OneToOneOperator.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OneToOneOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext].
