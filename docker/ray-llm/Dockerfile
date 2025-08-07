@@ -10,6 +10,7 @@ ARG ROOT_DIR="/usr/local"
 ARG GDR_HOME="${ROOT_DIR}/gdrcopy"
 ARG UCX_HOME="${ROOT_DIR}/ucx"
 ARG NIXL_HOME="${ROOT_DIR}/nixl"
+ARG NVSHMEM_HOME="${ROOT_DIR}/nvshmem"
 
 RUN <<EOF
 #!/bin/bash
@@ -159,7 +160,7 @@ NVSHMEM_VERSION="3.2.5-1"
     export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
     export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
-    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
+    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${NVSHMEM_HOME}"
     cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
 )
 
@@ -169,7 +170,7 @@ NVSHMEM_VERSION="3.2.5-1"
 
     cd "${EP_TEMP_DIR}"
 
-    export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
+    export CMAKE_PREFIX_PATH="${NVSHMEM_HOME}"
 
     # build and install pplx, require pytorch installed
     git clone --depth 1 --no-checkout https://github.com/ppl-ai/pplx-kernels
@@ -189,7 +190,7 @@ NVSHMEM_VERSION="3.2.5-1"
 
     cd "${EP_TEMP_DIR}"
 
-    export NVSHMEM_DIR="${EP_TEMP_DIR}/nvshmem_install"
+    export NVSHMEM_DIR="${NVSHMEM_HOME}"
 
     git clone --depth 1 --no-checkout https://github.com/deepseek-ai/DeepEP
     cd DeepEP
@@ -237,6 +238,6 @@ EOF
 # https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
 # and here:
 # https://gitlab.com/nvidia/container-images/cuda/-/issues/27
-ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:/usr/local/nvidia/bin"
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:${NVSHMEM_HOME}/bin:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${NVSHMEM_HOME}/lib:/usr/local/nvidia/lib64"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
