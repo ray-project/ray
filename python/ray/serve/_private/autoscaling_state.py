@@ -14,7 +14,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.common import ReplicaID, DeploymentID
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -77,6 +76,7 @@ class ReplicaMetricReport:
 
     running_requests: float
     timestamp: float
+
 
 @dataclass
 class AutoscalingContext:

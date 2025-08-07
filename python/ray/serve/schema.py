@@ -277,6 +277,7 @@ class RayActorOptionsSchema(BaseModel):
 
         return v
 
+
 @PublicAPI(stability="alpha")
 class ApplicationAutoscalingConfig(BaseModel):
     """
@@ -284,6 +285,7 @@ class ApplicationAutoscalingConfig(BaseModel):
     this can optionally be included in `ServeApplicationSchema` to override deployment
     options specified in code.
     """
+
 
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel, allow_population_by_field_name=True):

@@ -1,10 +1,10 @@
 # File name: hello.py
 import ray
 from ray import serve
-from ray.serve.handle import DeploymentHandle
 
 ray.init()
 serve.start(http_options={"host": "0.0.0.0", "port": 8081})
+
 
 @serve.deployment(
     autoscaling_config={
@@ -16,13 +16,11 @@ serve.start(http_options={"host": "0.0.0.0", "port": 8081})
     }
 )
 class A:
-    def __init__(
-        self, b
-    ):
+    def __init__(self, b):
         self.b = b
 
     async def __call__(self):
-        print(f"Foo")
+        print("Foo")
         response = self.b.remote()
         return await response
 
@@ -37,15 +35,14 @@ class A:
     }
 )
 class B:
-    def __init__(
-        self, c
-    ):
+    def __init__(self, c):
         self.c = c
 
     async def __call__(self):
-        print(f"Bar")
+        print("Bar")
         response = self.c.remote()
         return await response
+
 
 @serve.deployment(
     autoscaling_config={
@@ -57,13 +54,11 @@ class B:
     }
 )
 class C:
-    def __init__(
-        self
-    ):
+    def __init__(self):
         self.c = c
 
     def __call__(self):
-        print(f"Baz")
+        print("Baz")
         return "Baz"
 
 

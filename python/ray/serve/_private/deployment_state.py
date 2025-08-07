@@ -455,13 +455,17 @@ class ActorReplicaWrapper:
                 )
             init_args = (
                 self.replica_id,
-                cloudpickle.dumps(deployment_info.replica_config.deployment_def)
-                if self._deployment_is_cross_language
-                else deployment_info.replica_config.serialized_deployment_def,
+                (
+                    cloudpickle.dumps(deployment_info.replica_config.deployment_def)
+                    if self._deployment_is_cross_language
+                    else deployment_info.replica_config.serialized_deployment_def
+                ),
                 serialized_init_args,
-                deployment_info.replica_config.serialized_init_kwargs
-                if deployment_info.replica_config.serialized_init_kwargs
-                else cloudpickle.dumps({}),
+                (
+                    deployment_info.replica_config.serialized_init_kwargs
+                    if deployment_info.replica_config.serialized_init_kwargs
+                    else cloudpickle.dumps({})
+                ),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 deployment_info.ingress,
@@ -484,13 +488,15 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(
-                    cloudpickle.loads(
-                        deployment_info.replica_config.serialized_init_args
+                (
+                    msgpack_serialize(
+                        cloudpickle.loads(
+                            deployment_info.replica_config.serialized_init_args
+                        )
                     )
-                )
-                if self._deployment_is_cross_language
-                else deployment_info.replica_config.serialized_init_args,
+                    if self._deployment_is_cross_language
+                    else deployment_info.replica_config.serialized_init_args
+                ),
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
