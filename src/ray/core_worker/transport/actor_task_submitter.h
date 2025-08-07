@@ -449,6 +449,15 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
+  /// Used to resolve the issue where FailOrRetryPendingTask is
+  /// called before ResolveDependencies due to ray.cancel or disconnect.
+  /// details: https://github.com/ray-project/ray/issues/55131
+  mutable absl::Mutex mu_pending_resolve_;
+
+  /// The IDs of tasks that are pending dependency resolution.
+  absl::flat_hash_set<TaskID> pending_dependency_resolution_tasks_
+      ABSL_GUARDED_BY(mu_pending_resolve_);
+
   friend class CoreWorkerTest;
 };
 
