@@ -3324,7 +3324,7 @@ def from_huggingface(
         hf_ds_arrow = dataset.with_format("arrow")
         ray_ds = from_arrow(hf_ds_arrow[:], override_num_blocks=override_num_blocks)
         return ray_ds
-    elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
+    if isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
         raise DeprecationWarning(
             "You provided a Hugging Face DatasetDict or IterableDatasetDict, "
@@ -3335,10 +3335,9 @@ def from_huggingface(
             f"['{available_keys[0]}'])`. "
             f"Available splits are {available_keys}."
         )
-    else:
-        raise TypeError(
-            f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}"
-        )
+    raise TypeError(
+        f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}"
+    )
 
 
 @PublicAPI
