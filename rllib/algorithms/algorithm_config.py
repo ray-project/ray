@@ -5328,8 +5328,8 @@ class AlgorithmConfig(_Config):
 
         from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
 
-        if self.prelearner_class and not issubclass(
-            self.prelearner_class, OfflineEvaluationRunner
+        if self.offline_eval_runner_class and not issubclass(
+            self.offline_eval_runner_class, OfflineEvaluationRunner
         ):
             self._value_error(
                 "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
