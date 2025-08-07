@@ -163,9 +163,10 @@ DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
 class AutoscalingPolicyConfig(BaseModel):
-    name: Union[str, Callable] = (
-        DEFAULT_AUTOSCALING_POLICY  # Name of the policy function or the import path of the policy if user passed a string
-    )
+    name: Union[str, Callable] = Field(
+        default=DEFAULT_AUTOSCALING_POLICY,
+        description="Name of the policy function or the import path of the policy",
+    )  # Name of the policy function or the import path of the policy if user passed a string
 
 
 @PublicAPI(stability="stable")
@@ -228,7 +229,7 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
-    _policy: Optional[AutoscalingPolicyConfig] = Field(
+    policy: Optional[AutoscalingPolicyConfig] = Field(
         default_factory=AutoscalingPolicyConfig
     )  # Custom autoscaling config. This policy is deployment scoped. Defaults to the request-based autoscaler.
 
@@ -279,7 +280,7 @@ class AutoscalingConfig(BaseModel):
         the policy and set `serialized_policy_def` if it's empty.
         """
         values = self.dict()
-        policy = values.get("_policy")
+        policy = values.get("policy")
         policy_name = policy.name
         if isinstance(policy_name, Callable):
             policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
@@ -287,11 +288,9 @@ class AutoscalingConfig(BaseModel):
         if not policy_name:
             policy_name = DEFAULT_AUTOSCALING_POLICY
 
-        policy = import_attr(policy_name)
-
         if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(policy)
-        self._policy.name = policy_name
+            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
+        self.policy.name = policy_name
 
     @classmethod
     def default(cls):
