@@ -56,6 +56,8 @@ constexpr int kPublicDNSServerPort = 53;
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
 constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
 
+constexpr char kEnvVarKeyGrpcThreadCount[] = "RAY_num_grpc_internal_threads";
+
 /// for cross-langueage serialization
 constexpr int kMessagePackOffset = 9;
 
@@ -121,6 +123,22 @@ constexpr char kLabelKeyNodeZone[] = RAY_LABEL_KEY_PREFIX "availability-zone";
 
 // The name of the head or worker group this Ray node is a part of.
 constexpr char kLabelKeyNodeGroup[] = RAY_LABEL_KEY_PREFIX "node-group";
+
+/// TPU specific default labels. Used for multi-host TPU workload scheduling.
+
+// The physical chip topology of the TPU accelerator of this Ray node.
+constexpr char kLabelKeyTpuTopology[] = RAY_LABEL_KEY_PREFIX "tpu-topology";
+
+// A unique identifier within the RayCluster for the TPU slice this Ray
+// node is scheduled on.
+constexpr char kLabelKeyTpuSliceName[] = RAY_LABEL_KEY_PREFIX "tpu-slice-name";
+
+// A unique integer ID for a Ray node with TPU resources within the TPU slice
+// it's scheduled on. Valid values are 0 to N-1 where N is the number of TPU hosts.
+constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
+
+// A string representing the current TPU pod type, e.g. v6e-32.
+constexpr char kLabelKeyTpuPodType[] = RAY_LABEL_KEY_PREFIX "tpu-pod-type";
 
 #undef RAY_LABEL_KEY_PREFIX
 
