@@ -34,7 +34,12 @@ def cli():
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
 @click.option("--build-arg-set", default=None)
-def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
+@click.option("--uv-cache-dir", default=None)
+def load(
+    config_path: str, workspace_dir: Optional[str],
+    name: Optional[str], build_arg_set: Optional[str],
+    uv_cache_dir: Optional[str],
+):
     """
     Load a dependency sets from a config file.
 
@@ -49,7 +54,11 @@ def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
     If no build arg set is specified, the defined dependency set will be loaded without build args.
     If no workspace directory is specified, the current workspace directory will be used.
     """
-    manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
+    manager = DependencySetManager(
+        config_path=config_path,
+        workspace_dir=workspace_dir,
+        uv_cache_dir=uv_cache_dir,
+    )
     build_arg_set_obj = None
     if name:
         if build_arg_set:
@@ -66,13 +75,16 @@ def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
 class DependencySetManager:
     def __init__(
         self,
-        config_path: Path = Path(__file__).parent / "ray.depsets.yaml",
-        workspace_dir: str = None,
+        config_path: str = None,
+        workspace_dir: Optional[str] = None,
+        uv_cache_dir: Optional[str] = None,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
         self.build_graph = DiGraph()
         self._build()
+        self._uv_binary = _uv_binary()
+        self._uv_cache_dir = uv_cache_dir
 
     def _build(self):
         for depset in self.config.depsets:
@@ -114,7 +126,7 @@ class DependencySetManager:
         )
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = [uv_binary(), "pip", cmd, *args]
+        cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
@@ -165,6 +177,8 @@ class DependencySetManager:
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        if self._uv_cache_dir:
+            args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
@@ -273,7 +287,7 @@ def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return args
 
 
-def uv_binary():
+def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
     if system != "Linux" or platform.processor() != "x86_64":
