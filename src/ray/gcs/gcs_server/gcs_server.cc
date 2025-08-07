@@ -199,8 +199,7 @@ void GcsServer::GetOrGenerateClusterId(
          if (!provided_cluster_id.has_value()) {
            instrumented_io_context &io_context = continuation.io_context();
            ClusterID cluster_id = ClusterID::FromRandom();
-           RAY_LOG(INFO).WithField(cluster_id)
-               << "Generated new cluster ID." << cluster_id.Hex();
+           RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
            kv_manager_->GetInstance().Put(
                kClusterIdNamespace,
                kClusterIdKey,
