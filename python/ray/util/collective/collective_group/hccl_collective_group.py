@@ -710,7 +710,7 @@ def get_tensor_device_list(tensors):
             "Expect a list of tensors each locates on a NPU device. "
             f"Got: {type(tensors)}"
         )
-        )
+
     devices = [get_tensor_device(t) for t in tensors]
     return devices
 
