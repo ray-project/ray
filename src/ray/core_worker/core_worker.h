@@ -180,7 +180,7 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client,
+             std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
              std::shared_ptr<raylet::RayletClient> local_raylet_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
@@ -1740,7 +1740,7 @@ class CoreWorker {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // XXX.
-  std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client_;
+  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through

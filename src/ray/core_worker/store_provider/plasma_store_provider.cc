@@ -62,7 +62,7 @@ BufferTracker::UsedObjects() const {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
-    const std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client,
+    const std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
     ReferenceCounter &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
@@ -260,7 +260,7 @@ Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
   return store_client_->GetExperimentalMutableObject(object_id, mutable_object);
 }
 
-Status UnblockIfNeeded(const std::shared_ptr<ipc::RayletIPCClient> &client,
+Status UnblockIfNeeded(const std::shared_ptr<ipc::RayletIpcClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
     // NOTE: for direct call actors, we still need to issue an unblock IPC to release

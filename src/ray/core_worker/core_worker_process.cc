@@ -210,7 +210,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     worker_context->MaybeInitializeJobInfo(worker_context->GetCurrentJobID(), job_config);
   }
 
-  auto raylet_ipc_client = std::make_shared<ipc::RayletIPCClient>(
+  auto raylet_ipc_client = std::make_shared<ipc::RayletIpcClient>(
       io_service_, options.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
   NodeID local_raylet_id;

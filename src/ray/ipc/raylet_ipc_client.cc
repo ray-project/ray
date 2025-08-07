@@ -53,7 +53,7 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 
 namespace ray::ipc {
 
-RayletIPCClient::RayletIPCClient(instrumented_io_context &io_service,
+RayletIpcClient::RayletIpcClient(instrumented_io_context &io_service,
                                  const std::string &address,
                                  int num_retries,
                                  int64_t timeout) {
@@ -66,7 +66,7 @@ RayletIPCClient::RayletIPCClient(instrumented_io_context &io_service,
   conn_ = ServerConnection::Create(std::move(socket));
 }
 
-ray::Status RayletIPCClient::RegisterClient(const WorkerID &worker_id,
+ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             rpc::WorkerType worker_type,
                                             const JobID &job_id,
                                             int runtime_env_hash,
@@ -106,11 +106,11 @@ ray::Status RayletIPCClient::RegisterClient(const WorkerID &worker_id,
   return Status::OK();
 }
 
-Status RayletIPCClient::Disconnect(
+Status RayletIpcClient::Disconnect(
     const rpc::WorkerExitType &exit_type,
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  RAY_LOG(INFO) << "RayletIPCClient::Disconnect, exit_type="
+  RAY_LOG(INFO) << "RayletIpcClient::Disconnect, exit_type="
                 << rpc::WorkerExitType_Name(exit_type) << ", exit_detail=" << exit_detail
                 << ", has creation_task_exception_pb_bytes="
                 << (creation_task_exception_pb_bytes != nullptr);
@@ -141,14 +141,14 @@ Status RayletIPCClient::Disconnect(
                             &fbb);
 }
 
-Status RayletIPCClient::AnnounceWorkerPortForWorker(int port) {
+Status RayletIpcClient::AnnounceWorkerPortForWorker(int port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
   fbb.Finish(message);
   return WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status RayletIPCClient::AnnounceWorkerPortForDriver(int port,
+Status RayletIpcClient::AnnounceWorkerPortForDriver(int port,
                                                     const std::string &entrypoint) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
@@ -167,11 +167,11 @@ Status RayletIPCClient::AnnounceWorkerPortForDriver(int port,
   return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
 }
 
-Status RayletIPCClient::ActorCreationTaskDone() {
+Status RayletIpcClient::ActorCreationTaskDone() {
   return WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
-Status RayletIPCClient::AsyncGetObjects(
+Status RayletIpcClient::AsyncGetObjects(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
@@ -183,28 +183,28 @@ Status RayletIPCClient::AsyncGetObjects(
   return WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
 }
 
-Status RayletIPCClient::CancelGetRequest() {
+Status RayletIpcClient::CancelGetRequest() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateCancelGetRequest(fbb);
   fbb.Finish(message);
   return WriteMessage(MessageType::CancelGetRequest, &fbb);
 }
 
-Status RayletIPCClient::NotifyDirectCallTaskBlocked() {
+Status RayletIpcClient::NotifyDirectCallTaskBlocked() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
   fbb.Finish(message);
   return WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
 
-Status RayletIPCClient::NotifyDirectCallTaskUnblocked() {
+Status RayletIpcClient::NotifyDirectCallTaskUnblocked() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
   fbb.Finish(message);
   return WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }
 
-StatusOr<absl::flat_hash_set<ObjectID>> RayletIPCClient::Wait(
+StatusOr<absl::flat_hash_set<ObjectID>> RayletIpcClient::Wait(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses,
     int num_returns,
@@ -231,7 +231,7 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletIPCClient::Wait(
   return result;
 }
 
-Status RayletIPCClient::WaitForActorCallArgs(
+Status RayletIpcClient::WaitForActorCallArgs(
     const std::vector<rpc::ObjectReference> &references, int64_t tag) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<ObjectID> object_ids;
@@ -246,7 +246,7 @@ Status RayletIPCClient::WaitForActorCallArgs(
   return WriteMessage(MessageType::WaitForActorCallArgsRequest, &fbb);
 }
 
-Status RayletIPCClient::PushError(const JobID &job_id,
+Status RayletIpcClient::PushError(const JobID &job_id,
                                   const std::string &type,
                                   const std::string &error_message,
                                   double timestamp) {
@@ -260,7 +260,7 @@ Status RayletIPCClient::PushError(const JobID &job_id,
   return WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-Status RayletIPCClient::FreeObjects(const std::vector<ObjectID> &object_ids,
+Status RayletIpcClient::FreeObjects(const std::vector<ObjectID> &object_ids,
                                     bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
@@ -269,7 +269,7 @@ Status RayletIPCClient::FreeObjects(const std::vector<ObjectID> &object_ids,
   return WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-void RayletIPCClient::SubscribePlasmaReady(const ObjectID &object_id,
+void RayletIpcClient::SubscribePlasmaReady(const ObjectID &object_id,
                                            const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSubscribePlasmaReady(
@@ -288,7 +288,7 @@ void ShutdownIfLocalRayletDisconnected(const Status &status) {
   }
 }
 
-Status RayletIPCClient::WriteMessage(MessageType type,
+Status RayletIpcClient::WriteMessage(MessageType type,
                                      flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t length = fbb ? fbb->GetSize() : 0;
@@ -298,7 +298,7 @@ Status RayletIPCClient::WriteMessage(MessageType type,
   return status;
 }
 
-Status RayletIPCClient::AtomicRequestReply(MessageType request_type,
+Status RayletIpcClient::AtomicRequestReply(MessageType request_type,
                                            MessageType reply_type,
                                            std::vector<uint8_t> *reply_message,
                                            flatbuffers::FlatBufferBuilder *fbb) {

@@ -43,7 +43,7 @@ namespace ipc {
 ///
 /// If the socket is broken and the local Raylet is detected to be dead, calling any
 /// method on the client will quick exit the process.
-class RayletIPCClient {
+class RayletIpcClient {
  public:
   /// Connect to the Raylet over a local socket.
   ///
@@ -51,7 +51,7 @@ class RayletIPCClient {
   /// \param address The address of the socket that the Raylet is listening on.
   /// \param num_retries The number of times to retry connecting before giving up.
   /// \param timeout The time to wait between retries.
-  RayletIPCClient(instrumented_io_context &io_service,
+  RayletIpcClient(instrumented_io_context &io_service,
                   const std::string &address,
                   int num_retries,
                   int64_t timeout);

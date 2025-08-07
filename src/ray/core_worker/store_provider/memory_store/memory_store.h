@@ -54,7 +54,7 @@ class CoreWorkerMemoryStore {
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
       ReferenceCounter *counter = nullptr,
-      std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client = nullptr,
+      std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
@@ -210,7 +210,7 @@ class CoreWorkerMemoryStore {
   ReferenceCounter *ref_counter_ = nullptr;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client_ = nullptr;
+  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_ = nullptr;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
