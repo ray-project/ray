@@ -539,6 +539,10 @@ void CoreWorker::Shutdown() {
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
+bool CoreWorker::IsShuttingDown() const {
+  return is_shutdown_.load();
+}
+
 void CoreWorker::ConnectToRayletInternal() {
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
