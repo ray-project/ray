@@ -457,6 +457,11 @@ RAY_CONFIG(bool, task_events_skip_driver_for_test, false)
 /// Setting the value to 0 disables the task event recording and reporting.
 RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
+/// The interval duration for which ray events will be reported to the event aggregator.
+/// The reported data should only be used for observability.
+/// Setting the value to 0 disables the ray event recording and reporting.
+RAY_CONFIG(int64_t, ray_events_report_interval_ms, 1000)
+
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.

@@ -10,3 +10,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "ray_job_event_recorder_test",
+    size = "small",
+    srcs = ["ray_job_event_recorder_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/telemetry:ray_job_event_recorder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
