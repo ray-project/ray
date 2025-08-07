@@ -39,8 +39,7 @@ namespace telemetry {
 template <typename TEventData>
 class RayEventRecorderBase {
  public:
-  RayEventRecorderBase(rpc::EventAggregatorClient &event_aggregator_client,
-                       instrumented_io_context &io_service);
+  RayEventRecorderBase(instrumented_io_context &io_service, int dashboard_agent_port);
   virtual ~RayEventRecorderBase() = default;
 
   // Start exporting events to the event aggregator by periodically sending events to
@@ -52,8 +51,14 @@ class RayEventRecorderBase {
   // the event aggregator periodically.
   void AddEvents(const std::vector<TEventData> &data_list);
 
+ protected:
+  RayEventRecorderBase(
+      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
+      instrumented_io_context &io_service);
+
  private:
-  rpc::EventAggregatorClient &event_aggregator_client_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
@@ -65,6 +70,8 @@ class RayEventRecorderBase {
                                  rpc::events::RayEvent &ray_event) = 0;
 
   void ExportEvents();
+
+  friend class RayJobEventRecorderTest;
 };
 
 }  // namespace telemetry

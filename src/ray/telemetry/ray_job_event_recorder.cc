@@ -20,9 +20,14 @@ namespace ray {
 namespace telemetry {
 
 RayJobEventRecorder::RayJobEventRecorder(
-    rpc::EventAggregatorClient &event_aggregator_client,
+    std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     instrumented_io_context &io_service)
-    : RayEventRecorderBase<rpc::JobTableData>(event_aggregator_client, io_service) {}
+    : RayEventRecorderBase<rpc::JobTableData>(std::move(event_aggregator_client),
+                                              io_service) {}
+
+RayJobEventRecorder::RayJobEventRecorder(instrumented_io_context &io_service,
+                                         int dashboard_agent_port)
+    : RayEventRecorderBase<rpc::JobTableData>(io_service, dashboard_agent_port) {}
 
 void RayJobEventRecorder::ConvertToRayEvent(const rpc::JobTableData &data,
                                             rpc::events::RayEvent &ray_event) {

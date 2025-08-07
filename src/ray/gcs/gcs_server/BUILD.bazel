@@ -180,6 +180,7 @@ ray_cc_library(
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/util:array",
         "//src/ray/util:type_traits",
+        "//src/ray/telemetry:ray_job_event_recorder",
     ],
 )
 
