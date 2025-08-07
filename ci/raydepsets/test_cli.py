@@ -332,8 +332,9 @@ class TestCli(unittest.TestCase):
             _copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 5
+            assert len(manager.build_graph.nodes()) == 6
             assert len(manager.build_graph.edges()) == 3
+            # assert that the compile depsets are first
             assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
             assert (
                 manager.build_graph.nodes["subset_general_depset"]["operation"]
@@ -343,12 +344,11 @@ class TestCli(unittest.TestCase):
                 manager.build_graph.nodes["expand_general_depset"]["operation"]
                 == "expand"
             )
-
             sorted_nodes = list(topological_sort(manager.build_graph))
-            # assert that the compile depsets are first
+            # assert that the root nodes are the compile depsets
             assert "ray_base_test_depset" in sorted_nodes[:3]
             assert "general_depset" in sorted_nodes[:3]
-            assert "expanded_depset" in sorted_nodes[:3]
+            assert "build_args_test_depset_py311" in sorted_nodes[:3]
 
     def test_substitute_build_args(self):
         build_arg_set = BuildArgSet(
@@ -487,6 +487,14 @@ depsets:
                 "CUDA_VERSION": 128,
                 "PYTHON_VERSION": "py311",
             }
+
+    def test_from_dict_build_arg_set_matrix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            workspace = Workspace(dir=tmpdir)
+            config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+            config.build_arg_sets[0].build_args["PYTHON_VERSION"] = "py312"
+            config.build_arg_sets[0].build_args["CUDA_VERSION"] = "cu128"
 
 
 def _copy_data_to_tmpdir(tmpdir):

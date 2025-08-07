@@ -67,8 +67,26 @@ class Config:
     def from_dict(data: dict) -> "Config":
         build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
         raw_depsets = data.get("depsets", [])
-        depsets = [_dict_to_depset(values, build_arg_sets) for values in raw_depsets]
-
+        depsets = []
+        # depsets = [_dict_to_depset(values, build_arg_sets) for values in raw_depsets]
+        for depset in raw_depsets:
+            build_arg_set_matrix = depset.get("build_arg_sets", [])
+            if build_arg_set_matrix:
+                for build_arg_set_name in build_arg_set_matrix:
+                    build_arg_set = next(
+                        (
+                            build_arg_set
+                            for build_arg_set in build_arg_sets
+                            if build_arg_set.name == build_arg_set_name
+                        ),
+                        None,
+                    )
+                    if build_arg_set is None:
+                        raise KeyError(f"Build arg set {build_arg_set_name} not found")
+                    depset_yaml = _substitute_build_args(depset, build_arg_set)
+                    depsets.append(_dict_to_depset(depset_yaml, build_arg_sets))
+            else:
+                depsets.append(_dict_to_depset(depset, build_arg_sets))
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
     @staticmethod
