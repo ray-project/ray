@@ -437,7 +437,7 @@ class HCCLGroup(BaseGroup):
         """Get the reference of the named actor store.
 
         Args:
-            store_key: the unique store key
+            store_name: the unique store name
             timeout_s: timeout in seconds.
 
         Return:
