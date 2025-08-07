@@ -657,7 +657,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
                                  const ProcessEnvironment &env,
                                  std::error_code &ec) {
   // Launch the process to create the worker.
-  std::error_code ec;
   std::vector<const char *> argv;
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
