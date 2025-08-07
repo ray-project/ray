@@ -349,27 +349,41 @@ class Node:
 
         if not connect_only:
             self.start_ray_processes()
-            # we should update the address info after the node has been started
+            # Wait for the node info to be available in the GCS so that
+            # we know it's started up.
+            node_info = None
             try:
-                ray._private.services.wait_for_node(
-                    self.gcs_address,
-                    self._plasma_store_socket_name,
-                )
+                # Grace period to let the Raylet register with the GCS.
+                # We retry in a loop in case it takes longer than expected.
+                time.sleep(0.1)
+                start_time = time.time()
+                raylet_start_wait_time = 30
+                while time.time() - start_time < raylet_start_wait_time:
+                    try:
+                        # Will raise a RuntimeError if the node info is not available.
+                        node_info = ray._private.services.get_node(
+                            self.gcs_address,
+                            self._node_id,
+                        )
+                        break
+                    except RuntimeError as e:
+                        logger.info(f"Failed to get node info {e}")
             except TimeoutError as te:
                 raise Exception(
                     "The current node timed out during startup. This "
-                    "could happen because some of the Ray processes "
-                    "failed to startup."
+                    "could happen because some of the raylet failed to "
+                    "startup or the GCS has become overloaded."
                 ) from te
+            # Use node info to update port
+            if self._ray_params.node_manager_port == 0:
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
 
-        # Fetch node info to update port or get labels.
-        node_info = ray._private.services.get_node(
-            self.gcs_address,
-            self._node_id,
-        )
-        if not connect_only and self._ray_params.node_manager_port == 0:
-            self._ray_params.node_manager_port = node_info["node_manager_port"]
-        elif connect_only:
+        if connect_only:
+            # Fetch node info to get labels.
+            node_info = ray._private.services.get_node(
+                self.gcs_address,
+                self._node_id,
+            )
             # Set node labels from GCS if provided at node init.
             self._node_labels = node_info.get("labels", {})
 

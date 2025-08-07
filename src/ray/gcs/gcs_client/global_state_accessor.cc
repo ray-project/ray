@@ -407,6 +407,8 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
   const auto node_id_binary = NodeID::FromHex(node_id_hex_str).Binary();
 
   std::vector<rpc::GcsNodeInfo> node_infos;
+  // TODO(dayshah): This being a while is pretty useless right now. There's a while where
+  // this is actually used in Python land.
   while (true) {
     rpc::GetAllNodeInfoRequest::NodeSelector selector;
     selector.set_node_id(node_id_binary);
@@ -429,7 +431,7 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
           ". The node registration may not be complete yet before the timeout." +
           " Try increase the RAY_raylet_start_wait_time_s config.");
     }
-    RAY_LOG(WARNING) << "Retrying to get node with node ID " << node_id_hex_str;
+    RAY_LOG(INFO) << "Retrying to get node with node ID " << node_id_hex_str;
     // Some of the information may not be in GCS yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
