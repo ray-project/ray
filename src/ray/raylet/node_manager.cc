@@ -50,6 +50,7 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -1423,8 +1424,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       RAY_EVENT(ERROR, "RAY_DRIVER_FAILURE")
               .WithField("node_id", self_node_id_.Hex())
               .WithField("job_id", worker->GetAssignedJobId().Hex())
-          << "Driver " << worker->WorkerId() << " died. Address: " << worker->IpAddress()
-          << ":" << worker->Port() << ", Pid: " << worker->GetProcess().GetId()
+          << "Driver " << worker->WorkerId()
+          << " died. Address: " << BuildAddress(worker->IpAddress(), worker->Port())
+          << ", Pid: " << worker->GetProcess().GetId()
           << ", JobId: " << worker->GetAssignedJobId();
     }
   }
