@@ -369,7 +369,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*should_delete_object_on_put=*/
       [this](const ObjectID &object_id) {
         return !reference_counter->HasReference(object_id);
-      } local_raylet_client,
+      },
+      /*release_resources=*/
+      [this]() { RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked()); },
+      /*reacquire_resources=*/
+      [this]() { RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskUnblocked()); },
       options.check_signals,
       [this](const RayObject &obj) {
         auto core_worker = GetCoreWorker();
