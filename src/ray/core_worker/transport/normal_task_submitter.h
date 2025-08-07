@@ -28,7 +28,7 @@
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/lease_policy.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/task_receiver.h"

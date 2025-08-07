@@ -33,7 +33,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/fiber.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 #include "ray/core_worker/transport/actor_task_submitter.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"

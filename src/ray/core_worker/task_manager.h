@@ -25,7 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/gcs/gcs_client/gcs_client.h"

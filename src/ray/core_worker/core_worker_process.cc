@@ -353,7 +353,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       local_raylet_client,
-      *reference_counter,
+      reference_counter,
       options.check_signals,
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
