@@ -558,9 +558,9 @@ class HCCLGroup(BaseGroup):
 
         Args:
             comm_key: communicator key.
-            my_npu_dix: the npu index on the current process.
+            my_npu_idx: the npu index on the current process.
             peer_rank: the rank of the destination process.
-            peer_npu_idx: the npu idnex on the peer process.
+            peer_npu_idx: the npu index on the peer process.
 
         Returns:
             communicator
