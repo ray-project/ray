@@ -1791,7 +1791,7 @@ class UserCallableWrapper:
         )
 
         if self._is_enabled_for_debug:
-            logger.info(
+            logger.debug(
                 f"Started executing request to method '{user_method_info.name}'.",
                 extra={"log_to_stderr": False, "serve_access_log": True},
             )
@@ -1851,7 +1851,7 @@ class UserCallableWrapper:
         self._raise_if_not_initialized("call_user_method")
 
         if self._is_enabled_for_debug:
-            logger.info(
+            logger.debug(
                 f"Started executing request to method '{request_metadata.call_method}'.",
                 extra={"log_to_stderr": False, "serve_access_log": True},
             )
@@ -1887,7 +1887,7 @@ class UserCallableWrapper:
         actually call the destructor.
         """
         if self._callable is None:
-            logger.info(
+            logger.debug(
                 "This replica has not yet started running user code. "
                 "Skipping __del__."
             )
