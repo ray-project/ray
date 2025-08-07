@@ -790,7 +790,14 @@ class _StatsManager:
             topology: Optional Topology representing the DAG structure to export
             data_context: The DataContext attached to the dataset
         """
-        self._get_or_create_stats_actor().register_dataset.remote(
+
+        # NOTE: In some cases (for ex, when registering dataset) actor might be gone
+        #       (for ex, when prior driver disconnects) and therefore to avoid using
+        #       stale handle we force looking up the actor with Ray to determine if
+        #       we should create a new one.
+        stats_actor = self._get_or_create_stats_actor(skip_cache=True)
+
+        stats_actor.register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
@@ -800,7 +807,13 @@ class _StatsManager:
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:
-            return ray.get(self._get_or_create_stats_actor().get_dataset_id.remote())
+            # NOTE: In some cases (for ex, when registering dataset) actor might be gone
+            #       (for ex, when prior driver disconnects) and therefore to avoid using
+            #       stale handle we force looking up the actor with Ray to determine if
+            #       we should create a new one.
+            stats_actor = self._get_or_create_stats_actor(skip_cache=True)
+
+            return ray.get(stats_actor.get_dataset_id.remote())
         except Exception:
             # Getting dataset id from _StatsActor may fail, in this case
             # fall back to uuid4
