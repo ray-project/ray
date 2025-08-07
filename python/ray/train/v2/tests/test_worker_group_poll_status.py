@@ -1,6 +1,7 @@
 import pytest
 
 from ray.train.v2._internal.execution.worker_group.poll import (
+    ERR_CHAR_LIMIT,
     WorkerGroupPollStatus,
     WorkerStatus,
 )
@@ -21,7 +22,43 @@ def test_get_error_string_basic():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    expected_error_str = "[Rank 0, 3]: \nTest error 1\n[Rank 2]: \nTest error 2"
+    expected_error_str = "[Rank 0, 3]:\nTest error 1\n[Rank 2]:\nTest error 2"
+    assert error_str == expected_error_str
+
+
+def test_get_error_string_long_error():
+    """
+    Simulate two workers with identical long error string.
+    """
+    long_error_str = "test string" * 200
+    statuses = {
+        0: WorkerStatus(running=False, error=long_error_str),
+        1: WorkerStatus(running=False, error=long_error_str),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    error_str = poll_status.get_error_string()
+
+    expected_error_str = (
+        "[Rank 0, 1]:\n"
+        + long_error_str[:ERR_CHAR_LIMIT]
+        + "...\nView individual worker logs for more details."
+    )
+    assert error_str == expected_error_str
+
+
+def test_get_error_string_running_worker():
+    """
+    Simulate two workers with identical error strings but one is running
+    and the other is not.
+    """
+    statuses = {
+        0: WorkerStatus(running=False, error="error"),
+        1: WorkerStatus(running=True, error="error"),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    error_str = poll_status.get_error_string()
+
+    expected_error_str = "[Rank 0]:\nerror"
     assert error_str == expected_error_str
 
 

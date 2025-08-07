@@ -3,7 +3,10 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from ray.train._internal.session import _TrainingResult
+from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
 from ray.types import ObjectRef
+
+ERR_CHAR_LIMIT = 1000
 
 
 @dataclass
@@ -32,17 +35,44 @@ class WorkerGroupPollStatus:
         )
 
     def get_error_string(self) -> str:
+        """
+        Returns a string representation worker group errors.
+        """
+
+        def truncate_error_str(error_str: str) -> str:
+            """Truncates error strings to a maximum length of ERR_CHAR_LIMIT"""
+            if len(error_str) > ERR_CHAR_LIMIT:
+                return error_str[:ERR_CHAR_LIMIT] + "..."
+            return error_str
+
         error_to_rank = defaultdict(list)
-        for world_rank, error in self.errors.items():
-            error_str = str(error)
-            error_to_rank[error_str].append(str(world_rank))
+        show_full_error = set()
+        for world_rank, status in self.worker_statuses.items():
+            # Exclude errors from running workers
+            if status.error and not status.running:
+                error_str = str(status.error)
+                error_to_rank[error_str].append(str(world_rank))
+
+                # Fully show errors for non-graceful worker failures
+                if isinstance(status.error, WorkerHealthCheckFailedError):
+                    show_full_error.add(error_str)
 
         for error, ranks in error_to_rank.items():
             error_to_rank[error] = ", ".join(ranks)
 
-        return "\n".join(
-            f"[Rank Hello {ranks}]: \n{error}" for error, ranks in error_to_rank.items()
-        )
+        errors = []
+        for error, ranks in error_to_rank.items():
+            if error in show_full_error:
+                errors.append(f"[Rank {ranks}]:\n{error}")
+            else:
+                errors.append(f"[Rank {ranks}]:\n{truncate_error_str(error)}")
+
+        error_str = "\n".join(errors)
+
+        if "..." in error_str:
+            error_str += "\nView individual worker logs for more details."
+
+        return error_str
 
 
 @dataclass(frozen=True)
