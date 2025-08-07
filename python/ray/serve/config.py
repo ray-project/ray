@@ -281,7 +281,11 @@ class AutoscalingConfig(BaseModel):
         """
         values = self.dict()
         policy = values.get("policy")
-        policy_name = policy.name
+
+        policy_name = None
+        if isinstance(policy, dict):
+            policy_name = policy.get("name")
+
         if isinstance(policy_name, Callable):
             policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
 
@@ -290,7 +294,9 @@ class AutoscalingConfig(BaseModel):
 
         if not self._serialized_policy_def:
             self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
-        self.policy.name = policy_name
+
+        if self.policy is not None:
+            self.policy.name = policy_name
 
     @classmethod
     def default(cls):

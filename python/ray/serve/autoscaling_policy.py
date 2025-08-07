@@ -86,7 +86,6 @@ def _calculate_desired_num_replicas(
 def replica_queue_length_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> Tuple[int, Dict[str, Any]]:
-
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
     to scale up and a maximum threshold to scale down. Each period, a 'scale
@@ -108,11 +107,14 @@ def replica_queue_length_autoscaling_policy(
     if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
         if total_num_requests > 0:
-            return max(
-                math.ceil(1 * config.get_upscaling_factor()),
-                curr_target_num_replicas,
+            return (
+                max(
+                    math.ceil(1 * config.get_upscaling_factor()),
+                    curr_target_num_replicas,
+                ),
+                policy_state,
             )
-        return curr_target_num_replicas
+        return curr_target_num_replicas, policy_state
 
     decision_num_replicas = curr_target_num_replicas
 
