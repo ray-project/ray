@@ -53,6 +53,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
 )
+from ray.llm._internal.serve.deployments.llm.sglang.sglang_engine import SGLangEngine
+from ray.llm._internal.serve.deployments.llm.sglang.sglang_models import (
+    SGLangEmbeddingRequest,
+)
 from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
 from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
@@ -419,7 +423,7 @@ class LLMServer(_LLMServerBase):
     4. Telemetry reporting.
     """
 
-    _default_engine_cls = VLLMEngine
+    _default_engine_cls = SGLangEngine
 
     async def __init__(
         self,
