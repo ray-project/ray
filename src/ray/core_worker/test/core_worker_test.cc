@@ -161,7 +161,6 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address,
         raylet_client_pool,
-        fake_local_raylet_client,
         [](const ObjectID &object_id, const ObjectLookupCallback &callback) {
           return Status::OK();
         },
@@ -280,7 +279,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, IdempotencyTest) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
 
-  ASSERT_TRUE(memory_store_->Put(*ray_object, object_id));
+  memory_store_->Put(*ray_object, object_id);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -348,7 +347,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectPutAfterFirstRequest) {
   // Verify that the callback hasn't been called yet since the object doesn't exist
   ASSERT_FALSE(io_service_.poll_one());
 
-  ASSERT_TRUE(memory_store_->Put(*ray_object, object_id));
+  memory_store_->Put(*ray_object, object_id);
 
   io_service_.run_one();
 
@@ -385,7 +384,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectFreedBetweenRequests) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
 
-  ASSERT_TRUE(memory_store_->Put(*ray_object, object_id));
+  memory_store_->Put(*ray_object, object_id);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -435,7 +434,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectOutOfScope) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
 
-  ASSERT_TRUE(memory_store_->Put(*ray_object, object_id));
+  memory_store_->Put(*ray_object, object_id);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());

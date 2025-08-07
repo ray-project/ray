@@ -203,6 +203,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  /// \param[in] core_worker_unavailable_timeout_callback The callback function that is
+  /// used by the retryable grpc to remove unresponsive core worker connections from the
+  /// pool once its been unavailable for more than server_unavailable_timeout_seconds.
   CoreWorkerClient(rpc::Address address,
                    ClientCallManager &client_call_manager,
                    std::function<void()> core_worker_unavailable_timeout_callback);
