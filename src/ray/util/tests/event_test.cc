@@ -597,10 +597,9 @@ TEST_F(EventTest, TestRayCheckAbort) {
   EXPECT_THAT(
       ele_1.message(),
       testing::HasSubstr(
-          "Congratulations! You've discovered a bug in Ray that made the system behave "
-          "in an unexpected way. Please report this issue at "
-          "https://github.com/ray-project/ray/issues and we'll try to fix it ASAP! Check "
-          "failed: 1 < 0 incorrect test case"));
+          "An unexpected system state has occurred. You have likely discovered a bug in "
+          "Ray. Please report this issue at https://github.com/ray-project/ray/issues "
+          "and we'll work with you to fix it. Check failed: 1 < 0 incorrect test case"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
 }
