@@ -664,8 +664,8 @@ class AsyncioRouter:
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self.request_router.on_new_queue_len_info(r.replica_id, queue_info)
-                self.request_router.on_request_routed(pr, r.replica_id, result)
                 if queue_info.accepted:
+                    self.request_router.on_request_routed(pr, r.replica_id, result)
                     return result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
@@ -954,3 +954,40 @@ class SharedRouterLongPollClient:
             for deployment_id in self.routers.keys()
         }
         self.long_poll_client.add_key_listeners(key_listeners)
+
+
+class CurrentLoopRouter(Router):
+    """Wrapper class that runs an AsyncioRouter on the current asyncio loop.
+    Note that this class is NOT THREAD-SAFE, and all methods are expected to be
+    invoked from a single asyncio event loop.
+    """
+
+    def __init__(self, **passthrough_kwargs):
+        assert (
+            "event_loop" not in passthrough_kwargs
+        ), "CurrentLoopRouter uses the current event loop."
+
+        self._asyncio_loop = asyncio.get_running_loop()
+        self._asyncio_router = AsyncioRouter(
+            event_loop=self._asyncio_loop,
+            _request_router_initialized_event=asyncio.Event(),
+            **passthrough_kwargs,
+        )
+
+    def running_replicas_populated(self) -> bool:
+        return self._asyncio_router.running_replicas_populated()
+
+    def assign_request(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> asyncio.Future[ReplicaResult]:
+        return self._asyncio_loop.create_task(
+            self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            ),
+        )
+
+    def shutdown(self) -> asyncio.Future:
+        return self._asyncio_loop.create_task(self._asyncio_router.shutdown())

@@ -23,8 +23,6 @@ from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
-    CStatusCode,
-    CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
@@ -337,10 +335,10 @@ cdef class InnerGcsClient:
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            optional[CNodeID] c_node_id
+            c_vector[CNodeID] c_node_ids
             fut = incremented_fut()
         if node_id:
-            c_node_id = (<NodeID>node_id).native()
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             self.inner.get().Nodes().AsyncGetAll(
                 MultiItemPyCallback[CGcsNodeInfo](
@@ -348,7 +346,7 @@ cdef class InnerGcsClient:
                     assign_and_decrement_fut,
                     fut),
                 timeout_ms,
-                c_node_id)
+                c_node_ids)
         return asyncio.wrap_future(fut)
 
     #############################################################

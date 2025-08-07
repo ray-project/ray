@@ -1,6 +1,5 @@
 import asyncio
 import math
-import sys
 from collections.abc import Callable
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
@@ -263,7 +262,9 @@ async def test_observability_helpers(
         math.ceil(n_requests / max_batch_size), max_concurrent_batches
     )
 
-    await send_k_requests(signal_actor, n_requests, min_num_batches)
+    await send_k_requests(
+        signal_actor, n_requests, min_num_batches, app_name="app_name"
+    )
     prev_iter_times = await handle._get_curr_iteration_start_times.remote()
     await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
 
@@ -271,7 +272,9 @@ async def test_observability_helpers(
     assert len(await handle._get_handling_task_stack.remote()) is not None
     assert await handle._is_batching_task_alive.remote()
 
-    await send_k_requests(signal_actor, n_requests, min_num_batches)
+    await send_k_requests(
+        signal_actor, n_requests, min_num_batches, app_name="app_name"
+    )
     new_iter_times = await handle._get_curr_iteration_start_times.remote()
     await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
 
@@ -283,15 +286,15 @@ async def test_observability_helpers(
 
 
 async def send_k_requests(
-    signal_actor: SignalActor, k: int, min_num_batches: float
+    signal_actor: SignalActor, k: int, min_num_batches: float, app_name: str
 ) -> None:
     """Send k requests and wait until at least min_num_batches are waiting."""
     await signal_actor.send.remote(True)  # type: ignore[attr-defined]
     async with httpx.AsyncClient() as client:
-        url = get_application_url()
-
         for _ in range(k):
-            asyncio.create_task(client.get(f"{url}/"))
+            asyncio.create_task(
+                client.get(f"{get_application_url(app_name=app_name)}/")
+            )
         await wait_for_n_waiters(
             signal_actor, lambda num_waiters: num_waiters >= min_num_batches
         )
@@ -308,4 +311,6 @@ async def wait_for_n_waiters(
 
 
 if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

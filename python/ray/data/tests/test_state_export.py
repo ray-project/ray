@@ -6,7 +6,13 @@ import pytest
 
 import ray
 from ray.data import DataContext
-from ray.data._internal.metadata_exporter import Operator, Topology, sanitize_for_struct
+from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.metadata_exporter import (
+    UNKNOWN,
+    Operator,
+    Topology,
+    sanitize_for_struct,
+)
 from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.tests.conftest import _ray_start
 
@@ -68,6 +74,9 @@ def dummy_dataset_topology():
                 uuid="uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                execution_start_time=1.0,
+                execution_end_time=1.0,
+                state="FINISHED",
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)->Filter(<lambda>)",
@@ -75,6 +84,9 @@ def dummy_dataset_topology():
                 uuid="uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                execution_start_time=0.0,
+                execution_end_time=0.0,
+                state="RUNNING",
             ),
         ],
     )
@@ -190,6 +202,9 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                execution_start_time=1.0,
+                execution_end_time=1.0,
+                state="FINISHED",
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)",
@@ -197,6 +212,9 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                execution_start_time=2.0,
+                execution_end_time=0.0,
+                state="RUNNING",
             ),
         ],
     )
@@ -257,6 +275,163 @@ def test_export_multiple_datasets(
     )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
+
+
+class UnserializableObject:
+    """A test class that can't be JSON serialized or converted to string easily."""
+
+    def __str__(self):
+        raise ValueError("Cannot convert to string")
+
+    def __repr__(self):
+        raise ValueError("Cannot convert to repr")
+
+
+class BasicObject:
+    """A test class that can be converted to string."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return f"BasicObject({self.value})"
+
+
+@pytest.mark.parametrize(
+    "input_obj,expected_output,truncate_length",
+    [
+        # Basic types - should return as-is
+        (42, 42, 100),
+        (3.14, 3.14, 100),
+        (True, True, 100),
+        (False, False, 100),
+        (None, None, 100),
+        # Strings - short strings return as-is
+        ("hello", "hello", 100),
+        # Strings - long strings get truncated
+        ("a" * 150, "a" * 100 + "...", 100),
+        ("hello world", "hello...", 5),
+        # Mappings - should recursively sanitize values
+        ({"key": "value"}, {"key": "value"}, 100),
+        ({"long_key": "a" * 150}, {"long_key": "a" * 100 + "..."}, 100),
+        ({"nested": {"inner": "value"}}, {"nested": {"inner": "value"}}, 100),
+        # Sequences - should recursively sanitize elements
+        ([1, 2, 3], [1, 2, 3], 100),
+        (["short", "a" * 150], ["short", "a" * 100 + "..."], 100),
+        # Complex nested structures
+        (
+            {"list": [1, "a" * 150], "dict": {"key": "a" * 150}},
+            {"list": [1, "a" * 100 + "..."], "dict": {"key": "a" * 100 + "..."}},
+            100,
+        ),
+        # Objects that can be converted to string
+        (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
+        # Objects that can't be JSON serialized but can be stringified
+        ({1, 2, 3}, "{1, 2, 3}", 100),  # Falls back to str()
+        # Objects that can't be serialized or stringified
+        (UnserializableObject(), UNKNOWN, 100),
+        # Empty containers
+        ({}, {}, 100),
+        ([], [], 100),
+        # Mixed type sequences
+        (
+            [1, "hello", {"key": "value"}, None],
+            [1, "hello", {"key": "value"}, None],
+            100,
+        ),
+    ],
+)
+def test_sanitize_for_struct(input_obj, expected_output, truncate_length):
+    """Test sanitize_for_struct with various input types and truncation lengths."""
+    result = sanitize_for_struct(input_obj, truncate_length)
+    assert result == expected_output
+
+
+def test_update_dataset_metadata_state(
+    ray_start_cluster_with_export_api_write, dummy_dataset_topology
+):
+    """Test dataset state update at the export API"""
+    stats_actor = _get_or_create_stats_actor()
+    # Register dataset
+    ray.get(
+        stats_actor.register_dataset.remote(
+            job_id=STUB_JOB_ID,
+            dataset_tag=STUB_DATASET_ID,
+            operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
+            topology=dummy_dataset_topology,
+            data_context=DataContext.get_current(),
+        )
+    )
+    # Check that export files were created as expected
+    data = _get_exported_data()
+    assert len(data) == 1
+    assert data[0]["event_data"]["state"] == DatasetState.PENDING.name
+
+    # Test update state to RUNNING
+    ray.get(
+        stats_actor.update_dataset_metadata_state.remote(
+            dataset_id=STUB_DATASET_ID, new_state=DatasetState.RUNNING.name
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 2
+    assert data[1]["event_data"]["state"] == DatasetState.RUNNING.name
+    assert data[1]["event_data"]["execution_start_time"] > 0
+
+    # Test update to FINISHED
+    ray.get(
+        stats_actor.update_dataset_metadata_state.remote(
+            dataset_id=STUB_DATASET_ID, new_state=DatasetState.FINISHED.name
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 3
+    assert data[2]["event_data"]["state"] == DatasetState.FINISHED.name
+    assert data[2]["event_data"]["execution_end_time"] > 0
+    assert (
+        data[2]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.FINISHED.name
+    )
+    assert data[2]["event_data"]["topology"]["operators"][1]["execution_end_time"] > 0
+
+
+def test_update_dataset_metadata_operator_state(
+    ray_start_cluster_with_export_api_write, dummy_dataset_topology
+):
+    stats_actor = _get_or_create_stats_actor()
+    # Register dataset
+    ray.get(
+        stats_actor.register_dataset.remote(
+            dataset_tag=STUB_DATASET_ID,
+            operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
+            topology=dummy_dataset_topology,
+            job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 1
+    assert (
+        data[0]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.RUNNING.name
+    )
+
+    # Test update to FINISHED
+    operator_uuid = "uuid_1"
+    ray.get(
+        stats_actor.update_dataset_metadata_operator_state.remote(
+            dataset_id=STUB_DATASET_ID,
+            operator_uuid=operator_uuid,
+            new_state=DatasetState.FINISHED.name,
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 2
+    assert (
+        data[1]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.FINISHED.name
+    )
+    assert data[1]["event_data"]["topology"]["operators"][1]["execution_end_time"] > 0
 
 
 if __name__ == "__main__":
