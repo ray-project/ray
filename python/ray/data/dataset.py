@@ -819,44 +819,6 @@ class Dataset:
         logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
-    def with_columns(self, exprs: Dict[str, Expr]) -> "Dataset":
-        """
-        Add new columns to the dataset.
-
-        Examples:
-
-            >>> import ray
-            >>> from ray.data.expressions import col
-            >>> ds = ray.data.range(100)
-            >>> ds.with_columns({"new_id": col("id") * 2, "new_id_2": col("id") * 3}).schema()
-            Column    Type
-            ------    ----
-            id        int64
-            new_id    int64
-            new_id_2  int64
-
-        Args:
-            exprs: A dictionary mapping column names to expressions that define the new column values.
-
-        Returns:
-            A new dataset with the added columns evaluated via expressions.
-        """
-        if not exprs:
-            raise ValueError("at least one expression is required")
-
-        from ray.data._internal.logical.operators.map_operator import Project
-
-        plan = self._plan.copy()
-        project_op = Project(
-            self._logical_plan.dag,
-            cols=None,
-            cols_rename=None,
-            exprs=exprs,
-        )
-        logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset(plan, logical_plan)
-
     @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
         self,
