@@ -33,9 +33,10 @@ nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
 # Install bazel
-npm install -g @bazel/bazelisk
 mkdir -p "$HOME"/bin
-ln -sf "$(which bazelisk)" "$HOME"/bin/bazel
+curl -L -o "$HOME"/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
+chmod +x "$HOME"/bin/bazelisk
+sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
 
 # Use python3.9 as default python3
 ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
