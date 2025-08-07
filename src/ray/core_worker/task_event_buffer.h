@@ -195,7 +195,7 @@ class TaskStatusEvent : public TaskEvent {
   int64_t timestamp_ = -1;
   /// Whether the task is an actor task.
   bool is_actor_task_event_ = false;
-  /// The cluster ID (session name) of the cluster
+  /// The current Ray session name.
   std::string session_name_;
   /// Pointer to the task spec.
   std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
@@ -576,7 +576,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// If true, ray events from the event buffer are sent to the event aggregator
   bool send_ray_events_to_aggregator_enabled_ = false;
 
-  /// The cluster ID (session name) of the cluster. Passed in from the core worker
+  /// The current Ray session name. Passed in from the core worker
   std::string session_name_ = "";
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);

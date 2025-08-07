@@ -76,7 +76,7 @@ message RayEvent {
   Severity severity = 5;
   // A string message associated with the event.
   string message = 6;
-  // The Ray session name
+  // The current Ray session name.
   string session_name = 7;
 
   // Nested event messages containing the specific fields for each event type.
