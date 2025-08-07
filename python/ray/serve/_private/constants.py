@@ -165,11 +165,6 @@ CLIENT_POLLING_INTERVAL_S = 1.0
 # deployment has been created
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S = 0.1
 
-# Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = get_env_float(
-    "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10.0
-)
-
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = get_env_float("RAY_SERVE_KV_TIMEOUT_S", 0.0) or None
 
