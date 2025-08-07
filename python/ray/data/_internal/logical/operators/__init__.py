@@ -1,5 +1,4 @@
 # Abstract base classes
-# Concrete operator implementations
 # All-to-all operators
 from .all_to_all_operator import (
     AbstractAllToAll,
