@@ -35,7 +35,6 @@ def _setup_jax_tpu_environment(
 
     jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
 
-    # num_processes and process_id are auto-detected in TPU environments
     if jax_platforms == "tpu":
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
 

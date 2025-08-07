@@ -50,8 +50,7 @@ def reserve_tpu_slice(
     if pod_type is None:
         return None
 
-    # Reserve a slice by creating a placement group on the
-    # TPU head.
+    # Reserve a slice by creating a placement group on the TPU head.
     head_label_selector = {
         "ray.io/tpu-worker-id": "0",
         "ray.io/tpu-pod-type": pod_type,

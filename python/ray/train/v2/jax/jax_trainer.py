@@ -100,16 +100,4 @@ class JaxTrainer(DataParallelTrainer):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
 
-        use_tpu = (
-            scaling_config.resources_per_worker
-            and scaling_config.resources_per_worker.get("TPU", 0) > 0
-        )
-
-        if use_tpu and "PACK" in scaling_config.placement_strategy:
-            scaling_config.placement_strategy = "STRICT_SPREAD"
-            logger.warning(
-                "In JaxTrainer with TPU, `placement_strategy` must be `STRICT_SPREAD`. "
-                "Overriding `placement_strategy` to `STRICT_SPREAD`."
-            )
-
         return scaling_config
