@@ -1474,8 +1474,6 @@ def pytest_sessionstart(session):
 
     # Shutdown Ray.
     ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
     ray._common.utils.reset_ray_address()
 
