@@ -32,7 +32,7 @@ except OSError:
     raise ImportError("libhccl.so is not available.")
 
 
-class hcclRootInfo(ctypes.Structure):
+class HcclRootInfo(ctypes.Structure):
     _fields_ = [("internal", ctypes.c_byte * 4108)]
 
 
@@ -416,7 +416,7 @@ class HCCLGroup(BaseGroup):
         return comm_key + "@" + self.group_name
 
     def _generate_hccl_root_info(self, store_name, dev=0):
-        root_info = hcclRootInfo()
+        root_info = HcclRootInfo()
 
         with torch.npu.device(f"npu:{dev}"):
             exec_result = self.libhccl.HcclGetRootInfo(ctypes.byref(root_info))
@@ -499,7 +499,7 @@ class HCCLGroup(BaseGroup):
             break
         if not root_info_bytes:
             raise RuntimeError("Unable to get the HcclRootInfo from the store.")
-        return hcclRootInfo.from_buffer_copy(bytearray(root_info_bytes))
+        return HcclRootInfo.from_buffer_copy(bytearray(root_info_bytes))
 
     def _get_hccl_collective_communicator(self, comm_key, device_list):
         if not comm_key:
