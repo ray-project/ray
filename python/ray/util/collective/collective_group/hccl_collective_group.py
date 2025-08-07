@@ -136,6 +136,9 @@ class HCCLGroup(BaseGroup):
     def destroy_group(self):
         if len(self._dev_comm_map.keys()) > 0:
             for comm_key, comms in self._dev_comm_map.items():
+                if comms:
+                    for comm in comms:
+                        self.libhccl.HcclCommDestroy(comm)
                 self._dev_comm_map[comm_key] = None
 
         if self.rank == 0:
