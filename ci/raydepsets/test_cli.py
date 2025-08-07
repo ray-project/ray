@@ -8,7 +8,6 @@ import runfiles
 from ci.raydepsets.cli import (
     load,
     DependencySetManager,
-    uv_binary,
     _override_uv_flags,
     _append_uv_flags,
     _flatten_flags,
@@ -71,14 +70,26 @@ class TestCli(unittest.TestCase):
                 manager.get_depset("fake_depset")
 
     def test_uv_binary_exists(self):
-        assert uv_binary() is not None
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+        assert manager._uv_binary is not None
 
     def test_uv_version(self):
-        result = subprocess.run(
-            [uv_binary(), "--version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            result = subprocess.run(
+                [manager._uv_binary, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
         assert result.returncode == 0
         assert "uv 0.7.20" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""

@@ -52,6 +52,7 @@ class DependencySetManager:
         self.config = self.workspace.load_config(config_path)
         self.build_graph = DiGraph()
         self._build()
+        self._uv_binary = _uv_binary()
 
     def _build(self):
         for depset in self.config.depsets:
@@ -85,7 +86,7 @@ class DependencySetManager:
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = [uv_binary(), "pip", cmd, *args]
+        cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
@@ -239,7 +240,7 @@ def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return args
 
 
-def uv_binary():
+def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
     if system != "Linux" or platform.processor() != "x86_64":
