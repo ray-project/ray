@@ -1121,7 +1121,7 @@ py_test(
 
 # GPU training.
 py_test(
-    name = "learning_tests_pendulum_iql",
+    name = "learning_tests_pendulum_iql_gpu",
     size = "large",
     srcs = ["tuned_examples/iql/pendulum_iql.py"],
     args = [        

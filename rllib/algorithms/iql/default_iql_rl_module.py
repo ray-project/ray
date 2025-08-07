@@ -1,6 +1,4 @@
-from ray.rllib.algorithms.iql.iql_learner import VF_PREDS_NEXT
 from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
