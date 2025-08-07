@@ -167,12 +167,10 @@ def main(
 
     steps_str = json.dumps(steps)
     logger.info(steps_str)
-    test_yaml = {
-        "group": "tests",
-        "steps": steps,
-    }
-    with open(f".buildkite/release/tests.rayci.yml", "w") as f:
-        yaml.dump(test_yaml, f, default_flow_style=False, sort_keys=False)
+    for step in steps:
+        group_name = step["group"].lower().replace(" ", "_").replace("/", "_").replace(":", "_").replace(".", "_")
+        with open(f".buildkite/release/tests_{group_name}.rayci.yml", "w") as f:
+            yaml.dump(step, f, default_flow_style=False, sort_keys=False)
 
     print(steps_str)
 
