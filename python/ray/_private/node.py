@@ -356,9 +356,9 @@ class Node:
                 # Grace period to let the Raylet register with the GCS.
                 # We retry in a loop in case it takes longer than expected.
                 time.sleep(0.1)
-                start_time = time.time()
+                start_time = time.monotonic()
                 raylet_start_wait_time = 30
-                while time.time() - start_time < raylet_start_wait_time:
+                while time.monotonic() - start_time < raylet_start_wait_time:
                     try:
                         # Will raise a RuntimeError if the node info is not available.
                         node_info = ray._private.services.get_node(
