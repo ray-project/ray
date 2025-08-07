@@ -31,7 +31,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
@@ -611,6 +611,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta.mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta.mutable_address()->CopyFrom(actor.address());
     actor_delta.set_num_restarts(actor.num_restarts());
+    actor_delta.set_num_restarts_due_to_node_preemption(
+        actor.num_restarts_due_to_node_preemption());
     actor_delta.set_max_restarts(actor.max_restarts());
     actor_delta.set_timestamp(actor.timestamp());
     actor_delta.set_pid(actor.pid());

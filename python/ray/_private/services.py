@@ -1242,14 +1242,18 @@ def start_api_server(
                 else:
                     raise e
         # Make sure the process can start.
-        minimal: bool = not ray._private.utils.check_dashboard_dependencies_installed()
+        dashboard_dependency_error = ray._private.utils.get_dashboard_dependency_error()
 
         # Explicitly check here that when the user explicitly specifies
         # dashboard inclusion, the install is not minimal.
-        if include_dashboard and minimal:
+        if include_dashboard and dashboard_dependency_error:
             logger.error(
-                "--include-dashboard is not supported when minimal ray is used. "
-                "Download ray[default] to use the dashboard."
+                f"Ray dashboard dependencies failed to install properly: {dashboard_dependency_error}.\n"
+                "Potential causes include:\n"
+                "1. --include-dashboard is not supported when minimal ray is used. "
+                "Download ray[default] to use the dashboard.\n"
+                "2. Dashboard dependencies are conflicting with your python environment. "
+                "Investigate your python environment and try reinstalling ray[default].\n"
             )
             raise Exception("Cannot include dashboard with missing packages.")
 
@@ -1293,7 +1297,7 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-        if minimal:
+        if dashboard_dependency_error is not None:
             command.append("--minimal")
 
         if not include_dash:
@@ -1407,7 +1411,7 @@ def start_api_server(
                 # Is it reachable?
                 raise Exception("Failed to start a dashboard.")
 
-        if minimal or not include_dash:
+        if dashboard_dependency_error is not None or not include_dash:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
@@ -1538,7 +1542,7 @@ def start_raylet(
     session_dir: str,
     resource_dir: str,
     log_dir: str,
-    resource_spec,
+    resource_and_label_spec,
     plasma_directory: str,
     fallback_directory: str,
     object_store_memory: int,
@@ -1572,7 +1576,6 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
-    labels: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1594,7 +1597,7 @@ def start_raylet(
         session_dir: The path of this session.
         resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
-        resource_spec: Resources for this raylet.
+        resource_and_label_spec: Resources and key-value labels for this raylet.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         fallback_directory: A directory where the Object store fallback files will be created.
@@ -1649,7 +1652,6 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
-        labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1658,8 +1660,9 @@ def start_raylet(
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
-    assert resource_spec.resolved()
-    static_resources = resource_spec.to_resource_dict()
+    # Get the static resources and labels from the resolved ResourceAndLabelSpec
+    static_resources = resource_and_label_spec.to_resource_dict()
+    labels = resource_and_label_spec.labels
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -1821,7 +1824,7 @@ def start_raylet(
         )
         dashboard_agent_command.append(f"--logging-format={logging_format}")
 
-    if not ray._private.utils.check_dashboard_dependencies_installed():
+    if ray._private.utils.get_dashboard_dependency_error() is not None:
         # If dependencies are not installed, it is the minimally packaged
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
@@ -1907,7 +1910,7 @@ def start_raylet(
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     command.append(
-        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+        "--num_prestart_python_workers={}".format(int(resource_and_label_spec.num_cpus))
     )
     command.append(
         "--dashboard_agent_command={}".format(
@@ -2352,9 +2355,7 @@ def start_ray_client_server(
         root_ray_dir, "_private", "workers", ray_constants.SETUP_WORKER_FILENAME
     )
 
-    ray_client_server_host = (
-        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
-    )
+    ray_client_server_host = ray_client_server_ip
     command = [
         sys.executable,
         setup_worker_path,
