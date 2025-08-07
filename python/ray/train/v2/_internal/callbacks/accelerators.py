@@ -1,28 +1,19 @@
 import logging
 import os
 from collections import defaultdict
-from typing import List, Optional
+from typing import List
 
-import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
-from ray._private.accelerators.tpu import (
-    fetch_tpu_slice_name_from_pg,
-    infer_tpu_pod_type_from_topology,
-)
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2._internal.util import ray_get_safe
 from ray.train.v2.api.config import ScalingConfig
-from ray.util.placement_group import (
-    PlacementGroup,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -161,105 +152,3 @@ def _get_visible_accelerator_ids_per_worker(
         visible_accelerator_ids_per_worker.append(all_resource_ids)
 
     return visible_accelerator_ids_per_worker
-
-
-def reserve_tpu_slice(
-    num_workers: int,
-    resources_per_worker: dict,
-    topology: Optional[str],
-    accelerator_type: Optional[str],
-) -> Optional[PlacementGroup]:
-    """Creates a SPMD-aware placement group. This currently only supports
-    TPU with JaxTrainer by reserving a multi-host slice.
-
-    This creates a head PG (for index 0) that reserves the `TPU-{}-head` resource
-    on the node, retrieves unique slice information from it, and then creates a
-    multi-host slice PG (for index 0..N-1) that reserves the `TPU` resource on all
-    the nodes in the slice. This enables atomic scheduling of TPU workers.
-
-    Args:
-        num_workers: Total number of workers to launch.
-        resources_per_worker: Resource requirements per bundle (e.g. {"CPU": 4}).
-        topology: The TPU topology string (e.g. "2x2x2").
-        accelerator_type: The accelerator type of the node (e.g. "TPU-V4").
-
-    Returns:
-        A PlacementGroup if able to be created, or None.
-    """
-    if not (topology and accelerator_type):
-        return None
-
-    pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
-    if pod_type is None:
-        return None
-
-    # Reserve a slice by creating a placement group on the
-    # TPU head.
-    head_label_selector = {
-        "ray.io/tpu-worker-id": "0",
-        "ray.io/tpu-pod-type": pod_type,
-    }
-    head_placement_group = ray.util.placement_group(
-        bundles=[{f"TPU-{pod_type}-head": 1}],
-        bundle_label_selector=[head_label_selector],
-    )
-
-    logger.debug("Waiting to reserve multi-host slice head.")
-    timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
-    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout)
-
-    if not ready:
-        raise TimeoutError(
-            "Failed to reserve TPU head for slice with shape: {}. "
-            "Ensure your cluster has sufficient resources. Requesting TPU "
-            "head node with labels: {}. Current resources: {}".format(
-                pod_type, head_label_selector, ray.available_resources()
-            )
-        )
-
-    if num_workers == 1:
-        logger.debug("Reserved single-host TPU placement group.")
-        return head_placement_group
-
-    # Retrieve the unique slice ID.
-    slice_name = fetch_tpu_slice_name_from_pg(head_placement_group)
-    if slice_name is None:
-        raise RuntimeError(
-            "Failed to retrieve TPU slice name after reserving head placement group. "
-            "Ensure that TPU slice metadata is available and correctly configured on multi-host nodes."
-        )
-    slice_label_selector = {
-        "ray.io/tpu-slice-name": slice_name,
-        "ray.io/tpu-pod-type": pod_type,
-    }
-
-    # Schedule the remaining multi-host workers together with the head bundle.
-    slice_placement_group = ray.util.placement_group(
-        bundles=[resources_per_worker] * num_workers,
-        bundle_label_selector=[slice_label_selector] * num_workers,
-        strategy="SPREAD",
-    )
-    logger.debug("Waiting for multi-host slice placement group to start.")
-    timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
-    ready, _ = ray.wait([slice_placement_group.ready()], timeout=timeout)
-
-    if ready:
-        logger.debug("SPMD placement groups have started.")
-    else:
-        ray.util.remove_placement_group(head_placement_group)
-        ray.util.remove_placement_group(slice_placement_group)
-        raise TimeoutError(
-            "SPMD Placement group creation timed out. Make sure your "
-            "cluster either has enough resources or use an "
-            "autoscaling cluster. Ensure your cluster has multi-host nodes "
-            "available for SPMD scheduling. "
-            "Current resources available: {}, resources requested by the "
-            "placement groups: {} with labels {}".format(
-                ray.available_resources(),
-                [resources_per_worker] * num_workers,
-                slice_label_selector,
-            )
-        )
-    ray.util.remove_placement_group(head_placement_group)
-
-    return slice_placement_group

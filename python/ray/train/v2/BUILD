@@ -488,7 +488,23 @@ py_test(
 py_test(
     name = "test_jax_trainer",
     size = "small",
-    srcs = ["tests/test_xgboost_trainer.py"],
+    srcs = ["tests/test_jax_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_tpu_utils",
+    size = "small",
+    srcs = ["tests/test_tpu_utils.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",

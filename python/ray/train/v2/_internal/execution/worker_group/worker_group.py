@@ -89,7 +89,7 @@ class WorkerGroupContext:
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
-        placement_group: Optional override placement group to schedule workers to.
+        bundle_label_selector: Optional label selectors to apply per-bundle for workers.
     """
 
     run_attempt_id: str
@@ -97,7 +97,7 @@ class WorkerGroupContext:
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
-    placement_group: Optional[PlacementGroup] = None
+    bundle_label_selector: Optional[Dict[str, str]] = None
 
 
 class WorkerGroup:
@@ -255,7 +255,6 @@ class WorkerGroup:
         """
         self._assert_inactive()
         worker_group_context = self._worker_group_context
-        pg = worker_group_context.placement_group
 
         WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
             worker_group_context.resources_per_worker,
@@ -271,12 +270,19 @@ class WorkerGroup:
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
-            if pg is None:
-                pg = placement_group(
-                    bundles=[worker_group_context.resources_per_worker]
-                    * worker_group_context.num_workers,
-                    strategy=worker_group_context.placement_strategy,
-                )
+            bundle_label_selector = (
+                [worker_group_context.bundle_label_selector.copy()]
+                * worker_group_context.num_workers
+                if worker_group_context.bundle_label_selector
+                else None
+            )
+
+            pg = placement_group(
+                bundles=[worker_group_context.resources_per_worker]
+                * worker_group_context.num_workers,
+                strategy=worker_group_context.placement_strategy,
+                bundle_label_selector=bundle_label_selector,
+            )
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"

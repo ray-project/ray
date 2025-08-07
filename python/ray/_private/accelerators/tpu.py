@@ -9,7 +9,6 @@ import requests
 
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -126,24 +125,6 @@ def infer_tpu_pod_type_from_topology(
             f"Failed to infer pod type from topology {topology} and type {accelerator_type}: {e}"
         )
         return None
-
-
-def fetch_tpu_slice_name_from_pg(pg):
-    @ray.remote(num_cpus=0)
-    def _get_tpu_slice_name():
-        import ray
-
-        return (
-            ray._private.accelerators.TPUAcceleratorManager.get_current_node_tpu_name()
-        )
-
-    tpu_name_ref = _get_tpu_slice_name.options(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(
-            placement_group=pg, placement_group_bundle_index=0
-        )
-    ).remote()
-
-    return ray.get(tpu_name_ref)
 
 
 class TPUAcceleratorManager(AcceleratorManager):

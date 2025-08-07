@@ -9,9 +9,6 @@ import pandas as pd
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.train.v2._internal.callbacks.accelerators import (
-    reserve_tpu_slice,
-)
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -283,19 +280,21 @@ class TrainController:
             ControllerError if the worker group failed to start.
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
-        placement_group = None
-        backend_config = self._train_run_context.backend_config
+        scaling_config = self._train_run_context.scaling_config
 
-        if getattr(backend_config, "use_tpu", False):
-            try:
-                placement_group = reserve_tpu_slice(
-                    num_workers=num_workers,
-                    resources_per_worker=resources_per_worker,
-                    topology=getattr(backend_config, "topology", None),
-                    accelerator_type=getattr(backend_config, "accelerator_type", None),
-                )
-            except Exception as e:
-                return ControllerError(e)
+        # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
+        bundle_label_selector = None
+        try:
+            for callback in self._callbacks:
+                if hasattr(callback, "on_controller_start_worker_group"):
+                    selector = callback.on_controller_start_worker_group(
+                        scaling_config=scaling_config, num_workers=num_workers
+                    )
+                    if selector:
+                        bundle_label_selector = selector
+                        break
+        except Exception as e:
+            return ControllerError(e)
 
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
@@ -303,7 +302,7 @@ class TrainController:
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            placement_group=placement_group,
+            bundle_label_selector=bundle_label_selector,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
