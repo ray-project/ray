@@ -70,6 +70,46 @@ RayletIPCClient::RayletIPCClient(instrumented_io_context &io_service,
   conn_ = ServerConnection::Create(std::move(socket));
 }
 
+ray::Status RayletIPCClient::RegisterClient(const WorkerID &worker_id,
+                                            rpc::WorkerType worker_type,
+                                            const JobID &job_id,
+                                            int runtime_env_hash,
+                                            const rpc::Language &language,
+                                            const std::string &ip_address,
+                                            const std::string &serialized_job_config,
+                                            const StartupToken &startup_token,
+                                            NodeID *raylet_id,
+                                            int *assigned_port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      protocol::CreateRegisterClientRequest(fbb,
+                                            static_cast<int>(worker_type),
+                                            to_flatbuf(fbb, worker_id),
+                                            getpid(),
+                                            startup_token,
+                                            to_flatbuf(fbb, job_id),
+                                            runtime_env_hash,
+                                            language,
+                                            fbb.CreateString(ip_address),
+                                            /*port=*/0,
+                                            fbb.CreateString(serialized_job_config));
+  fbb.Finish(message);
+  std::vector<uint8_t> reply;
+  Status status = AtomicRequestReply(
+      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  RAY_RETURN_NOT_OK(status);
+
+  auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
+  bool success = reply_message->success();
+  if (!success) {
+    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  }
+
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
+  *assigned_port = reply_message->port();
+  return Status::OK();
+}
+
 Status RayletIPCClient::Disconnect(
     // XXX: take an int instead of the RPC enum.
     const rpc::WorkerExitType &exit_type,
@@ -255,7 +295,7 @@ void ShutdownIfLocalRayletDisconnected(const Status &status) {
 }
 
 Status RayletIPCClient::WriteMessage(MessageType type,
-                                      flatbuffers::FlatBufferBuilder *fbb) {
+                                     flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
@@ -265,9 +305,9 @@ Status RayletIPCClient::WriteMessage(MessageType type,
 }
 
 Status RayletIPCClient::AtomicRequestReply(MessageType request_type,
-                                            MessageType reply_type,
-                                            std::vector<uint8_t> *reply_message,
-                                            flatbuffers::FlatBufferBuilder *fbb) {
+                                           MessageType reply_type,
+                                           std::vector<uint8_t> *reply_message,
+                                           flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
   auto status = conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);

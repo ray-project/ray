@@ -274,6 +274,7 @@ CoreWorker::CoreWorker(
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
     std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client,
     std::shared_ptr<raylet::RayletClient> local_raylet_client,
     boost::thread &io_thread,
     std::shared_ptr<ReferenceCounter> reference_counter,
@@ -308,6 +309,7 @@ CoreWorker::CoreWorker(
       rpc_address_(std::move(rpc_address)),
       connected_(true),
       gcs_client_(std::move(gcs_client)),
+      raylet_ipc_client_(std::move(raylet_ipc_client)),
       local_raylet_client_(std::move(local_raylet_client)),
       io_thread_(io_thread),
       reference_counter_(std::move(reference_counter)),
@@ -347,14 +349,17 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_6,
                                   std::placeholders::_7,
                                   std::placeholders::_8);
-    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
+    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(
+        [this](const std::vector<rpc::ObjectReference> &dependencies, int64_t tag) {
+          return raylet_ipc_client_->WaitForActorCallArgs(dependencies, tag);
+        });
     task_receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
         *task_argument_waiter_,
         options_.initialize_thread_callback,
-        [this] { return local_raylet_client_->ActorCreationTaskDone(); });
+        [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
   }
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
@@ -539,12 +544,12 @@ void CoreWorker::ConnectToRayletInternal() {
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
   if (options_.worker_type == WorkerType::DRIVER) {
-    Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
+    Status status = raylet_ipc_client_->AnnounceWorkerPortForDriver(
         core_worker_server_->GetPort(), options_.entrypoint);
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
     Status status =
-        local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
+        raylet_ipc_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
     RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";
   }
 }
@@ -690,7 +695,7 @@ void CoreWorker::Exit(
           task_receiver_->Stop();
 
           // Release resources only after tasks have stopped executing.
-          auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
+          auto status = raylet_ipc_client_->NotifyDirectCallTaskBlocked();
           if (!status.ok()) {
             RAY_LOG(WARNING)
                 << "Failed to notify Raylet. The raylet may have already shut down or "

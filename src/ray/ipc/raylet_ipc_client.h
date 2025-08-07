@@ -26,9 +26,10 @@
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/common.pb.h"
 
 // Maps from resource name to its allocation.
 using ResourceMappingType =
@@ -55,6 +56,18 @@ class RayletIPCClient {
                   int num_retries,
                   // XXX: rename this!
                   int64_t timeout);
+
+  /// XXX.
+  ray::Status RegisterClient(const WorkerID &worker_id,
+                             rpc::WorkerType worker_type,
+                             const JobID &job_id,
+                             int runtime_env_hash,
+                             const rpc::Language &language,
+                             const std::string &ip_address,
+                             const std::string &serialized_job_config,
+                             const StartupToken &startup_token,
+                             NodeID *raylet_id,
+                             int *assigned_port);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't

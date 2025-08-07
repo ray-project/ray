@@ -48,6 +48,7 @@
 #include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/raylet_ipc_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -179,6 +180,7 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
+             std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client,
              std::shared_ptr<raylet::RayletClient> local_raylet_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
@@ -1736,6 +1738,9 @@ class CoreWorker {
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  // XXX.
+  std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through

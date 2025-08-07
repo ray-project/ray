@@ -27,6 +27,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/ipc/raylet_ipc_client.h"
 
 namespace ray {
 namespace core {
@@ -49,11 +50,11 @@ class CoreWorkerMemoryStore {
   /// \param[in] io_context Posts async callbacks to this context.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
-  /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
+  /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
       ReferenceCounter *counter = nullptr,
-      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
+      std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
@@ -209,7 +210,7 @@ class CoreWorkerMemoryStore {
   ReferenceCounter *ref_counter_ = nullptr;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
+  std::shared_ptr<ipc::RayletIPCClient> raylet_ipc_client_ = nullptr;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
