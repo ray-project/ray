@@ -723,7 +723,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         other non-serve actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
         """
-        replicas_to_stop: List[ReplicaID] = []
+        replicas_to_stop = set()
 
         # Replicas not in running state don't have node id.
         # We will prioritize those first.
@@ -736,9 +736,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             pending_launching_recovering_replica
         ) in pending_launching_recovering_replicas:
             if len(replicas_to_stop) == max_num_to_stop:
-                return set(replicas_to_stop)
+                return replicas_to_stop
             else:
-                replicas_to_stop.append(pending_launching_recovering_replica)
+                replicas_to_stop.add(pending_launching_recovering_replica)
 
         node_to_running_replicas_of_target_deployment = (
             self._get_node_to_running_replicas(deployment_id)
@@ -746,6 +746,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
+
+        # _running_replicas preserves insertion order (oldest → newest).
+        # Reverse once so we have newest → oldest.
+        ordered_running_replicas = list(self._running_replicas[deployment_id].items())
+        ordered_running_replicas.reverse()
+
+        # Bucket the (newest-first) replicas by node for fast lookup.
+        replicas_grouped_by_node: Dict[str, List[ReplicaID]] = defaultdict(list)
+        for replica_id, replica_node_id in ordered_running_replicas:
+            replicas_grouped_by_node[replica_node_id].append(replica_id)
 
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
@@ -763,24 +773,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             if node_id not in node_to_running_replicas_of_target_deployment:
                 continue
 
-            # _running_replicas dict preserves insertion order (oldest → newest).
-            # reversed(...) gives newest → oldest so the latest replica is
-            # stopped first when replicas on a node tie.
-            newest_first_replicas = [
-                rid
-                for rid, n_id in reversed(
-                    list(self._running_replicas[deployment_id].items())
-                )
-                if n_id == node_id
-            ]
-
-            for running_replica in newest_first_replicas:
+            # Newest-first list for this node.
+            for replica_id in replicas_grouped_by_node.get(node_id, []):
+                replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
-                    return set(replicas_to_stop)
-                if running_replica not in replicas_to_stop:
-                    replicas_to_stop.append(running_replica)
+                    return replicas_to_stop
 
-        return set(replicas_to_stop)
+        return replicas_to_stop
 
     def _find_best_available_node(
         self,
