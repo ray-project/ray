@@ -494,23 +494,23 @@ class Test(dict):
         """
         Update test object with data fields that exist only on s3
         """
-        # try:
-        #     data = (
-        #         boto3.client("s3")
-        #         .get_object(
-        #             Bucket=get_read_state_machine_aws_bucket(),
-        #             Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
-        #         )
-        #         .get("Body")
-        #         .read()
-        #         .decode("utf-8")
-        #     )
-        # except ClientError as e:
-        #     logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
-        #     return
-        # for key, value in json.loads(data).items():
-        #     if key not in self:
-        #         self[key] = value
+        try:
+            data = (
+                boto3.client("s3")
+                .get_object(
+                    Bucket=get_read_state_machine_aws_bucket(),
+                    Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",
+                )
+                .get("Body")
+                .read()
+                .decode("utf-8")
+            )
+        except ClientError as e:
+            logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
+            return
+        for key, value in json.loads(data).items():
+            if key not in self:
+                self[key] = value
 
     def get_state(self) -> TestState:
         """

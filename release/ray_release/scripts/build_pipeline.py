@@ -6,14 +6,11 @@ from typing import Tuple
 from pathlib import Path
 
 import click
+import yaml
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step_for_test_group
-from ray_release.byod.build import (
-    build_anyscale_base_byod_images,
-    build_anyscale_custom_byod_image,
-)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
@@ -169,6 +166,14 @@ def main(
             json.dump(settings, fp)
 
     steps_str = json.dumps(steps)
+    logger.info(steps_str)
+    test_yaml = {
+        "group": "tests",
+        "steps": steps,
+    }
+    with open(f"{PIPELINE_ARTIFACT_PATH}/tests.rayci.yml", "w") as f:
+        yaml.dump(test_yaml, f, default_flow_style=False, sort_keys=False)
+
     print(steps_str)
 
 
