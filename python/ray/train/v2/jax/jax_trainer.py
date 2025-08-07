@@ -25,13 +25,55 @@ class JaxTrainer(DataParallelTrainer):
     TPU slice, connected via inter-chip interconnects (ICI). The ``train_loop_per_worker``
     function is expected to take in either 0 or 1 arguments:
 
-    .. code-block:: python
+    .. testcode::
 
-        def train_loop_per_worker():
-            ...
+        import os
+        from absl import app
+        import logging
+        from typing import Sequence
 
-        def train_loop_per_worker(config: Dict):
-            ...
+        import ray
+        from ray.train.v2.api.config import ScalingConfig, RunConfig
+        from ray.train.v2.jax import JaxTrainer
+        from MaxText.train import main as maxtext_main
+
+        def train_loop_per_worker(config):
+            argv = config["argv"]
+            maxtext_main(argv)
+
+        def main(argv: Sequence[str]):
+            ray.init()
+
+            trainer = JaxTrainer(
+                train_loop_per_worker=train_loop_per_worker,
+                train_loop_config={"argv": absolute_argv},
+                scaling_config=ScalingConfig(
+                    use_tpu=True,
+                    num_workers=4,
+                    topology="2x2x4",
+                    accelerator_type="TPU-V4",
+                    resources_per_worker={"TPU": 4},
+                    placement_strategy="SPREAD",
+                ),
+                run_config=RunConfig(
+                    name="maxtext_jaxtrainer",
+                    worker_runtime_env={
+                        "env_vars": {
+                            "JAX_PLATFORMS": "tpu",
+                            "ENABLE_PJRT_COMPATIBILITY": "true",
+                            "TPU_SLICE_BUILDER_DUMP_CHIP_FORCE": "true",
+                            "TPU_SLICE_BUILDER_DUMP_ICI": "true",
+                            "XLA_FLAGS": "--xla_dump_to=/tmp/xla_dump_file --xla_dump_hlo_as_proto",
+                        }
+                    },
+                ),
+            )
+
+            result = trainer.fit()
+
+    .. testoutput::
+        :options: +ELLIPSIS
+        :hide:
 
     If ``train_loop_per_worker`` accepts an argument, then
     ``train_loop_config`` will be passed in as the argument.
