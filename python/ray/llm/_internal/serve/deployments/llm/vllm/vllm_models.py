@@ -99,6 +99,13 @@ class VLLMEngineConfig(BaseModelExtended):
             )
             engine_kwargs["disable_log_requests"] = True
 
+        from vllm.engine.arg_utils import AsyncEngineArgs
+
+        if not hasattr(AsyncEngineArgs, "disable_log_requests"):
+            assert hasattr(AsyncEngineArgs, "enable_log_requests")
+            disable_log_requests = engine_kwargs.pop("disable_log_requests")
+            engine_kwargs["enable_log_requests"] = not disable_log_requests
+
         return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
