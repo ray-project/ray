@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
+from ray.data._internal.logical.operators import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr
 from ray.data.preprocessor import Preprocessor

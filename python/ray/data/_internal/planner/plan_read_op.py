@@ -16,7 +16,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
 )
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext

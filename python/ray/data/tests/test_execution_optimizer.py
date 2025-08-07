@@ -24,27 +24,23 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     Aggregate,
-    RandomShuffle,
-    Repartition,
-    Sort,
-)
-from ray.data._internal.logical.operators.from_operators import (
+    Filter,
+    FlatMap,
     FromArrow,
     FromItems,
     FromNumpy,
     FromPandas,
-)
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
     MapBatches,
     MapRows,
     Project,
+    RandomShuffle,
+    Repartition,
+    Sort,
+    Write,
+    Zip,
 )
-from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.rules.configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,

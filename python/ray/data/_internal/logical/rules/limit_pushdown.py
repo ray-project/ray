@@ -3,11 +3,11 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.map_operator import MapBatches
-from ray.data._internal.logical.operators.n_ary_operator import Union
-from ray.data._internal.logical.operators.one_to_one_operator import (
+from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Limit,
+    MapBatches,
+    Union,
 )
 
 

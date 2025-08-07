@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators import InputData
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.split import (
     _drop_empty_block_split,

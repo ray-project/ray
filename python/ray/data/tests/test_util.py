@@ -8,7 +8,7 @@ from typing_extensions import Hashable
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.util import (
     _op_name_white_list,
     _recorded_operators,

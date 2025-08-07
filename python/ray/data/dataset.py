@@ -59,29 +59,25 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    Count,
+    Filter,
+    FlatMap,
+    InputData,
+    Join,
+    Limit,
+    MapBatches,
+    MapRows,
+    Project,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
-    MapBatches,
-    MapRows,
-    Project,
     StreamingRepartition,
-)
-from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
+    Write,
     Zip,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -807,7 +803,7 @@ class Dataset:
         if not exprs:
             raise ValueError("at least one expression is required")
 
-        from ray.data._internal.logical.operators.map_operator import Project
+        from ray.data._internal.logical.operators import Project
 
         plan = self._plan.copy()
         project_op = Project(

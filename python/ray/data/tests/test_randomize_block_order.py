@@ -6,12 +6,13 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    AbstractUDFMap,
+    MapBatches,
     RandomizeBlocks,
+    Read,
     Repartition,
 )
-from ray.data._internal.logical.operators.map_operator import AbstractUDFMap, MapBatches
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.planner import create_planner

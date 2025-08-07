@@ -12,7 +12,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import Write
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult

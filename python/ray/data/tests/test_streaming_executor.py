@@ -49,9 +49,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators.map_operator import MapRows
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.block import BlockMetadataWithSchema
@@ -600,8 +600,7 @@ class ExecutionPlan:
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators.all_to_all_operator import Sort
-        from ray.data._internal.logical.operators.n_ary_operator import Zip
+        from ray.data._internal.logical.operators import Sort, Zip
 
         for op in self._logical_plan.dag.post_order_iter():
             if isinstance(op, (Zip, Sort)):

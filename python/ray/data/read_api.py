@@ -57,14 +57,14 @@ from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
+from ray.data._internal.logical.operators import (
     FromArrow,
     FromBlocks,
     FromItems,
     FromNumpy,
     FromPandas,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
