@@ -150,7 +150,7 @@ def _add_ellipsis(s: str, truncate_length: int) -> str:
 
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     if isinstance(obj, Mapping):
-        # protobuf Struct fields must be strings.
+        # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, (int, float, bool)) or obj is None:
         return obj
