@@ -332,7 +332,7 @@ class TestCli(unittest.TestCase):
             _copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 6
+            assert len(manager.build_graph.nodes()) == 5
             assert len(manager.build_graph.edges()) == 3
             assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
             assert (
@@ -348,7 +348,7 @@ class TestCli(unittest.TestCase):
             # assert that the compile depsets are first
             assert "ray_base_test_depset" in sorted_nodes[:3]
             assert "general_depset" in sorted_nodes[:3]
-            assert "build_args_test_depset_${PYTHON_VERSION}" in sorted_nodes[:3]
+            assert "expanded_depset" in sorted_nodes[:3]
 
     def test_substitute_build_args(self):
         build_arg_set = BuildArgSet(
