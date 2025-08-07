@@ -741,8 +741,8 @@ def recv_multidevice(
     """Receive a tensor from a remote Device synchronously, a Device can be
     a GPU, Ascend NPU, or any supported accelerators.
 
-    The function asssume each process owns >1 Devices, and the sender
-    process and receiver process has equal nubmer of Devices.
+    The function assumes each process owns >1 Devices, and the sender
+    process and receiver process has equal number of Devices.
 
     Args:
         tensor: the received tensor, located on a Device.
