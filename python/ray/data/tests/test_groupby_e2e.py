@@ -101,7 +101,10 @@ def test_map_groups_with_gpus(
     ray.init(num_gpus=1)
 
     rows = (
-        ray.data.range(1).groupby("id").map_groups(lambda x: x, num_gpus=1).take_all()
+        ray.data.range(1, override_num_blocks=1)
+        .groupby("id")
+        .map_groups(lambda x: x, num_gpus=1)
+        .take_all()
     )
 
     assert rows == [{"id": 0}]

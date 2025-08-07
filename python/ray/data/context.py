@@ -314,8 +314,6 @@ class DataContext:
     Args:
         target_max_block_size: The max target block size in bytes for reads and
             transformations. If `None`, this means the block size is infinite.
-        target_shuffle_max_block_size: The max target block size in bytes for shuffle
-            ops like ``random_shuffle``, ``sort``, and ``repartition``.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
             ``read_op_min_num_blocks``.
@@ -412,7 +410,6 @@ class DataContext:
 
     # `None` means the block size is infinite.
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
-    target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
@@ -579,16 +576,24 @@ class DataContext:
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
             warnings.warn(
-                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+
         elif name == "use_push_based_shuffle":
             warnings.warn(
-                "`use_push_based_shuffle` is deprecated, please configure "
+                "`use_push_based_shuffle` is deprecated! Configure "
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "target_shuffle_max_block_size":
+            warnings.warn(
+                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead."
+            )
+
+            self.target_max_block_size = value
 
         elif name == "use_polars":
             warnings.warn(
