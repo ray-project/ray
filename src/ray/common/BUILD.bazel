@@ -46,6 +46,7 @@ ray_cc_library(
     ],
     deps = [
         ":buffer",
+        ":id",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:logging",
         "@com_google_absl//absl/time",
