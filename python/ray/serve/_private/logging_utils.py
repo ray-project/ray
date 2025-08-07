@@ -385,8 +385,6 @@ def configure_component_logger(
         file_handler.setFormatter(serve_formatter)
 
     if logging_config.enable_access_log is False:
-        # TODO (abrar): There is a bug here. if serve_access_log is False
-        # the filter will evaluate to true and the log will be logged.
         file_handler.addFilter(log_access_log_filter)
     else:
         file_handler.addFilter(ServeContextFilter())
