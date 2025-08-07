@@ -36,11 +36,6 @@ RayletClient::RayletClient(const rpc::Address &address,
                                      client_call_manager,
                                      std::move(raylet_unavailable_timeout_callback)))) {}
 
-RayletClient::RayletClient(const rpc::Address &address,
-                           rpc::ClientCallManager &client_call_manager)
-    : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
-          new rpc::NodeManagerClient(address, client_call_manager, [] {}))) {}
-
 void RayletClient::RequestWorkerLease(
     const rpc::TaskSpec &task_spec,
     bool grant_or_reject,
