@@ -815,11 +815,26 @@ class ActorMethod:
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE and num_returns != 1:
-            raise ValueError(
-                f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
-                "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
-            )
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+            if num_returns != 1:
+                raise ValueError(
+                    f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
+                    "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
+                )
+            if not self._actor._ray_enable_tensor_transport:
+                raise ValueError(
+                    f'Currently, methods with .options(tensor_transport="{tensor_transport.name}") are not supported when enable_tensor_transport=False. '
+                    "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
+                )
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            if not gpu_object_manager.actor_has_tensor_transport(
+                self._actor, tensor_transport
+            ):
+                raise ValueError(
+                    f"{self._actor} does not have tensor transport {tensor_transport.name} available. Please create a communicator with "
+                    "`ray.experimental.collective.create_collective_group` "
+                    "before calling actor tasks with non-default tensor_transport."
+                )
 
         args = args or []
         kwargs = kwargs or {}
@@ -958,11 +973,14 @@ class _ActorClassMethodMetadata(object):
         # Check whether any actor methods specify a non-default tensor transport.
         has_tensor_transport_methods = False
         for method_name, method in actor_methods:
-            if hasattr(method, "__ray_tensor_transport__"):
-                tensor_transport = method.__ray_tensor_transport__
-                if tensor_transport != TensorTransportEnum.OBJECT_STORE:
-                    has_tensor_transport_methods = True
-                    break
+            if (
+                getattr(
+                    method, "__ray_tensor_transport__", TensorTransportEnum.OBJECT_STORE
+                )
+                != TensorTransportEnum.OBJECT_STORE
+            ):
+                has_tensor_transport_methods = True
+                break
 
         # Store whether any actor methods specify a non-default tensor
         # transport.
@@ -1131,12 +1149,10 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
         _filled_options["runtime_env"]
     )
     # If any actor method has a non-default tensor transport, automatically
-    # enable tensor transport.
+    # enable tensor transport, unless it was explicitly set to False by the
+    # user.
     if has_tensor_transport_methods:
-        if (
-            _filled_options["enable_tensor_transport"] is not None
-            and not _filled_options["enable_tensor_transport"]
-        ):
+        if _filled_options["enable_tensor_transport"] is False:
             raise ValueError(
                 "Actor class has methods with @ray.method(tensor_transport=...) decorator but @ray.remote(enable_tensor_transport=False). "
                 "Either set enable_tensor_transport=True or remove the @ray.method(tensor_transport=...) decorator from the methods."
@@ -1806,6 +1822,7 @@ class ActorClass(Generic[T]):
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             meta.method_meta.enable_task_events,
+            meta.enable_tensor_transport,
             meta.method_meta.method_name_to_tensor_transport,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
@@ -1898,6 +1915,7 @@ class ActorHandle(Generic[T]):
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
+        enable_tensor_transport: bool,
         method_name_to_tensor_transport: Dict[str, TensorTransportEnum],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
@@ -1921,6 +1939,10 @@ class ActorHandle(Generic[T]):
             method_retry_exceptions: Dictionary mapping method names to their retry exception settings.
             method_generator_backpressure_num_objects: Dictionary mapping method names to their generator backpressure settings.
             method_enable_task_events: Dictionary mapping method names to whether task events are enabled.
+            enable_tensor_transport: Whether tensor transport is enabled for
+                this actor. If True, then methods can be called with
+                .options(tensor_transport=...) to specify a non-default tensor
+                transport.
             method_name_to_tensor_transport: Dictionary mapping method names to their tensor transport settings.
             actor_method_cpus: The number of CPUs required by actor methods.
             actor_creation_function_descriptor: The function descriptor for actor creation.
@@ -1947,6 +1969,7 @@ class ActorHandle(Generic[T]):
             method_generator_backpressure_num_objects
         )
         self._ray_method_enable_task_events = method_enable_task_events
+        self._ray_enable_tensor_transport = enable_tensor_transport
         self._ray_method_name_to_tensor_transport = method_name_to_tensor_transport
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_cluster_and_job = cluster_and_job
