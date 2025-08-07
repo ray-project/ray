@@ -32,6 +32,8 @@
 #include "ray/common/ray_syncer/ray_syncer_client.h"
 #include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/network_util.h"
+#include "ray/util/path_utils.h"
 
 using namespace std::chrono;
 using namespace ray::syncer;
@@ -221,7 +223,7 @@ struct SyncerServerTest {
         io_context, node_id.Binary(), std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
-    auto server_address = std::string("0.0.0.0:") + port;
+    auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
     service = std::make_unique<RaySyncerService>(*syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
@@ -414,7 +416,7 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
   argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
   return grpc::CreateCustomChannel(
-      "localhost:" + port, grpc::InsecureChannelCredentials(), argument);
+      BuildAddress("localhost", port), grpc::InsecureChannelCredentials(), argument);
 }
 
 using TClusterView = absl::flat_hash_map<
@@ -979,8 +981,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);

@@ -550,8 +550,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // will choose the right raylet for any queued dependent tasks.
     reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_raylet_id);
     // Mark it as in plasma with a dummy object.
-    RAY_CHECK(
-        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   } else {
     // NOTE(swang): If a direct object was promoted to plasma, then we do not
     // record the node ID that it was pinned at, which means that we will not
@@ -582,7 +581,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     if (store_in_plasma) {
       put_in_local_plasma_callback_(object, object_id);
     } else {
-      direct_return = in_memory_store_.Put(object, object_id);
+      in_memory_store_.Put(object, object_id);
+      direct_return = true;
     }
   }
 
@@ -1087,9 +1087,22 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
-      if (num_retries_left > 0) {
+      auto is_preempted = false;
+      if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
+        const auto node_info = gcs_client_->Nodes().Get(task_entry.GetNodeId(),
+                                                        /*filter_dead_nodes=*/false);
+        is_preempted = node_info != nullptr && node_info->has_death_info() &&
+                       node_info->death_info().reason() ==
+                           rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
+      }
+      if (num_retries_left > 0 || (is_preempted && task_entry.spec.IsRetriable())) {
         will_retry = true;
-        task_entry.num_retries_left--;
+        if (is_preempted) {
+          RAY_LOG(INFO) << "Task " << task_id << " failed due to node preemption on node "
+                        << task_entry.GetNodeId() << ", not counting against retries";
+        } else {
+          task_entry.num_retries_left--;
+        }
       } else if (num_retries_left == -1) {
         will_retry = true;
       } else {
@@ -1181,7 +1194,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       ray_error_info = nullptr;
     }
 
-    if ((status != nullptr) && status->IsIntentionalSystemExit()) {
+    if (status != nullptr && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
       // exit by exit_actor(), exit by ray.shutdown(), etc. These tasks are expected
       // to exit and not be marked as failure.
