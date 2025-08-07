@@ -37,7 +37,12 @@ namespace ray {
 
 namespace ipc {
 
-/// XXX: comment.
+/// Client for interacting with the local Raylet over a socket.
+///
+/// Message ordering on the socket is guaranteed.
+///
+/// If the socket is broken and the local Raylet is detected to be dead, calling any
+/// method on the client will quick exit the process.
 class RayletIPCClient {
  public:
   /// Connect to the Raylet over a local socket.
@@ -46,14 +51,25 @@ class RayletIPCClient {
   /// \param address The address of the socket that the Raylet is listening on.
   /// \param num_retries The number of times to retry connecting before giving up.
   /// \param timeout The time to wait between retries.
-  /// \return The connection.
   RayletIPCClient(instrumented_io_context &io_service,
                   const std::string &address,
                   int num_retries,
-                  // XXX: rename this!
                   int64_t timeout);
 
   /// XXX: comment.
+  /// Register this client (worker) with the local Raylet.
+  ///
+  /// \param worker_id The worker_id of the connecting worker.
+  /// \param worker_type The worker type of the connecting worker.
+  /// \param job_id The job ID that the connecting worker is associated with.
+  /// \param runtime_env_hash The runtime_env hash of the connecting worker.
+  /// \param language The language of the connecting worker.
+  /// \param ip_address The ip_address of the connecting worker.
+  /// \param serialized_job_config The serialized job config of the connecting worker.
+  /// \param startup_token The token that was passed to this worker at startup.
+  /// \param[out] raylet_id The node ID for the local Raylet.
+  /// \param[out] assigned_port The assigned port for the worker to listen on. If zero,
+  ///             the worker should pick a port randomly.
   ray::Status RegisterClient(const WorkerID &worker_id,
                              rpc::WorkerType worker_type,
                              const JobID &job_id,
@@ -143,7 +159,7 @@ class RayletIPCClient {
 
   /// Wait for the given objects asynchronously.
   ///
-  /// The core worker is notified when the wait completes.
+  /// The core worker will be notified over gRPC when the wait completes.
   ///
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
@@ -171,8 +187,14 @@ class RayletIPCClient {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  // XXX: add comment.
-  void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
+  /// Subscribe this worker to a notification when the provided object is ready in the
+  /// local object store.
+  ///
+  /// The worker will be notified over gRPC when the object is ready.
+  ///
+  /// \param object_id The ID of the object to subscribe to.
+  /// \param owner_address The address of the owner of the object.
+  void SubscribePlasmaReady(const ObjectID &object_id, const rpc::Address &owner_address);
 
  private:
   /// Send a request to raylet asynchronously.

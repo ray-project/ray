@@ -29,7 +29,6 @@
 
 namespace {
 
-// XXX: remove.
 flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
   return ray::protocol::CreateAddress(fbb,
@@ -39,7 +38,6 @@ flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
                                       fbb.CreateString(address.worker_id()));
 }
 
-// XXX: remove.
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
                       const std::vector<ray::rpc::Address> &addresses) {
@@ -111,7 +109,6 @@ ray::Status RayletIPCClient::RegisterClient(const WorkerID &worker_id,
 }
 
 Status RayletIPCClient::Disconnect(
-    // XXX: take an int instead of the RPC enum.
     const rpc::WorkerExitType &exit_type,
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
@@ -274,8 +271,8 @@ Status RayletIPCClient::FreeObjects(const std::vector<ObjectID> &object_ids,
   return WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-void RayletIPCClient::SubscribeToPlasma(const ObjectID &object_id,
-                                        const rpc::Address &owner_address) {
+void RayletIPCClient::SubscribePlasmaReady(const ObjectID &object_id,
+                                           const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSubscribePlasmaReady(
       fbb, to_flatbuf(fbb, object_id), to_flatbuf(fbb, owner_address));
@@ -285,7 +282,6 @@ void RayletIPCClient::SubscribeToPlasma(const ObjectID &object_id,
 }
 
 void ShutdownIfLocalRayletDisconnected(const Status &status) {
-  // XXX: move ray config into constructor or get on first message.
   if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
     RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
                         "Raylet is dead. Status: "

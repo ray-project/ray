@@ -103,7 +103,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    # XXX: delete.
     name = "core_worker_common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],

@@ -62,11 +62,9 @@ Status ConnectSocketRetry(local_stream_socket &socket,
   RAY_CHECK(num_retries != 0);
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
-    // XXX: MOVE THIS.
     num_retries = RayConfig::instance().raylet_client_num_connect_attempts();
   }
   if (timeout_in_ms < 0) {
-    // XXX: MOVE THIS.
     timeout_in_ms = RayConfig::instance().raylet_client_connect_timeout_milliseconds();
   }
   boost::system::error_code ec;

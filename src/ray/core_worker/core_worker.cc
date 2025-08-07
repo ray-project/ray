@@ -4431,7 +4431,7 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
   // when the object is local (and it will fire the callback immediately if the object
   // exists). CoreWorker::HandlePlasmaObjectReady handles such request.
   auto owner_address = GetOwnerAddressOrDie(object_id);
-  raylet_ipc_client_->SubscribeToPlasma(object_id, owner_address);
+  raylet_ipc_client_->SubscribePlasmaReady(object_id, owner_address);
 }
 
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
