@@ -309,7 +309,7 @@ class ProxyManager:
 
         proc = start_ray_client_server(
             self.address,
-            self.node.node_ip_address,
+            "127.0.0.1",
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
@@ -825,8 +825,9 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(
-    connection_str: str,
-    address: Optional[str],
+    host: str,
+    port: int,
+    gcs_address: Optional[str],
     *,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -837,8 +838,8 @@ def serve_proxier(
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
-    if address is not None:
-        gcs_cli = GcsClient(address=address)
+    if gcs_address is not None:
+        gcs_cli = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
@@ -846,7 +847,7 @@ def serve_proxier(
         options=GRPC_OPTIONS,
     )
     proxy_manager = ProxyManager(
-        address,
+        gcs_address,
         session_dir=session_dir,
         redis_username=redis_username,
         redis_password=redis_password,
@@ -858,7 +859,9 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    add_port_to_grpc_server(server, connection_str)
+    if host != "127.0.0.1" and host != "localhost":
+        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
+    add_port_to_grpc_server(server, f"{host}:{port}")
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,
