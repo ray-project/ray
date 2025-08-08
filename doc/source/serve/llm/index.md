@@ -1,10 +1,10 @@
-(serving-llms-index)=
+(serving-llms)=
 
-## Serving LLMs
+# Serving LLMs
 
 Ray Serve LLM APIs allow users to deploy multiple LLM models together with a familiar Ray Serve API, while providing compatibility with the OpenAI API.
 
-### Features
+## Features
 
 - ⚡️ Automatic scaling and load balancing
 - 🌐 Unified multi-node multi-model deployment
@@ -12,7 +12,7 @@ Ray Serve LLM APIs allow users to deploy multiple LLM models together with a fam
 - 🔄 Multi-LoRA support with shared base models
 - 🚀 Engine agnostic architecture (i.e. vLLM, SGLang, etc)
 
-### Requirements
+## Requirements
 
 ```bash
 pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
@@ -21,15 +21,15 @@ pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
 pip install xgrammar==0.1.11 pynvml==12.0.0
 ```
 
-### Key Components
+## Key Components
 
 The ray.serve.llm module provides two key deployment types for serving LLMs:
 
-#### LLMServer
+### LLMServer
 
 The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
 
-#### OpenAiIngress
+### OpenAiIngress
 
 This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
 
@@ -39,9 +39,9 @@ This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic
 - `/v1/models`: List available models
 - `/v1/models/{model}`: Model information
 
-### Configuration
+## Configuration
 
-#### LLMConfig
+### LLMConfig
 
 The LLMConfig class specifies model details such as:
 

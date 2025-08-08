@@ -17,6 +17,8 @@ vLLM v1 supports two main KV transfer backends:
 
 Make sure that you are using vLLM v1 by setting `VLLM_USE_V1=1` environment variable.
 
+For NixlConnector make sure nixl is installed. If you use [ray-project/ray-llm](https://hub.docker.com/r/rayproject/ray-llm/tags) images you automatically get the dependency installed. 
+
 For LMCacheConnectorV1, also install LMCache:
 
 ```bash
@@ -174,4 +176,4 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 
 LMCache prefill/decode dissagregation official guide:
 
-- [dissagregated serving](https://docs.lmcache.ai/disaggregated_prefill/)
+- [dissagregated serving](https://docs.lmcache.ai/disaggregated_prefill/nixl/index.html)
