@@ -503,7 +503,9 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("build_args_test_depset_py311")
+            depset = manager.get_depset(
+                "build_args_test_depset_py311", build_arg_set="py311_cpu"
+            )
             assert depset.name == "build_args_test_depset_py311"
             assert depset.build_arg_set.name == "py311_cpu"
             assert depset.build_arg_set.build_args["PYTHON_VERSION"] == "py311"
