@@ -94,7 +94,11 @@ class DependencySetManager:
     def get_depset(self, name: str, build_arg_set: Optional[str] = None) -> Depset:
         if build_arg_set:
             for depset in self.config.depsets:
-                if depset.name == name and depset.build_arg_set.name == build_arg_set:
+                if (
+                    depset.name == name
+                    and depset.build_arg_set
+                    and depset.build_arg_set.name == build_arg_set
+                ):
                     return depset
         else:
             for depset in self.config.depsets:
@@ -126,6 +130,7 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
+                build_arg_set=depset.build_arg_set,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
@@ -136,6 +141,7 @@ class DependencySetManager:
                 depsets=depset.depsets,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
+                build_arg_set=depset.build_arg_set,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
@@ -176,11 +182,12 @@ class DependencySetManager:
         requirements: List[str],
         name: str,
         output: str = None,
+        build_arg_set: Optional[str] = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = self.get_depset(source_depset, build_arg_set)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -198,6 +205,7 @@ class DependencySetManager:
         constraints: List[str],
         name: str,
         output: str = None,
+        build_arg_set: Optional[str] = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
     ):
@@ -205,7 +213,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name)
+            depset = self.get_depset(depset_name, build_arg_set)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
