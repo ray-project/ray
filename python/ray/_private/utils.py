@@ -301,6 +301,25 @@ def reset_visible_accelerator_env_vars(
             os.environ[env_var] = env_value
 
 
+@contextlib.contextmanager
+def temporarily_override_resource_env_vars():
+    """Temporarily override the resource env vars."""
+    # Set the visible accelerator env vars, including GPUs (CUDA), neuron_core,
+    # TPU accelerator, etc.
+    visible_accelerator_env_vars_overriden = set_visible_accelerator_ids()
+    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
+    # It will be unset after the task execution if it was overwridden here.
+    # No-op if already set.
+    omp_num_threads_overriden = set_omp_num_threads_if_unset()
+    yield
+    # Reset the accelerator env vars.
+    if visible_accelerator_env_vars_overriden:
+        reset_visible_accelerator_env_vars(visible_accelerator_env_vars_overriden)
+    if omp_num_threads_overriden:
+        # Reset the OMP_NUM_THREADS environ if it was set.
+        os.environ.pop("OMP_NUM_THREADS", None)
+
+
 class Unbuffered(object):
     """There's no "built-in" solution to programatically disabling buffering of
     text files. Ray expects stdout/err to be text files, so creating an
