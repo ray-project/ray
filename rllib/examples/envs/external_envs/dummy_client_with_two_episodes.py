@@ -18,6 +18,7 @@ import gymnasium as gym
 import ray
 
 from ray.rllib.env.policy_client import PolicyClient
+from ray._common.network_utils import build_address
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -47,7 +48,8 @@ if __name__ == "__main__":
     # of local inference) will contain only a RandomEnv dummy env to step through.
     # The actual env we care about is the above generated CartPole one.
     client = PolicyClient(
-        f"http://localhost:{args.port}", inference_mode=args.inference_mode
+        f"http://{build_address('localhost', args.port)}",
+        inference_mode=args.inference_mode,
     )
 
     # Get a dummy obs

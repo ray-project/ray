@@ -22,6 +22,7 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+from ray._common.network_utils import build_address, parse_address
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
@@ -109,7 +110,6 @@ class Node:
             # instance provided.
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
-            [primary_redis_ip, port] = external_redis[0].rsplit(":", 1)
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -196,8 +196,8 @@ class Node:
                 assert not self._default_worker
                 self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
             else:
-                self._webui_url = (
-                    f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
+                self._webui_url = build_address(
+                    ray_params.dashboard_host, ray_params.dashboard_port
                 )
 
         # It creates a session_dir.
@@ -421,14 +421,14 @@ class Node:
     @staticmethod
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
-        _, _, port = ip_port.rpartition(":")
-        if port == ip_port:
+        parts = parse_address(ip_port)
+        if parts is None:
             raise ValueError(f"Port is not specified for address {ip_port}")
         try:
-            _ = int(port)
+            _ = int(parts[1])
         except ValueError:
             raise ValueError(
-                f"Unable to parse port number from {port} (full address = {ip_port})"
+                f"Unable to parse port number from {parts[1]} (full address = {ip_port})"
             )
 
     def check_version_info(self):
@@ -633,7 +633,7 @@ class Node:
     @property
     def runtime_env_agent_address(self):
         """Get the address that exposes runtime env agent as http"""
-        return f"http://{self._raylet_ip_address}:{self._runtime_env_agent_port}"
+        return f"http://{build_address(self._raylet_ip_address, self._runtime_env_agent_port)}"
 
     @property
     def dashboard_agent_listen_port(self):
@@ -941,7 +941,9 @@ class Node:
         result = socket_path
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}:{self._get_unused_port()}"
+                result = (
+                    f"tcp://{build_address(self._localhost, self._get_unused_port())}"
+                )
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -1161,7 +1163,7 @@ class Node:
         # e.g. https://github.com/ray-project/ray/issues/15780
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
-        self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
+        self._gcs_address = build_address(self._node_ip_address, gcs_server_port)
 
     def start_raylet(
         self,
