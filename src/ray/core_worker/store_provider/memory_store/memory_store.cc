@@ -177,7 +177,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
   return ptr;
 }
 
-bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
@@ -198,7 +198,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return true;  // Object already exists in the store, which is fine.
+      return;  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -250,8 +250,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         }
       },
       "CoreWorkerMemoryStore.Put.get_async_callbacks");
-
-  return true;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,

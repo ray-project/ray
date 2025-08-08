@@ -41,7 +41,9 @@ py_test_module_list(
     env = {
         "VLLM_FLASH_ATTN_VERSION": "2",
     },
-    files = glob(["batch/gpu/**/test_*.py"]),
+    files = glob(
+        ["batch/gpu/**/test_*.py"],
+    ),
     tags = [
         "exclusive",
         "gpu",

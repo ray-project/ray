@@ -9,6 +9,7 @@ from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 
 from ray._private.metrics_agent import Record
+from ray._private.telemetry.metric_cardinality import MetricCardinality
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,30 @@ class OpenTelemetryMetricRecorder:
             def callback(options):
                 # Take snapshot of current observations.
                 with self._lock:
-                    observations = self._observations_by_name[name].items()
+                    observations = self._observations_by_name[name]
+                    # Drop high cardinality from tag_set and sum up the value for
+                    # same tag set after dropping
+                    aggregated_observations = defaultdict(float)
+                    high_cardinality_labels = (
+                        MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                    )
+                    for tag_set, val in observations.items():
+                        # Convert frozenset back to dict
+                        tags_dict = dict(tag_set)
+                        # Filter out high cardinality labels
+                        filtered_tags = {
+                            k: v
+                            for k, v in tags_dict.items()
+                            if k not in high_cardinality_labels
+                        }
+                        # Create a key for aggregation
+                        filtered_key = frozenset(filtered_tags.items())
+                        # Sum up values for the same filtered tag set
+                        aggregated_observations[filtered_key] += val
+
                     return [
                         Observation(val, attributes=dict(tag_set))
-                        for tag_set, val in observations
+                        for tag_set, val in aggregated_observations.items()
                     ]
 
             instrument = self.meter.create_observable_gauge(
@@ -160,9 +181,13 @@ class OpenTelemetryMetricRecorder:
                 # the value actually gets exported by OpenTelemetry.
                 self._observations_by_name[name][frozenset(tags.items())] = value
             else:
-                # Set the value of a synchronous metric with the given name and tags.
-                # It is a no-op if the metric is not registered.
                 instrument = self._registered_instruments.get(name)
+                tags = {
+                    k: v
+                    for k, v in tags.items()
+                    if k
+                    not in MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                }
                 if isinstance(instrument, metrics.Counter):
                     instrument.add(value, attributes=tags)
                 elif isinstance(instrument, metrics.UpDownCounter):

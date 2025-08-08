@@ -31,9 +31,9 @@ emphasize-lines: 11-12
 ```
 
 You can supply 3 optional parameters to the decorators.
-- `batch_wait_timeout_s` controls how long Serve should wait for a batch once the first request arrives.
-- `max_batch_size` controls the size of the batch.
-- `max_concurrent_batches` maximum number of batches that can run concurrently.
+- `batch_wait_timeout_s` controls how long Serve should wait for a batch once the first request arrives. The default value is 0.01 (10 milliseconds).
+- `max_batch_size` controls the size of the batch. The default value is 10.
+- `max_concurrent_batches` maximum number of batches that can run concurrently. The default value is 1.
 
 Once the first request arrives, the batching decorator waits for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, the Serve sends the batch to the model regardless the batch size.
 

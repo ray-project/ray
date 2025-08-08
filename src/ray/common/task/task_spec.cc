@@ -529,9 +529,9 @@ const rpc::TensorTransport TaskSpecification::TensorTransport() const {
   return rpc::TensorTransport::OBJECT_STORE;
 }
 
-bool TaskSpecification::ExecuteOutOfOrder() const {
+bool TaskSpecification::AllowOutOfOrderExecution() const {
   return IsActorCreationTask() &&
-         message_->actor_creation_task_spec().execute_out_of_order();
+         message_->actor_creation_task_spec().allow_out_of_order_execution();
 }
 
 bool TaskSpecification::IsAsyncioActor() const {

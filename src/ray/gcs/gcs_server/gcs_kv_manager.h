@@ -22,7 +22,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/postable.h"
 #include "ray/common/status.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {

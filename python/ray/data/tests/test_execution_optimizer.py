@@ -458,7 +458,7 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
+        == DataContext.get_current().target_max_block_size
     )
 
     # Check that the linked logical operator is the same the input op.
@@ -495,7 +495,7 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     if shuffle:
         assert (
             physical_op.actual_target_max_block_size
-            == DataContext.get_current().target_shuffle_max_block_size
+            == DataContext.get_current().target_max_block_size
         )
     else:
         assert (
@@ -604,7 +604,7 @@ def test_sort_operator(
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
+        == DataContext.get_current().target_max_block_size
     )
 
 
@@ -744,7 +744,7 @@ def test_aggregate_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
+        == DataContext.get_current().target_max_block_size
     )
 
     # Check that the linked logical operator is the same the input op.

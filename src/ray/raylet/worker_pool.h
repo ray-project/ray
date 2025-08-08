@@ -34,11 +34,11 @@
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
 
@@ -168,7 +168,6 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
-  /// \return Void.
   virtual void PopWorker(const TaskSpecification &task_spec,
                          const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
@@ -343,13 +342,12 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param job_id ID of the started job.
   /// \param job_config The config of the started job.
-  /// \return Void
+
   void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override;
 
   /// Handles the event that a job is finished.
   ///
   /// \param job_id ID of the finished job.
-  /// \return Void.
   void HandleJobFinished(const JobID &job_id) override;
 
   /// \brief Get the job config by job id.
@@ -381,7 +379,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
-  /// \return void
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Register a new driver.

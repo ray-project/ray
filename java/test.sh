@@ -64,9 +64,12 @@ if [[ ! -d ".git" ]]; then
 fi
 
 echo "Build java maven deps."
-bazel build //java:copy_pom_files
-bazel build //java:cp_java_generated
+bazel run //java:gen_pom_files
+bazel run //java:gen_proto_files
 bazel build //java:gen_maven_deps
+
+echo "Build ray core."
+bazel run //:gen_ray_pkg
 
 echo "Build test jar."
 bazel build //java:all_tests_shaded.jar

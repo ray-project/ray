@@ -62,7 +62,7 @@ message ActorHandle {
   string ray_namespace = 11;
 
   // Whether the actor supports out of order execution.
-  bool execute_out_of_order = 12;
+  bool allow_out_of_order_execution = 12;
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;

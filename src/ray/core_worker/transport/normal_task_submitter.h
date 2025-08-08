@@ -44,16 +44,11 @@ namespace core {
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
 // and ensure fairness between different tasks, as well as plasma task dependencies as
 // a performance optimization because the raylet will fetch plasma dependencies to the
-// scheduled worker. It's also keyed on actor ID to ensure the actor creation task
-// would always request a new worker lease. We need this to let raylet know about
-// direct actor creation task, and reconstruct the actor if it dies. Otherwise if
-// the actor creation task just reuses an existing worker, then raylet will not
-// be aware of the actor and is not able to manage it.  It is also keyed on
-// RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
-// matches the RuntimeEnvHash required by the task spec.
+// scheduled worker. It is also keyed on RuntimeEnvHash, because a worker can only run a
+// task if the worker's RuntimeEnvHash matches the RuntimeEnvHash required by the task
+// spec.
 using RuntimeEnvHash = int;
-using SchedulingKey =
-    std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
+using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, RuntimeEnvHash>;
 
 // Interface that controls the max concurrent pending lease requests
 // per scheduling category.
@@ -136,15 +131,6 @@ class NormalTaskSubmitter {
   bool CheckNoSchedulingKeyEntriesPublic() {
     absl::MutexLock lock(&mu_);
     return scheduling_key_entries_.empty();
-  }
-
-  int64_t GetNumTasksSubmitted() const {
-    return num_tasks_submitted_.load(std::memory_order_relaxed);
-  }
-
-  int64_t GetNumLeasesRequested() {
-    absl::MutexLock lock(&mu_);
-    return num_leases_requested_;
   }
 
   /// Report worker backlog information to the local raylet.
@@ -374,9 +360,6 @@ class NormalTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
-
-  std::atomic<int64_t> num_tasks_submitted_ = 0;
-  int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace core

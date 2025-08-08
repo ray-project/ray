@@ -21,7 +21,8 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/client_connection.h"
+#include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/ipc/client_connection.h"
 
 namespace ray::raylet {
 
@@ -31,23 +32,21 @@ class RayletConnection {
  public:
   /// Connect to the raylet.
   ///
+  /// \param io_service The IO service used for interacting with the socket.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
-  /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
-  ///        additional message will be sent to register as one.
-  /// \param job_id The ID of the driver. This is non-nil if the client is a
-  ///        driver.
-  /// \return The connection information.
+  /// \param num_retries The number of times to retry connecting before giving up.
+  /// \param timeout The time to wait between retries.
+  /// \return The connection.
   RayletConnection(instrumented_io_context &io_service,
                    const std::string &raylet_socket,
                    int num_retries,
                    int64_t timeout);
 
-  /// Send request to raylet without waiting for response.
+  /// Send a request to raylet asynchronously.
   ray::Status WriteMessage(ray::protocol::MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
-  /// Send request to raylet and blockingly wait for response.
+  /// Send a request to raylet and synchronously wait for the response.
   ray::Status AtomicRequestReply(ray::protocol::MessageType request_type,
                                  ray::protocol::MessageType reply_type,
                                  std::vector<uint8_t> *reply_message,

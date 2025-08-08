@@ -130,8 +130,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",
                         f"PIP_REQUIREMENTS={byod_requirements}",
-                        "--build-arg",
-                        "DEBIAN_REQUIREMENTS=requirements_debian_byod.txt",
                         "-t",
                         byod_image,
                         "-f",

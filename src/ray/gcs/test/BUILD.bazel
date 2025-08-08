@@ -8,7 +8,8 @@ ray_cc_library(
     deps = [
         "//src/ray/common:test_util",
         "//src/ray/gcs:gcs_pb_util",
-        "//src/ray/rpc:gcs_service_rpc",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
     ],
 )
 

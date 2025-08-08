@@ -36,6 +36,9 @@ The accelerators natively supported by Ray Core are:
    * - Huawei Ascend
      - NPU
      - Experimental, supported by the community
+   * - Rebellions RBLN
+     - RBLN
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -115,6 +118,16 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``ASCEND_RT_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the Huawei Ascend NPUs that are visible to Ray.
             For example, ``ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
+            lets Ray only see devices 1 and 3.
+
+    .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        .. tip::
+
+            You can set the ``RBLN_DEVICES`` environment variable before starting a Ray node
+            to limit the Rebellions RBLNs that are visible to Ray.
+            For example, ``RBLN_DEVICES=1,3 ray start --head --resources='{"RBLN": 2}'``
             lets Ray only see devices 1 and 3.
 
 .. note::
@@ -405,6 +418,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (npu_task pid=51830) NPU IDs: [1]
             (npu_task pid=51830) ASCEND_RT_VISIBLE_DEVICES: 1
 
+    .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"RBLN": 2})
+
+            @ray.remote(resources={"RBLN": 1})
+            class RBLNActor:
+                def ping(self):
+                    print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+                    print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+            @ray.remote(resources={"RBLN": 1})
+            def rbln_task():
+                print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+                print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+            rbln_actor = RBLNActor.remote()
+            ray.get(rbln_actor.ping.remote())
+            # The actor uses the first RBLN so the task uses the second one.
+            ray.get(rbln_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (RBLNActor pid=52420) RBLN IDs: [0]
+            (RBLNActor pid=52420) RBLN_DEVICES: 0
+            (rbln_task pid=51830) RBLN IDs: [1]
+            (rbln_task pid=51830) RBLN_DEVICES: 1
+
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
@@ -548,6 +600,11 @@ so multiple tasks and actors can share the same accelerator.
             # The four tasks created here can execute concurrently
             # and share the same NPU.
             ray.get([f.remote() for _ in range(4)])
+
+    .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        Rebellions RBLN doesn't support fractional resources.
 
 
 **Note:** It is the user's responsibility to make sure that the individual tasks

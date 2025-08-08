@@ -844,9 +844,8 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
-  RAY_LOG(INFO)
-      << "A new node: " << node_id
-      << " registered, will try to reschedule all the infeasible placement groups.";
+  RAY_LOG(DEBUG).WithField(node_id)
+      << "A new node has been added, trying to schedule pending placement groups.";
 
   // Move all the infeasible placement groups to the pending queue so that we can
   // reschedule them.
@@ -877,11 +876,11 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
   for (const auto &placement_group_id : groups_to_remove) {
     RemovePlacementGroup(placement_group_id, [placement_group_id](Status status) {
       if (status.ok()) {
-        RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
-                      << " is successfully removed because the job died.";
+        RAY_LOG(INFO).WithField(placement_group_id)
+            << "Removed placement group because its job finished.";
       } else {
-        RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
-                         << " upon a job died, status:" << status;
+        RAY_LOG(WARNING).WithField(placement_group_id)
+            << "Failed to remove placement group after its job finished: " << status;
       }
     });
   }
@@ -905,11 +904,12 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
   for (const auto &placement_group_id : groups_to_remove) {
     RemovePlacementGroup(placement_group_id, [placement_group_id](Status status) {
       if (status.ok()) {
-        RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
-                      << " is successfully removed because the creator actor died.";
+        RAY_LOG(INFO).WithField(placement_group_id)
+            << "Removed placement group because its creator actor exited.";
       } else {
-        RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
-                         << " upon an actor death, status:" << status.ToString();
+        RAY_LOG(WARNING).WithField(placement_group_id)
+            << "Failed to remove placement group after its creator actor exited: "
+            << status;
       }
     });
   }

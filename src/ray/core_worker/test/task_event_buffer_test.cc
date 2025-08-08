@@ -463,8 +463,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   rpc::events::AddEventsRequest add_events_request;
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .WillOnce(DoAll(
@@ -524,8 +522,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
     rpc::events::AddEventsReply reply_1;
     Status status_1 = Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN);
     rpc::events::AddEventsReply reply_2;
-    reply_2.mutable_status()->set_code(/*OK*/ 0);
-    reply_2.mutable_status()->set_message("All events received");
     Status status_2 = Status::OK();
 
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
@@ -547,7 +543,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   }
   if (to_aggregator) {
     ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
-                  TaskEventBufferCounter::kTotalNumFailedToReportToAggregator),
+                  TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator),
               1);
   }
 
@@ -570,7 +566,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   }
   if (to_aggregator) {
     ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
-                  TaskEventBufferCounter::kTotalNumFailedToReportToAggregator),
+                  TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator),
               1);
   }
 }
@@ -682,8 +678,6 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .Times(num_events / batch_size)
@@ -788,8 +782,6 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .WillOnce(DoAll(

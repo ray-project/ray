@@ -131,8 +131,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers,
-             bool is_from_worker) override {
+             std::vector<plasma::ObjectBuffer> *object_buffers) override {
     for (const auto &id : object_ids) {
       auto &buffers = objects_in_plasma_[id];
       plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
@@ -252,7 +251,7 @@ TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_addre
                                              /*is_asyncio=*/false,
                                              /*concurrency_groups=*/{},
                                              /*extension_data=*/"",
-                                             /*execute_out_of_order=*/false,
+                                             /*allow_out_of_order_execution=*/false,
                                              /*root_detached_actor_id=*/actor_id);
   return task_spec_builder;
 }

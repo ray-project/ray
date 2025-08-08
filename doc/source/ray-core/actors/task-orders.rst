@@ -7,9 +7,9 @@ Synchronous, Single-Threaded Actor
 ----------------------------------
 In Ray, an actor receives tasks from multiple submitters (including driver and workers).
 For tasks received from the same submitter, a synchronous, single-threaded actor executes
-them in the order they were submitted, if the actor tasks never retry.
-In other words, a given task will not be executed until previously submitted tasks from
-the same submitter have finished execution.
+them in the order they were submitted, unless you set ``allow_out_of_order_execution``,
+or Ray retries tasks. In other words, a given task will not be executed until previously
+submitted tasks from the same submitter have finished execution.
 For actors where `max_task_retries` is set to a non-zero number, the task
 execution order is not guaranteed when task retries occur.
 

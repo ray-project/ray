@@ -43,7 +43,6 @@ class ObjectRecoveryManager {
   ObjectRecoveryManager(
       rpc::Address rpc_address,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-      std::shared_ptr<RayletClientInterface> local_object_pinning_client,
       std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
           object_lookup,
       TaskManagerInterface &task_manager,
@@ -54,7 +53,6 @@ class ObjectRecoveryManager {
         reference_counter_(reference_counter),
         rpc_address_(std::move(rpc_address)),
         raylet_client_pool_(std::move(raylet_client_pool)),
-        local_object_pinning_client_(std::move(local_object_pinning_client)),
         object_lookup_(std::move(object_lookup)),
         in_memory_store_(in_memory_store),
         recovery_failure_callback_(std::move(recovery_failure_callback)) {}
@@ -118,11 +116,8 @@ class ObjectRecoveryManager {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Raylet client pool for producing new clients to pin objects at remote nodes.
+  /// Raylet client pool for producing clients to pin objects
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
-
-  // Client that can be used to pin objects from the local raylet.
-  std::shared_ptr<RayletClientInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
   std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
@@ -134,16 +129,11 @@ class ObjectRecoveryManager {
   /// Callback to call if recovery fails.
   ObjectRecoveryFailureCallback recovery_failure_callback_;
 
-  /// Protects below fields.
-  mutable absl::Mutex mu_;
-
-  /// Cache of gRPC clients to remote raylets for pinning objects.
-  absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>
-      remote_object_pinning_clients_ ABSL_GUARDED_BY(mu_);
-
   /// Objects that are currently pending recovery. Calls to RecoverObject for
   /// objects currently in this set are idempotent.
-  absl::flat_hash_set<ObjectID> objects_pending_recovery_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex objects_pending_recovery_mu_;
+  absl::flat_hash_set<ObjectID> objects_pending_recovery_
+      ABSL_GUARDED_BY(objects_pending_recovery_mu_);
 };
 
 }  // namespace core
