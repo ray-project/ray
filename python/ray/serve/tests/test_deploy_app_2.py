@@ -14,7 +14,11 @@ import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
 )
@@ -611,6 +615,7 @@ def test_num_replicas_auto_api(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": DEFAULT_AUTOSCALING_POLICY},
     }
 
 
@@ -663,6 +668,7 @@ def test_num_replicas_auto_basic(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": DEFAULT_AUTOSCALING_POLICY},
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)

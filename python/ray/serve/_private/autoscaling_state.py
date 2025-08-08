@@ -83,8 +83,8 @@ class AutoscalingContext:
     """Rich context provided to custom autoscaling policies."""
 
     # Deployment information
-    deployment_id: DeploymentID
-    deployment_name: str
+    deployment_id: DeploymentID = None
+    deployment_name: str = None
     app_name: Optional[str] = None
 
     # Current state
