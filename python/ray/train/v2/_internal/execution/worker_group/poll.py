@@ -75,7 +75,7 @@ class WorkerGroupPollStatus:
                 if normalized_error not in normalized_error_to_original:
                     normalized_error_to_original[normalized_error] = error_str
 
-                # Fully show errors for non-graceful worker failures
+                # Fully show errors for non-graceful worker failures or running workers
                 if (
                     isinstance(status.error, WorkerHealthCheckFailedError)
                     or status.running
