@@ -120,11 +120,13 @@ ERROR_TYPE = [
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
+
 # See `common.proto` for more details.
 class TensorTransportEnum(Enum):
     OBJECT_STORE = TensorTransport.Value("OBJECT_STORE")
     NCCL = TensorTransport.Value("NCCL")
     GLOO = TensorTransport.Value("GLOO")
+    HCCL = TensorTransport.Value("HCCL")
 
     @classmethod
     def from_str(cls, name: str) -> "TensorTransportEnum":

@@ -20,8 +20,10 @@ from ray.util.collective.collective import (
     reducescatter_multigpu,
     send,
     send_multigpu,
+    send_multidevice,
     recv,
     recv_multigpu,
+    recv_multidevice,
     get_group_handle,
 )
 
@@ -47,7 +49,9 @@ __all__ = [
     "reducescatter_multigpu",
     "send",
     "send_multigpu",
+    "send_multidevice",
     "recv",
     "recv_multigpu",
+    "recv_multidevice",
     "get_group_handle",
 ]
