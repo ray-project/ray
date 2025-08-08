@@ -13,9 +13,8 @@ class TrainFnUtils:
     """Utility class providing an abstraction layer between user-facing APIs
         and :class:`~ray.train.v2._internal.execution.context.TrainContext`.
 
-    This is one layer between user facing APIs and :class:`~ray.train.v2._internal.execution.context.TrainContext`.
     It should be set before the users' training function is called, like training workers initialization.
-    This class can be patched if new user APIs behaviors is wanted. For example,
+    This class can be patched if new user APIs behaviors is wanted.
     """
 
     def report(
