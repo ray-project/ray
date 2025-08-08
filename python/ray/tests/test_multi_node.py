@@ -79,7 +79,10 @@ print("success")
         result = True
         print("list of idle workers:")
         for proc in psutil.process_iter(attrs=["name"], ad_value=None):
-            if proc.info["name"] and ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.info["name"]:
+            if (
+                proc.info["name"]
+                and ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.info["name"]
+            ):
                 print(f"{proc}")
                 result = False
         return result
