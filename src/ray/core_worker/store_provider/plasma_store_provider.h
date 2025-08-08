@@ -96,7 +96,7 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
-      const std::shared_ptr<raylet::RayletClient> &raylet_client,
+      const std::shared_ptr<ipc::RayletIpcClient> &raylet_ipc_client,
       const std::shared_ptr<ReferenceCounter> &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,

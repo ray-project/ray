@@ -22,6 +22,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/ipc/raylet_ipc_client.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace core {
