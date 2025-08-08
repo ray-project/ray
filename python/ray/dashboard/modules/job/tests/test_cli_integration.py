@@ -142,11 +142,38 @@ class TestRayAddress:
             assert "succeeded" in stdout
 
     @pytest.mark.parametrize(
-        "ray_client_address", ["127.0.0.1:8265", "ray://127.0.0.1:8265"]
+        "ray_api_server_address,should_fail",
+        [
+            ("http://127.0.0.1:8265", False),  # correct API server
+            ("127.0.0.1:8265", True),  # wrong format without http
+            ("http://127.0.0.1:9999", True),  # wrong port
+        ],
     )
-    def test_ray_client_address(self, ray_start_stop, ray_client_address: str):
+    def test_ray_api_server_address(
+        self,
+        ray_start_stop,
+        ray_api_server_address: str,
+        should_fail: bool,
+    ):
+        # Always use problematic client address to ensure
+        # RAY_API_SERVER_ADDRESS overrides RAY_ADDRESS client settings
+        with set_env_var("RAY_ADDRESS", "ray://127.0.0.1:8265"):
+            with set_env_var("RAY_API_SERVER_ADDRESS", ray_api_server_address):
+                _run_cmd("ray job submit -- echo hello", should_fail=should_fail)
+
+    @pytest.mark.parametrize(
+        "ray_client_address,should_fail",
+        [
+            ("127.0.0.1:8265", True),
+            ("ray://127.0.0.1:8265", True),
+            ("http://127.0.0.1:8265", False),
+        ],
+    )
+    def test_ray_client_address(
+        self, ray_start_stop, ray_client_address: str, should_fail: bool
+    ):
         with set_env_var("RAY_ADDRESS", ray_client_address):
-            _run_cmd("ray job submit -- echo hello", should_fail=True)
+            _run_cmd("ray job submit -- echo hello", should_fail=should_fail)
 
     def test_valid_http_ray_address(self, ray_start_stop):
         stdout, _ = _run_cmd("ray job submit -- echo hello")
