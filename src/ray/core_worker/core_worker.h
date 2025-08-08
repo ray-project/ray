@@ -181,7 +181,7 @@ class CoreWorker {
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
-             std::shared_ptr<raylet::RayletClient> local_raylet_client,
+             std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
@@ -1746,7 +1746,7 @@ class CoreWorker {
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
-  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
+  std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
