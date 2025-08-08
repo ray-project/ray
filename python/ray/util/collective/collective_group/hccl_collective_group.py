@@ -53,7 +53,6 @@ class hcclDataTypeEnum:
     HCCL_DATA_TYPE_BFP16 = 11
 
     @classmethod
-    @classmethod
     def from_torch(cls, dtype: torch.dtype) -> int:
         _DTYPE_MAP = {
             torch.int8: cls.HCCL_DATA_TYPE_INT8,
