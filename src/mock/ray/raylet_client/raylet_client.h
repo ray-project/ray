@@ -45,10 +45,6 @@ class MockRayletClientInterface : public RayletClientInterface {
                int64_t timeout_milliseconds),
               (override));
   MOCK_METHOD(ray::Status,
-              WaitForActorCallArgs,
-              (const std::vector<rpc::ObjectReference> &references, int64_t tag),
-              (override));
-  MOCK_METHOD(ray::Status,
               PushError,
               (const ray::JobID &job_id,
                const std::string &type,
