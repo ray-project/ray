@@ -73,7 +73,7 @@ Use by specifying the shared storage path as the :class:`RunConfig(storage_path)
         run_config=train.RunConfig(
             storage_path="/mnt/cluster_storage",
             # HDFS example:
-            # storage_path=f"hdfs://{build_address(hostname, port)}/subpath",
+            # storage_path=f"hdfs://{hostname}:{port}/subpath",
             name="experiment_name",
         )
     )
