@@ -33,7 +33,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ResourceManager,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
@@ -771,7 +773,10 @@ def dedupe_schemas_with_validation(
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
-    if not old_schema:
+
+    from ray.data.block import _is_empty_schema
+
+    if _is_empty_schema(old_schema):
         return bundle, diverged
 
     # This check is fast assuming pyarrow schemas
