@@ -638,7 +638,6 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
         [this, done](const Status &status,
                      std::vector<rpc::GcsNodeInfo> &&node_info_list) {
           for (auto &node_info : node_info_list) {
-            RAY_LOG(ERROR) << node_info.state_snapshot().node_activity().size();
             HandleNotification(std::move(node_info));
           }
           if (done) {
