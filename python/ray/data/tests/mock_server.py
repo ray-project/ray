@@ -8,6 +8,8 @@ import time
 import pytest
 import requests
 
+from ray._common.network_utils import build_address
+
 _proxy_bypass = {
     "http": None,
     "https": None,
@@ -25,7 +27,7 @@ def start_service(service_name, host, port):
     process = sp.Popen(
         args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE
     )  # shell=True
-    url = "http://{host}:{port}".format(host=host, port=port)
+    url = f"http://{build_address(host, port)}"
 
     for i in range(0, 30):
         output = process.poll()
@@ -73,7 +75,7 @@ def stop_process(process):
 def s3_server():
     host = "localhost"
     port = 5002
-    url = "http://{host}:{port}".format(host=host, port=port)
+    url = f"http://{build_address(host, port)}"
     process = start_service("s3", host, port)
     yield url
     stop_process(process)

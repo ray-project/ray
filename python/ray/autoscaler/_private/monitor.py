@@ -21,6 +21,7 @@ from ray._common.ray_constants import (
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
+from ray._common.network_utils import parse_address, build_address
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (
@@ -152,14 +153,14 @@ class Monitor:
         _initialize_internal_kv(self.gcs_client)
 
         if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = parse_address(self.gcs_address)[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None

@@ -34,6 +34,7 @@ import argparse
 
 from ray.rllib.env.policy_client import PolicyClient
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
+from ray._common.network_utils import build_address
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     # Start the client for sending environment information (e.g. observations,
     # actions) to a policy server (listening on port 9900).
     client = PolicyClient(
-        "http://" + args.server + ":" + str(args.port),
+        f"http://{build_address(args.server, args.port)}",
         inference_mode=args.inference_mode,
         update_interval=args.update_interval_local_mode,
     )

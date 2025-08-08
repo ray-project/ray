@@ -18,6 +18,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.air._internal.torch_utils import get_devices
 from ray.train._internal.utils import get_address_and_port
+from ray._common.network_utils import build_address
 
 
 class TorchDistributedWorker(ABC):
@@ -55,7 +56,7 @@ def _init_torch_distributed(
         os.environ["MASTER_PORT"] = str(master_port)
         url = "env://"
     elif init_method == "tcp":
-        url = f"tcp://{master_addr}:{master_port}"
+        url = f"tcp://{build_address(master_addr, master_port)}"
     else:
         raise ValueError(
             f"The provided init_method ("

@@ -12,6 +12,7 @@ from ray._private.test_utils import (
     wait_until_succeeded_without_exception,
     get_node_stats,
 )
+from ray._common.network_utils import build_address
 from ray.core.generated import common_pb2
 
 _WIN32 = os.name == "nt"
@@ -330,7 +331,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
         # Make sure we can ping Prometheus endpoints.
         def test_prometheus_endpoint():
             response = requests.get(
-                "http://localhost:{}".format(metrics_export_port),
+                f"http://{build_address('localhost', metrics_export_port)}",
                 # Fail the request early on if connection timeout
                 timeout=1.0,
             )

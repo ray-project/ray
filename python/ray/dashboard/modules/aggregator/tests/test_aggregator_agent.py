@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     find_free_port,
 )
+from ray._common.network_utils import parse_address, build_address
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
@@ -59,8 +60,8 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     An helper function to get the gRPC stub for the event aggregator agent.
     Should only be used in tests.
     """
-    ip, port = webui_url.split(":")
-    agent_address = f"{ip}:{ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
+    ip, _ = parse_address(webui_url)
+    agent_address = build_address(ip, ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
     assert wait_until_server_available(agent_address)
 
     gcs_address = gcs_address

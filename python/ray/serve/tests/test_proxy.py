@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.serve._private.constants import (
@@ -166,8 +167,12 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
-    head_node_channel = grpc.insecure_channel(f"localhost:{head_node_grpc_port}")
-    worker_node_channel = grpc.insecure_channel(f"localhost:{worker_node_grpc_port}")
+    head_node_channel = grpc.insecure_channel(
+        build_address("localhost", head_node_grpc_port)
+    )
+    worker_node_channel = grpc.insecure_channel(
+        build_address("localhost", worker_node_grpc_port)
+    )
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(

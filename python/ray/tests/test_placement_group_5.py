@@ -15,6 +15,7 @@ from ray.util.state import list_actors, list_placement_groups
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import fetch_prometheus_metrics
+from ray._common.network_utils import build_address
 import ray.scripts.scripts as scripts
 
 
@@ -516,7 +517,10 @@ def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resourc
          is removed successfully.
     """
     context = ray.init(num_cpus=1)
-    prom_address = f"{context.address_info['node_ip_address']}:{context.address_info['metrics_export_port']}"
+    prom_address = build_address(
+        context.address_info["node_ip_address"],
+        context.address_info["metrics_export_port"],
+    )
 
     pg = ray.util.placement_group(
         [{"CPU": 1}],

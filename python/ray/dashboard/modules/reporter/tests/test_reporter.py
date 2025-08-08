@@ -17,6 +17,7 @@ import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
+from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
@@ -217,7 +218,7 @@ def test_prometheus_physical_stats_record(
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+    prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
@@ -284,7 +285,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+    prom_addresses = [build_address(addr, metrics_export_port)]
 
     @ray.remote
     def f():

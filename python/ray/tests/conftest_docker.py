@@ -5,6 +5,7 @@ from pytest_docker_tools import wrappers
 import subprocess
 import docker
 from typing import List
+from ray._common.network_utils import build_address
 
 # If you need to debug tests using fixtures in this file,
 # comment in the volume
@@ -126,7 +127,7 @@ def gen_worker_node(envs, num_cpus):
             "ray",
             "start",
             "--address",
-            f"{head_node_container_name}:6379",
+            build_address(head_node_container_name, 6379),
             "--block",
             # Fix the port of raylet to make sure raylet restarts at the same
             # ip:port is treated as a different raylet.

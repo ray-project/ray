@@ -5,6 +5,7 @@ import threading
 import importlib
 
 import ray
+from ray._common.network_utils import build_address
 from ray.util.annotations import DeveloperAPI
 
 log = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ def _ensure_debugger_port_open_thread_safe():
                 (ray._private.worker.global_worker.node_ip_address, 0)
             )
             ray._private.worker.global_worker.set_debugger_port(port)
-            log.info(f"Ray debugger is listening on {host}:{port}")
+            log.info(f"Ray debugger is listening on {build_address(host, port)}")
         else:
             log.info(f"Ray debugger is already open on {debugger_port}")
 

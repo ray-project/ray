@@ -34,6 +34,7 @@ from prometheus_client.core import (
 )
 
 import ray
+from ray._common.network_utils import build_address
 from ray._private.ray_constants import env_bool
 from ray._private.telemetry.metric_cardinality import (
     WORKER_ID_TAG_KEY,
@@ -780,7 +781,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
+            build_address(node["NodeManagerAddress"], node["MetricsExportPort"])
             for node in nodes
             if node["alive"] is True
         ]
