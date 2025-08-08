@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
