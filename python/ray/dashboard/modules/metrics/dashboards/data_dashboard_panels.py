@@ -486,6 +486,20 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=40,
+        title="(p$pXX) Task Completion Time Without Backpressure",
+        description="Time spent running tasks to completion w/ backpressure.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="histogram_quantile($pXX, sum by (dataset, operator, le) (rate(ray_data_mean_task_completion_time_without_backpressure_bucket{{{global_filters}}}[5m])))",
+                legend="($pXX) Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
     # Ray Data Metrics (Object Store Memory)
     Panel(
         id=13,

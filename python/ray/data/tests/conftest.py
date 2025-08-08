@@ -490,7 +490,7 @@ def op_two_block():
             block_exec_stats.start_time_s + block_params["wall_time"][i]
         )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
-        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.wall_time_s = block_params["cpu_time"][i]
         block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]

@@ -130,6 +130,7 @@ class RunningTaskInfo:
     bytes_outputs: int
     num_rows_produced: int
     start_time: float
+    wall_time: float
 
 
 @dataclass
@@ -395,6 +396,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_type=MetricsType.Histogram,
         metrics_args={"boundaries": histogram_buckets_s},
     )
+    mean_task_completion_time_without_backpressure: float = metric_field(
+        default=0,
+        description="Time spent running tasks to completion without backpressure.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Histogram,
+        metrics_args={"boundaries": histogram_buckets_s},
+    )
 
     # === Actor-related metrics ===
     num_alive_actors: int = metric_field(
@@ -460,6 +468,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
         self._op_task_output_backpressure_stats = TaskDurationStats()
+        self._op_task_duration_without_backpressure_stats = TaskDurationStats()
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
@@ -747,6 +756,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             bytes_outputs=0,
             num_rows_produced=0,
             start_time=time.perf_counter(),
+            wall_time=0,
         )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
@@ -772,6 +782,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 meta.exec_stats is not None and meta.exec_stats.wall_time_s is not None
             )
             self.block_generation_time += meta.exec_stats.wall_time_s
+            task_info.wall_time += meta.exec_stats.wall_time_s
             assert meta.num_rows is not None
             trace_allocation(block_ref, "operator_output")
             if meta.exec_stats.max_uss_bytes is not None:
@@ -807,6 +818,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.mean_task_completion_time = self._op_task_duration_stats.mean()
         self.mean_task_output_backpressure_time = (
             self._op_task_output_backpressure_stats.mean()
+        )
+        assert task_info.wall_time is not None
+        self._op_task_duration_without_backpressure_stats.add_duration(
+            task_info.wall_time
+        )
+        self.mean_task_completion_time_without_backpressure = (
+            self._op_task_duration_without_backpressure_stats.mean()
         )
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
