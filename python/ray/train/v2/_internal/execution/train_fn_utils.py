@@ -6,7 +6,7 @@ from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
-from ray.train.v2.api.context import TrainContext as PublicTrainContext
+from ray.train.v2.api.context import TrainContext as ExternalTrainContext
 
 
 class TrainFnUtils:
@@ -37,14 +37,6 @@ class TrainFnUtils:
             metrics, checkpoint, checkpoint_dir_name
         )
 
-    def get_synchronization_actor(self):
-        """Get the synchronization actor for collective operations among training workers.
-
-        Returns:
-            The synchronization actor used for collective operations.
-        """
-        return get_internal_train_context().get_synchronization_actor()
-
     def get_checkpoint(self):
         """Get the latest checkpoint to resume training from.
 
@@ -67,8 +59,8 @@ class TrainFnUtils:
         """
         return get_internal_train_context().get_dataset_shard(dataset_name)
 
-    def get_context(self) -> PublicTrainContext:
-        return PublicTrainContext()
+    def get_context(self) -> ExternalTrainContext:
+        return ExternalTrainContext()
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None
