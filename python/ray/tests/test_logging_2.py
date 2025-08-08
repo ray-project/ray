@@ -113,6 +113,7 @@ class TestJSONFormatter:
 
         record_dict = json.loads(formatted)
         should_exist = [
+            "process",
             "asctime",
             "levelname",
             "message",
@@ -135,6 +136,7 @@ class TestJSONFormatter:
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
         should_exist = [
+            "process",
             "asctime",
             "levelname",
             "message",
@@ -154,6 +156,7 @@ class TestJSONFormatter:
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
         should_exist = [
+            "process",
             "asctime",
             "levelname",
             "message",
@@ -182,6 +185,7 @@ class TestJSONFormatter:
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
         should_exist = [
+            "process",
             "asctime",
             "levelname",
             "message",
@@ -207,6 +211,7 @@ class TestJSONFormatter:
 
         record_dict = json.loads(formatted)
         should_exist = [
+            "process",
             "asctime",
             "levelname",
             "message",

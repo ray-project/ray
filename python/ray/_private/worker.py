@@ -1445,7 +1445,7 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Debugger instead.
+        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1761,7 +1761,7 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "For debugging consider using Ray debugger. ",
+            " For debugging consider using Ray Distributed Debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
