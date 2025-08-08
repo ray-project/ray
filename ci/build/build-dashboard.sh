@@ -26,36 +26,47 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # -----------------------------
-# Secure nvm installation
+# Install Node.js 14 in $HOME
 # -----------------------------
-NVM_VERSION="v0.39.7"
-NVM_INSTALL_SH="install.sh"
-NVM_INSTALL_URL="https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/${NVM_INSTALL_SH}"
-NVM_SHA256="8e45fa547f428e9196a5613efad3bfa4d4608b74ca870f930090598f5af5f643"  # Precomputed hash (valid as of Aug 2025)
+NODE_VERSION_FULL="${NODE_VERSION_FULL:-14.21.3}"  # override via env if needed
 
-# Download nvm installer
-curl -fsSL -o "$NVM_INSTALL_SH" "$NVM_INSTALL_URL"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) NODE_ARCH="x64" ;;
+  aarch64|arm64) NODE_ARCH="arm64" ;;
+  *)
+    echo "Unsupported arch: $ARCH" >&2
+    exit 2
+    ;;
+esac
 
-# Verify checksum
-echo "${NVM_SHA256}  ${NVM_INSTALL_SH}" | sha256sum -c -
+NODE_BASE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}"
+NODE_TARBALL="node-v${NODE_VERSION_FULL}-linux-${NODE_ARCH}.tar.xz"
+NODE_DIR="$HOME/nodejs"
 
-# Run installer
-bash "$NVM_INSTALL_SH"
-rm "$NVM_INSTALL_SH"
+mkdir -p "$NODE_DIR"
 
-# Load nvm into shell
-export NVM_DIR="$HOME/.nvm"
-# shellcheck source=/dev/null
-source "$NVM_DIR/nvm.sh"
+# Download tarball + checksums
+curl -fsSLO "${NODE_BASE_URL}/${NODE_TARBALL}"
+curl -fsSLO "${NODE_BASE_URL}/SHASUMS256.txt"
+
+# Verify checksum for our tarball only
+grep " ${NODE_TARBALL}\$" SHASUMS256.txt | sha256sum -c -
+
+# Extract
+tar -xJf "$NODE_TARBALL" -C "$NODE_DIR"
+rm -f "$NODE_TARBALL" SHASUMS256.txt
+
+# Add Node to PATH for this session
+export PATH="$NODE_DIR/node-v${NODE_VERSION_FULL}-linux-${NODE_ARCH}/bin:$PATH"
+
+# Quick sanity check
+node -v
+npm -v
 
 # -----------------------------
-# Setup Node.js and build dashboard
+# Build the dashboard
 # -----------------------------
-NODE_VERSION="14"
-nvm install "$NODE_VERSION"
-nvm use "$NODE_VERSION"
-
-# Build the dashboard using Node
 cd "$(dirname "$0")/../../python/ray/dashboard/client"
 
 # Clean previous builds (optional)
