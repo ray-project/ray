@@ -778,7 +778,7 @@ message ActorCreationTaskSpec {
   // The concurrency groups of this actor.
   repeated ConcurrencyGroup concurrency_groups = 13;
   // Whether to enable out of order execution.
-  bool execute_out_of_order = 14;
+  bool allow_out_of_order_execution = 14;
   // The max number of pending actor calls.
   int32 max_pending_calls = 15;
 }
