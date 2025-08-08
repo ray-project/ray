@@ -223,7 +223,7 @@ struct SyncerServerTest {
         io_context, node_id.Binary(), std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
-    auto server_address = BuildAddress("0.0.0.0", port);
+    auto server_address = BuildAddress(GetBindAllAddress(), port);
     grpc::ServerBuilder builder;
     service = std::make_unique<RaySyncerService>(*syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
@@ -855,7 +855,8 @@ class SyncerReactorTest : public ::testing::Test {
           server_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), restart));
         });
     grpc::ServerBuilder builder;
-    builder.AddListeningPort("0.0.0.0:18990", grpc::InsecureServerCredentials());
+    auto address = absl::StrCat(GetBindAllAddress(), ":18990");
+    builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     builder.RegisterService(rpc_service_.get());
     server = builder.BuildAndStart();
 

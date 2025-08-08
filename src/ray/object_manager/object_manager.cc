@@ -25,6 +25,7 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/network_util.h"
 
 namespace asio = boost::asio;
 
@@ -107,7 +108,7 @@ ObjectManager::ObjectManager(
       rpc_work_(rpc_service_.get_executor()),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
-                             config_.object_manager_address == "127.0.0.1",
+                             config_.object_manager_address == GetLoopbackAddress(),
                              ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,

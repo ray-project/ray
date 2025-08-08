@@ -43,4 +43,14 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
 /// \return true if the port is available, false otherwise.
 bool CheckPortFree(int port);
 
+/// Get the loopback address for the current system.
+/// Returns IPv4 loopback (127.0.0.1) if available, otherwise IPv6 loopback (::1).
+/// This function caches the result for performance.
+std::string GetLoopbackAddress();
+
+/// Get the bind-all address for the current system.
+/// Returns IPv4 bind-all (0.0.0.0) if available, otherwise IPv6 bind-all (::).
+/// This function caches the result for performance.
+std::string GetBindAllAddress();
+
 }  // namespace ray

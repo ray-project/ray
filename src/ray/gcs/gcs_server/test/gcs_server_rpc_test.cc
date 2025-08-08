@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 
@@ -56,8 +57,8 @@ class GcsServerTest : public ::testing::Test {
 
     // Create gcs rpc client
     client_call_manager_.reset(new rpc::ClientCallManager(io_service_, false));
-    client_.reset(
-        new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
+    client_.reset(new rpc::GcsRpcClient(
+        GetBindAllAddress(), gcs_server_->GetPort(), *client_call_manager_));
   }
 
   void TearDown() override {

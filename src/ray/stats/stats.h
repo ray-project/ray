@@ -86,7 +86,7 @@ static inline void Init(
   // Register the metric recorder.
   if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        BuildAddress("127.0.0.1", metrics_agent_port),
+        BuildAddress(GetLoopbackAddress(), metrics_agent_port),
         std::chrono::milliseconds(
             absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
         std::chrono::milliseconds(
@@ -102,7 +102,7 @@ static inline void Init(
         StatsConfig::instance().GetHarvestInterval());
     OpenCensusProtoExporter::Register(metrics_agent_port,
                                       (*metrics_io_service),
-                                      "127.0.0.1",
+                                      GetLoopbackAddress(),
                                       worker_id,
                                       metrics_report_batch_size,
                                       max_grpc_payload_size);

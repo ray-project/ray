@@ -161,8 +161,8 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
-  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
-  /// interfaces (0.0.0.0)
+  /// Listen to localhost only if it's true, otherwise listen to all network
+  /// interfaces
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;

@@ -71,4 +71,70 @@ bool CheckPortFree(int port) {
   return !ec.failed();
 }
 
+std::string GetLoopbackAddress() {
+  static std::string cached_address = []() -> std::string {
+    // First try IPv4
+    boost::asio::io_context io_context;
+    tcp::socket socket(io_context);
+    boost::system::error_code ec;
+
+    socket.open(tcp::v4(), ec);
+    if (!ec) {
+      socket.bind(tcp::endpoint(boost::asio::ip::address_v4::loopback(), 0), ec);
+      socket.close();
+      if (!ec) {
+        return "127.0.0.1";
+      }
+    }
+
+    // Try IPv6 if IPv4 failed
+    socket.open(tcp::v6(), ec);
+    if (!ec) {
+      socket.bind(tcp::endpoint(boost::asio::ip::address_v6::loopback(), 0), ec);
+      socket.close();
+      if (!ec) {
+        return "::1";
+      }
+    }
+
+    // If neither works, fallback to IPv4
+    return "127.0.0.1";
+  }();
+
+  return cached_address;
+}
+
+std::string GetBindAllAddress() {
+  static std::string cached_address = []() -> std::string {
+    // First try IPv4
+    boost::asio::io_context io_context;
+    tcp::socket socket(io_context);
+    boost::system::error_code ec;
+
+    socket.open(tcp::v4(), ec);
+    if (!ec) {
+      socket.bind(tcp::endpoint(boost::asio::ip::address_v4::any(), 0), ec);
+      socket.close();
+      if (!ec) {
+        return "0.0.0.0";
+      }
+    }
+
+    // Try IPv6 if IPv4 failed
+    socket.open(tcp::v6(), ec);
+    if (!ec) {
+      socket.bind(tcp::endpoint(boost::asio::ip::address_v6::any(), 0), ec);
+      socket.close();
+      if (!ec) {
+        return "::";
+      }
+    }
+
+    // If neither works, fallback to IPv4
+    return "0.0.0.0";
+  }();
+
+  return cached_address;
+}
+
 }  // namespace ray

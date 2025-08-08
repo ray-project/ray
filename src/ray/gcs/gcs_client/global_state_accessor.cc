@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace gcs {
@@ -472,7 +473,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                                timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
     }
     if (node_infos.empty() && node_ip_address == gcs_address) {
-      selector.set_node_ip_address("127.0.0.1");
+      selector.set_node_ip_address(GetLoopbackAddress());
       {
         absl::ReaderMutexLock lock(&mutex_);
         auto timeout_ms =
