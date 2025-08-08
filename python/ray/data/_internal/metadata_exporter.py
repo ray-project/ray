@@ -161,12 +161,17 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     elif isinstance(obj, float):
         import math
 
+        # structs do not support Nans and infinities
         if math.isnan(obj):
             return "NaN"
         elif math.isinf(obj):
             return "Infinity" if obj > 0 else "-Infinity"
         return obj
-    elif isinstance(obj, (int, bool)) or obj is None:
+    elif isinstance(obj, int):
+        # ints will be converted to floats upon serialization
+        # manually do it here for clarity
+        return float(obj)
+    elif isinstance(obj, (bool)) or obj is None:
         return obj
     elif isinstance(obj, str):
         return _add_ellipsis(obj, truncate_length)

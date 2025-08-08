@@ -1,7 +1,7 @@
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Tuple
+from typing import Tuple
 
 import pytest
 
@@ -62,26 +62,6 @@ def ray_start_cluster_with_export_api_write(shutdown_only):
         runtime_env={"env_vars": {"RAY_enable_export_api_write": "1"}},
     ) as res:
         yield res
-
-
-def normalize_json_value(value: Any) -> Any:
-    """This function is used for testing purposes
-
-    Dataset Metadata export will convert ints to floats.
-    In order to perform a comparision of expected output, we normalize
-    each value in the dictionary. Please see below for full definition
-    """
-    if isinstance(value, dict):
-        # convert dict keys to strings
-        return {str(k): normalize_json_value(v) for k, v in value.items()}
-    elif isinstance(value, (list, tuple, set)):
-        # Any iterables should be converted to lists
-        return [normalize_json_value(v) for v in value]
-    elif isinstance(value, int):
-        # ints -> floats
-        return float(value)
-    else:
-        return value
 
 
 @dataclass
@@ -221,9 +201,7 @@ def _test_dataset_metadata_export(topology):
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_DATASET_METADATA"
 
-    assert data[0]["event_data"]["topology"] == normalize_json_value(
-        sanitize_for_struct(topology)
-    )
+    assert data[0]["event_data"]["topology"] == sanitize_for_struct(topology)
     assert data[0]["event_data"]["dataset_id"] == STUB_DATASET_ID
     assert data[0]["event_data"]["job_id"] == STUB_JOB_ID
     assert data[0]["event_data"]["start_time"] is not None
@@ -344,8 +322,8 @@ def test_export_multiple_datasets(
     ), f"First dataset {first_dataset_id} not found in exported data"
     first_entry = datasets_by_id[first_dataset_id]
     assert first_entry["source_type"] == "EXPORT_DATASET_METADATA"
-    assert first_entry["event_data"]["topology"] == normalize_json_value(
-        sanitize_for_struct(dummy_dataset_topology)
+    assert first_entry["event_data"]["topology"] == sanitize_for_struct(
+        dummy_dataset_topology
     )
     assert first_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert first_entry["event_data"]["start_time"] is not None
@@ -356,8 +334,8 @@ def test_export_multiple_datasets(
     ), f"Second dataset {second_dataset_id} not found in exported data"
     second_entry = datasets_by_id[second_dataset_id]
     assert second_entry["source_type"] == "EXPORT_DATASET_METADATA"
-    assert second_entry["event_data"]["topology"] == normalize_json_value(
-        sanitize_for_struct(second_topology)
+    assert second_entry["event_data"]["topology"] == sanitize_for_struct(
+        second_topology
     )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
