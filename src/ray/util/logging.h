@@ -96,6 +96,7 @@ inline constexpr std::string_view kLogKeyMessage = "message";
 inline constexpr std::string_view kLogKeyFilename = "filename";
 inline constexpr std::string_view kLogKeyLineno = "lineno";
 inline constexpr std::string_view kLogKeyComponent = "component";
+inline constexpr std::string_view kLogKeyClusterID = "cluster_id";
 inline constexpr std::string_view kLogKeyJobID = "job_id";
 inline constexpr std::string_view kLogKeyWorkerID = "worker_id";
 inline constexpr std::string_view kLogKeyNodeID = "node_id";
@@ -184,6 +185,10 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) && \
       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
+
+#define RAY_LOG_ONCE_PER_PROCESS(level)                   \
+  static std::atomic_bool once_log_flag##__LINE__(false); \
+  if (!once_log_flag##__LINE__.exchange(true)) RAY_LOG(level)
 
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
