@@ -42,20 +42,93 @@ class DatasetManager:
     ):
         self._datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
         self._data_config = data_config
+        self._datasets_to_split = (
+            set(self._datasets.keys())
+            if data_config._datasets_to_split == "all"
+            else set(data_config._datasets_to_split)
+        )
         self._world_size = world_size
         self._worker_node_ids = worker_node_ids
 
-        # Maps dataset name to a list of `DataIterator`s corresponding to Train worker ranks.
+        # Maps dataset name to a list of cached `DataIterator`s corresponding to
+        # Train worker ranks.
         self._dataset_iterators: Dict[str, List[DataIterator]] = {}
 
         # A condition variable to synchronize the calls to the async `get_dataset_shard` method.
         self._condition = asyncio.Condition()
 
-        # TODO: Is this needed?
         DataContext._set_current(data_context)
 
-    async def _get_base_dataset(self, dataset_info: DatasetShardMetadata) -> Dataset:
-        return self._datasets[dataset_info.dataset_name]
+    def _create_dataset_iterators(
+        self, dataset_info: DatasetShardMetadata, base_dataset: Dataset
+    ) -> List[DataIterator]:
+        dataset_name = dataset_info.dataset_name
+
+        iterators_per_rank = self._data_config.configure(
+            datasets={dataset_name: base_dataset},
+            world_size=self._world_size,
+            worker_handles=None,
+            worker_node_ids=self._worker_node_ids,
+        )
+        assert len(iterators_per_rank) == self._world_size
+        # TODO: Update DataConfig to return a List[DataIterator] directly
+        # for configuring a single dataset.
+        # Convert the List[Dict[str, DataIterator]] to a List[DataIterator],
+        # since we only configured one dataset.
+        return [iterators_per_rank[i][dataset_name] for i in range(self._world_size)]
+
+    async def _get_unsharded_dataset_iterator(
+        self, dataset_info: DatasetShardMetadata
+    ) -> DataIterator:
+        """Returns the dataset iterator for a dataset that is excluded
+        from `DataConfig.datasets_to_split`.
+
+        Note that this method is NOT a barrier across workers and can be called
+        by any subset of workers.
+        """
+        dataset_name = dataset_info.dataset_name
+        world_rank = dataset_info.world_rank
+
+        if dataset_name not in self._dataset_iterators:
+            self._dataset_iterators[dataset_name] = self._create_dataset_iterators(
+                dataset_info, self._datasets[dataset_name]
+            )
+
+        return self._dataset_iterators[dataset_name][world_rank]
+
+    async def _get_sharded_dataset_iterator(
+        self, dataset_info: DatasetShardMetadata
+    ) -> DataIterator:
+        """Returns the dataset iterator for a dataset that is included
+        in `DataConfig.datasets_to_split`.
+
+        Note that this method is a barrier across workers.
+        """
+        dataset_name = dataset_info.dataset_name
+        world_rank = dataset_info.world_rank
+
+        async with self._condition:
+            if dataset_name in self._dataset_iterators:
+                # If the dataset iterators have already been created, return the
+                # existing one.
+                iterator = self._dataset_iterators[dataset_name][world_rank]
+            elif world_rank == 0:
+                # In this case, the dataset iterators have not been created yet.
+                # The dataset only needs to be configured once globally for all workers.
+                # Do it only when the rank 0 worker calls this method.
+                iterators = self._create_dataset_iterators(
+                    dataset_info, self._datasets[dataset_name]
+                )
+                iterator = iterators[world_rank]
+
+                # Cache the dataset iterators for future use.
+                self._dataset_iterators[dataset_name] = iterators
+                self._condition.notify_all()
+            else:
+                # Wait for the dataset iterators to be created by the rank 0 worker.
+                await self._condition.wait()
+                iterator = self._dataset_iterators[dataset_name][world_rank]
+        return iterator
 
     async def get_dataset_shard(
         self,
@@ -76,44 +149,12 @@ class DatasetManager:
         and notifies all workers hanging on the condition variable.
         Rank 3 calls get_dataset_shard, returns the cached iterator.
         """
-
         dataset_name = dataset_info.dataset_name
-        world_rank = dataset_info.world_rank
 
-        async with self._condition:
-            if dataset_name in self._dataset_iterators:
-                # If the dataset iterators have already been created, return the
-                # existing one.
-                shard = self._dataset_iterators[dataset_name][world_rank]
-            elif world_rank == 0:
-                # In this case, the dataset iterators have not been created yet.
-                # The dataset only needs to be configured once globally for all workers.
-                # Do it only when the rank 0 worker calls this method.
-                base_dataset = await self._get_base_dataset(dataset_info)
-
-                iterators_per_rank = self._data_config.configure(
-                    datasets={dataset_name: base_dataset},
-                    world_size=self._world_size,
-                    worker_handles=None,
-                    worker_node_ids=self._worker_node_ids,
-                )
-                assert len(iterators_per_rank) == self._world_size
-                # Convert the List[Dict[str, DataIterator]] to a List[DataIterator],
-                # since we only configured one dataset.
-                shards = [
-                    iterators_per_rank[i][dataset_name] for i in range(self._world_size)
-                ]
-                shard = shards[world_rank]
-
-                # Cache the dataset iterators for future use.
-                self._dataset_iterators[dataset_name] = shards
-                self._condition.notify_all()
-            else:
-                # Wait for the dataset iterators to be created by the rank 0 worker.
-                await self._condition.wait()
-                shard = self._dataset_iterators[dataset_name][world_rank]
-
-        return shard
+        if dataset_name in self._datasets_to_split:
+            return await self._get_sharded_dataset_iterator(dataset_info)
+        else:
+            return await self._get_unsharded_dataset_iterator(dataset_info)
 
 
 class DatasetsSetupCallback(WorkerGroupCallback):
