@@ -546,7 +546,7 @@ def reducescatter(
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
-            "must not be equal to world_size."
+            "must be equal to world_size."
         )
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
@@ -866,6 +866,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.TORCH_GLOO:
         if not torch_distributed_available():
             raise RuntimeError("torch.distributed is not available.")
+    elif backend == types.Backend.HCCL:
+        if not hccl_available():
+            raise RuntimeError("HCCL is not available.")
 
 
 def _check_inside_actor():
