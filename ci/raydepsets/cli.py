@@ -91,11 +91,18 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str) -> Depset:
-        for depset in self.config.depsets:
-            if depset.name == name:
-                return depset
-        raise KeyError(f"Dependency set {name} not found")
+    def get_depset(self, name: str, build_arg_set: Optional[str] = None) -> Depset:
+        if build_arg_set:
+            for depset in self.config.depsets:
+                if depset.name == name and depset.build_arg_set == build_arg_set:
+                    return depset
+        else:
+            for depset in self.config.depsets:
+                if depset.name == name and depset.build_arg_set is None:
+                    return depset
+        raise KeyError(
+            f"Dependency set {name} and build_arg_set {build_arg_set} not found"
+        )
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
