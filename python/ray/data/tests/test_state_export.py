@@ -81,8 +81,6 @@ def normalize_json_value(value: Any) -> Any:
             return "Infinity" if value > 0 else "-Infinity"
         elif math.isnan(value):
             return "NaN"
-        elif value.is_integer():
-            return float(value)
         return value
     elif isinstance(value, int):
         return float(value)
