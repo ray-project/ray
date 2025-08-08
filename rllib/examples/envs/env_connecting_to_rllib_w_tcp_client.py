@@ -1,6 +1,6 @@
 """Example of running against a TCP-connected external env performing its own inference.
 
-The example uses a custom EnvRunner (TcpClientInferenceEnvRunner) to allow
+The example uses a custom EnvRunner (EnvRunnerServerForExternalInference) to allow
 connections from one or more TCP clients to RLlib's EnvRunner actors, which act as
 RL servers.
 In this example, action inference for stepping the env is performed on the client's
@@ -60,16 +60,15 @@ From the dummy client (thread), you should see at the end:
 ConnectionError: Error receiving message from peer on socket ...
 ```
 """
-from functools import partial
 import threading
 
 import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.tcp_client_inference_env_runner import (
-    _dummy_client,
-    TcpClientInferenceEnvRunner,
+from ray.rllib.env.external.rllib_gateway import RLlibGateway
+from ray.rllib.env.external.env_runner_server_for_external_inference import (
+    EnvRunnerServerForExternalInference,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -90,20 +89,57 @@ parser.add_argument(
     help="The port for RLlib's EnvRunner to listen to for incoming UE5 connections. "
     "You need to specify the same port inside your UE5 `RLlibClient` plugin.",
 )
+parser.add_argument(
+    "--use-dummy-gateway",
+    action="store_true",
+    help="If set, the script runs with its own RLlibGateway acting as a dummy external "
+    "simulator. Otherwise connect on your own from your C++ application using "
+    "an RLlibGateway instance.",
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Start the dummy CartPole client in a thread (and do its thing in parallel).
-    client_thread = threading.Thread(
-        target=partial(
-            _dummy_client,
-            port=args.port
-            + (args.num_env_runners if args.num_env_runners is not None else 1),
-        ),
-    )
-    client_thread.start()
+    # Start the dummy CartPole "simulation", which uses a (python) RLlibGateway
+    # instance.
+    if args.use_dummy_gateway:
+        rllib_gateway = RLlibGateway(
+            address="localhost",
+            # Connect to the first remote EnvRunner, of - if there is no remote one -
+            # to the local EnvRunner.
+            port=(
+                args.port
+                + (args.num_env_runners if args.num_env_runners is not None else 1)
+            ),
+        )
+
+        def _run_simulation():
+            # Create env and reset it.
+            env = gym.make("CartPole-v1")
+            obs, infos = env.reset()
+            episode_return = 0.0
+            reward = 0.0
+            eps = 0
+
+            while True:
+                action = rllib_gateway.get_action(reward, obs)
+                obs, reward, terminated, truncated, infos = env.step(action)
+                episode_return += reward
+
+                # Send last observation and reward (with dummy-action request) to
+                # `get_action`.
+                if terminated or truncated:
+                    print(f"Episode {eps} return: {episode_return}")
+                    # Log terminated/truncated (episode end) and reset.
+                    rllib_gateway.episode_done(reward, obs, truncated)
+                    episode_return = 0.0
+                    reward = 0.0
+                    eps += 1
+                    env.reset()
+
+        simulation_thread = threading.Thread(target=_run_simulation)
+        simulation_thread.start()
 
     # Define the RLlib (server) config.
     base_config = (
@@ -117,7 +153,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             # Point RLlib to the custom EnvRunner to be used here.
-            env_runner_cls=TcpClientInferenceEnvRunner,
+            env_runner_cls=EnvRunnerServerForExternalInference,
         )
         .training(
             num_epochs=10,
