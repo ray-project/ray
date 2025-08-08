@@ -95,6 +95,7 @@ class DeploymentVersion:
             combined_placement_group_options
         )
         self.placement_group_options_hash = crc32(serialized_placement_group_options)
+        serialized_route_prefix = _serialize(self.deployment_config.route_prefix)
 
         # If this changes, DeploymentReplica.reconfigure() will call reconfigure on the
         # actual replica actor
@@ -111,6 +112,7 @@ class DeploymentVersion:
             + serialized_ray_actor_options
             + serialized_placement_group_options
             + str(self.max_replicas_per_node).encode("utf-8")
+            + serialized_route_prefix
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,

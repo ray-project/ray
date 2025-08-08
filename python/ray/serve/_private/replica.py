@@ -784,6 +784,13 @@ class ReplicaBase(ABC):
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable
             )
+
+            # Update the route prefix only when the new config provides one.
+            # This prevents unrelated reconfigures from clearing the prefix and breaking HTTP routing
+            # as deployment_config.route_prefix is None.
+            if deployment_config.route_prefix is not None:
+                self._route_prefix = deployment_config.route_prefix
+
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
