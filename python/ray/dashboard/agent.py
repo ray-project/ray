@@ -31,7 +31,6 @@ class DashboardAgent:
         metrics_export_port=None,
         node_manager_port=None,
         events_export_addr=None,
-        events_export_port=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
         *,  # the following are required kwargs
@@ -59,7 +58,6 @@ class DashboardAgent:
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.events_export_addr = events_export_addr
-        self.events_export_port = events_export_port
         self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
