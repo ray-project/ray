@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -48,84 +49,6 @@ namespace ray {
 
 class RayletClientInterface {
  public:
-  /// Notify the raylet that this client is disconnecting gracefully. This
-  /// is used by actors to exit gracefully so that the raylet doesn't
-  /// propagate an error message to the driver.
-  ///
-  /// It's a blocking call.
-  ///
-  /// \param disconnect_type The reason why this worker process is disconnected.
-  /// \param disconnect_detail The detailed reason for a given exit.
-  /// \return ray::Status.
-  virtual ray::Status Disconnect(
-      const rpc::WorkerExitType &exit_type,
-      const std::string &exit_detail,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) = 0;
-
-  /// Tell the raylet which port this worker's gRPC server is listening on.
-  ///
-  /// \param port The port.
-  /// \return ray::Status.
-  virtual Status AnnounceWorkerPortForWorker(int port) = 0;
-
-  /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
-  ///
-  /// \param port The port.
-  /// \param entrypoint The entrypoint of the driver's job.
-  /// \return ray::Status.
-  virtual Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) = 0;
-
-  /// Tell the raylet that the client has finished executing a task.
-  ///
-  /// \return ray::Status.
-  virtual ray::Status ActorCreationTaskDone() = 0;
-
-  /// Tell the raylet to reconstruct or fetch objects.
-  ///
-  /// \param object_ids The IDs of the objects to fetch.
-  /// \param owner_addresses The addresses of the workers that own the objects.
-  /// \param current_task_id The task that needs the objects.
-  /// \return int 0 means correct, other numbers mean error.
-  virtual ray::Status AsyncGetObjects(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) = 0;
-
-  /// Notify the raylet that this client (worker) is no longer blocked.
-  ///
-  /// \param current_task_id The task that is no longer blocked.
-  /// \return ray::Status.
-  virtual ray::Status CancelGetRequest() = 0;
-
-  /// Notify the raylet that this client is blocked. This is only used for direct task
-  /// calls. Note that ordering of this with respect to Unblock calls is important.
-  ///
-  /// \return ray::Status.
-  virtual ray::Status NotifyDirectCallTaskBlocked() = 0;
-
-  /// Notify the raylet that this client is unblocked. This is only used for direct task
-  /// calls. Note that ordering of this with respect to Block calls is important.
-  ///
-  /// \return ray::Status.
-  virtual ray::Status NotifyDirectCallTaskUnblocked() = 0;
-
-  /// Wait for the given objects until timeout expires or num_return objects are
-  /// found.
-  ///
-  /// \param object_ids The objects to wait for.
-  /// \param owner_addresses The addresses of the workers that own the objects.
-  /// \param num_returns The number of objects to wait for.
-  /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param current_task_id The task that called wait.
-  /// \param result A pair with the first element containing the object ids that were
-  /// found, and the second element the objects that were not found.
-  /// \return ray::StatusOr containing error status or the set of object ids that were
-  /// found.
-  virtual ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-      int num_returns,
-      int64_t timeout_milliseconds) = 0;
-
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
@@ -267,9 +190,6 @@ class RayletClientInterface {
 
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
-
-  virtual void SubscribeToPlasma(const ObjectID &object_id,
-                                 const rpc::Address &owner_address) = 0;
 
   virtual void ShutdownRaylet(
       const NodeID &node_id,

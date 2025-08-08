@@ -180,8 +180,8 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
-             std::shared_ptr<raylet::RayletClientInterface> local_raylet_rpc_client,
+             std::shared_ptr<ray::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
@@ -1740,10 +1740,10 @@ class CoreWorker {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the local Raylet that goes over a local socket.
-  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
+  std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client_;
 
   // Client to the local Raylet that goes over a gRPC connection.
-  std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client_;
+  std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
