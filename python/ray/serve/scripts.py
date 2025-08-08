@@ -629,23 +629,25 @@ def config(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    applications = serve_details.applications
 
     # Fetch app configs for all live applications on the cluster
     if name is None:
-        print(
-            "\n---\n\n".join(
-                yaml.safe_dump(
-                    app.deployed_app_config.dict(exclude_unset=True),
-                    sort_keys=False,
-                )
-                for app in serve_details.applications.values()
-                if app.deployed_app_config is not None
-            ),
-            end="",
-        )
+        configs = [
+            yaml.safe_dump(
+                app.deployed_app_config.dict(exclude_unset=True),
+                sort_keys=False,
+            )
+            for app in applications.values()
+            if app.deployed_app_config is not None
+        ]
+        if configs:
+            print("\n---\n\n".join(configs), end="")
+        else:
+            print("No configuration was found.")
     # Fetch a specific app config by name.
     else:
-        app = serve_details.applications.get(name)
+        app = applications.get(name)
         if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:
