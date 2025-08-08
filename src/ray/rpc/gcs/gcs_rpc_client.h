@@ -25,6 +25,7 @@
 #include "absl/container/btree_map.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/retryable_grpc_client.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -151,8 +152,8 @@ class GcsRpcClient {
         std::chrono::system_clock::now() +
         std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
     if (!channel_->WaitForConnected(deadline)) {
-      RAY_LOG(WARNING) << "Failed to connect to GCS at address " << address << ":" << port
-                       << " within "
+      RAY_LOG(WARNING) << "Failed to connect to GCS at address "
+                       << BuildAddress(address, port) << " within "
                        << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
                        << " seconds.";
     }
