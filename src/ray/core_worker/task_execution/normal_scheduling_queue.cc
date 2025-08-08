@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/normal_scheduling_queue.h"
+#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
 
 #include <deque>
 #include <utility>
