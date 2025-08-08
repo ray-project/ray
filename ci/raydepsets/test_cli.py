@@ -19,6 +19,7 @@ from ci.raydepsets.cli import (
     _flatten_flags,
     Depset,
     DEFAULT_UV_FLAGS,
+    _get_depset,
 )
 from ci.raydepsets.workspace import Workspace, _substitute_build_args, BuildArgSet
 from click.testing import CliRunner
@@ -73,12 +74,12 @@ class TestCli(unittest.TestCase):
             ]
             assert manager.config.depsets[0].output == "requirements_compiled.txt"
 
-    def test_dependency_set_manager_get_depset(self):
+    def test_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                _get_depset(manager.config.depsets, "fake_depset")
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -503,8 +504,10 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset(
-                "build_args_test_depset_py311", build_arg_set="py311_cpu"
+            depset = _get_depset(
+                manager.config.depsets,
+                "build_args_test_depset_py311",
+                build_arg_set="py311_cpu",
             )
             assert depset.name == "build_args_test_depset_py311"
             assert depset.build_arg_set.name == "py311_cpu"
@@ -518,7 +521,7 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("ray_base_test_depset")
+            depset = _get_depset(manager.config.depsets, "ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
             assert depset.build_arg_set is None
 

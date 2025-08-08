@@ -61,7 +61,7 @@ def load(
         uv_cache_dir=uv_cache_dir,
     )
     if name:
-        manager.execute_single(manager.get_depset(name, build_arg_set))
+        manager.execute_single(_get_depset(manager.config.depsets, name, build_arg_set))
     else:
         manager.execute()
 
@@ -104,23 +104,6 @@ class DependencySetManager:
         for node in topological_sort(self.build_graph):
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
-
-    def get_depset(self, name: str, build_arg_set: Optional[str] = None) -> Depset:
-        if build_arg_set:
-            for depset in self.config.depsets:
-                if (
-                    depset.name == name
-                    and depset.build_arg_set
-                    and depset.build_arg_set.name == build_arg_set
-                ):
-                    return depset
-        else:
-            for depset in self.config.depsets:
-                if depset.name == name and depset.build_arg_set is None:
-                    return depset
-        raise KeyError(
-            f"Dependency set {name} with build_arg_set {build_arg_set} not found"
-        )
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
@@ -201,7 +184,7 @@ class DependencySetManager:
         override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset, build_arg_set)
+        source_depset = _get_depset(self.config.depsets, source_depset, build_arg_set)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -227,7 +210,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name, build_arg_set)
+            depset = _get_depset(self.config.depsets, depset_name, build_arg_set)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
@@ -249,6 +232,26 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+
+def _get_depset(
+    depsets: List[Depset], name: str, build_arg_set: Optional[str] = None
+) -> Depset:
+    if build_arg_set:
+        for depset in depsets:
+            if (
+                depset.name == name
+                and depset.build_arg_set
+                and depset.build_arg_set.name == build_arg_set
+            ):
+                return depset
+    else:
+        for depset in depsets:
+            if depset.name == name and depset.build_arg_set is None:
+                return depset
+    raise KeyError(
+        f"Dependency set {name} with build_arg_set {build_arg_set} not found"
+    )
 
 
 def _flatten_flags(flags: List[str]) -> List[str]:
