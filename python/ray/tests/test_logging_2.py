@@ -34,7 +34,7 @@ class TestCoreContextFilter:
             "node_id": runtime_context.get_node_id(),
             "process": record.process,
         }
-        for attr in log_context + ["process"]:
+        for attr in log_context:
             assert hasattr(record, attr)
             assert getattr(record, attr) == expected_values[attr]
         # This is not a worker process, so actor_id and task_id should not exist.
