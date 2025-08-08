@@ -105,8 +105,10 @@ void GrpcServer::Run() {
     std::shared_ptr<grpc::ServerCredentials> server_creds;
     server_creds = grpc::SslServerCredentials(ssl_opts);
     builder.AddListeningPort(server_address, server_creds, &port_);
+    builder.AddListeningPort("127.0.0.1:" + std::to_string(port_), server_creds, &port_);
   } else {
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+    builder.AddListeningPort("127.0.0.1:" + std::to_string(port_), grpc::InsecureServerCredentials(), &port_);
   }
   // Register all the services to this server.
   if (grpc_services_.empty() && services_.empty()) {
