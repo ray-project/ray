@@ -16,12 +16,15 @@ def _normalize_error_string(error_str: str) -> str:
     This allows errors that are similar except for specific numbers to be grouped together.
     For example, "Error on line 42" and "Error on line 123" would both become "Error on line <NUM>".
     """
-    # Replace sequences of digits with <NUM> placeholder
-    normalized = re.sub(r"\b\d+\b", "<NUM>", error_str)
-    # Also replace hex numbers (0x...) with <HEX>
+    # Replace memory addresses like "object at 0x7f8b..."
+    normalized = re.sub(r"\bat 0x[0-9a-fA-F]+\b", "at <ADDR>", error_str)
+
+    # Replace standalone hex numbers like "0xdeadbeef"
     normalized = re.sub(r"\b0x[0-9a-fA-F]+\b", "<HEX>", normalized)
-    # Replace memory addresses in parentheses like "object at 0x7f8b..."
-    normalized = re.sub(r"\bat 0x[0-9a-fA-F]+\b", "at <ADDR>", normalized)
+
+    # Replace ALL sequences of digits (not just word-bounded ones)
+    normalized = re.sub(r"\d+", "<NUM>", normalized)
+
     return normalized
 
 
@@ -64,6 +67,7 @@ class WorkerGroupPollStatus:
         """
         # Group errors by normalized strings (ignoring numbers)
         normalized_error_to_ranks = defaultdict(list)
+        normalized_error_to_original = {}
         show_full_error = set()
 
         for world_rank, status in self.worker_statuses.items():
@@ -73,6 +77,10 @@ class WorkerGroupPollStatus:
                 normalized_error = _normalize_error_string(error_str)
 
                 normalized_error_to_ranks[normalized_error].append(str(world_rank))
+
+                # Store the first original error for this normalized group
+                if normalized_error not in normalized_error_to_original:
+                    normalized_error_to_original[normalized_error] = error_str
 
                 # Fully show errors for non-graceful worker failures
                 if isinstance(status.error, WorkerHealthCheckFailedError):
@@ -84,12 +92,17 @@ class WorkerGroupPollStatus:
 
         errors = []
         for normalized_error, ranks in normalized_error_to_ranks.items():
+            # Show the original error if there were no duplicates
+            error = (
+                normalized_error
+                if "," in ranks
+                else normalized_error_to_original[normalized_error]
+            )
+
             if normalized_error in show_full_error:
-                errors.append(f"[Rank {ranks}]:\n{normalized_error}")
+                errors.append(f"[Rank {ranks}]:\n{error}")
             else:
-                errors.append(
-                    f"[Rank {ranks}]:\n{_truncate_error_string(normalized_error)}"
-                )
+                errors.append(f"[Rank {ranks}]:\n{_truncate_error_string(error)}")
 
         error_str = "\n".join(errors)
 
