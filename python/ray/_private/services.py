@@ -425,6 +425,8 @@ def wait_for_node(
     timeout: int = _timeout,
 ):
     """Wait until this node has appeared in the client table.
+    NOTE: Makes an RPC to the GCS up to every 0.1 seconds to
+    get all node info. Use only for testing.
 
     Args:
         gcs_address: The gcs address
