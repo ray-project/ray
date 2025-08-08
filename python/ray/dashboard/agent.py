@@ -123,6 +123,10 @@ class DashboardAgent:
             self.server = None
             self.grpc_port = None
         else:
+            if self.ip not in {"127.0.0.1", "localhost", "0.0.0.0", "::"}:
+                add_port_to_grpc_server(
+                    self.server, f"127.0.0.1:{self.dashboard_agent_port}"
+                )
             logger.info("Dashboard agent grpc address: %s:%s", self.ip, self.grpc_port)
 
         # If the agent is not minimal it should start the http server
