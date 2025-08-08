@@ -44,6 +44,7 @@ import argparse
 import gymnasium as gym
 
 from ray.rllib.env.policy_client import PolicyClient
+from ray._common.network_utils import build_address
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -84,7 +85,8 @@ if __name__ == "__main__":
     # Note that no config is needed in this script as it will be defined
     # on and sent from the server.
     client = PolicyClient(
-        f"http://localhost:{args.port}", inference_mode=args.inference_mode
+        f"http://{build_address('localhost', args.port)}",
+        inference_mode=args.inference_mode,
     )
 
     # In the following, we will use our external environment (the CartPole

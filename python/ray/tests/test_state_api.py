@@ -27,6 +27,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, ActorID, JobID, TaskID
+from ray._common.network_utils import parse_address
 from ray._private.test_utils import (
     run_string_as_driver,
     find_free_port,
@@ -371,7 +372,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 

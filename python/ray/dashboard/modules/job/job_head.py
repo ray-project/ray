@@ -25,6 +25,7 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
+from ray._common.network_utils import build_address
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
@@ -324,7 +325,7 @@ class JobHead(SubprocessModule):
                 # JobAgentSubmissionClient. May raise if the node_id is removed in
                 # InternalKV after the _fetch_all_agent_node_ids, though unlikely.
                 ip, http_port, _ = await self._fetch_agent_info(node_id)
-                agent_http_address = f"http://{ip}:{http_port}"
+                agent_http_address = f"http://{build_address(ip, http_port)}"
                 self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
 
             return self._agents[node_id]
@@ -339,7 +340,7 @@ class JobHead(SubprocessModule):
 
         if head_node_id not in self._agents:
             ip, http_port, _ = await self._fetch_agent_info(head_node_id)
-            agent_http_address = f"http://{ip}:{http_port}"
+            agent_http_address = f"http://{build_address(ip, http_port)}"
             self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
 
         return self._agents[head_node_id]

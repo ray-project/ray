@@ -14,6 +14,7 @@ py_library(
 py_test_module_list(
     size = "small",
     files = [
+        "test_network_utils.py",
         "test_ray_option_utils.py",
         "test_signal_semaphore_utils.py",
         "test_signature.py",
