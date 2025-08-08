@@ -151,7 +151,6 @@ ray_cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        "//src/ray/core_worker:core_worker_common",
         "//src/ray/core_worker:core_worker_lib",
     ],
     alwayslink = 1,

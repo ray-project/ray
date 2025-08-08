@@ -26,7 +26,6 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/actor_task_submitter.h"
-#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 namespace ray {
 namespace core {

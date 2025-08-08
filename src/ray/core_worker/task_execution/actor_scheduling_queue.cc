@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
 
 #include <algorithm>
 #include <memory>

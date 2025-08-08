@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/concurrency_group_manager.h"
+#include "ray/core_worker/task_execution/concurrency_group_manager.h"
 
 #include <memory>
 #include <vector>
@@ -20,7 +20,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/transport/task_receiver.h"
+#include "ray/core_worker/task_execution/fiber.h"
+#include "ray/core_worker/task_execution/thread_pool.h"
 
 namespace ray {
 namespace core {
