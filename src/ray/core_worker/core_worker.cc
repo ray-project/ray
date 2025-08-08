@@ -578,14 +578,12 @@ void CoreWorker::Disconnect(
   if (connected_) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
-    if (local_raylet_rpc_client_) {
-      Status status = raylet_ipc_client_->Disconnect(
-          exit_type, exit_detail, creation_task_exception_pb_bytes);
-      if (status.ok()) {
-        RAY_LOG(INFO) << "Disconnected from the local raylet.";
-      } else {
-        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status;
-      }
+    Status status = raylet_ipc_client_->Disconnect(
+        exit_type, exit_detail, creation_task_exception_pb_bytes);
+    if (status.ok()) {
+      RAY_LOG(INFO) << "Disconnected from the local raylet.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status;
     }
   }
 }
