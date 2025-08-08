@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -548,8 +549,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 GcsServer::StorageType GcsServer::GetStorageType() const {
   if (RayConfig::instance().gcs_storage() == kInMemoryStorage) {
     if (!config_.redis_address.empty()) {
-      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
-                    << ":" << config_.redis_port;
+      RAY_LOG(INFO) << "Using external Redis for KV storage: "
+                    << BuildAddress(config_.redis_address, config_.redis_port);
       return StorageType::REDIS_PERSIST;
     }
     return StorageType::IN_MEMORY;

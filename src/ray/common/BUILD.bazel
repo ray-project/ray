@@ -17,11 +17,11 @@ ray_cc_library(
     deps = [
         ":asio",
         ":id",
-        ":network_util",
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
@@ -105,20 +105,6 @@ ray_cc_library(
         ":id",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "network_util",
-    srcs = [
-        "network_util.cc",
-    ],
-    hdrs = [
-        "network_util.h",
-    ],
-    deps = [
-        ":asio",
-        "@boost//:asio",
     ],
 )
 
