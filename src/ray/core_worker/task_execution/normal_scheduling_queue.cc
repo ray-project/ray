@@ -24,7 +24,6 @@ NormalSchedulingQueue::NormalSchedulingQueue(){};
 
 void NormalSchedulingQueue::Stop() {
   // No-op
-  // XXX!
 }
 
 bool NormalSchedulingQueue::TaskQueueEmpty() const {

@@ -30,7 +30,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-// #include "ray/core_worker/common.h"
 #include "ray/core_worker/task_execution/actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
@@ -136,7 +135,6 @@ class TaskReceiver {
 
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  /// XXX: ActorSchedulingQueue and remove base class?
   absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
       actor_scheduling_queues_;
 
