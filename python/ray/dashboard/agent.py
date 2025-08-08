@@ -108,11 +108,14 @@ class DashboardAgent:
                 ),
             )  # noqa
         )
-        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
             self.grpc_port = add_port_to_grpc_server(
-                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
+                self.server, f"{self.ip}:{self.dashboard_agent_port}"
             )
+            if self.ip != "127.0.0.1" and self.ip != "localhost":
+                self.grpc_port = add_port_to_grpc_server(
+                    self.server, f"127.0.0.1:{self.dashboard_agent_port}"
+                )
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
             # port conflict issue which brought from static port. We should
@@ -124,7 +127,7 @@ class DashboardAgent:
             self.server = None
             self.grpc_port = None
         else:
-            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+            logger.info("Dashboard agent grpc address: %s:%s", self.ip, self.grpc_port)
 
         # If the agent is not minimal it should start the http server
         # to communicate with the dashboard in a head node.
