@@ -44,7 +44,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: data9build
 
   - label: ":database: data: arrow v9 tests (data_non_parallel)"
@@ -69,7 +69,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: datalbuild
 
   - label: ":database: data: arrow v20 tests (data_non_parallel)"
@@ -94,7 +94,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: databuild-multipy
     matrix:
       setup:
@@ -128,7 +128,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: datanbuild
     soft_fail: true
 
@@ -272,3 +272,19 @@ steps:
         --build-name docgpubuild
         --only-tags gpu,gpu_only
     depends_on: docgpubuild
+  - label: ":data: postmerge authenticated tests"
+    key: data_postmerge_authenticated_tests
+    tags:
+      - python
+      - data
+      - oss
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - pip install -U boto3==1.28.70 awscli==1.29.70
+      - $(python ci/env/setup_credentials.py)
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --build-name datalbuild
+        --only-tags needs_credentials
+        --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
+    depends_on: datalbuild
