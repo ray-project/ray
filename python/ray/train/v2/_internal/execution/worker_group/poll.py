@@ -25,6 +25,13 @@ def _normalize_error_string(error_str: str) -> str:
     return normalized
 
 
+def _truncate_error_string(error_str: str) -> str:
+    """Truncates error strings to a maximum length of ERR_CHAR_LIMIT."""
+    if len(error_str) > ERR_CHAR_LIMIT:
+        return error_str[:ERR_CHAR_LIMIT] + "..."
+    return error_str
+
+
 @dataclass
 class WorkerStatus:
     running: bool
@@ -55,18 +62,8 @@ class WorkerGroupPollStatus:
         Returns a string representation worker group errors.
         Groups similar errors (ignoring numbers) and shows original error examples.
         """
-
-        def truncate_error_str(error_str: str) -> str:
-            """Truncates error strings to a maximum length of ERR_CHAR_LIMIT"""
-            if len(error_str) > ERR_CHAR_LIMIT:
-                return error_str[:ERR_CHAR_LIMIT] + "..."
-            return error_str
-
         # Group errors by normalized strings (ignoring numbers)
         normalized_error_to_ranks = defaultdict(list)
-        normalized_error_to_original = (
-            {}
-        )  # Store one original error per normalized group
         show_full_error = set()
 
         for world_rank, status in self.worker_statuses.items():
@@ -76,10 +73,6 @@ class WorkerGroupPollStatus:
                 normalized_error = _normalize_error_string(error_str)
 
                 normalized_error_to_ranks[normalized_error].append(str(world_rank))
-
-                # Store the first original error for this normalized group
-                if normalized_error not in normalized_error_to_original:
-                    normalized_error_to_original[normalized_error] = error_str
 
                 # Fully show errors for non-graceful worker failures
                 if isinstance(status.error, WorkerHealthCheckFailedError):
@@ -91,11 +84,12 @@ class WorkerGroupPollStatus:
 
         errors = []
         for normalized_error, ranks in normalized_error_to_ranks.items():
-            original_error = normalized_error_to_original[normalized_error]
             if normalized_error in show_full_error:
-                errors.append(f"[Rank {ranks}]:\n{original_error}")
+                errors.append(f"[Rank {ranks}]:\n{normalized_error}")
             else:
-                errors.append(f"[Rank {ranks}]:\n{truncate_error_str(original_error)}")
+                errors.append(
+                    f"[Rank {ranks}]:\n{_truncate_error_string(normalized_error)}"
+                )
 
         error_str = "\n".join(errors)
 

@@ -42,7 +42,7 @@ def test_get_error_string_with_numbers():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    assert error_str == "[Rank 0, 1]:\nError parsing object at 0x7f8b12345678"
+    assert error_str == "[Rank 0, 1]:\nError parsing object at <HEX>"
 
 
 def test_get_error_string_long_error():
