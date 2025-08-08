@@ -648,13 +648,13 @@ class SerializationContext:
             self._torch_custom_serializer_registered = True
 
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
-        if tensors:
-            obj_id = obj_id.decode("ascii")
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_object(
-                obj_id, tensors, is_primary=True
-            )
+        # Regardless of whether `tensors` is empty, we always store the GPU object
+        # in the GPU object store. This ensures that `_get_tensor_meta` is not
+        # blocked indefinitely.
+        obj_id = obj_id.decode("ascii")
+        worker = ray._private.worker.global_worker
+        gpu_object_manager = worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
 
         return serialized_val
 
