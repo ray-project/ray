@@ -49,23 +49,25 @@ class TestTaskMetadataBuffer:
 
     def test_merge_and_get(self):
         """Test merging multiple metadata objects and verify task attempts are combined."""
-        buffer = TaskMetadataBuffer(max_buffer_size=100, max_dropped_attempts_per_metadata_entry=10)
-        
+        buffer = TaskMetadataBuffer(
+            max_buffer_size=100, max_dropped_attempts_per_metadata_entry=10
+        )
+
         # Create two separate metadata objects with different task IDs
         metadata1 = create_test_metadata(["task_1", "task_2"])
         metadata2 = create_test_metadata(["task_3", "task_4"])
-        
+
         # Merge both metadata objects
         buffer.merge(metadata1)
         buffer.merge(metadata2)
-        
+
         # Get the merged results
         result = buffer.get()
         attempts = _result_to_attempts_list(result)
-        
+
         # Verify we have all 4 task attempts
         assert len(attempts) == 4
-        
+
         # Verify all expected task IDs are present
         task_ids = [attempt.task_id for attempt in attempts]
         assert sorted(task_ids) == [b"task_1", b"task_2", b"task_3", b"task_4"]

@@ -84,7 +84,7 @@ class RayEventsPublisherBase(ABC):
 
     def enqueue(self, item) -> bool:
         """Adds an item to the publisher's queue, dropping oldest item if full.
-        
+
         Returns True if item was successfully queued, False if dropped due to queue full.
         """
         try:
@@ -97,7 +97,7 @@ class RayEventsPublisherBase(ABC):
             self._on_queue_dropped(drop_count)
             self._queue.put_nowait(item)
             return True
-            
+
     def join(self) -> None:
         """Waits for all worker threads to complete."""
         for t in self._workers:
@@ -105,7 +105,7 @@ class RayEventsPublisherBase(ABC):
 
     def _worker_loop(self) -> None:
         """Main worker loop that processes items from the queue.
-        
+
         Continuously pulls items and publishes them until stop event is set.
         """
         should_stop = False
@@ -124,7 +124,7 @@ class RayEventsPublisherBase(ABC):
 
     def _publish_with_retries(self, item) -> None:
         """Attempts to publish an item with exponential backoff retries.
-        
+
         Will retry failed publishes up to max_retries times with increasing delays.
         """
         attempts = 0
@@ -148,7 +148,7 @@ class RayEventsPublisherBase(ABC):
         """
         delay = min(
             self._max_backoff,
-            self._initial_backoff * (2 ** attempt),
+            self._initial_backoff * (2**attempt),
         )
         if self._jitter_ratio > 0:
             jitter = delay * self._jitter_ratio
@@ -209,13 +209,12 @@ class GCSPublisher(RayEventsPublisherBase):
         # item: (event_batch, task_events_metadata)
         events, task_events_metadata = item
         if not events and (
-            not task_events_metadata or len(task_events_metadata.dropped_task_attempts) == 0
+            not task_events_metadata
+            or len(task_events_metadata.dropped_task_attempts) == 0
         ):
             return True, 0, 0
         try:
-            events_data = self._create_ray_events_data(
-                events, task_events_metadata
-            )
+            events_data = self._create_ray_events_data(events, task_events_metadata)
             request = events_event_aggregator_service_pb2.AddEventsRequest(
                 events_data=events_data
             )
@@ -238,7 +237,9 @@ class GCSPublisher(RayEventsPublisherBase):
     def _create_ray_events_data(
         self,
         event_batch: list[events_base_event_pb2.RayEvent],
-        task_events_metadata: Optional[events_event_aggregator_service_pb2.TaskEventsMetadata] = None,
+        task_events_metadata: Optional[
+            events_event_aggregator_service_pb2.TaskEventsMetadata
+        ] = None,
     ) -> events_event_aggregator_service_pb2.RayEventsData:
         """
         Helper method to create RayEventsData from event batch and metadata.
