@@ -166,7 +166,8 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     elif isinstance(obj, (list, tuple, set)) or isinstance(obj, Sequence):
         # Convert all sequence-like types (lists, tuples, sets, other sequences) to lists
         return [sanitize_for_struct(v, truncate_length) for v in obj]
-    elif is_dataclass(obj):
+    elif is_dataclass(obj) and not isinstance(obj, type):
+        # Only convert dataclass instances, not dataclass types
         return sanitize_for_struct(asdict(obj), truncate_length)
     else:
         try:
