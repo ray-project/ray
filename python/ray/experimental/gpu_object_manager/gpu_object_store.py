@@ -38,6 +38,7 @@ def _tensor_transport_to_collective_backend(
 
 def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
+    print(f"__ray_send__: {communicator_name}, {obj_id}, {dst_rank}")
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
@@ -67,6 +68,7 @@ def __ray_recv__(
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
+    print(f"__ray_recv__: {communicator_name}, {obj_id}, {src_rank}, {tensor_meta}")
     from ray._private.worker import global_worker
 
     backend = collective.get_group_handle(communicator_name).backend()
@@ -84,13 +86,16 @@ def __ray_recv__(
 
 def __ray_get_tensor_meta__(self, obj_id: str):
     """Helper function that runs on the src actor to get the tensor metadata."""
+    print(f"__ray_get_tensor_meta__: {obj_id}")
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     # NOTE: We do not specify a timeout here because the user task that returns
     # it could take arbitrarily long and we don't want to trigger a spurious
     # timeout.
+    print("__ray_get_tensor_meta__: wait_and_get_object")
     tensors = gpu_object_store.wait_and_get_object(obj_id)
+    print(f"__ray_get_tensor_meta__: tensors: {tensors}")
     return [(t.shape, t.dtype) for t in tensors]
 
 

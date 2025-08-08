@@ -18,7 +18,12 @@ if support_tensordict:
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
     def echo(self, data):
+        print(f"echo: {data}")
+        assert False, "This method should not be called"
         return data
+
+    def add(self, a, b):
+        return a + b
 
     def double(self, data):
         if isinstance(data, list):
@@ -27,17 +32,18 @@ class GPUTestActor:
             return data.apply(lambda x: x * 2)
         return data * 2
 
-    def get_gpu_object(self, obj_id: str, timeout=None):
+    def get_gpu_object(self, obj_id: str):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
         )
-        if timeout is None:
-            timeout = 0
-        return gpu_object_store.wait_and_get_object(obj_id, timeout)
+        if gpu_object_store.has_gpu_object(obj_id):
+            gpu_object = gpu_object_store.get_gpu_object(obj_id)
+            return gpu_object
+        return None
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return gpu_object_manager.gpu_object_store.get_num_objects()
+        return len(gpu_object_manager.gpu_object_store.gpu_object_store)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
@@ -308,7 +314,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, task_args)
 
     # Check dst_actor has the GPU object
-    ret_val_dst = ray.get(dst_actor.get_gpu_object.remote(gpu_obj_id, timeout=10))
+    ret_val_dst = ray.get(dst_actor.get_gpu_object.remote(gpu_obj_id))
     assert ret_val_dst is not None
     assert len(ret_val_dst) == 1
     assert torch.equal(ret_val_dst[0], tensor)

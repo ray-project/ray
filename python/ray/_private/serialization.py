@@ -625,6 +625,7 @@ class SerializationContext:
         Returns:
             Serialized value.
         """
+        print(f"serialize_and_store_gpu_objects: {value}")
         assert (
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."

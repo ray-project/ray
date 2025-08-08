@@ -1088,10 +1088,12 @@ cdef store_task_errors(
         proctitle,
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error):
+        c_string* application_error,
+        CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
+    print(f"store_task_errors: exc: {exc}")
     # If the debugger is enabled, drop into the remote pdb here.
     if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
         ray.util.pdb._post_mortem()
@@ -1109,6 +1111,7 @@ cdef store_task_errors(
         actor_id = actor_id.hex()
 
     if isinstance(exc, RayTaskError):
+        print(f"store_task_errors: RayTaskError: {exc}")
         # Avoid recursive nesting of RayTaskError.
         failure_object = RayTaskError(function_name, backtrace,
                                       exc.cause, proctitle=proctitle,
@@ -1131,10 +1134,13 @@ cdef store_task_errors(
     for _ in range(returns[0].size()):
         errors.append(failure_object)
 
+    print(f"store_task_errors: errors: {errors}")
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
         caller_address,
-        returns)
+        returns,
+        None,  # ref_generator_id
+        c_tensor_transport)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -1929,7 +1935,9 @@ cdef void execute_task(
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
                             breakpoint_uuid=debugger_breakpoint)
+                    print(f"execute_task: args: {args}, kwargs: {kwargs}")
                     outputs = function_executor(*args, **kwargs)
+                    print(f"execute_task: outputs: {outputs}")
 
                     if is_streaming_generator:
                         # Streaming generator always has a single return value
@@ -2009,6 +2017,7 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except Exception as e:
+                    print(f"execute_task: Exception: {e}")
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
                                     e,
@@ -2119,9 +2128,11 @@ cdef void execute_task(
                 )
 
         except Exception as e:
+            print(f"execute_task: Exception 2: {e}")
+            # TODO: pass c_tensor_transport
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error)
+                    task_type, title, caller_address, returns, application_error, c_tensor_transport)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -4334,6 +4345,10 @@ cdef class CoreWorker:
             CObjectID c_ref_generator_id = CObjectID.Nil()
             shared_ptr[CRayObject] *return_ptr
 
+        print(f"store_task_outputs: outputs: {outputs}")
+        if isinstance(outputs, list):
+            print("store_task_outputs: outputs is a list", len(outputs))
+
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
 
@@ -4357,6 +4372,7 @@ cdef class CoreWorker:
             # The task specified how many return values it should have.
             num_returns = returns[0].size()
 
+        print(f"store_task_outputs: num_returns: {num_returns}")
         if num_returns == 0:
             return num_outputs_stored
 
@@ -4397,8 +4413,10 @@ cdef class CoreWorker:
             if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
+                print(f"store_task_outputs: serialize_and_store_gpu_objects: {output}")
                 serialized_object = context.serialize_and_store_gpu_objects(output, return_id.Hex())
             else:
+                print(f"store_task_outputs: serialize: {output}")
                 serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
