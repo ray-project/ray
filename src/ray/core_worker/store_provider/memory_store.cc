@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/ipc/raylet_ipc_client.h"
 
 namespace ray {
 namespace core {
