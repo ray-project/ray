@@ -1337,10 +1337,10 @@ class OperatorStatsSummary:
                 "sum": sum([e.wall_time_s for e in exec_stats]),
             }
             cpu_stats = {
-                "min": min([e.wall_time_s for e in exec_stats]),
-                "max": max([e.wall_time_s for e in exec_stats]),
-                "mean": np.mean([e.wall_time_s for e in exec_stats]),
-                "sum": sum([e.wall_time_s for e in exec_stats]),
+                "min": min([e.cpu_time_s for e in exec_stats]),
+                "max": max([e.cpu_time_s for e in exec_stats]),
+                "mean": np.mean([e.cpu_time_s for e in exec_stats]),
+                "sum": sum([e.cpu_time_s for e in exec_stats]),
             }
 
             memory_stats_mb = [
