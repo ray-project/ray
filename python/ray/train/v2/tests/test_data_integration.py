@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,6 +9,7 @@ from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks.datasets import (
+    DatasetManager,
     DatasetShardMetadata,
     DatasetsSetupCallback,
 )
@@ -128,6 +130,121 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         processed_valid_ds._base_dataset.context.execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
     )
+
+
+async def get_dataset_shard_for_worker(
+    dataset_manager: DatasetManager,
+    dataset_name: str,
+    num_workers: int,
+    worker_rank: int,
+):
+    return await asyncio.create_task(
+        dataset_manager.get_dataset_shard(
+            DatasetShardMetadata(dataset_name=dataset_name, world_rank=worker_rank)
+        )
+    )
+
+
+async def get_dataset_shard_for_all_workers(
+    dataset_manager: DatasetManager,
+    dataset_name: str,
+    num_workers: int,
+):
+    return await asyncio.gather(
+        *[
+            get_dataset_shard_for_worker(dataset_manager, dataset_name, num_workers, i)
+            for i in range(num_workers)
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_multiple_datasets_serially(ray_start_4_cpus):
+    """Tests DatasetManager.get_dataset_shard for multiple datasets,
+    called serially by each worker. This is the typical case.
+
+    Workers 0, 1:
+    ray.train.get_dataset_shard("sharded_1")
+    ray.train.get_dataset_shard("sharded_2")
+    ray.train.get_dataset_shard("unsharded")
+    """
+
+    NUM_ROWS = 100
+    NUM_TRAIN_WORKERS = 2
+
+    sharded_ds_1 = ray.data.range(NUM_ROWS)
+    sharded_ds_2 = ray.data.range(NUM_ROWS)
+    unsharded_ds = ray.data.range(NUM_ROWS)
+
+    dataset_manager = DatasetManager(
+        datasets={
+            "sharded_1": sharded_ds_1,
+            "sharded_2": sharded_ds_2,
+            "unsharded": unsharded_ds,
+        },
+        data_config=ray.train.DataConfig(datasets_to_split=["sharded_1", "sharded_2"]),
+        data_context=DataContext.get_current(),
+        world_size=NUM_TRAIN_WORKERS,
+        worker_node_ids=None,
+    )
+
+    shards = await get_dataset_shard_for_all_workers(
+        dataset_manager, "sharded_1", NUM_TRAIN_WORKERS
+    )
+    assert len(shards) == NUM_TRAIN_WORKERS
+    assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+
+    shards = await get_dataset_shard_for_all_workers(
+        dataset_manager, "sharded_2", NUM_TRAIN_WORKERS
+    )
+    assert len(shards) == NUM_TRAIN_WORKERS
+    assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+
+    shards = await get_dataset_shard_for_all_workers(
+        dataset_manager, "unsharded", NUM_TRAIN_WORKERS
+    )
+    assert len(shards) == NUM_TRAIN_WORKERS
+    assert not any(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+
+
+@pytest.mark.asyncio
+async def test_get_multiple_datasets_rank_specific(ray_start_4_cpus):
+    """Tests rank-specific DatasetManager.get_dataset_shard calls.
+
+    # Epoch 1
+    ray.train.get_dataset_shard("train")
+
+    # Validation, which only happens on worker 0.
+    if world_rank == 0:
+        ray.train.get_dataset_shard("valid")
+
+    # Epoch 2
+    ray.train.get_dataset_shard("train")
+    """
+
+    NUM_ROWS = 100
+    NUM_TRAIN_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    valid_ds = ray.data.range(NUM_ROWS)
+
+    dataset_manager = DatasetManager(
+        datasets={"train": train_ds, "valid": valid_ds},
+        data_config=ray.train.DataConfig(datasets_to_split=["train"]),
+        data_context=DataContext.get_current(),
+        world_size=NUM_TRAIN_WORKERS,
+        worker_node_ids=None,
+    )
+
+    # ray.train.get_dataset_shard("train")
+    await get_dataset_shard_for_all_workers(dataset_manager, "train", NUM_TRAIN_WORKERS)
+
+    # if world_rank == 0:
+    #     ray.train.get_dataset_shard("valid")
+    await get_dataset_shard_for_worker(dataset_manager, "valid", NUM_TRAIN_WORKERS, 0)
+
+    # ray.train.get_dataset_shard("train")
+    await get_dataset_shard_for_all_workers(dataset_manager, "train", NUM_TRAIN_WORKERS)
 
 
 if __name__ == "__main__":

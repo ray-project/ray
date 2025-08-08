@@ -27,10 +27,7 @@ class DatasetShardMetadata:
 
 
 class DatasetManager:
-    """Manages the dataset shards for datasets configured in the Trainer.
-
-    NOTE: The Ray Data executor does not live on this process.
-    """
+    """Manages the dataset shards for datasets configured in the trainer."""
 
     def __init__(
         self,
