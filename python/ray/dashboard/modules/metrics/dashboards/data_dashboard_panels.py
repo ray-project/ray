@@ -489,7 +489,7 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=40,
         title="(p$pXX) Task Completion Time Without Backpressure",
-        description="Time spent running tasks to completion w/ backpressure.",
+        description="Time spent running tasks to completion w/o backpressure.",
         unit="seconds",
         targets=[
             Target(
