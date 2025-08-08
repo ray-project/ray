@@ -1847,8 +1847,6 @@ def test_op_metrics_logging():
         ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
         # Check that these strings are logged exactly once.
-        for log in logs:
-            print(f"log is {log}")
         assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
         assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
 
