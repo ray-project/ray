@@ -800,7 +800,7 @@ class Dataset:
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
 
