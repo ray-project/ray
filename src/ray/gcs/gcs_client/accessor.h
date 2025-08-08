@@ -385,18 +385,14 @@ class NodeInfoAccessor {
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
 
-  /// Get information of all nodes from an RPC to GCS synchronously.
-  ///
-  /// \return All nodes from gcs without cache.
-  virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
-
-  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
   /// \return All nodes that match the given filters from the gcs without the cache.
-  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCache(
       int64_t timeout_ms,
-      rpc::GcsNodeInfo::GcsNodeState state_filter,
-      rpc::GetAllNodeInfoRequest::NodeSelector node_selector);
+      std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
+      std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector =
+          std::nullopt);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
