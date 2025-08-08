@@ -73,7 +73,7 @@ chmod +x "$HOME"/bin/bazelisk
 sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
 
 # Use python3.9 as default python3
-ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
+sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
 
 {
   echo "build --config=ci"
