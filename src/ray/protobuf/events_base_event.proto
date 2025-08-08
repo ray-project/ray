@@ -22,6 +22,7 @@ import "src/ray/protobuf/events_actor_task_execution_event.proto";
 import "src/ray/protobuf/events_task_definition_event.proto";
 import "src/ray/protobuf/events_task_execution_event.proto";
 import "src/ray/protobuf/events_task_profile_events.proto";
+import "src/ray/protobuf/events_driver_job_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -48,6 +49,7 @@ message RayEvent {
     ACTOR_TASK_DEFINITION_EVENT = 3;
     ACTOR_TASK_EXECUTION_EVENT = 4;
     TASK_PROFILE_EVENT = 5;
+    DRIVER_JOB_EVENT = 6;
   }
 
   // The severities of events that can be generated.
@@ -86,4 +88,5 @@ message RayEvent {
   ActorTaskDefinitionEvent actor_task_definition_event = 9;
   ActorTaskExecutionEvent actor_task_execution_event = 10;
   TaskProfileEvents task_profile_events = 11;
+  DriverJobEvent driver_job_event = 12;
 }
