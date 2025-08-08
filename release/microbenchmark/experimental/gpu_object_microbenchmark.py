@@ -15,6 +15,7 @@ from ray._private.test_utils import (
 from dataclasses import dataclass
 
 DTYPE = torch.float16
+SHAPE = [(1,), (1_000,), (1_000_000,), (100_000_000,)]
 
 
 @dataclass
@@ -109,33 +110,44 @@ def _exec_p2p_transfer(
     return results
 
 
-def _exec_p2p_transfer_object(
-    shape: Tuple[int],
+def _exec_p2p_transfer_multiple_shapes(
+    label: str,
+    backend: str,
     sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
     receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
 ):
-    return _exec_p2p_transfer(
-        "exec_p2p_transfer_object", shape, "object", sender_hint, receiver_hint
+    temp_results = []
+    for shape in SHAPE:
+        temp_results += _exec_p2p_transfer(
+            f"{label}_shape_{shape}", shape, backend, sender_hint, receiver_hint
+        )
+    return temp_results
+
+
+def _exec_p2p_transfer_object(
+    sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+    receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+):
+    return _exec_p2p_transfer_multiple_shapes(
+        "exec_p2p_transfer_object", "object", sender_hint, receiver_hint
     )
 
 
 def _exec_p2p_transfer_gloo(
-    shape: Tuple[int],
     sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
     receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
 ):
-    return _exec_p2p_transfer(
-        "exec_p2p_transfer_gloo", shape, "gloo", sender_hint, receiver_hint
+    return _exec_p2p_transfer_multiple_shapes(
+        "exec_p2p_transfer_gloo", "gloo", sender_hint, receiver_hint
     )
 
 
 def _exec_p2p_transfer_nccl(
-    shape: Tuple[int],
     sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
     receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
 ):
-    return _exec_p2p_transfer(
-        "exec_p2p_transfer_nccl", shape, "nccl", sender_hint, receiver_hint
+    return _exec_p2p_transfer_multiple_shapes(
+        "exec_p2p_transfer_nccl", "nccl", sender_hint, receiver_hint
     )
 
 
@@ -149,11 +161,6 @@ def to_dict_key(key: str):
 
 def main() -> None:
     p = argparse.ArgumentParser(description="GPU tensor transfer benchmark")
-    p.add_argument(
-        "--tensor-size-bytes",
-        type=int,
-        default=100_000_000,
-    )
     p.add_argument(
         "--distributed",
         action="store_true",
@@ -192,12 +199,10 @@ def main() -> None:
             remote_node_id, soft=False
         )
 
-    size = args.tensor_size_bytes
-    shape = (size // 2,)
     results = []
-    results += _exec_p2p_transfer_object(shape, sender_hint, receiver_hint)
-    results += _exec_p2p_transfer_gloo(shape, sender_hint, receiver_hint)
-    results += _exec_p2p_transfer_nccl(shape, sender_hint, receiver_hint)
+    results.extend(_exec_p2p_transfer_object(sender_hint, receiver_hint))
+    results.extend(_exec_p2p_transfer_gloo(sender_hint, receiver_hint))
+    results.extend(_exec_p2p_transfer_nccl(sender_hint, receiver_hint))
     result_dict = {
         f"{to_dict_key(v[0])}": (v[1], v[2]) for v in results if v is not None
     }
