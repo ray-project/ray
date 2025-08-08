@@ -105,6 +105,41 @@
             "useTags": false
           },
           {
+            "allValue": ".+",
+            "current": {
+              "selected": true,
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "datasource": "${datasource}",
+            "definition": "query_result(count by (operator)(last_over_time(ray_data_output_bytes{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+            "description": null,
+            "error": null,
+            "hide": 0,
+            "includeAll": true,
+            "label": null,
+            "multi": true,
+            "name": "Operator",
+            "options": [],
+            "query": {
+              "query": "query_result(count by (operator)(last_over_time(ray_data_output_bytes{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+              "refId": "Prometheus-Dataset-Variable-Query"
+            },
+            "refresh": 2,
+            "regex": "{operator=\"(?<value>.*)\".*",
+            "skipUrlSync": false,
+            "sort": 0,
+            "tagValuesQuery": "",
+            "tags": [],
+            "tagsQuery": "",
+            "type": "query",
+            "useTags": false
+          },
+          {
             "current": {
               "selected": false
             },
