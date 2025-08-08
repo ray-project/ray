@@ -23,13 +23,14 @@ from ray.types import ObjectRef
 
 
 class BatchIterator:
-    """Create formatted batches of data from an iterator of block object references and
-    corresponding metadata.
+    """Defines an iterator pipeline to convert a stream of block object references
+    into a stream of formatted batches ready to be consumed by the user.
 
     This takes a block iterator and creates batch_size batches, slicing,
     unioning, shuffling, prefetching, and formatting blocks as needed.
 
-    The algorithm uses both pipeline parallelism and data parallelism:
+    This involves both pipeline parallelism (e.g. prefetching)
+    and data parallelism (e.g. threadpool operations):
 
     If prefetch_batches=2, these are all the batches in flight:
 
@@ -203,8 +204,8 @@ class BatchIterator:
         # Step 5: Finalize the batches (e.g., move to GPU).
         batch_iter = self._finalize_batches(batch_iter)
 
-        # Step 6: Restore the original order of the batches, in case they were
-        # reordered non-deterministically by the threadpool operations.
+        # Step 6: Restore the original order of the batches, as the prior
+        # threadpool operations may have reordered the batches non-deterministically.
         batch_iter = self._restore_original_batch_order(batch_iter)
 
         yield from batch_iter
