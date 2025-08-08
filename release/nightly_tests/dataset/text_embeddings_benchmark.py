@@ -21,7 +21,7 @@ from unstructured.partition.auto import partition
 from benchmark import Benchmark, BenchmarkMetric
 
 
-SOURCE_DIRECTORY_S3 = "s3://air-example-data/5000-docs/"
+SOURCE_DIRECTORY_S3 = "s3://air-example-data/common-pile-mirror/arxiv_papers/"
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}/"
 
