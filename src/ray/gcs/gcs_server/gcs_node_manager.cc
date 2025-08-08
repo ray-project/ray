@@ -289,9 +289,15 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   if (request.has_state_filter()) {
     switch (request.state_filter()) {
     case rpc::GcsNodeInfo::ALIVE:
+      if (!has_node_selectors) {
+        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
+      }
       add_to_response(alive_nodes_);
       break;
     case rpc::GcsNodeInfo::DEAD:
+      if (!has_node_selectors) {
+        reply->mutable_node_info_list()->Reserve(dead_nodes_.size());
+      }
       add_to_response(dead_nodes_);
       break;
     default:
@@ -299,6 +305,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       break;
     }
   } else {
+    if (!has_node_selectors) {
+      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
+    }
     add_to_response(alive_nodes_);
     add_to_response(dead_nodes_);
   }
