@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/ipc/raylet_ipc_client.h"
 
 namespace ray {
 namespace core {
@@ -135,14 +136,14 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     ReferenceCounter *counter,
-    std::shared_ptr<raylet::RayletClient> raylet_client,
+    std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
       ref_counter_(counter),
-      raylet_client_(std::move(raylet_client)),
+      raylet_ipc_client_(std::move(raylet_ipc_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
@@ -341,10 +342,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
   bool should_notify_raylet =
-      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
+      (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskBlocked());
   }
 
   bool done = false;
@@ -375,7 +376,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
   }
 
   {

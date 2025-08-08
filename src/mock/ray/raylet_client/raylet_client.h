@@ -16,10 +16,6 @@ namespace ray {
 
 class MockRayletClientInterface : public RayletClientInterface {
  public:
-  MOCK_METHOD(ray::Status,
-              WaitForActorCallArgs,
-              (const std::vector<rpc::ObjectReference> &references, int64_t tag),
-              (override));
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
