@@ -244,16 +244,17 @@ ray_cc_library(
 
 ray_cc_library(
     name = "memory_store",
-    srcs = ["store_provider/memory_store/memory_store.cc"],
-    hdrs = ["store_provider/memory_store/memory_store.h"],
+    srcs = ["store_provider/memory_store.cc"],
+    hdrs = ["store_provider/memory_store.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":core_worker_context",
-        ":reference_count",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/ipc:raylet_ipc_client",
+        "//src/ray/stats:stats_metric",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -280,6 +281,7 @@ ray_cc_library(
     deps = [
         ":actor_manager",
         ":memory_store",
+        ":reference_count",
         ":task_event_buffer",
         ":task_manager_interface",
         "//src/ray/common:buffer",
@@ -323,6 +325,7 @@ ray_cc_library(
         ":core_worker_context",
         ":dependency_resolver",
         ":out_of_order_actor_submit_queue",
+        ":reference_count",
         ":sequential_actor_submit_queue",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -359,6 +362,7 @@ ray_cc_library(
     hdrs = ["future_resolver.h"],
     deps = [
         ":memory_store",
+        ":reference_count",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/rpc:core_worker_client",
