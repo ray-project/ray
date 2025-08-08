@@ -494,8 +494,8 @@ depsets:
             _copy_data_to_tmpdir(tmpdir)
             workspace = Workspace(dir=tmpdir)
             config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-            config.build_arg_sets[0].build_args["PYTHON_VERSION"] = "py312"
-            config.build_arg_sets[0].build_args["CUDA_VERSION"] = "cu128"
+            assert config.build_arg_sets[0].build_args["PYTHON_VERSION"] == "py311"
+            assert config.build_arg_sets[0].build_args["CUDA_VERSION"] == "cu128"
 
     def test_get_depset_with_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
