@@ -19,9 +19,8 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -71,7 +70,10 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  explicit DependencyWaiterImpl(RayletClientInterface &dependency_client);
+  using WaitForActorCallArgs = std::function<Status(
+      const std::vector<rpc::ObjectReference> &dependencies, int64_t tag)>;
+
+  explicit DependencyWaiterImpl(WaitForActorCallArgs wait_for_actor_call_args);
 
   void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override;
@@ -82,7 +84,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   absl::flat_hash_map<int64_t, std::function<void()>> requests_;
-  RayletClientInterface &dependency_client_;
+	WaitForActorCallArgs wait_for_actor_call_args_;
 };
 
 }  // namespace core
