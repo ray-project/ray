@@ -1,14 +1,19 @@
 import ctypes
 import datetime
+import os
 import threading
 import time
 from typing import List, Optional
 import logging
 
 import torch
-import torch_npu  # noqa F401
+import torch.distributed as dist
 import ray
-from ray.util.collective.collective_group.base_collective_group import BaseGroup
+import ray.experimental.internal_kv as internal_kv
+from ray.util.collective.collective_group.base_collective_group import (
+    BaseGroup,
+    get_master_address_metadata_key,
+)
 from ray.util.collective.const import get_store_name
 from ray.util.collective.types import (
     ReduceOp,
@@ -123,6 +128,24 @@ class HCCLRootInfoStore:
 class HCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an HCCL collective group."""
+        import torch_npu
+
+        metadata_key = get_master_address_metadata_key(group_name)
+        try:
+            metadata = internal_kv._internal_kv_get(metadata_key)
+        except ValueError:
+            raise RuntimeError(
+                f"HCCLGroup expected metadata in internal_kv with name `{metadata_key}`. "
+                "HCCLGroup should not be instantiated directly. "
+                "Use ray.experimental.collective.create_collective_group to create the group."
+            )
+
+        metadata = metadata.decode()
+        master_addr, master_port = metadata.split(":")
+        os.environ["MASTER_ADDR"] = master_addr
+        os.environ["MASTER_PORT"] = master_port
+        torch_npu.npu.set_device(rank)
+        dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
         self._dev_streams_map = {}
