@@ -86,6 +86,7 @@ py_test_module_list(
         "RAY_experimental_enable_open_telemetry_on_core": "1",
     },
     files = [
+        "test_aggregated_prometheus_metrics.py",
         "test_metrics_agent.py",
     ],
     name_suffix = "_open_telemetry",
