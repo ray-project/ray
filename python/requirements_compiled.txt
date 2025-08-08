@@ -34,10 +34,6 @@ aimrocks==0.5.2
     # via aim
 aioboto3==11.2.0
     # via -r python/requirements/ml/data-requirements.txt
-aiobotocore==2.5.0
-    # via
-    #   aioboto3
-    #   s3fs
 aiofiles==22.1.0
     # via
     #   aim
