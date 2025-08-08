@@ -68,6 +68,10 @@ py_test(
     data = [
         "tests/test_data/test.depsets.yaml",
     ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
     deps = [
         ci_require("pytest"),
         ":test_utils",
