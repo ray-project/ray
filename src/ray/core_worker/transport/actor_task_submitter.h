@@ -34,6 +34,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/core_worker/transport/actor_submit_queue.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
