@@ -6,7 +6,6 @@ import threading
 import time
 import traceback
 from collections import defaultdict, namedtuple
-from enum import Enum
 from typing import Any, Dict, List, Set, Tuple, Union
 
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
@@ -35,7 +34,11 @@ from prometheus_client.core import (
 )
 
 import ray
-from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL, env_bool
+from ray._private.ray_constants import env_bool
+from ray._private.telemetry.metric_cardinality import (
+    WORKER_ID_TAG_KEY,
+    MetricCardinality,
+)
 from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 from ray.util.metrics import _is_invalid_metric_name
@@ -48,8 +51,6 @@ logger = logging.getLogger(__name__)
 RAY_WORKER_TIMEOUT_S = "RAY_WORKER_TIMEOUT_S"
 GLOBAL_COMPONENT_KEY = "CORE"
 RE_NON_ALPHANUMS = re.compile(r"[^a-zA-Z0-9]")
-# Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
-WORKER_ID_TAG_KEY = "WorkerId"
 
 
 class Gauge(View):
@@ -130,17 +131,6 @@ def fix_grpc_metric(metric: Metric):
                 bucket_bounds = dist_value.bucket_options.explicit.bounds
                 if len(bucket_bounds) > 0 and bucket_bounds[0] == 0:
                     bucket_bounds[0] = 0.000_000_1
-
-
-class MetricCardinalityLevel(str, Enum):
-    """Cardinality level of the metric.
-
-    This is used to determine the cardinality level of the metric.
-    The cardinality level is used to determine the type of the metric.
-    """
-
-    LEGACY = "legacy"
-    RECOMMENDED = "recommended"
 
 
 class OpencensusProxyMetric:
@@ -494,20 +484,6 @@ class OpenCensusProxyCollector:
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
 
-    def _get_metric_cardinality_level_setting(self) -> str:
-        return RAY_METRIC_CARDINALITY_LEVEL.lower()
-
-    def _get_metric_cardinality_level(self) -> MetricCardinalityLevel:
-        """Get the cardinality level of the core metric.
-
-        This is used to determine set of metric labels. Some high cardinality labels
-        such as `WorkerId` and `Name` will be removed on low cardinality level.
-        """
-        try:
-            return MetricCardinalityLevel(self._get_metric_cardinality_level_setting())
-        except ValueError:
-            return MetricCardinalityLevel.LEGACY
-
     def _aggregate_metric_data(
         self,
         datas: List[
@@ -608,11 +584,11 @@ class OpenCensusProxyCollector:
             to_lower_cardinality: Dict[str, List[OpencensusProxyMetric]] = defaultdict(
                 list
             )
-            cardinality_level = self._get_metric_cardinality_level()
+            cardinality_level = MetricCardinality.get_cardinality_level()
             for component in self._components.values():
                 for metric in component.metrics.values():
                     if (
-                        cardinality_level == MetricCardinalityLevel.RECOMMENDED
+                        cardinality_level == MetricCardinality.RECOMMENDED
                         and not metric.is_distribution_aggregation_data()
                     ):
                         # We reduce the cardinality for all metrics except for histogram
