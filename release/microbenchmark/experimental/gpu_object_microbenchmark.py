@@ -2,7 +2,6 @@ import argparse
 import os
 from typing import Tuple, Optional
 
-import socket
 import numpy as np
 import torch
 import ray
@@ -68,9 +67,8 @@ class Actor:
         seed = int(np.random.randint(100))
         return torch.ones(self.shape, dtype=self.dtype, device=self.device) * seed
 
-    def recv(self, tensor: torch.Tensor) -> torch.Tensor:
+    def recv(self, tensor: torch.Tensor):
         assert tensor.device.type == self.device.type
-        return b"x"
 
 
 def _exec_p2p_transfer(
@@ -99,8 +97,7 @@ def _exec_p2p_transfer(
     def _run():
         ref = sender.send.options(**send_method_kwargs).remote()
         ref2 = receiver.recv.remote(ref)
-        result = ray.get(ref2)
-        assert result == b"x"
+        ray.get(ref2)
 
     results = timeit(label, _run)
 
@@ -168,18 +165,7 @@ def main() -> None:
     )
 
     args = p.parse_args()
-    ray.init(
-        logging_level="ERROR",
-        runtime_env={
-            "env_vars": {
-                # "NCCL_DEBUG": "INFO",
-                # "UCX_TLS": "^gdr_copy",
-                # Needed for torch distributed.
-                "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
-                "MASTER_PORT": "8888",
-            },
-        },
-    )
+    ray.init(logging_level="ERROR")
 
     distributed = args.distributed
     sender_hint, receiver_hint = None, None
