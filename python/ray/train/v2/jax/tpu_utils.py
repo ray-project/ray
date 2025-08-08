@@ -29,8 +29,8 @@ def fetch_tpu_slice_name_from_pg(pg):
 
 
 def reserve_tpu_slice(
-    topology: Optional[str],
-    accelerator_type: Optional[str],
+    topology: str,
+    accelerator_type: str,
 ) -> Optional[str]:
     """Reserves a TPU slice using its head resource and returns the slice name.
     This enables gang scheduling of training workers with multi-host TPUs.
@@ -43,9 +43,6 @@ def reserve_tpu_slice(
     Returns:
         A string representing a unique TPU slice name.
     """
-    if not (topology and accelerator_type):
-        return None
-
     pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
     if pod_type is None:
         return None
