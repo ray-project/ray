@@ -162,6 +162,7 @@ class RequestRouterConfig(BaseModel):
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
+@PublicAPI(stability="alpha")
 class AutoscalingPolicyConfig(BaseModel):
     name: Union[str, Callable] = Field(
         default=DEFAULT_AUTOSCALING_POLICY,

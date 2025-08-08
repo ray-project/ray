@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Any
+from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     DeploymentHandleSource,
