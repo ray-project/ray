@@ -160,6 +160,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, float):
         import math
+
         if math.isnan(obj):
             return "NaN"
         elif math.isinf(obj):
