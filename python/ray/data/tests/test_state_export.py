@@ -428,7 +428,7 @@ class BasicObject:
         # Objects that can be converted to string
         (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
         # Sets can be converted to Lists
-        ({1, 2, 3}, [1, 2, 3], 100),  # Falls back to str()
+        ({1, 2, 3}, [1, 2, 3], 100),
         # Objects that can't be serialized or stringified
         (UnserializableObject(), UNKNOWN, 100),
         # Empty containers
