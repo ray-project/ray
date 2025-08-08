@@ -39,9 +39,6 @@ static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
 class Buffer;
 class RayObject;
 
-// Magic argument to signal to mock_worker we should check message order.
-static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
-
 /// Wait until the future is ready, or timeout is reached.
 ///
 /// \param[in] future The future to wait for.
@@ -66,14 +63,6 @@ void WaitForExpectedCount(std::atomic<int> &current_count,
                           int expected_count,
                           int timeout_ms = 60000);
 
-/// Used to kill process whose pid is stored in `socket_name.id` file.
-void KillProcessBySocketName(std::string socket_name);
-
-/// Kills all processes with the given executable name (similar to killall).
-/// Note: On Windows, this should include the file extension (e.g. ".exe"), if any.
-/// This cannot be done automatically as doing so may be incorrect in some cases.
-int KillAllExecutable(const std::string &executable_with_suffix);
-
 // A helper function to return a random task id.
 TaskID RandomTaskId();
 
@@ -92,23 +81,10 @@ extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
 /// Ports of redis server.
 extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
-/// Path to gcs server executable binary.
-extern std::string TEST_GCS_SERVER_EXEC_PATH;
-
-/// Path to raylet executable binary.
-extern std::string TEST_RAYLET_EXEC_PATH;
-/// Path to mock worker executable binary. Required by raylet.
-extern std::string TEST_MOCK_WORKER_EXEC_PATH;
-
 //--------------------------------------------------------------------------------
 // COMPONENT MANAGEMENT CLASSES FOR TEST CASES
 //--------------------------------------------------------------------------------
-/// Test cases can use it to
-/// 1. start/stop/flush redis server(s)
-/// 2. start/stop object store
-/// 3. start/stop gcs server
-/// 4. start/stop raylet
-/// 5. start/stop raylet monitor
+/// Test cases can use it to start/stop/flush redis server(s).
 class TestSetupUtil {
  public:
   static void StartUpRedisServers(const std::vector<int> &redis_server_ports,
@@ -116,14 +92,6 @@ class TestSetupUtil {
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
-  static std::string StartGcsServer(int port);
-  static void StopGcsServer(const std::string &gcs_server_socket_name);
-  static std::string StartRaylet(const std::string &node_ip_address,
-                                 const int &port,
-                                 const std::string &bootstrap_address,
-                                 const std::string &resource,
-                                 std::string *store_socket_name);
-  static void StopRaylet(const std::string &raylet_socket_name);
   static void ExecuteRedisCmd(int port, std::vector<std::string> cmd);
   static int StartUpRedisServer(int port, bool save = false);
   static void ShutDownRedisServer(int port);
