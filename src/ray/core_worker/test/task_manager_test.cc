@@ -170,6 +170,22 @@ class TaskManagerTest : public ::testing::Test {
 
   virtual void TearDown() { AssertNoLeaks(); }
 
+  std::shared_ptr<RayObject> GetOneFromMemoryStore(const ObjectID &object_id, bool expect_exception, bool expect_ok = true) {
+    bool got_exception = false;
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+    WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+    Status status = store_->Get({return_id}, -1, ctx, &results, &got_exception);
+    ASSERT_EQ(status.ok(), expect_ok);
+    if (!status.ok()) {
+      return nullptr;
+    }
+
+    ASSERT_EQ(expect_exception, got_exception);
+    return results[return_id];
+  }
+
+  ASSERT_EQ(results.size(), 1);
+
   void AssertNoLeaks() {
     absl::MutexLock lock(&manager_.mu_);
     ASSERT_EQ(manager_.submissible_tasks_.size(), 0);
@@ -250,11 +266,8 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
-  ASSERT_EQ(results.size(), 1);
-  ASSERT_FALSE(results[0]->IsException());
-  ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(),
+  auto result = GetOneFromMemoryStore(return_id, false);
+  ASSERT_EQ(std::memcmp(result->GetData()->Data(),
                         return_object->data().data(),
                         return_object->data().size()),
             0);
@@ -287,11 +300,9 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
-  ASSERT_EQ(results.size(), 1);
+  auto result = GetOneFromMemoryStore(return_id, true);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(results->IsException(&stored_error));
   ASSERT_EQ(stored_error, error);
   ASSERT_EQ(num_retries_, 0);
 
@@ -327,10 +338,9 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
 
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
-  std::vector<std::shared_ptr<RayObject>> results;
   // Caller of FlushObjectsToRecover is responsible for deleting the object
   // from the in-memory store and recovering the object.
-  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  GetOneFromMemoryStore(return_id, false);
   auto objects_to_recover = reference_counter_->FlushObjectsToRecover();
   ASSERT_EQ(objects_to_recover.size(), 1);
   ASSERT_EQ(objects_to_recover[0], return_id);
@@ -357,11 +367,9 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
-  ASSERT_EQ(results.size(), 1);
+  auto result = GetOneFromMemoryStore(return_id, true);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(result->IsException(&stored_error));
   ASSERT_EQ(stored_error, rpc::ErrorType::LOCAL_RAYLET_DIED);
 
   std::vector<ObjectID> removed;
@@ -380,12 +388,9 @@ TEST_F(TaskManagerTest, TestFailPendingTaskAfterCancellation) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   // Check that the error type is set to TASK_CANCELLED
-  std::vector<std::shared_ptr<RayObject>> results;
-  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({spec.ReturnId(0)}, 1, 0, ctx, false, &results));
-  ASSERT_EQ(results.size(), 1);
+  auto result = GetOneFromMemoryStore(spec.ReturnId(0), true);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(result->IsException(&stored_error));
   ASSERT_EQ(stored_error, rpc::ErrorType::TASK_CANCELLED);
 }
 
@@ -411,8 +416,8 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-    std::vector<std::shared_ptr<RayObject>> results;
-    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+
+    GetOneFromMemoryStore(return_id, false, false);
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
     ASSERT_EQ(last_object_recovery_, false);
@@ -424,11 +429,9 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
-  ASSERT_EQ(results.size(), 1);
+  auto result = GetOneFromMemoryStore(spec.ReturnId(0), true);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(results->IsException(&stored_error));
   ASSERT_EQ(stored_error, error);
 
   std::vector<ObjectID> removed;
@@ -454,10 +457,9 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
-  ASSERT_EQ(results.size(), 1);
+  auto result = GetOneFromMemoryStore(spec.ReturnId(0), true);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(result->IsException(&stored_error));
   ASSERT_EQ(stored_error, error);
 }
 
@@ -509,7 +511,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
     RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
-    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_TRUE(result->IsException(&stored_error));
     ASSERT_EQ(stored_error, error);
   }
 
@@ -529,7 +531,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
     RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
-    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_TRUE(result->IsException(&stored_error));
     ASSERT_EQ(stored_error, error);
   }
 }
@@ -567,7 +569,7 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(result->IsException(&stored_error));
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
 }
 
@@ -609,7 +611,7 @@ TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryC
   RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
-  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_TRUE(result->IsException(&stored_error));
   ASSERT_EQ(stored_error, rpc::ErrorType::OUT_OF_MEMORY);
 }
 
@@ -636,7 +638,7 @@ TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
     RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
-    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_TRUE(result->IsException(&stored_error));
     ASSERT_EQ(stored_error, error);
   }
 
@@ -660,7 +662,7 @@ TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
     RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
-    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_TRUE(result->IsException(&stored_error));
     ASSERT_EQ(stored_error, error);
   }
 }
