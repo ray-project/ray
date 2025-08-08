@@ -33,21 +33,35 @@ def cli():
 @click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
+@click.option("--build-arg-set", default=None)
 @click.option("--uv-cache-dir", default=None)
 def load(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
+    build_arg_set: Optional[str],
     uv_cache_dir: Optional[str],
 ):
-    """Load a dependency sets from a config file."""
+    """
+    Load a dependency sets from a config file.
+    Args:
+        config_path: The path to the config file.
+        workspace_dir: The path to the workspace directory.
+        name: The name of the dependency set to load.
+        build_arg_set: The name of the build arg set to use.
+    User can specify a name and build arg set to load a single dependency set.
+    If no name is specified, all dependency sets will be loaded.
+    If no build arg set is specified, a depset matching the name with no build arg set will be loaded.
+    If no workspace directory is specified, $BUILD_WORKSPACE_DIRECTORY will be used.
+    If no uv cache directory is specified, the default uv cache directory will be used.
+    """
     manager = DependencySetManager(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
     )
     if name:
-        manager.execute_single(manager.get_depset(name))
+        manager.execute_single(manager.get_depset(name, build_arg_set))
     else:
         manager.execute()
 

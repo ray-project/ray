@@ -522,6 +522,28 @@ depsets:
             assert depset.name == "ray_base_test_depset"
             assert depset.build_arg_set is None
 
+    def test_invalid_build_arg_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
+                f.write(
+                    """
+depsets:
+    - name: invalid_build_arg_set
+      operation: compile
+      requirements:
+          - requirements_test.txt
+      output: requirements_compiled_invalid_build_arg_set.txt
+      build_arg_sets:
+          - invalid_build_arg_set
+                """
+                )
+            with self.assertRaises(KeyError):
+                DependencySetManager(
+                    config_path="test.depsets.yaml",
+                    workspace_dir=tmpdir,
+                )
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
