@@ -110,6 +110,7 @@ class DatasetManager:
                 # existing one.
                 iterator = self._dataset_iterators[dataset_name][world_rank]
             elif world_rank == 0:
+                print(f"Creating dataset iterators for {dataset_name}")
                 # In this case, the dataset iterators have not been created yet.
                 # The dataset only needs to be configured once globally for all workers.
                 # Do it only when the rank 0 worker calls this method.
@@ -123,7 +124,9 @@ class DatasetManager:
                 self._condition.notify_all()
             else:
                 # Wait for the dataset iterators to be created by the rank 0 worker.
-                await self._condition.wait()
+                await self._condition.wait_for(
+                    lambda: dataset_name in self._dataset_iterators
+                )
                 iterator = self._dataset_iterators[dataset_name][world_rank]
         return iterator
 

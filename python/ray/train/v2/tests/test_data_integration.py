@@ -208,6 +208,43 @@ async def test_get_multiple_datasets_serially(ray_start_4_cpus):
 
 
 @pytest.mark.asyncio
+async def test_get_multiple_datasets_interleaved(ray_start_4_cpus):
+    """Tests DatasetManager.get_dataset_shard for multiple datasets,
+    called in an interleaved order by workers.
+
+    Worker 0:
+    ray.train.get_dataset_shard("train")
+    ray.train.get_dataset_shard("valid")
+
+    Worker 1:
+    ray.train.get_dataset_shard("valid")
+    ray.train.get_dataset_shard("train")
+    """
+
+    NUM_ROWS = 100
+    NUM_TRAIN_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    valid_ds = ray.data.range(NUM_ROWS)
+
+    dataset_manager = DatasetManager(
+        datasets={"train": train_ds, "valid": valid_ds},
+        data_config=ray.train.DataConfig(datasets_to_split="all"),
+        data_context=DataContext.get_current(),
+        world_size=NUM_TRAIN_WORKERS,
+        worker_node_ids=None,
+    )
+
+    tasks = [
+        get_dataset_shard_for_worker(dataset_manager, "train", NUM_TRAIN_WORKERS, 0),
+        get_dataset_shard_for_worker(dataset_manager, "valid", NUM_TRAIN_WORKERS, 1),
+        get_dataset_shard_for_worker(dataset_manager, "train", NUM_TRAIN_WORKERS, 1),
+        get_dataset_shard_for_worker(dataset_manager, "valid", NUM_TRAIN_WORKERS, 0),
+    ]
+    await asyncio.gather(*tasks)
+
+
+@pytest.mark.asyncio
 async def test_get_multiple_datasets_rank_specific(ray_start_4_cpus):
     """Tests rank-specific DatasetManager.get_dataset_shard calls.
 
