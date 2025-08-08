@@ -21,69 +21,6 @@ STUB_JOB_ID = "stub_job_id"
 STUB_DATASET_ID = "stub_dataset_id"
 
 
-# def recursive_equal_with_int_to_float(obj):
-#     """
-#     Recursively compare two objects, converting all ints to floats for comparison.
-#     First does an eager equality check, then falls back to detailed comparison if needed.
-
-#     Args:
-#         obj1: First object to compare
-#         obj2: Second object to compare
-
-#     Returns:
-#         bool: True if objects are equal after int->float conversion
-#     """
-#     if obj == float('-inf'):
-#         return
-#     if isinstance(obj, int):
-#         return float(obj)
-
-#     # Eager equality check first
-#     if str(obj1) == str(obj2):
-#         return True
-
-#     # Handle numeric types - convert ints to floats
-
-#     # Handle sets (convert to sorted lists for comparison)
-#     if isinstance(obj1, set) and isinstance(obj2, set):
-#         if len(obj1) != len(obj2):
-#             return False
-#         # Convert sets to sorted lists for comparison
-#         list1 = sorted([str(item) for item in obj1])
-#         list2 = sorted([str(item) for item in obj2])
-#         return list1 == list2
-
-#     # Handle bytes (convert to string)
-#     if isinstance(obj1, bytes) and isinstance(obj2, bytes):
-#         return obj1.decode("utf-8", errors="replace") == obj2.decode(
-#             "utf-8", errors="replace"
-#         )
-
-#     # Handle dictionaries
-#     if isinstance(obj1, dict) and isinstance(obj2, dict):
-#         if len(obj1) != len(obj2):
-#             return False
-#         for key1, key2 in zip(sorted(obj1.keys()), sorted(obj2.keys())):
-#             # Convert keys to strings for comparison
-#             if str(key1) != str(key2):
-#                 return False
-#             if not recursive_equal_with_int_to_float(obj1[key1], obj2[key2]):
-#                 return False
-#         return True
-
-#     # Handle lists and other sequences
-#     if isinstance(obj1, (list, tuple)) and isinstance(obj2, (list, tuple)):
-#         if len(obj1) != len(obj2):
-#             return False
-#         return all(
-#             recursive_equal_with_int_to_float(item1, item2)
-#             for item1, item2 in zip(obj1, obj2)
-#         )
-
-
-#     return False
-
-
 def _get_export_file_path() -> str:
     return os.path.join(
         ray._private.worker._global_node.get_session_dir_path(),
