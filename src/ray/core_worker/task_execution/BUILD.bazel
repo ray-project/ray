@@ -122,6 +122,7 @@ ray_cc_library(
     name = "task_receiver",
     srcs = ["task_receiver.cc"],
     hdrs = ["task_receiver.h"],
+    visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         ":actor_scheduling_queue",
         ":concurrency_group_manager",
@@ -141,5 +142,4 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
-    visibility = ["//src/ray/core_worker:__pkg__"],
 )
