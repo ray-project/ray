@@ -480,7 +480,7 @@ DATA_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr="histogram_quantile($pXX, sum by (dataset, operator, le) (rate(ray_data_mean_task_output_backpressure_time_bucket{{{global_filters}}}[5m])))",
-                legend="Output Backpressure Time: {{dataset}}, {{operator}}",
+                legend="($pXX) Output Backpressure Time: {{dataset}}, {{operator}}",
             ),
         ],
         fill=0,
