@@ -185,10 +185,7 @@ Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
   RAY_RETURN_NOT_OK(raylet_client_->AsyncGetObjects(batch_ids, owner_addresses));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
-                                       timeout_ms,
-                                       &plasma_results,
-                                       /*is_from_worker=*/true));
+  RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
@@ -225,11 +222,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     const std::vector<ObjectID> &object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
-  // Since this path is used only for spilling, we should set is_from_worker: false.
   RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
                                        /*timeout_ms=*/0,
-                                       &plasma_results,
-                                       /*is_from_worker=*/false));
+                                       &plasma_results));
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
