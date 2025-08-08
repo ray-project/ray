@@ -95,13 +95,13 @@ ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/raylet_client:raylet_client_lib",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
@@ -200,6 +200,7 @@ ray_cc_library(
     name = "task_event_buffer",
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -216,7 +217,6 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
