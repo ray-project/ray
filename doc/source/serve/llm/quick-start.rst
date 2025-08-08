@@ -1,8 +1,10 @@
+.. _quick-start:
+
 Quickstart Examples
 -------------------
 
-Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Deployment through :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
@@ -41,7 +43,9 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig
+            from ray.serve.llm.deployment import LLMServer
+            from ray.serve.llm.ingress import OpenAiIngress
 
             llm_config = LLMConfig(
                 model_loading_config=dict(
@@ -63,7 +67,7 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
 
             # Deploy the application
             deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-            llm_app = LLMRouter.as_deployment().bind([deployment])
+            llm_app = OpenAiIngress.as_deployment().bind([deployment])
             serve.run(llm_app, blocking=True)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
@@ -105,7 +109,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
 
-For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.serve.llm.LLMConfig>` objects to the :class:`LLMRouter <ray.serve.llm.LLMRouter>` deployment:
+For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.serve.llm.LLMConfig>` objects to the :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>` deployment:
 
 .. tab-set::
 
@@ -153,40 +157,42 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
 
         .. code-block:: python
 
-        from ray import serve
-        from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+            from ray import serve
+            from ray.serve.llm import LLMConfig
+            from ray.serve.llm.deployment import LLMServer
+            from ray.serve.llm.ingress import OpenAiIngress
 
-        llm_config1 = LLMConfig(
-            model_loading_config=dict(
-                model_id="qwen-0.5b",
-                model_source="Qwen/Qwen2.5-0.5B-Instruct",
-            ),
-            deployment_config=dict(
-                autoscaling_config=dict(
-                    min_replicas=1, max_replicas=2,
-                )
-            ),
-            accelerator_type="A10G",
-        )
+            llm_config1 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
 
-        llm_config2 = LLMConfig(
-            model_loading_config=dict(
-                model_id="qwen-1.5b",
-                model_source="Qwen/Qwen2.5-1.5B-Instruct",
-            ),
-            deployment_config=dict(
-                autoscaling_config=dict(
-                    min_replicas=1, max_replicas=2,
-                )
-            ),
-            accelerator_type="A10G",
-        )
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
 
-        # Deploy the application
-        deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
-        deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
-        llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
-        serve.run(llm_app, blocking=True)
+            # Deploy the application
+            deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
+            deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
+            llm_app = OpenAiIngress.as_deployment().bind([deployment1, deployment2])
+            serve.run(llm_app, blocking=True)
 
 See also :ref:`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
 
@@ -301,8 +307,7 @@ the `vLLM engine configuration docs <https://docs.vllm.ai/en/latest/serving/engi
 for further customization.
 
 Observability
--------------
-
+---------------------
 Ray enables LLM service-level logging by default, and makes these statistics available using Grafana and Prometheus. For more details on configuring Grafana and Prometheus, see :ref:`collect-metrics`.
 
 These higher-level metrics track request and token behavior across deployed models. For example: average total tokens per request, ratio of input tokens to generated tokens, and peak tokens per second.
@@ -312,7 +317,7 @@ For visualization, Ray ships with a Serve LLM-specific dashboard, which is autom
 .. image:: images/serve_llm_dashboard.png
 
 Engine Metrics
---------------
+---------------------
 All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/usage/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
 
 Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
@@ -759,7 +764,7 @@ Frequently Asked Questions
 --------------------------
 
 How do I use gated Huggingface models?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use `runtime_env` to specify the env variables that are required to access the model.
 To set the deployment options, you can use the :meth:`get_serve_options <ray.serve.llm.LLMConfig.get_serve_options>` method on the :class:`LLMConfig <ray.serve.llm.LLMConfig>` object.
@@ -767,7 +772,9 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+    from ray.serve.llm import LLMConfig
+    from ray.serve.llm.deployment import LLMServer
+    from ray.serve.llm.ingress import OpenAiIngress
     import os
 
     llm_config = LLMConfig(
@@ -791,7 +798,7 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
 
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = LLMRouter.as_deployment().bind([deployment])
+    llm_app = OpenAiIngress.as_deployment().bind([deployment])
     serve.run(llm_app, blocking=True)
 
 Why is downloading the model so slow?
@@ -800,10 +807,13 @@ Why is downloading the model so slow?
 If you are using huggingface models, you can enable fast download by setting `HF_HUB_ENABLE_HF_TRANSFER` and installing `pip install hf_transfer`.
 
 
+
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+    from ray.serve.llm import LLMConfig
+    from ray.serve.llm.deployment import LLMServer
+    from ray.serve.llm.ingress import OpenAiIngress
     import os
 
     llm_config = LLMConfig(
@@ -828,7 +838,7 @@ If you are using huggingface models, you can enable fast download by setting `HF
 
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = LLMRouter.as_deployment().bind([deployment])
+    llm_app = OpenAiIngress.as_deployment().bind([deployment])
     serve.run(llm_app, blocking=True)
 
 How to configure tokenizer pool size so it doesn't hang?
@@ -858,7 +868,7 @@ An example config is shown below:
 
 
 Usage Data Collection
----------------------
+--------------------------
 We collect usage data to improve Ray Serve LLM.
 We collect data about the following features and attributes:
 
@@ -872,5 +882,3 @@ We collect data about the following features and attributes:
 
 If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
 to disable it.
-
-

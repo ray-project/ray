@@ -29,7 +29,7 @@ The ray.serve.llm module provides two key deployment types for serving LLMs:
 
 The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
 
-#### LLMRouter
+#### OpenAiIngress
 
 This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
 
