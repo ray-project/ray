@@ -62,7 +62,6 @@ def train_func():
     from ray import train
 
     devices = jax.devices()
-    devices = jax.devices()
     print(f"Devices on this worker: {devices}")
     train.report({"result": [str(d) for d in devices]})
 
