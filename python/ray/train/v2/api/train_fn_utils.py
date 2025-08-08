@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+import ray
 from ray.train import Checkpoint
-from ray.train.v2._internal.execution.context import get_train_context
-from ray.train.v2.api.context import TrainContext
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -88,22 +87,9 @@ def report(
             index in the name.
     """
 
-    get_train_context().report(
+    ray.train.get_context().report(
         metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
     )
-
-
-@PublicAPI(stability="stable")
-def get_context() -> TrainContext:
-    """Get or create a singleton training context.
-
-    The context is only available within a function passed to Ray Train.
-
-    See the :class:`~ray.train.TrainContext` API reference to see available methods.
-    """
-    # TODO: Return a dummy train context on the controller and driver process
-    # instead of raising an exception if the train context does not exist.
-    return TrainContext()
 
 
 @PublicAPI(stability="stable")
@@ -148,7 +134,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
-    return get_train_context().get_checkpoint()
+    return ray.train.get_context().get_checkpoint()
 
 
 @PublicAPI(stability="stable")
@@ -195,4 +181,4 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_context().get_dataset_shard(dataset_name)
+    return ray.train.get_context().get_dataset_shard(dataset_name)

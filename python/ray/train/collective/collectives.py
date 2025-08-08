@@ -3,7 +3,6 @@ from typing import Optional, TypeVar
 
 import ray
 import ray.cloudpickle as pickle
-from ray.train.v2._internal.execution.context import get_train_context
 from ray.util.annotations import PublicAPI
 
 # For reference, {1:1} is 19 bytes, {"1":"1"} is 21 bytes,
@@ -66,7 +65,7 @@ def broadcast_from_rank_zero(data: T) -> T:
             )
 
     # Send data to all workers.
-    train_context = get_train_context()
+    train_context = ray.train.get_context()
     sync_actor = train_context.get_synchronization_actor()
     return ray.get(
         sync_actor.broadcast_from_rank_zero.remote(
@@ -103,7 +102,7 @@ def barrier() -> None:
             trainer = TorchTrainer(train_func)
             trainer.fit()
     """
-    train_context = get_train_context()
+    train_context = ray.train.get_context()
     sync_actor = train_context.get_synchronization_actor()
     return ray.get(
         sync_actor.broadcast_from_rank_zero.remote(

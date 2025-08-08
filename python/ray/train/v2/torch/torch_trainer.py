@@ -5,6 +5,9 @@ from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
+from ray.train.v2.api.result import Result
+from ray.train.v2.api.context import DistributedTrainContext, LocalRunningTrainContext
+from ray.train.v2.torch.local_torch_trainer import LocalTorchTrainer
 
 if TYPE_CHECKING:
     # NOTE: `ray.train.torch` module imports in this file will break
@@ -194,6 +197,7 @@ class TorchTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        local_running_mode: bool = False,
     ):
         from ray.train.torch.config import TorchConfig
 
@@ -201,6 +205,15 @@ class TorchTrainer(DataParallelTrainer):
         if not torch_config.backend:
             is_gpu_training = scaling_config and scaling_config.use_gpu
             torch_config.backend = "nccl" if is_gpu_training else "gloo"
+
+        self.local_running_mode = local_running_mode
+        self.local_torch_trainer = None
+        self.train_context = None
+        if self.local_running_mode:
+            self.local_torch_trainer = LocalTorchTrainer(datasets=datasets)
+            self.train_context = self.local_torch_trainer.context
+        else:
+            self.train_context = DistributedTrainContext()
 
         super(TorchTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -212,4 +225,13 @@ class TorchTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+            train_context=self.train_context,
         )
+
+    def fit(self) -> Result:
+        if not self.local_running_mode:
+            return super(TorchTrainer, self).fit()
+        else:
+            return self.local_torch_trainer.fit(
+                self._get_train_func(),
+            )
