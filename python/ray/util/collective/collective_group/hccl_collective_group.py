@@ -128,6 +128,7 @@ class HCCLRootInfoStore:
 class HCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an HCCL collective group."""
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = "0,1,2,3"
         import torch_npu
 
         metadata_key = get_master_address_metadata_key(group_name)

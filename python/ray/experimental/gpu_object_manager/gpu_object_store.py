@@ -17,12 +17,20 @@ except ImportError:
 TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
+    TensorTransportEnum.HCCL: Backend.HCCL,
 }
 
 COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
     Backend.NCCL: torch.device("cuda"),
     Backend.TORCH_GLOO: torch.device("cpu"),
 }
+
+try:
+    import torch_npu
+
+    COLLECTIVE_BACKEND_TO_TORCH_DEVICE[Backend.HCCL] = torch.device("npu")
+except ImportError:
+    pass
 
 
 def _tensor_transport_to_collective_backend(
