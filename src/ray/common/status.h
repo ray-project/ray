@@ -71,10 +71,28 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace Status {
 
+#define ERROR_TYPE(error_name)                                           \
+  class error_name {                                                     \
+   public:                                                               \
+    template <typename T>                                                \
+    error_name(T &&message) : message_(std::forward(message)) {}         \
+                                                                         \
+    const std::string &message() const { return message_; }              \
+    std::string &message() { return message_; }                          \
+                                                                         \
+    std::string ToString() {                                             \
+      return absl::StrCat("Error: " #error_name ", Message:", message_); \
+    }                                                                    \
+                                                                         \
+   private:                                                              \
+    std::string message_;                                                \
+  };
+
 class OK {};
-class OutOfMemory {};
-class KeyError {};
-class IOError {};
+
+ERROR_TYPE(OutOfMemory);
+ERROR_TYPE(KeyError);
+ERROR_TYPE(IOError);
 
 };  // namespace Status
 
@@ -89,16 +107,20 @@ class StatusReturn {
 
   StatusReturn(Status::OK) : error_(std::nullopt) {}
 
-  template <typename Error>
-  StatusReturn(Error error) : error_(error) {}
+  template <typename ErrorType>
+  StatusReturn(ErrorType &&error) : error_(std::forward(error)) {}
 
-  bool has_error() { return error_.has_value(); }
+  bool ok() const { return !error_.has_value(); }
 
-  const std::variant<ErrorTypes...> &error() { return error_.value(); }
+  bool has_error() const { return error_.has_value(); }
+
+  const std::variant<ErrorTypes...> &error() const { return *error_; }
+
+  std::variant<ErrorTypes...> &error() { return *error_; }
+
+  std::string ToString() { return has_error() ? error_.ToString() : "OK"; }
 
  private:
-  // We could scrap the optional and have OK be native error type too, but imo it makes
-  // sense to handle ok differently, today ok is the absense of a value.
   std::optional<std::variant<ErrorTypes...>> error_;
 };
 
@@ -107,7 +129,7 @@ inline StatusReturn<Status::IOError, Status::OutOfMemory> DoThing() {
   if (std::rand() % 2 == 0) {
     return Status::OK();
   }
-  return Status::IOError();
+  return Status::IOError("error message");
 }
 
 inline void UseDoThing() {
