@@ -490,15 +490,6 @@ int main(int argc, char *argv[]) {
                    << "rpc_service_threads_number = "
                    << object_manager_config.rpc_service_threads_number
                    << ", object_chunk_size = " << object_manager_config.object_chunk_size;
-    // Initialize stats.
-    const ray::stats::TagsType global_tags = {
-        {ray::stats::ComponentKey, "raylet"},
-        {ray::stats::WorkerIdKey, ""},
-        {ray::stats::VersionKey, kRayVersion},
-        {ray::stats::NodeAddressKey, node_ip_address},
-        {ray::stats::SessionNameKey, session_name}};
-    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
-
     RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
     node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
@@ -555,7 +546,13 @@ int main(int argc, char *argv[]) {
         });
 
     raylet_client_pool =
-        std::make_unique<ray::rpc::RayletClientPool>(*client_call_manager);
+        std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
+          return std::make_shared<ray::raylet::RayletClient>(
+              addr,
+              *client_call_manager,
+              ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                  gcs_client.get(), raylet_client_pool.get(), addr));
+        });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
         raylet_node_id,
@@ -771,11 +768,9 @@ int main(int argc, char *argv[]) {
     auto raylet_client_factory = [&](const NodeID &node_id) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
       RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-      ray::rpc::Address addr;
-      addr.set_ip_address(node_info->node_manager_address());
-      addr.set_port(node_info->node_manager_port());
-      addr.set_raylet_id(node_id.Binary());
-      return raylet_client_pool->GetOrConnectByAddress(addr);
+      auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
+          node_id, node_info->node_manager_address(), node_info->node_manager_port());
+      return raylet_client_pool->GetOrConnectByAddress(std::move(addr));
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();
@@ -818,7 +813,19 @@ int main(int argc, char *argv[]) {
                                                    is_head_node,
                                                    *node_manager);
 
-    // Initialize event framework.
+    // Initializing stats should be done after the node manager is initialized because
+    // <explain why>. Metrics exported before this call will be buffered until `Init` is
+    // called.
+    const ray::stats::TagsType global_tags = {
+        {ray::stats::ComponentKey, "raylet"},
+        {ray::stats::WorkerIdKey, ""},
+        {ray::stats::VersionKey, kRayVersion},
+        {ray::stats::NodeAddressKey, node_ip_address},
+        {ray::stats::SessionNameKey, session_name}};
+    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+
+    // Initialize event framework. This should be done after the node manager is
+    // initialized.
     if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
       const std::vector<ray::SourceTypeVariant> source_types = {
           ray::rpc::Event_SourceType::Event_SourceType_RAYLET};

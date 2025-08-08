@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/network_util.h"
+
 namespace ray {
 namespace rpc {
 
@@ -35,11 +37,10 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                                worker_client_pool,
                                worker_id,
                                node_id](const rpc::GcsNodeInfo &node_info) {
-      rpc::Address raylet_addr;
-      raylet_addr.set_ip_address(node_info.node_manager_address());
-      raylet_addr.set_port(node_info.node_manager_port());
-      raylet_addr.set_raylet_id(node_id.Binary());
-      auto raylet_client = raylet_client_pool->GetOrConnectByAddress(raylet_addr);
+      auto raylet_addr = RayletClientPool::GenerateRayletAddress(
+          node_id, node_info.node_manager_address(), node_info.node_manager_port());
+      auto raylet_client =
+          raylet_client_pool->GetOrConnectByAddress(std::move(raylet_addr));
       raylet_client->IsLocalWorkerDead(
           worker_id,
           [worker_client_pool, worker_id, node_id](const Status &status,
@@ -87,7 +88,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                 check_worker_alive(nodes[0]);
               },
               -1,
-              node_id);
+              {node_id});
         };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
@@ -136,7 +137,7 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   node_clients_map_[node_id][worker_id] = client_list_.begin();
 
   RAY_LOG(DEBUG) << "Connected to worker " << worker_id << " with address "
-                 << addr_proto.ip_address() << ":" << addr_proto.port();
+                 << BuildAddress(addr_proto.ip_address(), addr_proto.port());
   return entry.core_worker_client;
 }
 
