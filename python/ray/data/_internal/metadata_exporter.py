@@ -148,6 +148,8 @@ def _add_ellipsis(s: str, truncate_length: int) -> str:
 
 
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
+    from dataclasses import asdict, is_dataclass
+
     if isinstance(obj, Mapping):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
@@ -155,19 +157,18 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
         return obj
     elif isinstance(obj, str):
         return _add_ellipsis(obj, truncate_length)
-    elif isinstance(obj, Sequence):
+    elif isinstance(obj, bytes):
+        # Convert bytes to string
+        try:
+            return _add_ellipsis(obj.decode("utf-8"), truncate_length)
+        except UnicodeDecodeError:
+            return _add_ellipsis(str(obj), truncate_length)
+    elif isinstance(obj, (list, tuple, set)) or isinstance(obj, Sequence):
+        # Convert all sequence-like types (lists, tuples, sets, other sequences) to lists
         return [sanitize_for_struct(v, truncate_length) for v in obj]
+    elif is_dataclass(obj):
+        return sanitize_for_struct(asdict(obj), truncate_length)
     else:
-        from dataclasses import is_dataclass
-
-        if is_dataclass(obj):
-            try:
-                from dataclasses import asdict
-
-                return sanitize_for_struct(asdict(obj), truncate_length)
-            except Exception:
-                pass
-        # Convert unhandled types to string
         try:
             return _add_ellipsis(str(obj), truncate_length)
         except Exception:

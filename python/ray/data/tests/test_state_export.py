@@ -2,7 +2,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Tuple
 
 import pytest
 
@@ -99,6 +99,27 @@ def normalize_json_value(value: Any) -> Any:
         return value
 
 
+@dataclass
+class TestDataclass:
+    """A test dataclass for testing dataclass serialization."""
+
+    list_field: list = None
+    dict_field: dict = None
+    string_field: str = "test"
+    int_field: int = 1
+    float_field: float = 1.0
+    set_field: set = None
+    tuple_field: Tuple[int] = None
+    bool_field: bool = True
+    none_field: None = None
+
+    def __post_init__(self):
+        self.list_field = [1, 2, 3]
+        self.dict_field = {1: 2, "3": "4"}
+        self.set_field = {1, 2, 3}
+        self.tuple_field = (1, 2, 3)
+
+
 class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
@@ -145,22 +166,6 @@ class DummyLogicalOperator(LogicalOperator):
             "neg_inf": float("-inf"),
             "nan": float("nan"),
         }
-
-        @dataclass
-        class TestDataclass:
-            """A test dataclass for testing dataclass serialization."""
-
-            list_field: list = None
-            dict_field: dict = None
-            string_field: str = "test"
-            int_field: int = 1
-            float_field: float = 1.0
-            bool_field: bool = True
-            none_field: None = None
-
-            def __post_init__(self):
-                self.list_field = [1, 2, 3]
-                self.dict_field = {1: 2, "3": "4"}
 
         self._data_class = TestDataclass()
 
@@ -422,8 +427,8 @@ class BasicObject:
         ),
         # Objects that can be converted to string
         (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
-        # Objects that can't be JSON serialized but can be stringified
-        ({1, 2, 3}, "{1, 2, 3}", 100),  # Falls back to str()
+        # Sets can be converted to Lists
+        ({1, 2, 3}, [1, 2, 3], 100),  # Falls back to str()
         # Objects that can't be serialized or stringified
         (UnserializableObject(), UNKNOWN, 100),
         # Empty containers
@@ -433,6 +438,22 @@ class BasicObject:
         (
             [1, "hello", {"key": "value"}, None],
             [1, "hello", {"key": "value"}, None],
+            100,
+        ),
+        # Dataclass
+        (
+            TestDataclass(),
+            {
+                "list_field": [1, 2, 3],
+                "dict_field": {"1": 2, "3": "4"},
+                "string_field": "test",
+                "int_field": 1,
+                "float_field": 1.0,
+                "set_field": [1, 2, 3],
+                "tuple_field": [1, 2, 3],
+                "bool_field": True,
+                "none_field": None,
+            },
             100,
         ),
     ],
