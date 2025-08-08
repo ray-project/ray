@@ -1,9 +1,4 @@
 import pytest
-import threading
-import time
-from unittest.mock import Mock, patch
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import queue
 
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 from ray.core.generated.events_event_aggregator_service_pb2 import TaskEventsMetadata

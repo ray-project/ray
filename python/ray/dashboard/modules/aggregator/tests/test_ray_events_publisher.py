@@ -1,8 +1,6 @@
 import pytest
 import threading
-import time
-import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from typing import Tuple
 
 from ray.dashboard.modules.aggregator.ray_events_publisher import (
