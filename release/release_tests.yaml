@@ -4534,7 +4534,7 @@
       pytest -sv test_batch_sglang.py
 
 
-- name: text_embeddings_benchmark_5x_{{scaling}}
+- name: text_embeddings_benchmark_{{scaling}}
   frequency: nightly
   python: "3.11"  # necessary for the llm-cu128 image
   working_dir: nightly_tests
@@ -4552,11 +4552,11 @@
   run:
     timeout: 3600
     script: >
-      python dataset/text_embeddings_benchmark_5x.py
+      python dataset/text_embeddings_benchmark.py
 
 # Note: release tests do not support specifying both 'matrix' and 'variations'
 # in a test definition, so split off preemptible tests here.
-- name: text_embeddings_benchmark_5x_{{scaling}}_preemptible
+- name: text_embeddings_benchmark_{{scaling}}_preemptible
   frequency: nightly
   python: "3.11"
   working_dir: nightly_tests
@@ -4581,7 +4581,7 @@
       python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
       --batch-size-to-kill 5 --max-to-kill 20 --kill-delay 30 --kill-interval 120
     script: >
-      python dataset/text_embeddings_benchmark_5x.py --chaos-test
+      python dataset/text_embeddings_benchmark.py --chaos-test
 
 #######################
 # Ray examples tests

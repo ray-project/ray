@@ -1,10 +1,5 @@
 """
-Benchmark a text embeddings job.
-
-Part of our initiative to benchmark RayTurbo vs Ray on _representative workloads_.
-
-This test is called '5x' because it uses the 5000-docs dataset, which is 5x larger than the 1000-docs dataset
-used in the '1x' benchmark.
+Benchmark a text embeddings job
 """
 
 import argparse
