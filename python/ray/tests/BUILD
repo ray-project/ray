@@ -86,6 +86,7 @@ py_test_module_list(
         "RAY_experimental_enable_open_telemetry_on_core": "1",
     },
     files = [
+        "test_aggregated_prometheus_metrics.py",
         "test_metrics_agent.py",
     ],
     name_suffix = "_open_telemetry",
@@ -500,6 +501,7 @@ py_test_module_list(
         "accelerators/test_intel_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
+        "accelerators/test_rbln.py",
         "accelerators/test_tpu.py",
         "test_actor_lineage_reconstruction.py",
         "test_actor_out_of_order.py",
