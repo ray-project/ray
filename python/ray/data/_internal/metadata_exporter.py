@@ -155,7 +155,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     - Dictionary keys will be converted to strings
     - Lists, tuples, sets, bytes, bytearrays will be converted to lists
     """
-    if is_dataclass(obj):
+    if is_dataclass(obj) and not isinstance(obj, type):
         # Only convert dataclass instances, not dataclass types
         return sanitize_for_struct(asdict(obj), truncate_length)
     elif isinstance(obj, Mapping):
