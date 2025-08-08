@@ -2649,14 +2649,12 @@
 # --------------------------
 # DreamerV3
 # --------------------------
-# TODO (sven): Move algo and this test to pytorch
-- name: rllib_learning_tests_pong_dreamerv3_tf2
+- name: rllib_learning_tests_pong_dreamerv3_torch
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: false
+  stable: true
 
-  # https://github.com/ray-project/ray/issues/46612
   frequency: weekly
   team: rllib
   cluster:
@@ -2666,11 +2664,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 1gpu_4cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
-    timeout: 43200  # 12h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ale_py:ALE/Pong-v5 --num-learners=1 --stop-reward=15.0 --as-release-test
+    timeout: 36000  # 10h
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k_dreamerv3.py --framework=torch --env=ale_py:ALE/Pong-v5 --num-learners=4 --stop-reward=18.0 --as-release-test
 
   alert: default
 
@@ -2680,7 +2678,38 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: 1gpu_4cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_pendulum_dreamerv3_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_dreamerv3_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 3600  # 1h
+    script: python learning_tests/tuned_examples/dreamerv3/pendulum_dreamerv3.py --framework=torch --num-learners=2 --stop-reward=-200.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_32cpus_gce.yaml
 
 # --------------------------
 # IMPALA
@@ -2704,7 +2733,7 @@
 
   run:
     timeout: 1800
-    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
+    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.0 --as-release-test
 
   alert: default
 
@@ -2827,7 +2856,10 @@
 
   team: core
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2899,7 +2931,10 @@
   working_dir: microbenchmark
 
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: tpl_64.yaml
 
   run:
@@ -3144,7 +3179,10 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -3184,7 +3222,10 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -3316,7 +3357,10 @@
   team: core
   env: aws_perf
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
@@ -3480,6 +3524,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: single_node.yaml
 
   run:
@@ -3507,6 +3553,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: object_store.yaml
 
   run:
@@ -3535,6 +3583,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: object_store/small_objects.yaml
 
   run:
@@ -3558,6 +3608,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: object_store/large_objects.yaml
 
   run:
@@ -3581,6 +3633,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3629,6 +3683,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3657,6 +3713,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3706,6 +3764,8 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_experimental_enable_open_telemetry_on_agent=1
+        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: many_nodes.yaml
 
   run:

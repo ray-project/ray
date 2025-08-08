@@ -30,7 +30,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   if (task_spec.IsActorCreationTask()) {
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
-               task_spec.ExecuteOutOfOrder());
+               task_spec.AllowOutOfOrderExecution());
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -163,7 +163,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         }
       }
     }
-    if (status.ShouldExitWorker()) {
+    if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
+        status.IsCreationTaskError()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
@@ -174,8 +175,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
+      RAY_CHECK_OK(status);
       RAY_CHECK(objects_valid);
-      send_reply_callback(status, nullptr, nullptr);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
 
@@ -199,7 +201,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       it = actor_scheduling_queues_
                .emplace(
                    task_spec.CallerWorkerId(),
-                   execute_out_of_order_
+                   allow_out_of_order_execution_
                        ? std::unique_ptr<SchedulingQueue>(
                              std::make_unique<OutOfOrderActorSchedulingQueue>(
                                  task_execution_service_,
@@ -272,16 +274,16 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
 
 void TaskReceiver::SetupActor(bool is_asyncio,
                               int fiber_max_concurrency,
-                              bool execute_out_of_order) {
+                              bool allow_out_of_order_execution) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
-  // Note: It's possible to have execute_out_of_order as false but max_concurrency > 1,
-  // from the C++ / Java API's.
-  RAY_CHECK(is_asyncio ? execute_out_of_order : true)
-      << "execute_out_of_order must be true if is_asyncio is true";
+  // Note: It's possible to have allow_out_of_order_execution as false but max_concurrency
+  // > 1, from the C++ / Java API's.
+  RAY_CHECK(is_asyncio ? allow_out_of_order_execution : true)
+      << "allow_out_of_order_execution must be true if is_asyncio is true";
   is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
-  execute_out_of_order_ = execute_out_of_order;
+  allow_out_of_order_execution_ = allow_out_of_order_execution;
 }
 
 void TaskReceiver::Stop() {
