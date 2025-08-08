@@ -129,7 +129,8 @@ class DependencySetManager:
                 depsets=depset.depsets,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
-                args=DEFAULT_UV_FLAGS.copy(),
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
             )
