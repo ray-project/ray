@@ -490,15 +490,6 @@ int main(int argc, char *argv[]) {
                    << "rpc_service_threads_number = "
                    << object_manager_config.rpc_service_threads_number
                    << ", object_chunk_size = " << object_manager_config.object_chunk_size;
-    // Initialize stats.
-    const ray::stats::TagsType global_tags = {
-        {ray::stats::ComponentKey, "raylet"},
-        {ray::stats::WorkerIdKey, ""},
-        {ray::stats::VersionKey, kRayVersion},
-        {ray::stats::NodeAddressKey, node_ip_address},
-        {ray::stats::SessionNameKey, session_name}};
-    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
-
     RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
     node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
@@ -822,7 +813,19 @@ int main(int argc, char *argv[]) {
                                                    is_head_node,
                                                    *node_manager);
 
-    // Initialize event framework.
+    // Initializing stats should be done after the node manager is initialized because
+    // <explain why>. Metrics exported before this call will be buffered until `Init` is
+    // called.
+    const ray::stats::TagsType global_tags = {
+        {ray::stats::ComponentKey, "raylet"},
+        {ray::stats::WorkerIdKey, ""},
+        {ray::stats::VersionKey, kRayVersion},
+        {ray::stats::NodeAddressKey, node_ip_address},
+        {ray::stats::SessionNameKey, session_name}};
+    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+
+    // Initialize event framework. This should be done after the node manager is
+    // initialized.
     if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
       const std::vector<ray::SourceTypeVariant> source_types = {
           ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
