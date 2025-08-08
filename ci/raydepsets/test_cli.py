@@ -22,7 +22,7 @@ from ci.raydepsets.cli import (
 )
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
-from ci.raydepsets.test_utils import (
+from ci.raydepsets.testing_utils import (
     copy_data_to_tmpdir,
     replace_in_file,
     save_packages_to_file,
