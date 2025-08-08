@@ -1026,6 +1026,7 @@ class _ActorClassMethodMetadata(object):
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
+
         return self
 
 
