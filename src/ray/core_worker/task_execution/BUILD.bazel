@@ -141,6 +141,5 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
-    # XXX! TODO
-    # visibility = [":__subpackages__"],
+    visibility = ["//src/ray/core_worker:__pkg__"],
 )

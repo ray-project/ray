@@ -28,7 +28,7 @@ ray_cc_library(
         ":profile_event",
         ":reference_count",
         ":task_event_buffer",
-        ":task_receiver",
+        "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/common/cgroup:constants",

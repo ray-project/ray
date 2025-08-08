@@ -73,7 +73,7 @@ class ReferenceCounterInterface {
 class ReferenceCounter : public ReferenceCounterInterface,
                          public LocalityDataProviderInterface {
  public:
-  using RepeatedObjectRefCount =
+  using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
   // Returns the amount of lineage in bytes released.
@@ -163,7 +163,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage,
                                     const rpc::Address &worker_addr,
-                                    const RepeatedObjectRefCount &borrowed_refs,
+                                    const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -417,7 +417,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
   void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
-                                 RepeatedObjectRefCount *proto,
+                                 ReferenceTableProto *proto,
                                  std::vector<ObjectID> *deleted)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -883,12 +883,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ShutdownIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Deserialize a ReferenceTable.
-  static ReferenceTable ReferenceTableFromProto(const RepeatedObjectRefCount &proto);
+  static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
 
   /// Packs an object ID to ObjectReferenceCount map, into an array of
   /// ObjectReferenceCount. Consumes the input proto table.
   static void ReferenceTableToProto(ReferenceProtoTable &table,
-                                    RepeatedObjectRefCount *proto);
+                                    ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
   /// being dependencies to a submitted task. This should be called when

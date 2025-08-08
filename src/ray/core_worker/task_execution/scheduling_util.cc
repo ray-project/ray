@@ -69,7 +69,7 @@ void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear();
 const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
 DependencyWaiterImpl::DependencyWaiterImpl(WaitForActorCallArgs wait_for_actor_call_args)
-  : wait_for_actor_call_args_(wait_for_actor_call_args) {}
+    : wait_for_actor_call_args_(wait_for_actor_call_args) {}
 
 void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &dependencies,
                                 std::function<void()> on_dependencies_available) {

@@ -46,7 +46,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/transport/normal_task_submitter.h"
-#include "ray/core_worker/transport/task_receiver.h"
+#include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
