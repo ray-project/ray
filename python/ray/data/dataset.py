@@ -66,10 +66,10 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.dropna_operator import DropNa
 from ray.data._internal.logical.operators.fillna_operator import FillNa
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,

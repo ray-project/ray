@@ -4,9 +4,9 @@ FillNa logical operator.
 
 from typing import Any, Dict, List, Optional
 
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data._internal.compute import ComputeStrategy
 
 
 class FillNa(AbstractMap):

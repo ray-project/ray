@@ -47,10 +47,10 @@ def _register_default_plan_logical_op_fns():
         AbstractAllToAll,
     )
     from ray.data._internal.logical.operators.count_operator import Count
-    from ray.data._internal.logical.operators.from_operators import AbstractFrom
-    from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.dropna_operator import DropNa
     from ray.data._internal.logical.operators.fillna_operator import FillNa
+    from ray.data._internal.logical.operators.from_operators import AbstractFrom
+    from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.map_operator import (
         AbstractUDFMap,
         Filter,

@@ -9,7 +9,7 @@ import pyarrow.compute as pc
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.operators.dropna_operator import DropNa
-from ray.data._internal.planner.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.planner.plan_udf_map_op import (
     _create_map_transformer_for_block_based_map_op,
     _generate_transform_fn_for_map_block,
