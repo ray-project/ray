@@ -10,7 +10,7 @@ srcs:
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
 build_args:
-  - ARROW_VERSION=19.*
+  - ARROW_VERSION=20.*
   - ARROW_MONGO_VERSION=1.9.*
   - RAY_CI_JAVA_BUILD=1
 tags:
