@@ -11,7 +11,7 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
 build_args:
   - ARROW_VERSION=19.*
-  - ARROW_MONGO_VERSION=0.5.*
+  - ARROW_MONGO_VERSION=1.9.*
   - RAY_CI_JAVA_BUILD=1
 tags:
   - cr.ray.io/rayproject/datamongobuild
