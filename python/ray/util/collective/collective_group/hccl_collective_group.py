@@ -83,7 +83,6 @@ class hcclRedOpTypeEnum:
     HCCL_REDUCE_MIN = 3
 
     @classmethod
-    @classmethod
     def from_ray(cls, op: ReduceOp) -> int:
         _OP_MAP = {
             ReduceOp.SUM: cls.HCCL_REDUCE_SUM,
@@ -128,7 +127,7 @@ class HCCLRootInfoStore:
 class HCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an HCCL collective group."""
-        import torch_npu
+        import torch_npu  # Ensure HCCL backend is registered with torch.distributed
 
         metadata_key = get_master_address_metadata_key(group_name)
         try:
@@ -221,6 +220,8 @@ class HCCLGroup(BaseGroup):
         Returns:
             None
         """
+
+        _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
 
         def collective_fn(
             input_tensor: torch.Tensor, output_tensor: torch.Tensor, comm, stream
@@ -350,6 +351,8 @@ class HCCLGroup(BaseGroup):
             None
         """
 
+        _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
+
         def collective_fn(
             input_tensor: torch.Tensor, output_tensor: torch.Tensor, comm, stream
         ):
@@ -452,7 +455,7 @@ class HCCLGroup(BaseGroup):
 
         return root_info
 
-    def _get_store_ref(self, store_name, timeout_s=30):
+    def _get_store_ref(self, store_name, timeout_s=180):
         """Get the reference of the named actor store.
 
         Args:
@@ -481,7 +484,7 @@ class HCCLGroup(BaseGroup):
                 time.sleep(1)
                 elapsed = datetime.datetime.now() - start_time
                 continue
-            logger.info("Successful rendezvous!")
+            logger.debug("Successful rendezvous!")
             break
         if not store_ref:
             raise RuntimeError(
@@ -498,7 +501,7 @@ class HCCLGroup(BaseGroup):
         store = ray.get_actor(store_name)
         ray.kill(store)
 
-    def _get_hccl_root_info(self, store_ref, timeout_s=30):
+    def _get_hccl_root_info(self, store_ref, timeout_s=180):
         """Get the HcclRootInfo from the store through Ray.
 
         Args:
@@ -703,7 +706,6 @@ def _get_comm_key_from_devices(devices: List[int]):
         str: a string represents the key to query the communicator cache.
 
     """
-    devices.sort()
     return ",".join([str(d) for d in devices])
 
 
@@ -770,3 +772,46 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
         for i, tensor in enumerate(tensor_list):
             buffer[i].copy_(tensor)
     return buffer
+
+
+def _check_inputs_compatibility_for_scatter_gather(
+    tensors: List[torch.Tensor], tensor_lists: List[List[torch.Tensor]]
+) -> None:
+    """Check the compatibility between tensor input and tensor list input."""
+    if not tensors or not isinstance(tensors, list):
+        raise RuntimeError("The first argument 'tensors' expects a list of tensors.")
+    if not tensor_lists or not isinstance(tensor_lists, list):
+        raise RuntimeError(
+            "The second argument 'tensor_lists' expects a list of tensor list."
+        )
+    dtype = tensors[0].dtype
+    shape = list(tensors[0].shape)
+    for i, tensor_list in enumerate(tensor_lists):
+        # check all tensor in `tensors` match.
+        dt = tensors[i].dtype
+        if dt != dtype:
+            raise RuntimeError(
+                "All tensor operands to scatter/gather must "
+                f"have the same dtype. Got '{dt}' and '{dtype}'."
+            )
+        s = list(tensors[i].shape)
+        if s != shape:
+            raise RuntimeError(
+                "All tensor operands to scatter/gather must "
+                f"have the same shape. Got '{s}' and '{shape}'."
+            )
+        # check all tensors in `tensor_lists` match.
+        for t in tensor_lists[i]:
+            # check dtype
+            dtl = t.dtype
+            if dtl != dtype:
+                raise RuntimeError(
+                    "All tensor operands to scatter/gather must "
+                    f"have the same dtype. Got '{dtl}' and '{dtype}'."
+                )
+            sl = list(t.shape)
+            if sl != shape:
+                raise RuntimeError(
+                    "All tensor operands to scatter/gather must "
+                    f"have the same shape. Got '{sl}' and '{shape}'."
+                )
