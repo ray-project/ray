@@ -74,26 +74,21 @@ def normalize_json_value(value: Any) -> Any:
     each value in the dictionary. Please see below for full definition
     """
     if isinstance(value, dict):
+        # convert dict keys to strings
         return {str(k): normalize_json_value(v) for k, v in value.items()}
     elif isinstance(value, (list, tuple, set)):
+        # Any iterables should be converted to lists
         return [normalize_json_value(v) for v in value]
     elif isinstance(value, float):
+        # cosmetic changes
         if math.isinf(value):
             return "Infinity" if value > 0 else "-Infinity"
         elif math.isnan(value):
             return "NaN"
         return value
     elif isinstance(value, int):
+        # ints -> floats
         return float(value)
-    elif isinstance(value, str):
-        # Convert stringified special floats back to float
-        if value == "Infinity":
-            return float("inf")
-        elif value == "-Infinity":
-            return float("-inf")
-        elif value == "NaN":
-            return float("nan")
-        return value
     else:
         return value
 
@@ -429,7 +424,7 @@ class BasicObject:
         # Sets can be converted to Lists
         ({1, 2, 3}, [1, 2, 3], 100),
         # Objects that can't be serialized or stringified
-        (UnserializableObject(), UNKNOWN, 100),
+        (UnserializableObject(), f"{UNKNOWN}: {UnserializableObject.__name__}", 100),
         # Empty containers
         ({}, {}, 100),
         ([], [], 100),
@@ -439,6 +434,10 @@ class BasicObject:
             [1, "hello", {"key": "value"}, None],
             100,
         ),
+        # Bytearrays/bytes - should be converted to lists
+        (bytearray(b"hello"), [104, 101, 108, 108, 111], 100),
+        (bytearray([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5], 100),
+        (bytes(b"test"), [116, 101, 115, 116], 100),
         # Dataclass
         (
             TestDataclass(),
@@ -448,8 +447,8 @@ class BasicObject:
                 "string_field": "test",
                 "int_field": 1,
                 "float_field": 1.0,
-                "set_field": [1, 2, 3],  # sets con be converted to Lists
-                "tuple_field": [1, 2, 3],  # tuples can be converted to Lists
+                "set_field": [1, 2, 3],  # sets will be converted to Lists
+                "tuple_field": [1, 2, 3],  # tuples will be converted to Lists
                 "bool_field": True,
                 "none_field": None,
             },

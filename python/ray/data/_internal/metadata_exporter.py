@@ -153,39 +153,47 @@ def deep_asdict(obj):
     """
     if is_dataclass(obj):
         return deep_asdict(asdict(obj))
-    elif isinstance(obj, dict):
+    elif isinstance(obj, Mapping):
         return {k: deep_asdict(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple, set)):
-        return type(obj)(deep_asdict(v) for v in obj)
-    else:
-        return obj
+    # we don't use isinstance below because we want to compare against
+    # the base class. NamedTuples, for example, are tuples, but
+    # it's more descriptive to return the original obj
+    elif type(obj) is list:
+        return [deep_asdict(v) for v in obj]
+    elif type(obj) is tuple:
+        return tuple(deep_asdict(v) for v in obj)
+    elif type(obj) is set:
+        return {deep_asdict(v) for v in obj}
+    return obj
 
 
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
-    if isinstance(obj, Mapping):
+    """Prepares the obj for Struct Protobuf format by recursive through
+    dictionaries, lists, etc...
+
+    - Dataclasses will be converted to dicts
+    - Dictionary keys will be converted to strings
+    - Lists, tuples, sets, bytes, bytearrays will be converted to lists
+    """
+    if is_dataclass(obj):
+        # Only convert dataclass instances, not dataclass types
+        return sanitize_for_struct(deep_asdict(obj), truncate_length)
+    elif isinstance(obj, Mapping):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, (int, float, bool)) or obj is None:
         return obj
     elif isinstance(obj, str):
         return _add_ellipsis(obj, truncate_length)
-    elif isinstance(obj, bytes):
-        # Convert bytes to string
-        try:
-            return _add_ellipsis(obj.decode("utf-8"), truncate_length)
-        except UnicodeDecodeError:
-            return _add_ellipsis(str(obj), truncate_length)
-    elif isinstance(obj, (list, tuple, set)) or isinstance(obj, Sequence):
-        # Convert all sequence-like types (lists, tuples, sets, other sequences) to lists
-        return [sanitize_for_struct(v, truncate_length) for v in obj]
-    elif is_dataclass(obj):
-        # Only convert dataclass instances, not dataclass types
-        return sanitize_for_struct(deep_asdict(obj), truncate_length)
+    elif isinstance(obj, (Sequence, set)):
+        # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
+        return [sanitize_for_struct(v, truncate_length=truncate_length) for v in obj]
     else:
         try:
             return _add_ellipsis(str(obj), truncate_length)
         except Exception:
-            return UNKNOWN
+            unk_name = f"{UNKNOWN}: {type(obj).__name__}"
+            return _add_ellipsis(unk_name, truncate_length)
 
 
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
