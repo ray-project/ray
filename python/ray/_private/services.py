@@ -425,6 +425,8 @@ def wait_for_node(
     timeout: int = _timeout,
 ):
     """Wait until this node has appeared in the client table.
+    NOTE: Makes an RPC to the GCS up to every 0.1 seconds to
+    get all node info. Use only for testing.
 
     Args:
         gcs_address: The gcs address
@@ -2355,9 +2357,7 @@ def start_ray_client_server(
         root_ray_dir, "_private", "workers", ray_constants.SETUP_WORKER_FILENAME
     )
 
-    ray_client_server_host = (
-        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
-    )
+    ray_client_server_host = ray_client_server_ip
     command = [
         sys.executable,
         setup_worker_path,

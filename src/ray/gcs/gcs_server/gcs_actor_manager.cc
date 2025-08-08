@@ -1447,7 +1447,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     remaining_restarts = -1;
   } else {
     // Restarts due to node preemption do not count towards max_restarts.
-    int64_t remaining = max_restarts - num_restarts + num_restarts_due_to_node_preemption;
+    const auto effective_restarts = num_restarts - num_restarts_due_to_node_preemption;
+    int64_t remaining = max_restarts - static_cast<int64_t>(effective_restarts);
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
 

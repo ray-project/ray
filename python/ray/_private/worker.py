@@ -1445,7 +1445,7 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Debugger instead.
+        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1761,7 +1761,7 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "For debugging consider using Ray debugger. ",
+            " For debugging consider using Ray Distributed Debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -3639,6 +3639,11 @@ def remote(
             the default value is 3, and a value of -1 indicates
             infinite retries.
             See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+        allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+            tasks out of order. If you're using multi-threaded (``max_concurrency > 1``)
+            or async actors, you can't set this to False. Defaults to True if you're
+            using multi-threaded or async actors, and False otherwise. Actor task
+            retries are always executed out of order.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
