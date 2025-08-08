@@ -45,7 +45,6 @@ class LogKey(str, Enum):
     ACTOR_NAME = "actor_name"
     TASK_NAME = "task_name"
     TASK_FUNCTION_NAME = "task_func_name"
-    PID = "process"
 
     # Logger built-in context
     ASCTIME = "asctime"
@@ -54,6 +53,7 @@ class LogKey(str, Enum):
     FILENAME = "filename"
     LINENO = "lineno"
     EXC_TEXT = "exc_text"
+    PROCESS = "process"
 
     # Ray logging context
     TIMESTAMP_NS = "timestamp_ns"
