@@ -17,7 +17,7 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.block_batching.iter_batches import iter_batches
+from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
@@ -184,31 +184,27 @@ class DataIterator(abc.ABC):
                 blocks_owned_by_consumer,
             ) = self._to_ref_bundle_iterator()
 
-            iterator = iter(
-                iter_batches(
-                    ref_bundles_iterator,
-                    stats=stats,
-                    clear_block_after_read=blocks_owned_by_consumer,
-                    batch_size=batch_size,
-                    batch_format=batch_format,
-                    drop_last=drop_last,
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
-                    shuffle_buffer_min_size=local_shuffle_buffer_size,
-                    shuffle_seed=local_shuffle_seed,
-                    prefetch_batches=prefetch_batches,
-                )
-            )
-
             dataset_tag = self._get_dataset_tag()
+
+            batch_iterator = BatchIterator(
+                ref_bundles_iterator,
+                stats=stats,
+                dataset_tag=dataset_tag,
+                clear_block_after_read=blocks_owned_by_consumer,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=_collate_fn,
+                finalize_fn=_finalize_fn,
+                shuffle_buffer_min_size=local_shuffle_buffer_size,
+                shuffle_seed=local_shuffle_seed,
+                prefetch_batches=prefetch_batches,
+            )
 
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            for batch in iterator:
-                yield batch
-                StatsManager.update_iteration_metrics(stats, dataset_tag)
-            StatsManager.clear_iteration_metrics(dataset_tag)
+            yield from batch_iterator
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
