@@ -81,11 +81,11 @@ def parse_args():
     parser.add_argument(
         "--embed-concurrency",
         type=int,
-        default=20,
-        help="Concurrency for embedding stage",
+        default=15,
+        help="Number of Embedder replicas",
     )
     parser.add_argument(
-        "--num-gpus", type=int, default=1, help="Number of GPUs to use for embedding"
+        "--num-gpus", type=int, default=1, help="Number of GPUs per Embedder"
     )
     parser.add_argument(
         "--model-name",
@@ -194,7 +194,7 @@ def main(args):
     # Record start time after metadata fetching
     start_time_without_metadata_fetching = time.time()
     if args.smoke_test:
-        ds = ds.limit(5)
+        ds = ds.limit(100)
     ds = ds.flat_map(
         process_file, concurrency=args.process_concurrency, num_cpus=args.process_cpus
     )
