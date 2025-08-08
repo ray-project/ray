@@ -822,5 +822,3 @@ def _generate_transform_fn_for_async_map(
                     yield item
 
     return _transform
-
-

@@ -81,7 +81,7 @@ def plan_dropna_op(
 def _is_not_missing(column):
     """Check if values in a column are not missing (not null and not NaN)."""
     is_not_null = pc.is_valid(column)
-    
+
     # For floating point columns, also check for NaN
     if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
         is_not_nan = pc.invert(pc.is_nan(column))
@@ -94,17 +94,17 @@ def _create_thresh_mask(batch, columns_to_check, thresh):
     """Create mask for threshold-based dropping."""
     # Count non-missing values across specified columns
     non_missing_counts = None
-    
+
     for col_name in columns_to_check:
         column = batch.column(col_name)
         is_not_missing = _is_not_missing(column)
         is_not_missing_int = pc.cast(is_not_missing, pa.int32())
-        
+
         if non_missing_counts is None:
             non_missing_counts = is_not_missing_int
         else:
             non_missing_counts = pc.add(non_missing_counts, is_not_missing_int)
-    
+
     # Keep rows with at least thresh non-missing values
     return pc.greater_equal(non_missing_counts, pa.scalar(thresh))
 
@@ -112,11 +112,11 @@ def _create_thresh_mask(batch, columns_to_check, thresh):
 def _create_how_mask(batch, columns_to_check, how):
     """Create mask for how-based dropping ('any' or 'all')."""
     mask = None
-    
+
     for col_name in columns_to_check:
         column = batch.column(col_name)
         is_not_missing = _is_not_missing(column)
-        
+
         if mask is None:
             mask = is_not_missing
         else:
@@ -124,16 +124,16 @@ def _create_how_mask(batch, columns_to_check, how):
                 # Keep rows where ALL checked columns are not missing
                 mask = pc.and_(mask, is_not_missing)
             elif how == "all":
-                # Keep rows where ANY checked column is not missing  
+                # Keep rows where ANY checked column is not missing
                 mask = pc.or_(mask, is_not_missing)
-    
+
     return mask
 
 
 def _filter_with_schema_preservation(batch, mask):
     """Filter table while preserving original schema."""
     filtered_batch = pc.filter(batch, mask)
-    
+
     # Ensure schema is preserved (important for empty results)
     if filtered_batch.schema != batch.schema:
         try:
@@ -142,8 +142,10 @@ def _filter_with_schema_preservation(batch, mask):
             # If casting fails, create empty table with original schema
             if filtered_batch.num_rows == 0:
                 filtered_batch = pa.table(
-                    {name: pa.array([], type=field.type) 
-                     for name, field in zip(batch.schema.names, batch.schema)}
+                    {
+                        name: pa.array([], type=field.type)
+                        for name, field in zip(batch.schema.names, batch.schema)
+                    }
                 )
-    
-    return filtered_batch 
+
+    return filtered_batch

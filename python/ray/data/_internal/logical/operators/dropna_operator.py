@@ -46,4 +46,4 @@ class DropNa(AbstractMap):
         return self._thresh
 
     def can_modify_num_rows(self) -> bool:
-        return True 
+        return True

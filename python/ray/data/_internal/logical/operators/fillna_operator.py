@@ -40,4 +40,4 @@ class FillNa(AbstractMap):
         return self._subset
 
     def can_modify_num_rows(self) -> bool:
-        return False 
+        return False

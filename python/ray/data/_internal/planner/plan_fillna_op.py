@@ -88,7 +88,7 @@ def _fill_column(column, fill_value):
             # Create a new array with the fill value repeated for each row
             fill_array = pa.array([fill_value] * len(column))
             return fill_array
-        
+
         # For regular columns, try to create a scalar with the column's type
         try:
             fill_scalar = pa.scalar(fill_value, type=column.type)
@@ -104,14 +104,14 @@ def _fill_column(column, fill_value):
 
         # Use PyArrow's fill_null to handle null values
         filled_column = pc.fill_null(column, fill_scalar)
-        
+
         # For floating point columns, also handle NaN values
         if pa.types.is_floating(filled_column.type):
             nan_mask = pc.is_nan(filled_column)
             filled_column = pc.if_else(nan_mask, fill_scalar, filled_column)
-        
+
         return filled_column
 
     except Exception:
         # If all else fails, return original column
-        return column 
+        return column
