@@ -10,7 +10,7 @@ _runfiles = runfiles.Create()
 def copy_data_to_tmpdir(tmpdir):
     """Copy test data to a temporary directory."""
     shutil.copytree(
-        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/tests/test_data"),
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
         tmpdir,
         dirs_exist_ok=True,
     )
