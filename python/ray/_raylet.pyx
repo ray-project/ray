@@ -39,7 +39,6 @@ from typing import (
 import contextvars
 import concurrent.futures
 import collections
-from contextlib import nullcontext
 
 from libc.stdint cimport (
     int32_t,
@@ -2164,111 +2163,125 @@ cdef execute_task_with_cancellation_handler(
     title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids, omp_num_threads to restrict availability to this task.
-    # Once actor is created, users can change the resource variables within
+    # runtime_ids to restrict availability to this task.
+    # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        resource_manager = ray._private.utils.temporarily_override_resource_env_vars()
+        visible_accelerator_env_vars_overriden = ray._private.utils.set_visible_accelerator_ids()
     else:
-        resource_manager = nullcontext()
-    with resource_manager:
-        # Initialize the actor if this is an actor creation task. We do this here
-        # before setting the current task ID so that we can get the execution info,
-        # in case executing the main task throws an exception.
-        function_descriptor = CFunctionDescriptorToPython(
-            ray_function.GetFunctionDescriptor())
-        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-            actor_class = manager.load_actor_class(job_id, function_descriptor)
-            actor_id = core_worker.get_actor_id()
-            actor = actor_class.__new__(actor_class)
-            worker.actors[actor_id] = actor
-            # Record the actor class via :actor_name: magic token in the log.
-            #
-            # (Phase 1): this covers code run before __init__ finishes.
-            # We need to handle this separately because `__repr__` may not be
-            # runnable until after `__init__` (e.g., if it accesses fields
-            # defined in the constructor).
-            actor_magic_token = "{}{}\n".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
-            # Flush to both .out and .err
-            print(actor_magic_token, end="")
-            print(actor_magic_token, file=sys.stderr, end="")
+        visible_accelerator_env_vars_overriden = None
 
-            # Initial eventloops for asyncio for this actor.
-            if core_worker.current_actor_is_asyncio():
-                core_worker.initialize_eventloops_for_actor_concurrency_group(
-                    c_defined_concurrency_groups)
+    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
+    # It will be unset after the task execution if it was overwridden here.
+    # No-op if already set.
+    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
 
-        execution_info = execution_infos.get(function_descriptor)
-        if not execution_info:
-            execution_info = manager.get_execution_info(
-                job_id, function_descriptor)
-            execution_infos[function_descriptor] = execution_info
+    # Initialize the actor if this is an actor creation task. We do this here
+    # before setting the current task ID so that we can get the execution info,
+    # in case executing the main task throws an exception.
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
+    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        actor_class = manager.load_actor_class(job_id, function_descriptor)
+        actor_id = core_worker.get_actor_id()
+        actor = actor_class.__new__(actor_class)
+        worker.actors[actor_id] = actor
+        # Record the actor class via :actor_name: magic token in the log.
+        #
+        # (Phase 1): this covers code run before __init__ finishes.
+        # We need to handle this separately because `__repr__` may not be
+        # runnable until after `__init__` (e.g., if it accesses fields
+        # defined in the constructor).
+        actor_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+        # Flush to both .out and .err
+        print(actor_magic_token, end="")
+        print(actor_magic_token, file=sys.stderr, end="")
 
-        global current_task_id
+        # Initial eventloops for asyncio for this actor.
+        if core_worker.current_actor_is_asyncio():
+            core_worker.initialize_eventloops_for_actor_concurrency_group(
+                c_defined_concurrency_groups)
 
-        try:
-            task_id = (ray._private.worker.
-                    global_worker.core_worker.get_current_task_id())
-            # Set the current task ID, which is checked by a separate thread during
-            # task cancellation. We must do this inside the try block so that, if
-            # the task is interrupted because of cancellation, we will catch the
-            # interrupt error here.
-            with current_task_id_lock:
-                current_task_id = task_id
+    execution_info = execution_infos.get(function_descriptor)
+    if not execution_info:
+        execution_info = manager.get_execution_info(
+            job_id, function_descriptor)
+        execution_infos[function_descriptor] = execution_info
 
-            execute_task(caller_address,
-                        task_type,
-                        name,
-                        ray_function,
-                        c_resources,
-                        c_args,
-                        c_arg_refs,
-                        debugger_breakpoint,
-                        serialized_retry_exception_allowlist,
-                        returns,
-                        dynamic_returns,
-                        streaming_generator_returns,
-                        is_retryable_error,
-                        application_error,
-                        c_defined_concurrency_groups,
-                        c_name_of_concurrency_group_to_execute,
-                        is_reattempt, execution_info, title, task_name,
-                        is_streaming_generator,
-                        should_retry_exceptions,
-                        generator_backpressure_num_objects,
-                        c_tensor_transport)
+    global current_task_id
 
-            # Check for cancellation.
-            PyErr_CheckSignals()
+    try:
+        task_id = (ray._private.worker.
+                   global_worker.core_worker.get_current_task_id())
+        # Set the current task ID, which is checked by a separate thread during
+        # task cancellation. We must do this inside the try block so that, if
+        # the task is interrupted because of cancellation, we will catch the
+        # interrupt error here.
+        with current_task_id_lock:
+            current_task_id = task_id
 
-        except KeyboardInterrupt as e:
-            # Catch and handle task cancellation, which will result in an interrupt being
-            # raised.
-            e = TaskCancelledError(
-                core_worker.get_current_task_id()).with_traceback(e.__traceback__)
+        execute_task(caller_address,
+                     task_type,
+                     name,
+                     ray_function,
+                     c_resources,
+                     c_args,
+                     c_arg_refs,
+                     debugger_breakpoint,
+                     serialized_retry_exception_allowlist,
+                     returns,
+                     dynamic_returns,
+                     streaming_generator_returns,
+                     is_retryable_error,
+                     application_error,
+                     c_defined_concurrency_groups,
+                     c_name_of_concurrency_group_to_execute,
+                     is_reattempt, execution_info, title, task_name,
+                     is_streaming_generator,
+                     should_retry_exceptions,
+                     generator_backpressure_num_objects,
+                     c_tensor_transport)
 
-            actor = None
-            actor_id = core_worker.get_actor_id()
-            if not actor_id.is_nil():
-                actor = worker.actors[actor_id]
+        # Check for cancellation.
+        PyErr_CheckSignals()
 
-            store_task_errors(
-                    worker, e,
-                    # Task cancellation can happen anytime so we don't really need
-                    # to differentiate between mid-task or not.
-                    False,  # task_exception
-                    actor,
-                    actor_id,
-                    execution_info.function_name,
-                    task_type, title, caller_address,
-                    returns,
-                    # application_error: we are passing NULL since we don't want the
-                    # cancel tasks to fail.
-                    NULL)
-        finally:
-            with current_task_id_lock:
-                current_task_id = None
+    except KeyboardInterrupt as e:
+        # Catch and handle task cancellation, which will result in an interrupt being
+        # raised.
+        e = TaskCancelledError(
+            core_worker.get_current_task_id()).with_traceback(e.__traceback__)
+
+        actor = None
+        actor_id = core_worker.get_actor_id()
+        if not actor_id.is_nil():
+            actor = worker.actors[actor_id]
+
+        store_task_errors(
+                worker, e,
+                # Task cancellation can happen anytime so we don't really need
+                # to differentiate between mid-task or not.
+                False,  # task_exception
+                actor,
+                actor_id,
+                execution_info.function_name,
+                task_type, title, caller_address,
+                returns,
+                # application_error: we are passing NULL since we don't want the
+                # cancel tasks to fail.
+                NULL)
+    finally:
+        with current_task_id_lock:
+            current_task_id = None
+
+        if omp_num_threads_overriden:
+            # Reset the OMP_NUM_THREADS environ if it was set.
+            os.environ.pop("OMP_NUM_THREADS", None)
+
+        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK and visible_accelerator_env_vars_overriden:
+            # Reset the visible accelerator env vars for normal tasks, since they may be reused.
+            ray._private.utils.reset_visible_accelerator_env_vars(visible_accelerator_env_vars_overriden)
+
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
