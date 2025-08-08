@@ -1,4 +1,5 @@
 import pytest
+import sys
 import threading
 from unittest.mock import Mock, patch
 from typing import Tuple
@@ -318,3 +319,7 @@ class TestNoopPublisher:
         # These should return expected values
         assert publisher.has_capacity() is True
         assert publisher.enqueue("anything") is True
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

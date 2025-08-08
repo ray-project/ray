@@ -1,4 +1,5 @@
 import pytest
+import sys
 
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 from ray.core.generated.events_event_aggregator_service_pb2 import TaskEventsMetadata
@@ -101,3 +102,7 @@ class TestTaskMetadataBuffer:
 
         # Draining again should yield nothing
         assert len(_result_to_attempts_list(buffer.get())) == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
