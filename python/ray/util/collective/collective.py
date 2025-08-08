@@ -747,8 +747,10 @@ def recv_multidevice(
     Args:
         tensor: the received tensor, located on a Device.
         src_rank: the rank of the source process.
-        src_device_index (int): the index of the source device on the src process.
+        src_device_index: the index of the source device on the src process.
         group_name: the name of the collective group.
+        n_elements: if specified, receive the next n elements
+            from the starting address of tensor.
 
     Returns:
         None
