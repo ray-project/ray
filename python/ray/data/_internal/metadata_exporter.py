@@ -3,7 +3,7 @@
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence
 
 import ray
@@ -147,9 +147,18 @@ def _add_ellipsis(s: str, truncate_length: int) -> str:
     return s
 
 
-def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
-    from dataclasses import asdict, is_dataclass
+def deep_asdict(obj):
+    if is_dataclass(obj):
+        return deep_asdict(asdict(obj))
+    elif isinstance(obj, dict):
+        return {k: deep_asdict(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple, set)):
+        return type(obj)(deep_asdict(v) for v in obj)
+    else:
+        return obj
 
+
+def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     if isinstance(obj, Mapping):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
@@ -166,9 +175,9 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     elif isinstance(obj, (list, tuple, set)) or isinstance(obj, Sequence):
         # Convert all sequence-like types (lists, tuples, sets, other sequences) to lists
         return [sanitize_for_struct(v, truncate_length) for v in obj]
-    elif is_dataclass(obj) and not isinstance(obj, type):
+    elif is_dataclass(obj):
         # Only convert dataclass instances, not dataclass types
-        return sanitize_for_struct(asdict(obj), truncate_length)
+        return sanitize_for_struct(deep_asdict(obj), truncate_length)
     else:
         try:
             return _add_ellipsis(str(obj), truncate_length)
@@ -186,7 +195,6 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     Returns:
         The protobuf message representing the dataset metadata.
     """
-    from dataclasses import asdict
 
     from google.protobuf.struct_pb2 import Struct
 
@@ -229,7 +237,7 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Populate the data metadata proto
     data_context = Struct()
-    data_context.update(sanitize_for_struct(asdict(dataset_metadata.data_context)))
+    data_context.update(sanitize_for_struct(deep_asdict(dataset_metadata.data_context)))
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,

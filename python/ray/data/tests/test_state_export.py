@@ -1,7 +1,7 @@
 import json
 import math
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Tuple
 
 import pytest
@@ -13,6 +13,7 @@ from ray.data._internal.metadata_exporter import (
     UNKNOWN,
     Operator,
     Topology,
+    deep_asdict,
     sanitize_for_struct,
 )
 from ray.data._internal.stats import _get_or_create_stats_actor
@@ -235,7 +236,7 @@ def _test_dataset_metadata_export(topology):
     assert data[0]["source_type"] == "EXPORT_DATASET_METADATA"
 
     assert data[0]["event_data"]["topology"] == normalize_json_value(
-        sanitize_for_struct(asdict(topology))
+        sanitize_for_struct(deep_asdict(topology))
     )
     assert data[0]["event_data"]["dataset_id"] == STUB_DATASET_ID
     assert data[0]["event_data"]["job_id"] == STUB_JOB_ID
@@ -358,7 +359,7 @@ def test_export_multiple_datasets(
     first_entry = datasets_by_id[first_dataset_id]
     assert first_entry["source_type"] == "EXPORT_DATASET_METADATA"
     assert first_entry["event_data"]["topology"] == normalize_json_value(
-        sanitize_for_struct(asdict(dummy_dataset_topology))
+        sanitize_for_struct(deep_asdict(dummy_dataset_topology))
     )
     assert first_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert first_entry["event_data"]["start_time"] is not None
@@ -370,7 +371,7 @@ def test_export_multiple_datasets(
     second_entry = datasets_by_id[second_dataset_id]
     assert second_entry["source_type"] == "EXPORT_DATASET_METADATA"
     assert second_entry["event_data"]["topology"] == normalize_json_value(
-        sanitize_for_struct(asdict(second_topology))
+        sanitize_for_struct(deep_asdict(second_topology))
     )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
