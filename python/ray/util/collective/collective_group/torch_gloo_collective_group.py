@@ -4,7 +4,10 @@ import torch
 import torch.distributed as dist
 
 import ray.experimental.internal_kv as internal_kv
-from ray.util.collective.collective_group.base_collective_group import BaseGroup, get_master_address_metadata_key
+from ray.util.collective.collective_group.base_collective_group import (
+    BaseGroup,
+    get_master_address_metadata_key,
+)
 from ray.util.collective.types import (
     AllReduceOptions,
     BarrierOptions,

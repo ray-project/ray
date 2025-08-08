@@ -7,7 +7,6 @@ from ray.experimental.collective import create_collective_group
 
 @ray.remote(num_cpus=0, resources={"NPU": 1}, enable_tensor_transport=True)
 class NPUTestActor:
-
     @ray.method(tensor_transport="hccl")
     def echo(self, data):
         return data.to("npu")
