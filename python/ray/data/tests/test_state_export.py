@@ -68,9 +68,9 @@ def ray_start_cluster_with_export_api_write(shutdown_only):
 def normalize_json_value(value: Any) -> Any:
     """This function is used for testing purposes
 
-    Dataset Metadata export will convert ints -> floats among other small
-    things. In order to perform a comparision of expected output, we normalize
-    each value in the dictionary
+    Dataset Metadata export will convert ints to floats.
+    In order to perform a comparision of expected output, we normalize
+    each value in the dictionary. Please see below for full definition
     """
     if isinstance(value, dict):
         return {str(k): normalize_json_value(v) for k, v in value.items()}
