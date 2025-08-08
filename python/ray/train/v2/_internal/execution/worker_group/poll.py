@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from ray._private.ray_logging import NUMBERS
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
+from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
 
 ERR_CHAR_LIMIT = 1000
@@ -46,6 +47,12 @@ class WorkerGroupPollStatus:
             for world_rank, status in self.worker_statuses.items()
             if status.error is not None
         }
+
+    def get_worker_group_error(self) -> WorkerGroupError:
+        return WorkerGroupError(
+            error_message=self.get_error_string(),
+            worker_failures=self.errors,
+        )
 
     @property
     def finished(self) -> bool:

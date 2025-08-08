@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
@@ -76,20 +77,24 @@ typedef int SchedulingClass;
 struct SchedulingClassDescriptor {
  public:
   explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
                                      rpc::SchedulingStrategy scheduling_strategy)
       : resource_set(std::move(rs)),
+        label_selector(std::move(ls)),
         function_descriptor(std::move(fd)),
         depth(d),
         scheduling_strategy(std::move(scheduling_strategy)) {}
   ResourceSet resource_set;
+  LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
+           label_selector == other.label_selector &&
            function_descriptor == other.function_descriptor &&
            scheduling_strategy == other.scheduling_strategy;
   }
@@ -105,7 +110,21 @@ struct SchedulingClassDescriptor {
     for (const auto &pair : resource_set.GetResourceMap()) {
       buffer << pair.first << " : " << pair.second << ", ";
     }
+    buffer << "}";
+
+    buffer << "label_selector={";
+    for (const auto &constraint : label_selector.GetConstraints()) {
+      buffer << constraint.GetLabelKey() << " "
+             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
+                                                                                  : "!in")
+             << " (";
+      for (const auto &val : constraint.GetLabelValues()) {
+        buffer << val << ", ";
+      }
+      buffer << "), ";
+    }
     buffer << "}}";
+
     return buffer.str();
   }
 
@@ -119,6 +138,16 @@ struct SchedulingClassDescriptor {
     return buffer.str();
   }
 };
+
+template <typename H>
+H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
+  return H::combine(std::move(h),
+                    sched_cls.resource_set,
+                    sched_cls.function_descriptor->Hash(),
+                    sched_cls.depth,
+                    sched_cls.scheduling_strategy,
+                    sched_cls.label_selector);
+}
 }  // namespace ray
 
 namespace std {
@@ -198,17 +227,6 @@ struct hash<ray::rpc::SchedulingStrategy> {
             scheduling_strategy.node_label_scheduling_strategy().soft());
       }
     }
-    return hash_val;
-  }
-};
-
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash_val ^= sched_cls.function_descriptor->Hash();
-    hash_val ^= sched_cls.depth;
-    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
     return hash_val;
   }
 };
@@ -533,7 +551,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const std::string &ConcurrencyGroupName() const;
 
-  bool ExecuteOutOfOrder() const;
+  bool AllowOutOfOrderExecution() const;
 
   bool IsSpreadSchedulingStrategy() const;
 

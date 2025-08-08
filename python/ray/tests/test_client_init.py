@@ -53,7 +53,7 @@ def init_and_serve_lazy(ray_start_cluster):
     def connect(job_config=None, **ray_init_kwargs):
         ray.init(address=address, job_config=job_config, **ray_init_kwargs)
 
-    server_handle = ray_client_server.serve("localhost:50051", connect)
+    server_handle = ray_client_server.serve("localhost", 50051, connect)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
 

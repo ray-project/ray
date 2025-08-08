@@ -27,6 +27,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, ActorID, JobID, TaskID
+from ray._common.network_utils import parse_address
 from ray._private.test_utils import (
     run_string_as_driver,
     find_free_port,
@@ -111,6 +112,7 @@ from ray.util.state.common import (
     WorkerState,
     StateSchema,
     state_column,
+    GetApiOptions,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -370,7 +372,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
@@ -2197,7 +2199,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
@@ -3712,7 +3714,7 @@ def test_get_id_not_found(shutdown_only):
 
 
 def test_core_state_api_usage_tags(shutdown_only):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
     gcs_client = GcsClient(address=ctx.address_info["gcs_address"])
@@ -3798,6 +3800,41 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     all_job_info = client.get_all_job_info()
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
+
+
+def test_get_actor_timeout_multiplier(shutdown_only):
+    """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
+
+    This test reproduces the issue where get_actor with timeout=1 fails even though
+    the actual operation takes less than 1 second, because GetApiOptions doesn't
+    apply the 0.8 server timeout multiplier that ListApiOptions uses.
+
+    Related issue: https://github.com/ray-project/ray/issues/54153
+    """
+
+    @ray.remote
+    class TestActor:
+        def ready(self):
+            pass
+
+    actor = TestActor.remote()
+    ray.get(actor.ready.remote())
+
+    # Test that both options classes apply the same timeout multiplier
+    test_timeout = 1
+    get_options = GetApiOptions(timeout=test_timeout)
+    list_options = ListApiOptions(timeout=test_timeout)
+
+    # After __post_init__, both should have the same effective timeout
+    assert get_options.timeout == list_options.timeout
+
+    # Test that get_actor works with a 1-second timeout
+    actors = list_actors()
+    actor_id = actors[0]["actor_id"]
+
+    # This should work without timeout issues
+    result = get_actor(actor_id, timeout=1)
+    assert result["actor_id"] == actor_id
 
 
 if __name__ == "__main__":
