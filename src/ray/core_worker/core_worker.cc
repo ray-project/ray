@@ -349,7 +349,7 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_8);
     task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(
         [this](const std::vector<rpc::ObjectReference> &dependencies, int64_t tag) {
-          return raylet_ipc_client_->WaitForActorCallArgs(dependencies, tag);
+          return local_raylet_client_->WaitForActorCallArgs(dependencies, tag);
         });
     task_receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
