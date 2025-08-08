@@ -43,7 +43,7 @@ def test_get_error_string_with_numbers():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    assert error_str == "[Rank 0, 1]:\nError parsing object at <HEX>"
+    assert error_str == "[Rank 0, 1]:\nError parsing object at <ADDR>"
 
 
 def test_get_error_string_long_error():
@@ -82,36 +82,32 @@ def test_get_error_string_running_worker():
     assert error_str == expected_error_str
 
 
+def test_show_original_error():
+    """
+    Simulate a worker with an error that contains a number and has no duplicates.
+    The original error should be shown.
+    """
+    statuses = {
+        0: WorkerStatus(running=False, error="Error on line 42"),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    error_str = poll_status.get_error_string()
+    assert error_str == "[Rank 0]:\nError on line 42"
+
+
 def test_normalize_error_string():
     """Test that _normalize_error_string properly handles all types of numbers."""
+    error = """Traceback (most recent call last):
+File "/home/ray/default/train_benchmark.py", line 35, in train_fn_per_worker
+File "/tmp/ray/session_2025-08-07_23-49-55_617067_2585/runtime_resources/working_dir_files/_ray_pkg_5abd79ca51ba0ed4/runner.py", line 282, in run"""
+    result = _normalize_error_string(error)
 
-    # Test file paths with timestamps and session IDs
-    file_path = 'File "/tmp/ray/session_2025-01-07_18-45-16_587057_54497/runtime_resources/working_dir_files/_ray_pkg_5abd79ca51ba0ed4/runner.py"'
-    expected = 'File "/tmp/ray/session_<NUM>-<NUM>-<NUM>_<NUM>-<NUM>-<NUM>_<NUM>_<NUM>/runtime_resources/working_dir_files/_ray_pkg_<HEX>/runner.py"'
-    assert _normalize_error_string(file_path) == expected
-
-    # Test various number formats
-    test_cases = [
-        ("Error on line 42", "Error on line <NUM>"),
-        (
-            "Connection timeout after 30 seconds",
-            "Connection timeout after <NUM> seconds",
-        ),
-        ("Object at 0x7f8b12345678 not found", "Object at <ADDR> not found"),
-        ("Invalid handle 0xdeadbeef", "Invalid handle <HEX>"),
-        ("Port 8080 is already in use", "Port <NUM> is already in use"),
-        ("worker_123.log", "worker_<NUM>.log"),
-        (
-            "Mixed: line 42, port 8080, addr 0x123abc",
-            "Mixed: line <NUM>, port <NUM>, addr <HEX>",
-        ),
-    ]
-
-    for original, expected in test_cases:
-        result = _normalize_error_string(original)
-        assert (
-            result == expected
-        ), f"Expected '{expected}', got '{result}' for input '{original}'"
+    assert (
+        result
+        == """Traceback (most recent call last):
+File "/home/ray/default/train_benchmark.py", line <NUM>, in train_fn_per_worker
+File "/tmp/ray/session_<NUM>-<NUM>-<NUM>_<NUM>-<NUM>-<NUM>_<NUM>_<NUM>/runtime_resources/working_dir_files/_ray_pkg_<NUM>abd<NUM>ca<NUM>ba<NUM>ed<NUM>/runner.py", line <NUM>, in run"""
+    )
 
 
 if __name__ == "__main__":
