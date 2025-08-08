@@ -21,7 +21,7 @@ from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
 )
 from click.testing import CliRunner
-from ci.raydepsets.tests.test_utils import (
+from ci.raydepsets.tests.utils import (
     copy_data_to_tmpdir,
     replace_in_file,
     save_packages_to_file,
