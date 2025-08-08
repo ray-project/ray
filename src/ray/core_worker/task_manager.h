@@ -27,6 +27,7 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/metric_defs.h"
