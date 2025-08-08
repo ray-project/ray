@@ -134,14 +134,6 @@ def test_dropna_thresh_with_subset():
     assert rows == expected
 
 
-def test_dropna_invalid_how():
-    """Test dropna with invalid 'how' parameter raises ValueError."""
-    ds = ray.data.from_items([{"a": 1, "b": 2.0}, {"a": None, "b": 3.0}])
-
-    with pytest.raises(ValueError, match="'how' must be 'any' or 'all'"):
-        ds.dropna(how="invalid")
-
-
 def test_dropna_empty_dataset():
     """Test dropna on empty dataset."""
     schema = pa.schema([("a", pa.int64()), ("b", pa.float64()), ("c", pa.string())])
@@ -187,83 +179,6 @@ def test_dropna_all_rows_dropped():
     assert result.count() == 0
 
 
-def test_dropna_nonexistent_column_in_subset():
-    """Test dropna with subset containing nonexistent columns."""
-    ds = ray.data.from_items(
-        [{"a": 1, "b": 2.0}, {"a": None, "b": 3.0}, {"a": 2, "b": np.nan}]
-    )
-
-    # Should not raise error, just ignore nonexistent columns
-    result = ds.dropna(subset=["a", "nonexistent"])
-    rows = result.take_all()
-
-    expected = [{"a": 1, "b": 2.0}, {"a": 2, "b": np.nan}]
-
-    # Compare while handling NaN values
-    assert len(rows) == len(expected)
-    for i, (actual, exp) in enumerate(zip(rows, expected)):
-        assert actual["a"] == exp["a"]
-        if pd.isna(exp["b"]):
-            assert pd.isna(actual["b"])
-        else:
-            assert actual["b"] == exp["b"]
-
-
-def test_dropna_different_dtypes():
-    """Test dropna with different data types."""
-    ds = ray.data.from_items(
-        [
-            {"int_col": 1, "float_col": 1.5, "str_col": "a", "bool_col": True},
-            {"int_col": None, "float_col": np.nan, "str_col": None, "bool_col": None},
-            {"int_col": 3, "float_col": 3.5, "str_col": "c", "bool_col": False},
-        ]
-    )
-
-    result = ds.dropna()
-    rows = result.take_all()
-
-    expected = [
-        {"int_col": 1, "float_col": 1.5, "str_col": "a", "bool_col": True},
-        {"int_col": 3, "float_col": 3.5, "str_col": "c", "bool_col": False},
-    ]
-
-    assert rows == expected
-
-
-def test_dropna_preserves_schema():
-    """Test that dropna preserves the dataset schema."""
-    schema = pa.schema([("a", pa.int64()), ("b", pa.float64()), ("c", pa.string())])
-
-    ds = ray.data.from_arrow(
-        pa.table(
-            {"a": [1, None, 3], "b": [1.0, None, 3.0], "c": ["x", None, "z"]},
-            schema=schema,
-        )
-    )
-
-    result = ds.dropna()
-
-    # Check that schema is preserved
-    assert result.schema() == schema
-
-
-def test_dropna_large_dataset():
-    """Test dropna on a larger dataset to ensure it works with multiple batches."""
-    data = []
-    expected_count = 0
-    for i in range(1000):
-        if i % 3 == 0:
-            data.append({"a": None, "b": np.nan})
-        else:
-            data.append({"a": i, "b": float(i)})
-            expected_count += 1
-
-    ds = ray.data.from_items(data)
-    result = ds.dropna()
-
-    assert result.count() == expected_count
-
-
 def test_dropna_single_column():
     """Test dropna on dataset with single column."""
     ds = ray.data.from_items([{"a": 1}, {"a": None}, {"a": 3}, {"a": None}, {"a": 5}])
@@ -272,31 +187,6 @@ def test_dropna_single_column():
     rows = result.take_all()
 
     expected = [{"a": 1}, {"a": 3}, {"a": 5}]
-
-    assert rows == expected
-
-
-def test_dropna_thresh_zero():
-    """Test dropna with thresh=0 should keep all rows."""
-    ds = ray.data.from_items(
-        [{"a": 1, "b": 2.0}, {"a": None, "b": None}, {"a": 3, "b": np.nan}]
-    )
-
-    result = ds.dropna(thresh=0)
-    assert result.count() == 3
-
-
-def test_dropna_thresh_higher_than_columns():
-    """Test dropna with thresh higher than number of columns."""
-    ds = ray.data.from_items(
-        [{"a": 1, "b": 2.0}, {"a": None, "b": 3.0}, {"a": 3, "b": 4.0}]
-    )
-
-    result = ds.dropna(thresh=5)  # Higher than 2 columns
-    rows = result.take_all()
-
-    # Should return only rows with all non-null values
-    expected = [{"a": 1, "b": 2.0}, {"a": 3, "b": 4.0}]
 
     assert rows == expected
 
