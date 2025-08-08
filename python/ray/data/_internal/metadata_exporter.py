@@ -148,6 +148,9 @@ def _add_ellipsis(s: str, truncate_length: int) -> str:
 
 
 def deep_asdict(obj):
+    """Recurses nested `asdict` objects because default
+    `asdict` won't.
+    """
     if is_dataclass(obj):
         return deep_asdict(asdict(obj))
     elif isinstance(obj, dict):
