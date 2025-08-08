@@ -64,7 +64,6 @@ class WorkerGroupPollStatus:
         show_full_error = set()
 
         for world_rank, status in self.worker_statuses.items():
-            # Exclude errors from running workers
             if status.error:
                 error_str = str(status.error)
                 normalized_error = _normalize_error_string(error_str)
@@ -92,12 +91,12 @@ class WorkerGroupPollStatus:
             )
 
             # Convert rank list to comma-separated strings
-            ranks = ", ".join(ranks)
+            ranks_str = ", ".join(ranks)
 
             if normalized_error in show_full_error:
-                errors.append(f"[Rank {ranks}]:\n{error}")
+                errors.append(f"[Rank {ranks_str}]:\n{error}")
             else:
-                errors.append(f"[Rank {ranks}]:\n{_truncate_error_string(error)}")
+                errors.append(f"[Rank {ranks_str}]:\n{_truncate_error_string(error)}")
 
         error_str = "\n".join(errors)
 
