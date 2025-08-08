@@ -8,7 +8,7 @@ head_node_type:
 worker_node_types:
     - name: 1xL40S_8CPU_64GB
       instance_type: g6e.2xlarge
-      max_workers: 20
+      max_workers: 15
       min_workers: 0
       use_spot: false
     - name: 16CPU_64GB

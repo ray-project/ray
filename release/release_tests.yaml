@@ -4552,7 +4552,7 @@
   run:
     timeout: 3600
     script: >
-      python dataset/text_embeddings_benchmark.py
+      python dataset/text_embeddings_benchmark.py --embed-concurrency 15
 
 # Note: release tests do not support specifying both 'matrix' and 'variations'
 # in a test definition, so split off preemptible tests here.
@@ -4579,9 +4579,9 @@
     # - Batch size is always fixed, so kill schedule is deterministic.
     prepare: >
       python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
-      --batch-size-to-kill 5 --max-to-kill 20 --kill-delay 30 --kill-interval 120
+      --batch-size-to-kill 5 --max-to-kill 15 --kill-delay 30 --kill-interval 120
     script: >
-      python dataset/text_embeddings_benchmark.py --chaos-test
+      python dataset/text_embeddings_benchmark.py --chaos-test --embed-concurrency 15
 
 #######################
 # Ray examples tests
