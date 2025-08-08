@@ -56,21 +56,22 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &o
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
     const std::vector<ObjectID> &ids, int timeout_ms) {
-  std::vector<std::shared_ptr<::ray::RayObject>> results;
-  ::ray::Status status = memory_store_->Get(ids,
-                                            (int)ids.size(),
+  bool got_exception;
+  absl::flat_hash_set<ObjectID> id_set(ids.start(), ids.end());
+  absl::flat_hash_map<ObjectID, std::shared_ptr<::ray::RayObject>> results;
+  ::ray::Status status = memory_store_->Get(id_set,
                                             timeout_ms,
                                             local_mode_ray_tuntime_.GetWorkerContext(),
-                                            false,
-                                            &results);
+                                            &results, &got_exception);
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());
   }
   RAY_CHECK(results.size() == ids.size());
+
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
-  result_sbuffers.reserve(results.size());
-  for (size_t i = 0; i < results.size(); i++) {
-    auto data_buffer = results[i]->GetData();
+  result_sbuffers.reserve(ids.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    auto data_buffer = results[ids[i]]->GetData();
     auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
     sbuffer->write(reinterpret_cast<const char *>(data_buffer->Data()),
                    data_buffer->Size());
