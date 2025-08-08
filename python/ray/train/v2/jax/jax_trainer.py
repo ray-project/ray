@@ -50,8 +50,8 @@ class JaxTrainer(DataParallelTrainer):
                 scaling_config=ScalingConfig(
                     use_tpu=True,
                     num_workers=4,
-                    topology="2x2x4",
-                    accelerator_type="TPU-V4",
+                    topology="4x4",
+                    accelerator_type="TPU-V6E",
                     resources_per_worker={"TPU": 4},
                     placement_strategy="SPREAD",
                 ),
