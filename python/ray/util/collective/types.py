@@ -31,9 +31,10 @@ class Backend(object):
 
     NCCL = "nccl"
     MPI = "mpi"
+    # `pygloo` is deprecated. Use gloo through torch.distributed for both
+    # `GLOO` and `TORCH_GLOO`.
     GLOO = "gloo"
-    # Use gloo through torch.distributed.
-    TORCH_GLOO = "torch_gloo"
+    TORCH_GLOO = "gloo"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
