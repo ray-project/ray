@@ -96,6 +96,7 @@ inline constexpr std::string_view kLogKeyMessage = "message";
 inline constexpr std::string_view kLogKeyFilename = "filename";
 inline constexpr std::string_view kLogKeyLineno = "lineno";
 inline constexpr std::string_view kLogKeyComponent = "component";
+inline constexpr std::string_view kLogKeyClusterID = "cluster_id";
 inline constexpr std::string_view kLogKeyJobID = "job_id";
 inline constexpr std::string_view kLogKeyWorkerID = "worker_id";
 inline constexpr std::string_view kLogKeyNodeID = "node_id";
