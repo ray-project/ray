@@ -21,9 +21,10 @@
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 // clang-format on
 
 namespace ray {
@@ -31,7 +32,7 @@ class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
@@ -41,7 +42,7 @@ class GcsNodeManagerTest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
 };
@@ -104,6 +105,64 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
   for (int i = 0; i < node_count; ++i) {
     ASSERT_EQ(added_nodes[i], removed_nodes[i]);
+  }
+}
+
+TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_context_->GetIoService(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
+
+  // Create a test node
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
+
+  // Add the node to the manager
+  node_manager.AddNode(node);
+
+  // Test 1: Update node with idle state
+  {
+    rpc::syncer::ResourceViewSyncMessage sync_message;
+    sync_message.set_idle_duration_ms(5000);
+
+    node_manager.UpdateAliveNode(node_id, sync_message);
+
+    auto updated_node = node_manager.GetAliveNode(node_id);
+    EXPECT_TRUE(updated_node.has_value());
+    EXPECT_EQ(updated_node.value()->state_snapshot().state(), rpc::NodeSnapshot::IDLE);
+    EXPECT_EQ(updated_node.value()->state_snapshot().idle_duration_ms(), 5000);
+  }
+
+  // Test 2: Update node with active state (idle_duration_ms = 0)
+  {
+    rpc::syncer::ResourceViewSyncMessage sync_message;
+    sync_message.set_idle_duration_ms(0);
+    sync_message.add_node_activity("Busy workers on node.");
+
+    node_manager.UpdateAliveNode(node_id, sync_message);
+
+    auto updated_node = node_manager.GetAliveNode(node_id);
+    EXPECT_TRUE(updated_node.has_value());
+    EXPECT_EQ(updated_node.value()->state_snapshot().state(), rpc::NodeSnapshot::ACTIVE);
+    EXPECT_EQ(updated_node.value()->state_snapshot().node_activity_size(), 1);
+    EXPECT_EQ(updated_node.value()->state_snapshot().node_activity(0),
+              "Busy workers on node.");
+  }
+
+  // Test 3: Update node with draining state
+  {
+    rpc::syncer::ResourceViewSyncMessage sync_message;
+    sync_message.set_idle_duration_ms(0);
+    sync_message.set_is_draining(true);
+
+    node_manager.UpdateAliveNode(node_id, sync_message);
+
+    auto updated_node = node_manager.GetAliveNode(node_id);
+    EXPECT_TRUE(updated_node.has_value());
+    EXPECT_EQ(updated_node.value()->state_snapshot().state(),
+              rpc::NodeSnapshot::DRAINING);
   }
 }
 

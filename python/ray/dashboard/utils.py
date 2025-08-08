@@ -28,8 +28,9 @@ import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
 from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsChannel
+from ray._common.network_utils import parse_address
 from ray._private.utils import (
-    check_dashboard_dependencies_installed,
+    get_dashboard_dependency_error,
     split_address,
 )
 from ray._raylet import GcsClient
@@ -304,7 +305,7 @@ def get_all_modules(module_type):
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
-    should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
+    should_only_load_minimal_modules = get_dashboard_dependency_error() is not None
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
@@ -345,7 +346,7 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
-    ip, port = address.split(":")
+    ip, port = parse_address(address)
     return ip, int(port)
 
 
