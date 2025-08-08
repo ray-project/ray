@@ -444,12 +444,12 @@ class BasicObject:
             TestDataclass(),
             {
                 "list_field": [1, 2, 3],
-                "dict_field": {"1": 2, "3": "4"}, # key should be strings
+                "dict_field": {"1": 2, "3": "4"},  # key should be strings
                 "string_field": "test",
                 "int_field": 1,
                 "float_field": 1.0,
-                "set_field": [1, 2, 3], # sets con be converted to Lists
-                "tuple_field": [1, 2, 3], # tuples can be converted to Lists
+                "set_field": [1, 2, 3],  # sets con be converted to Lists
+                "tuple_field": [1, 2, 3],  # tuples can be converted to Lists
                 "bool_field": True,
                 "none_field": None,
             },
