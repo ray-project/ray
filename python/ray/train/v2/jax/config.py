@@ -1,7 +1,6 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 import ray
 from ray.train._internal.utils import get_address_and_port
@@ -16,8 +15,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class JaxConfig(BackendConfig):
     use_tpu: bool = False
-    topology: Optional[str] = None
-    accelerator_type: Optional[str] = None
 
     @property
     def backend_cls(self):
