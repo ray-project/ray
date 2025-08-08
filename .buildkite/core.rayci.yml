@@ -415,8 +415,7 @@ steps:
           echo "build --remote_upload_local_results=false" >> ~/.bazelrc;
         fi
       - ci/ci.sh build
-      - ci/ci.sh test_cpp || true
-      - sleep 1000000000
+      - ci/ci.sh test_cpp
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
 
