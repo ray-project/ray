@@ -45,7 +45,6 @@ py_test_module_list(
         "test_advanced_7.py",
         "test_advanced_8.py",
         "test_advanced_9.py",
-        "test_aggregated_prometheus_metrics.py",
         "test_async.py",
         "test_asyncio.py",
         "test_component_failures_2.py",
@@ -58,6 +57,7 @@ py_test_module_list(
         "test_get_locations.py",
         "test_global_state.py",
         "test_healthcheck.py",
+        "test_metric_cardinality.py",
         "test_metrics_agent.py",
         "test_metrics_head.py",
         "test_multiprocessing.py",
@@ -86,10 +86,10 @@ py_test_module_list(
         "RAY_experimental_enable_open_telemetry_on_core": "1",
     },
     files = [
-        "test_aggregated_prometheus_metrics.py",
+        "test_metric_cardinality.py",
         "test_metrics_agent.py",
     ],
-    name_suffix = "_open_telemetry",
+    name_suffix = "_otel",
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",
