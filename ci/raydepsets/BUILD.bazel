@@ -50,5 +50,15 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":raydepsets_lib",
+        ":testing_utils",
+    ],
+)
+
+py_library(
+    name = "testing_utils",
+    testonly = True,
+    srcs = ["testing_utils.py"],
+    deps = [
+        ci_require("bazel-runfiles"),
     ],
 )
