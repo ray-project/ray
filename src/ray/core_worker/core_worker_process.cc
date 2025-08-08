@@ -368,13 +368,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       // The memory store will delete objects immediately when they're put into the
       // store if they have gone out of scope in the reference counter.
       /*should_delete_object_on_put=*/
-      [this](const ObjectID &object_id) {
+      [reference_counter](const ObjectID &object_id) {
         return !reference_counter->HasReference(object_id);
       },
       /*release_resources=*/
-      [this]() { RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked()); },
+      [local_raylet_client]() {
+        RAY_CHECK_OK(local_raylet_client->NotifyDirectCallTaskBlocked());
+      },
       /*reacquire_resources=*/
-      [this]() { RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskUnblocked()); },
+      [local_raylet_client]() {
+        RAY_CHECK_OK(local_raylet_client->NotifyDirectCallTaskUnblocked());
+      },
       options.check_signals,
       [this](const RayObject &obj) {
         auto core_worker = GetCoreWorker();
