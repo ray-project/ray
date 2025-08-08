@@ -1,14 +1,13 @@
 import os
 import shutil
-from typing import Tuple, List, Dict
+from typing import Tuple, List
 from pathlib import Path
 import sys
 
 import click
 
-from ray_release.buildkite.filter import filter_tests, group_tests
+from ray_release.buildkite.filter import filter_tests
 from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.byod.build import _image_exist
 from ray_release.config import (
     RELEASE_PACKAGE_DIR,
     read_and_validate_release_test_collection,
@@ -128,7 +127,7 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
     for image, base_image, post_build_script in custom_byod_images:
         step = {
             "label": f":tapioca: build custom: {image}",
-            "key": f"custom_build_"
+            "key": "custom_build_"
             + image.replace("/", "_").replace(":", "_").replace(".", "_")[-40:],
             "instance_type": "release-medium",
             "commands": [
