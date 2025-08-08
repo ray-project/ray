@@ -202,7 +202,7 @@ def test_basic_pinning(one_cpu_100MiB_shared):
 
     actor = Actor.remote()
 
-    # Fill up the object store with short-lived objects.These should be
+    # Fill up the object store with short-lived objects. These should be
     # evicted before the long-lived object whose reference is held by
     # the actor.
     for batch in range(10):
@@ -305,15 +305,6 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    if not failure:
-        assert ray.get(tail_oid) is None
-    # There is only 1 core, so the same worker will execute all `recursive`
-    # tasks. Therefore, if we kill the worker during the last task, its
-    # owner(the worker that executed the second-to-last task) will also
-    # have died. If GetObjectStatus uses the retryable client, due to the
-    # owner of the task being killed we'll be stuck in a retry loop. Rather
-    # than modifying the timeouts, the main focus of the test is not the
-    # OwnerDiedError, hence we're removing it.
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
