@@ -84,7 +84,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   absl::flat_hash_map<int64_t, std::function<void()>> requests_;
-	WaitForActorCallArgs wait_for_actor_call_args_;
+  WaitForActorCallArgs wait_for_actor_call_args_;
 };
 
 }  // namespace core
