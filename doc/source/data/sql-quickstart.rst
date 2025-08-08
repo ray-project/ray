@@ -23,7 +23,7 @@ Step 1: Create and Register Datasets
 
 Start by creating Ray Datasets and registering them as SQL tables:
 
-.. code-block:: python
+.. testcode::
 
     import ray.data
     from ray.data.sql import register_table, sql
@@ -53,7 +53,7 @@ Step 2: Execute Basic SQL Queries
 
 Now you can execute SQL queries using the familiar SELECT syntax:
 
-.. code-block:: python
+.. testcode::
 
     # Simple SELECT query
     result = sql("SELECT name, age FROM users WHERE age > 25")
@@ -75,7 +75,7 @@ Step 3: Join Multiple Tables
 
 Perform JOIN operations to combine data from multiple tables:
 
-.. code-block:: python
+.. testcode::
 
     # INNER JOIN to combine users and orders
     result = sql("""
@@ -105,7 +105,7 @@ Step 4: Advanced Queries
 
 Use more advanced SQL features like subqueries and window functions:
 
-.. code-block:: python
+.. testcode::
 
     # Subquery example
     result = sql("""
@@ -136,7 +136,7 @@ Integration with Ray Data
 
 SQL results are Ray Datasets, so you can seamlessly mix SQL with Ray Data operations:
 
-.. code-block:: python
+.. testcode::
 
     # Start with SQL
     high_spenders = sql("""
@@ -171,7 +171,7 @@ Configuration Options
 
 Customize SQL engine behavior with configuration:
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import SQLConfig, LogLevel
 
@@ -194,7 +194,7 @@ Auto-Registration
 
 For convenience, you can use auto-registration with variable names:
 
-.. code-block:: python
+.. testcode::
 
     # Create datasets (variable names become table names)
     customers = ray.data.from_items([{"id": 1, "name": "Alice"}])
@@ -212,7 +212,7 @@ Table Management
 
 Manage your SQL tables with utility functions:
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import list_tables, get_schema, clear_tables
 
@@ -246,7 +246,7 @@ Before diving deeper, be aware of these current limitations:
 **Workarounds Available**
 Most limitations can be worked around using Ray Data operations:
 
-.. code-block:: python
+.. testcode::
 
     # Instead of window functions, use Ray Data groupby
     # ❌ Limited: SELECT name, ROW_NUMBER() OVER (...) FROM users

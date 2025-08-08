@@ -121,29 +121,38 @@ def extract_table_names_from_query(query: str) -> set:
 
     Uses sqlglot's AST parsing to robustly extract table names, handling
     complex queries with subqueries, CTEs, and comments better than regex.
+    This is crucial for validating that all referenced tables are registered
+    before query execution.
 
     Args:
-        query: SQL query string.
+        query: SQL query string to analyze (e.g., "SELECT * FROM users JOIN orders").
 
     Returns:
-        Set of table names found in the query.
+        Set of table names found in the query (e.g., {"users", "orders"}).
     """
     try:
         import sqlglot
 
+        # Parse the query into an AST using DuckDB SQL dialect (most permissive)
         parsed = sqlglot.parse_one(query, read="duckdb")
+
+        # Find all table references in the AST (FROM, JOIN, subqueries, etc.)
         return {table.name for table in parsed.find_all(sqlglot.exp.Table)}
+
     except Exception:
-        # Fallback to regex-based extraction for invalid queries
+        # Fallback to regex-based extraction for invalid/malformed queries
+        # This is less accurate but provides basic functionality when parsing fails
         table_names = set()
 
-        # Find tables in FROM clauses
+        # Find tables in FROM clauses using regex pattern
+        # Pattern matches: FROM table_name (case insensitive)
         from_matches = re.findall(
             r"from\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE
         )
         table_names.update(from_matches)
 
-        # Find tables in JOIN clauses
+        # Find tables in JOIN clauses using regex pattern
+        # Pattern matches: JOIN table_name (case insensitive)
         join_matches = re.findall(
             r"join\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE
         )
@@ -173,18 +182,34 @@ def validate_table_name(name: str) -> None:
 def safe_divide(a: Any, b: Any) -> float:
     """Safely divide two values, handling division by zero and type errors.
 
+    This function is used in SQL arithmetic expressions to prevent crashes
+    when dividing by zero or when operands are not numeric. It follows SQL
+    standards for division behavior with special values.
+
     Args:
-        a: Numerator.
-        b: Denominator.
+        a: Numerator (dividend) - any value that can be converted to float.
+        b: Denominator (divisor) - any value that can be converted to float.
 
     Returns:
-        Result of division, or infinity/NaN for edge cases.
+        Result of division as float, with special handling:
+        - Normal division: a / b
+        - Positive / 0: +infinity
+        - Negative / 0: -infinity
+        - 0 / 0: NaN (Not a Number)
+        - Invalid types: None
     """
     try:
+        # Check for division by zero before converting to float
         if b == 0:
+            # Handle division by zero according to IEEE 754 standards
             return float("inf") if a > 0 else float("-inf") if a < 0 else float("nan")
+
+        # Perform normal division after converting both operands to float
         return float(a) / float(b)
+
     except (TypeError, ValueError):
+        # Return None for non-numeric inputs (e.g., strings, None values)
+        # This allows the caller to handle the error appropriately
         return None
 
 
@@ -337,59 +362,59 @@ JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
 
 def get_supported_sql_features():
     """Get a comprehensive list of supported SQL features.
-    
+
     Returns:
         Dict containing categorized lists of supported SQL features.
-        
+
     Examples:
         .. testcode::
-        
+
             from ray.data.sql.utils import get_supported_sql_features
             features = get_supported_sql_features()
             print("Supported aggregates:", features["aggregates"])
     """
     from ray.data.sql.parser import SUPPORTED_FUNCTIONS
-    
+
     return {
-        "aggregates": sorted(list(SUPPORTED_AGGREGATES)),
-        "functions": sorted(list(SUPPORTED_FUNCTIONS)),
+        "aggregates": sorted(SUPPORTED_AGGREGATES),
+        "functions": sorted(SUPPORTED_FUNCTIONS),
         "operators": [
             "Arithmetic: +, -, *, /, %",
             "Comparison: =, !=, <>, <, <=, >, >=",
-            "Logical: AND, OR, NOT", 
+            "Logical: AND, OR, NOT",
             "Pattern: LIKE, ILIKE",
             "Null: IS NULL, IS NOT NULL",
-            "Range: BETWEEN"
+            "Range: BETWEEN",
         ],
         "constructs": [
             "SELECT, FROM, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT",
             "JOINs (INNER, LEFT, RIGHT, FULL OUTER)",
             "CASE expressions",
             "Subqueries (limited)",
-            "Column aliases"
+            "Column aliases",
         ],
         "data_types": [
             "Numeric: INT, BIGINT, FLOAT, DOUBLE, DECIMAL",
-            "String: STRING, VARCHAR, CHAR, TEXT", 
+            "String: STRING, VARCHAR, CHAR, TEXT",
             "Boolean: BOOLEAN, BOOL",
             "Date/Time: DATE, TIME, TIMESTAMP, DATETIME",
-            "Binary: BINARY, VARBINARY"
-        ]
+            "Binary: BINARY, VARBINARY",
+        ],
     }
 
 
 def get_feature_suggestion(feature_name: str):
     """Get suggested alternatives for unsupported SQL features.
-    
+
     Args:
         feature_name: Name of the unsupported SQL feature.
-        
+
     Returns:
         String with suggestion if available, None otherwise.
-        
+
     Examples:
         .. testcode::
-        
+
             from ray.data.sql.utils import get_feature_suggestion
             suggestion = get_feature_suggestion("median")
             print(suggestion)
@@ -399,63 +424,63 @@ def get_feature_suggestion(feature_name: str):
         UNSUPPORTED_AGGREGATE_SUGGESTIONS,
         UNSUPPORTED_FUNCTION_SUGGESTIONS,
         UNSUPPORTED_CONSTRUCTS,
-        UNSUPPORTED_OPERATORS
+        UNSUPPORTED_OPERATORS,
     )
-    
+
     feature_lower = feature_name.lower()
-    
+
     # Check aggregate functions
     if feature_lower in UNSUPPORTED_AGGREGATE_SUGGESTIONS:
         return UNSUPPORTED_AGGREGATE_SUGGESTIONS[feature_lower]
-    
+
     # Check general functions
     if feature_lower in UNSUPPORTED_FUNCTION_SUGGESTIONS:
         return UNSUPPORTED_FUNCTION_SUGGESTIONS[feature_lower]
-    
+
     # Check constructs and operators by name
     for info_dict in [UNSUPPORTED_CONSTRUCTS, UNSUPPORTED_OPERATORS]:
         for info in info_dict.values():
-            if info['name'].lower() == feature_lower:
-                return info.get('suggestion')
-    
+            if info["name"].lower() == feature_lower:
+                return info.get("suggestion")
+
     return None
 
 
 def validate_sql_feature_support(sql_string: str, strict_mode: bool = True):
     """Validate SQL feature support without executing the query.
-    
+
     Args:
         sql_string: SQL query string to validate.
         strict_mode: If True, raises error for unsupported features.
                     If False, returns list of warnings.
-                    
+
     Returns:
         List of validation warnings if strict_mode=False, empty list if valid.
-        
+
     Raises:
         NotImplementedError: If unsupported features found in strict_mode=True.
-        
+
     Examples:
         .. testcode::
-        
+
             from ray.data.sql.utils import validate_sql_feature_support
-            
+
             # Check without raising errors
             warnings = validate_sql_feature_support(
-                "SELECT MEDIAN(price) FROM sales", 
+                "SELECT MEDIAN(price) FROM sales",
                 strict_mode=False
             )
             print(warnings)
-            
+
             # Validate with errors
             validate_sql_feature_support("SELECT * FROM sales")  # OK
     """
     from ray.data.sql.config import SQLConfig
     from ray.data.sql.parser import SQLParser
-    
+
     config = SQLConfig()
     parser = SQLParser(config)
-    
+
     # Temporarily modify validation behavior for non-strict mode
     if not strict_mode:
         try:
@@ -465,8 +490,12 @@ def validate_sql_feature_support(sql_string: str, strict_mode: bool = True):
             # Extract individual violations from the error message
             error_str = str(e)
             if "SQL validation failed with the following issues:" in error_str:
-                lines = error_str.split('\n')[1:-2]  # Skip header and footer
-                return [line.strip().lstrip('0123456789. ') for line in lines if line.strip()]
+                lines = error_str.split("\n")[1:-2]  # Skip header and footer
+                return [
+                    line.strip().lstrip("0123456789. ")
+                    for line in lines
+                    if line.strip()
+                ]
             else:
                 return [error_str]
     else:

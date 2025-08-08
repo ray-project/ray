@@ -57,7 +57,7 @@ Use WHERE clauses and aggregate functions to analyze your data:
         SELECT department, COUNT(*) as employee_count
         FROM users 
         GROUP BY department
-        ORDER BY employee_count DESC
+        ORDER BY COUNT(*) DESC
     """)
     
     print("Department sizes:")

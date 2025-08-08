@@ -21,64 +21,109 @@ from ray.data.sql.utils import (
 class ExpressionCompiler:
     """Compiles SQLGlot expressions into Python callables for row evaluation.
 
-    The ExpressionCompiler takes SQLGlot expression objects and converts them
-    into Python functions that can evaluate the expressions against row data.
+    The ExpressionCompiler is a critical component that bridges SQL expressions
+    and Ray Dataset operations. It takes SQLGlot AST expressions and converts them
+    into Python lambda functions that can be applied to dataset rows.
+
+    This compiler handles a wide range of SQL expression types:
+    - Column references (name, table.name)
+    - Literal values (strings, numbers, booleans, null)
+    - Arithmetic operations (+, -, *, /, %)
+    - Comparison operations (=, <>, <, >, <=, >=)
+    - Logical operations (AND, OR, NOT)
+    - String functions (UPPER, LOWER, LENGTH, etc.)
+    - Conditional expressions (CASE WHEN)
+    - Null checking (IS NULL, IS NOT NULL)
+
+    The compiled functions operate on row dictionaries and return the computed
+    values, enabling efficient distributed expression evaluation in Ray.
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize the expression compiler with configuration.
+
+        Args:
+            config: SQL configuration affecting compilation behavior (case sensitivity, etc.).
+        """
+        # Store configuration for expression compilation behavior
         self.config = config
+
+        # Logger for debugging expression compilation issues
         self._logger = setup_logger("ExpressionCompiler")
 
     def compile(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
-        """Compile a SQLGlot expression into a Python lambda."""
+        """Compile a SQLGlot expression into a Python callable function.
+
+        This is the main public interface for expression compilation. It takes
+        any SQLGlot expression and returns a function that can evaluate that
+        expression against row data.
+
+        Args:
+            expr: SQLGlot expression AST node to compile.
+
+        Returns:
+            Python callable that takes a row dictionary and returns the computed value.
+        """
         return self._compile_expression(expr)
 
     def _compile_expression(
         self, expr: exp.Expression
     ) -> Callable[[Dict[str, Any]], Any]:
-        """Main expression compilation method with comprehensive coverage."""
-        # Column reference
+        """Main expression compilation method with comprehensive coverage.
+
+        This method dispatches different expression types to specialized compilation
+        methods. It handles the full spectrum of SQL expressions by pattern matching
+        on SQLGlot AST node types and calling appropriate compilation handlers.
+
+        Args:
+            expr: SQLGlot expression to compile.
+
+        Returns:
+            Callable function that evaluates the expression on row data.
+        """
+        # Column reference (e.g., "name", "users.id")
         if isinstance(expr, exp.Column):
             return self._compile_column(expr)
 
-        # Literal values
+        # Literal values (strings, numbers, booleans, null)
         if self._is_literal(expr):
             return self._compile_literal(expr)
 
-        # Arithmetic operations
+        # Arithmetic operations (+, -, *, /, %)
         if self._is_arithmetic_operation(expr):
             return self._compile_arithmetic(expr)
 
-        # Comparison operations
+        # Comparison operations (=, <>, <, >, <=, >=)
         if self._is_comparison_operation(expr):
             return self._compile_comparison(expr)
 
-        # Logical operations
+        # Logical operations (AND, OR)
         if self._is_logical_operation(expr):
             return self._compile_logical(expr)
 
-        # String functions
+        # String functions (UPPER, LOWER, LENGTH, etc.)
         if self._is_string_function(expr):
             return self._compile_string_function(expr)
 
-        # CASE expressions
+        # CASE WHEN expressions (conditional logic)
         if isinstance(expr, exp.Case):
             return self._compile_case(expr)
 
-        # IS NULL / IS NOT NULL
+        # IS NULL / IS NOT NULL checks
         if isinstance(expr, exp.Is):
             return self._compile_is_null(expr)
 
-        # NOT expressions
+        # NOT expressions (logical negation)
         if isinstance(expr, exp.Not):
+            # Compile the inner expression and negate its result
             inner = self._compile_expression(expr.this)
             return lambda row: not inner(row)
 
-        # Parenthesized expressions
+        # Parenthesized expressions (just compile the inner expression)
         if isinstance(expr, exp.Paren):
             return self._compile_expression(expr.this)
 
-        # Fallback for unsupported expressions
+        # Fallback for unsupported expressions - log warning and return null function
         self._logger.warning(f"Unsupported expression type: {type(expr).__name__}")
         return lambda row: None
 

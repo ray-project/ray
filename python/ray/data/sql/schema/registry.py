@@ -16,7 +16,11 @@ class DatasetRegistry:
     """Registry for managing named Ray Datasets as SQL tables.
 
     The DatasetRegistry maintains a mapping between table names and Ray
-    Datasets, allowing SQL queries to reference datasets by name.
+    Datasets, allowing SQL queries to reference datasets by name. It acts
+    as a catalog that bridges SQL table names to Ray Dataset objects.
+
+    This registry also manages schema information through its SchemaManager,
+    automatically inferring column types and metadata when datasets are registered.
 
     Examples:
         .. testcode::
@@ -27,29 +31,52 @@ class DatasetRegistry:
     """
 
     def __init__(self):
+        """Initialize an empty dataset registry.
+
+        Creates internal storage for table mappings and sets up logging
+        and schema management components.
+        """
+        # Internal mapping from table names to Ray Dataset objects
         self._tables: Dict[str, Dataset] = {}
+
+        # Logger for debugging dataset registration/lookup operations
         self._logger = setup_logger("DatasetRegistry")
+
+        # Schema manager handles automatic type inference and validation
         self.schema_manager = SchemaManager()
 
     def register(self, name: str, dataset: Dataset) -> None:
         """Register a Ray Dataset under a given table name.
 
+        This method makes a Ray Dataset available for SQL queries by associating
+        it with a table name. It also triggers automatic schema inference and
+        adds metadata to the dataset for future reference.
+
         Args:
-            name: Table name to register the dataset under.
-            dataset: Ray Dataset to register.
+            name: Table name to register the dataset under (must be valid SQL identifier).
+            dataset: Ray Dataset to register (must be an actual Ray Dataset object).
 
         Raises:
             TypeError: If dataset is not a Ray Dataset.
-            ValueError: If table name is invalid.
+            ValueError: If table name is invalid (contains special characters, etc.).
         """
+        # Validate that the input is actually a Ray Dataset
         if not isinstance(dataset, Dataset):
             raise TypeError(f"Expected Dataset, got {type(dataset)}")
 
+        # Validate table name follows SQL identifier rules
         validate_table_name(name)
 
+        # Store the dataset in our internal registry
         self._tables[name] = dataset
+
+        # Add SQL metadata to the dataset for introspection
         dataset._sql_name = name
+
+        # Automatically infer and store schema information
         self.schema_manager.infer_schema_from_dataset(name, dataset)
+
+        # Log successful registration with row count for debugging
         self._logger.debug(f"Registered dataset '{name}' with {dataset.count()} rows")
 
     def unregister(self, name: str) -> None:

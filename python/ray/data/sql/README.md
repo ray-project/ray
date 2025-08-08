@@ -729,10 +729,10 @@ transformed = users.map(lambda row: {"result": custom_function(row["name"])})
 
 **Complex Nested Data → Ray Data Processing**
 ```python
-# ❌ Limited nested SQL operations
+# Limited nested SQL operations
 # sql("SELECT data.nested.field FROM complex_table")
 
-# ✅ Use Ray Data for complex nested access
+# Use Ray Data for complex nested access
 result = complex_dataset.map(lambda row: {
     "extracted_field": row["data"]["nested"]["field"],
     "other_data": row["other_field"]
@@ -741,10 +741,10 @@ result = complex_dataset.map(lambda row: {
 
 **Large Cross-Joins → Filtered Joins**
 ```python
-# ❌ Expensive cross-join
+# Expensive cross-join
 # sql("SELECT * FROM table_a CROSS JOIN table_b")
 
-# ✅ Add meaningful join conditions
+# Add meaningful join conditions
 sql("""
     SELECT a.*, b.*
     FROM table_a a
@@ -850,39 +850,23 @@ print(processed.take_all())
 
 ### Common Issues and Solutions
 
-**Import Errors**
-```python
-# ❌ Error: No module named 'ray.data.sql'
-# ✅ Solution: Install dependencies
-pip install ray[data] sqlglot>=20.0.0
-```
 
 **Table Not Found Errors**
 ```python
-# ❌ Error: Table 'users' not found
-# ✅ Check registered tables
+# Error: Table 'users' not found
+# Check registered tables
 from ray.data.sql import list_tables
 print(f"Available tables: {list_tables()}")
 
-# ✅ Verify table registration
+# Verify table registration
 register_table("users", users_dataset)
 ```
 
-**Memory Errors with Large Datasets**
-```python
-# ❌ Error: Out of memory during JOIN
-# ✅ Enable streaming execution
-config = SQLConfig(
-    enable_streaming_execution=True,
-    max_memory_usage_gb=8,
-    enable_disk_spill=True
-)
-```
 
 **SQL Syntax Errors**
 ```python
-# ❌ Error: Invalid SQL syntax
-# ✅ Check dialect compatibility
+# Error: Invalid SQL syntax
+# Check dialect compatibility
 config = SQLConfig(
     sqlglot_read_dialect="postgres",  # Your SQL dialect
     enable_dialect_conversion=True

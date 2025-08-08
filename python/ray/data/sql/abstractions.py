@@ -37,16 +37,40 @@ class SQLOperationType(Enum):
 
 @dataclass
 class SQLExpression:
-    """Represents a compiled SQL expression with metadata."""
+    """Represents a compiled SQL expression with metadata.
 
+    This class stores a SQL expression that has been parsed and compiled
+    into a form that can be executed on Ray Datasets. It includes metadata
+    about the expression's type, dependencies, and execution characteristics.
+
+    Examples:
+        Column reference: SQLExpression("name", str, dependencies=["name"])
+        Aggregate: SQLExpression(lambda rows: sum(r["age"] for r in rows), int, is_aggregate=True)
+        Literal: SQLExpression("'hello'", str, dependencies=[])
+    """
+
+    # The actual expression - either a string for simple cases or a callable for complex ones
     expression: Union[str, Callable]
+
+    # The Python type that this expression returns (int, str, float, etc.)
     return_type: type
+
+    # List of column names this expression depends on (for optimization and validation)
     dependencies: List[str] = field(default_factory=list)
+
+    # Whether this is an aggregate expression (COUNT, SUM, etc.) that needs grouping
     is_aggregate: bool = False
+
+    # Optional alias for the expression result (AS clause in SQL)
     alias: Optional[str] = None
 
     def __post_init__(self):
-        """Validate expression after initialization."""
+        """Validate expression after initialization.
+
+        Performs basic validation on the expression to catch common errors early.
+        Note: We don't validate aggregate dependencies since COUNT(*) is valid
+        without column dependencies.
+        """
         # The validation `if self.is_aggregate and not self.dependencies` is removed
         # as it incorrectly flags valid aggregates like COUNT(*).
         pass
@@ -54,35 +78,91 @@ class SQLExpression:
 
 @dataclass
 class ColumnReference:
-    """Represents a reference to a table column."""
+    """Represents a reference to a table column.
 
+    This class handles column references in SQL queries, including
+    qualified references (table.column) and aliased columns (column AS alias).
+    It provides utilities for name resolution and output naming.
+
+    Examples:
+        Simple column: ColumnReference("age")
+        Qualified column: ColumnReference("age", table="users")
+        Aliased column: ColumnReference("age", alias="user_age")
+    """
+
+    # The base column name (e.g., "age", "name")
     name: str
+
+    # Optional table qualifier (e.g., "users" in "users.age")
     table: Optional[str] = None
+
+    # Optional alias for output (e.g., "user_age" for "age AS user_age")
     alias: Optional[str] = None
+
+    # Optional data type information (for type checking and optimization)
     data_type: Optional[type] = None
 
     @property
     def qualified_name(self) -> str:
-        """Get the fully qualified column name."""
+        """Get the fully qualified column name.
+
+        Returns the table-qualified name if table is specified,
+        otherwise just the column name.
+
+        Returns:
+            Qualified name like "users.age" or just "age".
+        """
         return f"{self.table}.{self.name}" if self.table else self.name
 
     @property
     def output_name(self) -> str:
-        """Get the output name (alias if present, otherwise name)."""
+        """Get the output name (alias if present, otherwise name).
+
+        This is the name that will appear in the result dataset.
+        If an alias is specified, use that; otherwise use the base name.
+
+        Returns:
+            The name to use in output columns.
+        """
         return self.alias or self.name
 
 
 @dataclass
 class SelectOperation:
-    """Data class representing a SELECT operation."""
+    """Data class representing a SELECT operation.
 
+    This class encapsulates all information needed to execute a SELECT clause,
+    including the expressions to evaluate, whether to apply DISTINCT, and
+    special cases like SELECT * or literal-only selections.
+
+    Examples:
+        SELECT name, age: SelectOperation([name_expr, age_expr])
+        SELECT *: SelectOperation([], star_select=True)
+        SELECT DISTINCT name: SelectOperation([name_expr], distinct=True)
+        SELECT 'hello', 42: SelectOperation([literal_exprs], literal_only=True)
+    """
+
+    # List of expressions to evaluate (columns, functions, literals, etc.)
     expressions: List[SQLExpression]
+
+    # Whether to remove duplicate rows from the result (DISTINCT keyword)
     distinct: bool = False
+
+    # Whether this is a SELECT * operation (select all columns)
     star_select: bool = False
+
+    # Whether this selection contains only literal values (no column references)
     literal_only: bool = False
 
     def __post_init__(self):
-        """Validate select operation after initialization."""
+        """Validate select operation after initialization.
+
+        Ensures that the SELECT operation has either expressions to evaluate
+        or is a star select. One of these must be true for a valid SELECT.
+
+        Raises:
+            ValueError: If neither expressions nor star_select is specified.
+        """
         if not self.expressions and not self.star_select:
             raise ValueError(
                 "Select operation must have expressions or be a star select"
@@ -90,12 +170,26 @@ class SelectOperation:
 
     @property
     def output_columns(self) -> List[str]:
-        """Get list of output column names."""
+        """Get list of output column names.
+
+        Returns the names that will appear in the output dataset columns.
+        Uses expression aliases if available, otherwise defaults to "value".
+
+        Returns:
+            List of column names for the output dataset.
+        """
         return [expr.alias or "value" for expr in self.expressions]
 
     @property
     def has_aggregates(self) -> bool:
-        """Check if any expressions are aggregates."""
+        """Check if any expressions are aggregates.
+
+        Aggregate expressions (COUNT, SUM, AVG, etc.) require special handling
+        and may trigger GROUP BY processing even without an explicit GROUP BY clause.
+
+        Returns:
+            True if any expression is an aggregate function.
+        """
         return any(expr.is_aggregate for expr in self.expressions)
 
 

@@ -64,7 +64,7 @@ from ray.data.sql.core import (
     register_table,
     sql,
 )
-from ray.data.sql.testing import ExampleRunner, TestRunner
+
 
 # Apply monkey patches to integrate with Ray Data API
 # Store original functions for potential restoration
@@ -93,54 +93,7 @@ __all__ = [
     "RaySQL",
     "SQLConfig",
     "LogLevel",
-    # Convenience functions for testing and examples
-    "run_comprehensive_tests",
-    "example_usage",
-    "example_sqlglot_features",
 ]
-
-
-# Convenience functions for testing and examples
-def run_comprehensive_tests():
-    """Run a comprehensive test suite to validate the SQL engine.
-
-    Returns:
-        bool: True if all tests pass, False otherwise.
-    """
-    test_runner = TestRunner()
-
-    # Run the main comprehensive tests
-    main_success = test_runner.run_comprehensive_tests()
-
-    # Run Ray Data Join API compliance tests
-    try:
-        join_api_success = test_runner.test_ray_data_join_api_compliance()
-        print(
-            f"\nRay Data Join API compliance: {'✅ PASSED' if join_api_success else '❌ FAILED'}"
-        )
-    except Exception as e:
-        print(f"\nRay Data Join API compliance: ❌ FAILED - {e}")
-        join_api_success = False
-
-    # Overall success
-    overall_success = main_success and join_api_success
-    print(
-        f"\nOverall test results: {'✅ ALL TESTS PASSED' if overall_success else '❌ SOME TESTS FAILED'}"
-    )
-
-    return overall_success
-
-
-def example_usage():
-    """Demonstrate example usage of the RaySQL engine with realistic business scenarios."""
-    example_runner = ExampleRunner()
-    example_runner.run_examples()
-
-
-def example_sqlglot_features():
-    """Demonstrate the SQLGlot-inspired features of the enhanced RaySQL engine."""
-    example_runner = ExampleRunner()
-    example_runner._run_sqlglot_features_example()
 
 
 # Module-level documentation

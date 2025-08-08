@@ -27,8 +27,18 @@ from ray.data.sql.utils import (
 class ProjectionAnalyzer:
     """Analyzes SELECT projection expressions and produces output column names and evaluation functions.
 
-    The ProjectionAnalyzer processes SELECT clause expressions to determine
-    output column names and create evaluation functions for each projection.
+    The ProjectionAnalyzer is responsible for transforming SQL SELECT clause expressions
+    into Ray Dataset operations. It handles various types of projections including:
+    - Simple column selection (SELECT name, age)
+    - Wildcard selection (SELECT *)
+    - Table-qualified wildcards (SELECT users.*)
+    - Expression evaluation (SELECT age + 5 AS age_plus_five)
+    - Literal values (SELECT 'hello', 42)
+    - Function calls (SELECT UPPER(name))
+
+    The analyzer produces two outputs:
+    1. Column names for the resulting dataset
+    2. Evaluation functions that compute each column's values
 
     Examples:
         .. testcode::
@@ -39,8 +49,18 @@ class ProjectionAnalyzer:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize the projection analyzer with configuration.
+
+        Args:
+            config: SQL configuration controlling expression compilation behavior.
+        """
+        # Store configuration for expression processing
         self.config = config
+
+        # Expression compiler for converting SQL expressions to Python functions
         self.compiler = ExpressionCompiler(config)
+
+        # Logger for debugging projection analysis
         self._logger = setup_logger("ProjectionAnalyzer")
 
     def analyze_projections(
@@ -49,20 +69,48 @@ class ProjectionAnalyzer:
         dataset: Dataset,
         table_name: Optional[str] = None,
     ) -> Tuple[List[str], List[Callable]]:
-        """Analyze the SELECT clause expressions and return column names and Ray Data Expressions."""
-        column_names = []
-        exprs = []
+        """Analyze the SELECT clause expressions and return column names and Ray Data expressions.
+
+        This method processes all expressions in the SELECT clause and converts them
+        into a format suitable for Ray Dataset operations. It handles the full spectrum
+        of SQL SELECT constructs and produces the column metadata and evaluation
+        functions needed for the final dataset projection.
+
+        Args:
+            select_exprs: List of SQLGlot expressions from the SELECT clause.
+            dataset: Source dataset for column information and validation.
+            table_name: Optional table name for qualified column resolution.
+
+        Returns:
+            Tuple containing:
+            - List of output column names for the result dataset
+            - List of evaluation functions (callables) for computing each column
+
+        Raises:
+            Exception: If any expression cannot be analyzed or compiled.
+        """
+        # Initialize output collections
+        column_names = []  # Names for the output dataset columns
+        exprs = []  # Evaluation functions for each column
+
+        # Get source dataset schema information
         cols = list(dataset.columns()) if dataset else []
         column_mapping = create_column_mapping(cols, self.config.case_sensitive)
 
+        # Process each expression in the SELECT clause
         for idx, expr in enumerate(select_exprs):
             try:
+                # Analyze this single expression and get its output names/functions
                 names, eval_exprs = self._analyze_single_expression(
                     expr, idx, cols, column_mapping, table_name
                 )
+
+                # Accumulate results from this expression
                 column_names.extend(names)
                 exprs.extend(eval_exprs)
+
             except Exception as e:
+                # Log detailed error information for debugging
                 self._logger.error(f"Failed to analyze projection {expr}: {e}")
                 raise
 

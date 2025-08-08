@@ -95,7 +95,7 @@ Ray Data SQL follows Ray's API stability annotations:
 Example API Annotations
 -----------------------
 
-.. code-block:: python
+.. testcode::
 
     from ray.util.annotations import PublicAPI, DeveloperAPI
 
@@ -135,7 +135,7 @@ Writing Tests
 
 Follow these patterns when writing tests:
 
-.. code-block:: python
+.. testcode::
 
     import pytest
     import ray
@@ -192,7 +192,7 @@ Docstring Format
 
 Use Google-style docstrings with examples:
 
-.. code-block:: python
+.. testcode::
 
     def register_table(name: str, dataset: Dataset) -> None:
         """Register a Ray Dataset as a SQL table.
@@ -232,20 +232,23 @@ Use Google-style docstrings with examples:
 Code Examples in Documentation
 ------------------------------
 
-All code examples in documentation must be testable using Ray's testing framework:
-
-.. code-block:: rst
+All code examples in documentation must be testable using Ray's testing framework::
 
     .. testcode::
 
         # Code that gets executed during testing
         import ray
         from ray.data.sql import sql
+        
+        # Create a simple dataset and query it
+        ds = ray.data.range(3)
+        sql.register("numbers", ds)
+        result = sql.execute("SELECT * FROM numbers WHERE id > 0")
+        print(list(result.take_all()))
 
     .. testoutput::
 
-        # Expected output that gets verified
-        Expected result here
+        [{'id': 1}, {'id': 2}]
 
 Common Contribution Areas
 =========================
@@ -324,7 +327,7 @@ SQL-Specific Conventions
 Example Code Style
 ------------------
 
-.. code-block:: python
+.. testcode::
 
     # Good: Clear error handling with context
     def execute_query(query: str) -> Dataset:

@@ -40,7 +40,7 @@ Quick Start
 
 Here's a simple example of using SQL with Ray Data:
 
-.. code-block:: python
+.. testcode::
 
     import ray.data
     from ray.data.sql import register_table, sql
@@ -174,7 +174,7 @@ Configuration and Advanced Usage
 
 Ray Data SQL provides extensive configuration options for different use cases:
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import SQLConfig, LogLevel
 
@@ -196,7 +196,7 @@ Ray Data SQL provides extensive configuration options for different use cases:
 
 **Advanced Configuration Options**
 
-.. code-block:: python
+.. testcode::
 
     # Production configuration example
     production_config = SQLConfig(
@@ -222,7 +222,7 @@ Ray Data SQL provides extensive configuration options for different use cases:
 
 **SQL Dialect Configuration**
 
-.. code-block:: python
+.. testcode::
 
     # Configure SQL dialect handling
     dialect_config = SQLConfig(
@@ -242,7 +242,7 @@ Integration with Ray Data
 
 SQL queries seamlessly integrate with Ray Data operations:
 
-.. code-block:: python
+.. testcode::
 
     # Start with SQL
     filtered_data = sql("SELECT * FROM users WHERE age > 25")

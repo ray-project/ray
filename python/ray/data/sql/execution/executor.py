@@ -7,9 +7,9 @@ of parsed SQL ASTs by applying the appropriate operations to Ray Datasets.
 
 from typing import Any, Callable, Dict, List, Tuple
 
+import ray
 from sqlglot import exp
 
-import ray
 from ray.data import Dataset
 from ray.data.sql.config import SQLConfig
 from ray.data.sql.execution.analyzers import AggregateAnalyzer, ProjectionAnalyzer
@@ -31,10 +31,18 @@ from ray.data.sql.utils import (
 class QueryExecutor:
     """Executes parsed SQL ASTs against registered Ray Datasets.
 
-    The QueryExecutor is responsible for executing SQLGlot ASTs by applying
-    the appropriate operations (joins, filters, projections, aggregates, etc.)
-    to Ray Datasets registered in the DatasetRegistry. All operations follow
-    Ray Dataset API patterns for lazy evaluation and proper return types.
+    The QueryExecutor is the core execution engine that transforms SQL operations
+    into Ray Dataset operations. It orchestrates the execution of SELECT queries
+    by coordinating various handlers and analyzers for different SQL constructs.
+
+    The executor follows a systematic approach:
+    1. Analyze the query structure (simple vs. GROUP BY)
+    2. Resolve table references from the registry
+    3. Apply operations in the correct order (FROM -> WHERE -> GROUP BY -> HAVING -> ORDER BY -> LIMIT)
+    4. Return a Ray Dataset that can be further chained or materialized
+
+    All operations maintain Ray Dataset's lazy evaluation semantics and follow
+    the Ray Dataset API patterns for consistency and performance.
 
     Examples:
         .. testcode::
@@ -44,28 +52,67 @@ class QueryExecutor:
     """
 
     def __init__(self, registry: DatasetRegistry, config: SQLConfig):
-        self.registry = registry
-        self.config = config
-        self.projection_analyzer = ProjectionAnalyzer(config)
-        self.aggregate_analyzer = AggregateAnalyzer(config)
-        self.join_handler = JoinHandler(config)
-        self.filter_handler = FilterHandler(config)
-        self.order_handler = OrderHandler(config)
-        self.limit_handler = LimitHandler(config)
+        """Initialize the query executor with required components.
+
+        Args:
+            registry: Dataset registry containing table name to dataset mappings.
+            config: SQL configuration controlling execution behavior.
+        """
+        # Core dependencies for execution
+        self.registry = registry  # Table name -> Dataset mapping
+        self.config = config  # Execution configuration and options
+
+        # Specialized analyzers for different aspects of query processing
+        self.projection_analyzer = ProjectionAnalyzer(
+            config
+        )  # Handles SELECT clause analysis
+        self.aggregate_analyzer = AggregateAnalyzer(
+            config
+        )  # Handles GROUP BY and aggregates
+
+        # Operation handlers for different SQL constructs
+        self.join_handler = JoinHandler(config)  # Handles JOIN operations
+        self.filter_handler = FilterHandler(config)  # Handles WHERE conditions
+        self.order_handler = OrderHandler(config)  # Handles ORDER BY clauses
+        self.limit_handler = LimitHandler(config)  # Handles LIMIT clauses
+
+        # Logger for debugging and monitoring execution
         self._logger = setup_logger("QueryExecutor")
 
     def execute(self, ast: exp.Expression) -> Dataset:
-        """Execute a parsed SQLGlot AST (must be a SELECT statement)."""
+        """Execute a parsed SQLGlot AST (must be a SELECT statement).
+
+        This is the main entry point for query execution. It analyzes the query
+        structure and dispatches to appropriate execution methods based on
+        whether the query uses GROUP BY aggregation or not.
+
+        Args:
+            ast: Parsed SQLGlot AST representing a SQL SELECT statement.
+
+        Returns:
+            Ray Dataset containing the query results.
+
+        Raises:
+            NotImplementedError: If the AST is not a SELECT statement.
+            ValueError: If query execution fails due to invalid operations.
+        """
+        # Validate that we have a SELECT statement (other statement types not supported)
         if not isinstance(ast, exp.Select):
             raise NotImplementedError("Only SELECT statements are supported")
 
         try:
+            # Analyze the query to determine if it uses GROUP BY aggregation
             group_keys = self.aggregate_analyzer.extract_group_by_keys(ast)
+
             if group_keys:
+                # Execute as a GROUP BY query with aggregation
                 return self._execute_group_by_query(ast, group_keys)
             else:
+                # Execute as a simple query without aggregation
                 return self._execute_simple_query(ast)
+
         except Exception as e:
+            # Log the error and re-raise with more context
             self._logger.error(f"Query execution failed: {e}")
             raise ValueError(f"Query execution failed: {e}")
 

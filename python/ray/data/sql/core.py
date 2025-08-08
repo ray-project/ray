@@ -36,7 +36,11 @@ class RaySQL:
             result = engine.sql("SELECT * FROM my_table")
     """
 
-    def __init__(self, config: Optional[SQLConfig] = None, registry: Optional[DatasetRegistry] = None):
+    def __init__(
+        self,
+        config: Optional[SQLConfig] = None,
+        registry: Optional[DatasetRegistry] = None,
+    ):
         self.config = config or SQLConfig()
         self.registry = registry or DatasetRegistry()
         self.parser = SQLParser(self.config)
@@ -85,30 +89,47 @@ class RaySQL:
     def sql(self, query: str, auto_register: bool = True) -> Dataset:
         """Execute a SQL query using the full pipeline: parse -> optimize -> plan -> execute.
 
+        This is the main entry point for SQL query execution. The method follows a
+        standard SQL engine pipeline:
+        1. Auto-register datasets (if enabled)
+        2. Validate table availability
+        3. Parse SQL to Abstract Syntax Tree (AST)
+        4. Apply optimizations (SQLGlot + custom)
+        5. Generate logical plan
+        6. Execute plan and return results
+
         Args:
-            query: SQL query string.
-            auto_register: Whether to auto-register datasets from the caller's scope.
+            query: SQL query string to execute (e.g., "SELECT * FROM my_table").
+            auto_register: Whether to automatically register Ray Datasets from the
+                          caller's local scope as tables using their variable names.
 
         Returns:
-            Ray Dataset with the query result.
+            Ray Dataset with the query result that can be chained with other operations.
 
         Raises:
-            Exception: If query execution fails.
+            ValueError: If referenced tables are not found in the registry.
+            Exception: If query parsing, optimization, or execution fails.
         """
+        # Start timing the overall execution
         start_time = time.time()
+
+        # Initialize result tracking with performance metrics
         stats = QueryResult(
-            dataset=None,  # Will be set later
-            execution_time=0.0,
-            row_count=0,
-            query_text=query,
+            dataset=None,  # Will be populated with the result dataset
+            execution_time=0.0,  # Total time will be calculated at the end
+            row_count=0,  # Will be set after execution
+            query_text=query,  # Store original query for debugging/logging
         )
 
         try:
             # Step 1: Auto-register datasets from caller scope
+            # This allows users to reference Ray Datasets by their variable names
+            # without explicitly calling register_table()
             if auto_register:
                 self._auto_register_datasets_from_caller()
 
-            # Check for missing tables
+            # Step 2: Validate that all referenced tables are available
+            # Extract table names from the SQL query and check registry
             table_names = extract_table_names_from_query(query)
             missing = [t for t in table_names if t not in self.registry._tables]
             if missing:
@@ -116,27 +137,33 @@ class RaySQL:
                     f"Tables not found: {missing}. Available tables: {list(self.registry._tables.keys())}"
                 )
 
+            # Log the start of query execution for debugging
             self._logger.info(f"Executing SQL: {query}")
 
-            # Step 2: Parse SQL to AST
+            # Step 3: Parse SQL to Abstract Syntax Tree (AST)
+            # Convert the SQL string into a structured representation that can be analyzed
             parse_start = time.time()
-            ast = self.parser.parse(query)
+            ast = self.parser.parse(query)  # Uses SQLGlot parser
             stats.parse_time = time.time() - parse_start
             self._logger.debug(f"Parsing completed in {stats.parse_time:.3f}s")
 
-            # Step 3: Apply SQLGlot optimizations
+            # Step 4: Apply SQLGlot built-in optimizations (if enabled)
+            # SQLGlot provides general SQL optimizations like predicate pushdown,
+            # constant folding, and redundant expression elimination
             if self.config.enable_sqlglot_optimizer:
                 from sqlglot.optimizer import optimize
 
                 sqlglot_opt_start = time.time()
-                ast = optimize(ast)
+                ast = optimize(ast)  # Apply SQLGlot's optimization passes
                 sqlglot_opt_time = time.time() - sqlglot_opt_start
                 stats.optimize_time += sqlglot_opt_time
                 self._logger.debug(
                     f"SQLGlot optimization completed in {sqlglot_opt_time:.3f}s"
                 )
 
-            # Step 4: Apply custom AST optimizations
+            # Step 5: Apply custom Ray Data-specific optimizations
+            # These optimizations are tailored for Ray Dataset operations and
+            # may include Ray-specific predicate pushdown and join reordering
             custom_opt_start = time.time()
             ast = self.optimizer.optimize(ast, self.registry.schema_manager)
             custom_opt_time = time.time() - custom_opt_start
@@ -145,7 +172,9 @@ class RaySQL:
                 f"Custom optimization completed in {custom_opt_time:.3f}s"
             )
 
-            # Step 5: Generate logical plan
+            # Step 6: Generate logical execution plan (if enabled)
+            # Create a high-level plan that describes the operations to perform
+            # This is useful for complex queries and future cost-based optimization
             plan_start = time.time()
             logical_plan = self.planner.plan(ast)
             stats.plan_time = time.time() - plan_start
@@ -154,7 +183,8 @@ class RaySQL:
                     f"Logical planning completed in {stats.plan_time:.3f}s: {logical_plan}"
                 )
 
-            # Step 6: Execute the query
+            # Step 7: Execute the optimized query
+            # Convert the AST into Ray Dataset operations and execute them
             exec_start = time.time()
             result = self._execute_query(ast)
             stats.execute_time = time.time() - exec_start

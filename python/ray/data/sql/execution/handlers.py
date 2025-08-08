@@ -7,9 +7,9 @@ WHERE clauses, ORDER BY, and LIMIT operations.
 
 from typing import List, Optional, Tuple, Union
 
+import ray
 from sqlglot import exp
 
-import ray
 from ray.data import Dataset
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.config import JoinInfo, SQLConfig
@@ -27,8 +27,17 @@ class JoinHandler:
     """Handles JOIN operations between datasets.
 
     The JoinHandler processes JOIN clauses in SQL queries and executes
-    the corresponding Ray Data join operations. All operations follow Ray
-    Dataset API patterns for lazy evaluation and proper return types.
+    the corresponding Ray Data join operations. It converts SQL JOIN syntax
+    into Ray Dataset join API calls, handling various join types and conditions.
+
+    The handler supports all standard SQL join types:
+    - INNER JOIN: Only matching rows from both datasets
+    - LEFT JOIN: All rows from left dataset, matching from right
+    - RIGHT JOIN: All rows from right dataset, matching from left
+    - FULL OUTER JOIN: All rows from both datasets
+
+    All operations follow Ray Dataset API patterns for lazy evaluation
+    and proper return types, maintaining distributed execution semantics.
 
     Examples:
         .. testcode::
@@ -39,49 +48,115 @@ class JoinHandler:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize the JOIN handler with configuration.
+
+        Args:
+            config: SQL configuration controlling join behavior and performance.
+        """
+        # Store configuration for join operations (parallelism, etc.)
         self.config = config
+
+        # Logger for debugging join operations and performance
         self._logger = setup_logger("JoinHandler")
 
     def apply_joins(
         self, dataset: Dataset, ast: exp.Select, registry: DatasetRegistry
     ) -> Dataset:
-        """Apply all JOIN clauses in the SELECT AST to the dataset."""
+        """Apply all JOIN clauses in the SELECT AST to the dataset.
+
+        This method processes all JOIN operations in the query sequentially,
+        from left to right as they appear in the SQL. Each join builds upon
+        the result of the previous join, following SQL evaluation order.
+
+        Args:
+            dataset: The starting dataset (usually from the FROM clause).
+            ast: Parsed SELECT statement containing JOIN clauses.
+            registry: Registry containing all available datasets by name.
+
+        Returns:
+            Dataset with all joins applied in sequence.
+        """
+        # Process each JOIN clause sequentially from the AST
         for join_node in ast.find_all(exp.Join):
+            # Apply this join to the accumulated result so far
             dataset = self.apply_single_join(dataset, join_node, registry)
         return dataset
 
     def apply_single_join(
         self, left_dataset: Dataset, join_ast: exp.Join, registry: DatasetRegistry
     ) -> Dataset:
-        """Apply a single JOIN to the left_dataset."""
+        """Apply a single JOIN to the left_dataset.
+
+        This method handles one JOIN operation by:
+        1. Extracting join metadata (tables, columns, join type)
+        2. Validating the join condition and column existence
+        3. Executing the Ray Dataset join operation
+
+        Args:
+            left_dataset: The left side of the join (accumulated results so far).
+            join_ast: SQLGlot AST node representing this specific JOIN.
+            registry: Registry to look up the right-side dataset.
+
+        Returns:
+            Dataset containing the result of this join operation.
+        """
+        # Extract all join metadata from the SQL AST
         join_info = self._extract_join_info(join_ast, registry, left_dataset)
+
+        # Execute the actual Ray Dataset join operation
         return self._execute_join(left_dataset, join_info)
 
     def _extract_join_info(
         self, join_ast: exp.Join, registry: DatasetRegistry, left_dataset: Dataset
     ) -> JoinInfo:
-        """Extract join information from the JOIN AST."""
+        """Extract join information from the JOIN AST.
+
+        This method parses the SQLGlot JOIN AST to extract all necessary
+        information for executing a Ray Dataset join operation, including:
+        - Right table name and dataset lookup
+        - Join type conversion (SQL -> Ray Data API)
+        - Join condition parsing and column extraction
+        - Column name validation and smart swapping
+
+        Args:
+            join_ast: SQLGlot AST node representing the JOIN clause.
+            registry: Registry to look up the right-side dataset by name.
+            left_dataset: Left dataset for column validation.
+
+        Returns:
+            JoinInfo object containing all join execution parameters.
+
+        Raises:
+            NotImplementedError: If join condition is not an equi-join.
+            ValueError: If join columns are not found in datasets.
+        """
+        # Extract the right table name from the JOIN clause
         right_table_name = str(join_ast.this.name)
+
+        # Look up the right dataset in the registry
         right_dataset = registry.get(right_table_name)
+
+        # Extract and normalize the join type (INNER, LEFT, RIGHT, FULL)
         join_kind = str(join_ast.args.get("side", "inner")).lower()
         ray_join_type = normalize_join_type(join_kind)
 
+        # Extract the ON condition (must be an equality for equi-joins)
         on_condition = join_ast.args.get("on")
         if not isinstance(on_condition, exp.EQ):
             raise NotImplementedError(
                 "Only equi-joins (ON left.col = right.col) are supported"
             )
 
-        # Extract column names from join condition
+        # Extract column names from both sides of the join condition
         left_column = extract_column_from_expression(on_condition.left)
         right_column = extract_column_from_expression(on_condition.right)
 
-        # Add debug logging
+        # Debug logging for join condition analysis
         self._logger.debug(f"Join condition: {on_condition}")
         self._logger.debug(f"Left side: {on_condition.left} -> {left_column}")
         self._logger.debug(f"Right side: {on_condition.right} -> {right_column}")
 
-        # Check if the left and right sides are swapped
+        # Get column lists from both datasets for validation
         left_table_columns = (
             left_dataset.columns() if hasattr(left_dataset, "columns") else []
         )
@@ -89,14 +164,15 @@ class JoinHandler:
             right_dataset.columns() if hasattr(right_dataset, "columns") else []
         )
 
-        # Check if we need to swap the columns
+        # Check column existence in their expected datasets
         left_found_in_left = left_column in left_table_columns
         right_found_in_right = right_column in right_table_columns
         left_found_in_right = left_column in right_table_columns
         right_found_in_left = right_column in left_table_columns
 
+        # Handle cases where columns might be swapped in the ON condition
         if not left_found_in_left and not right_found_in_right:
-            # Try swapping the columns
+            # Try swapping the columns if they exist in opposite datasets
             if left_found_in_right and right_found_in_left:
                 self._logger.debug(
                     f"Swapping join columns: {left_column} <-> {right_column}"

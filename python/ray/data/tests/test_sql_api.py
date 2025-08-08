@@ -16,12 +16,9 @@ from ray.data.sql import (
     RaySQL,
     SQLConfig,
     clear_tables,
-    example_sqlglot_features,
-    example_usage,
     get_schema,
     list_tables,
     register_table,
-    run_comprehensive_tests,
     sql,
 )
 from ray.tests.conftest import *  # noqa
@@ -29,157 +26,193 @@ from ray.tests.conftest import *  # noqa
 
 def debug_registry_state(test_name=""):
     """Helper function to debug registry state during tests."""
-    print(f"\n🔍 Registry Debug ({test_name})")
+    print(f"\nRegistry Debug ({test_name})")
     print("-" * 50)
-    
+
     # Check list_tables()
     try:
         available_tables = list_tables()
-        print(f"📋 list_tables(): {available_tables}")
+        print(f"list_tables(): {available_tables}")
     except Exception as e:
-        print(f"❌ list_tables() error: {e}")
-    
+        print(f"list_tables() error: {e}")
+
     # Check global registry directly
     try:
         from ray.data.sql.core import get_registry
+
         registry = get_registry()
         global_tables = list(registry._tables.keys())
-        print(f"🌐 Global registry: {global_tables}")
+        print(f"Global registry: {global_tables}")
     except Exception as e:
-        print(f"❌ Global registry error: {e}")
-    
+        print(f"Global registry error: {e}")
+
     # Check engine and executor registries
     try:
         from ray.data.sql.core import get_engine
+
         engine = get_engine()
         engine_tables = list(engine.registry._tables.keys())
         executor_tables = list(engine.executor.registry._tables.keys())
-        print(f"🔧 Engine registry: {engine_tables}")
-        print(f"⚙️  Executor registry: {executor_tables}")
-        
+        print(f"Engine registry: {engine_tables}")
+        print(f"Executor registry: {executor_tables}")
+
         # Check if they're the same objects
         engine_registry_id = id(engine.registry)
         executor_registry_id = id(engine.executor.registry)
         global_registry_id = id(registry)
-        
-        print(f"🆔 Registry object IDs:")
-        print(f"   Global: {global_registry_id}")
-        print(f"   Engine: {engine_registry_id}")
-        print(f"   Executor: {executor_registry_id}")
-        
+
+        print(f"Registry object IDs:")
+        print(f" Global: {global_registry_id}")
+        print(f" Engine: {engine_registry_id}")
+        print(f" Executor: {executor_registry_id}")
+
         if engine_registry_id == executor_registry_id == global_registry_id:
-            print("✅ All registries are the same object!")
+            print("All registries are the same object!")
         else:
-            print("❌ Registry objects are different!")
-            
+            print("Registry objects are different!")
+
     except Exception as e:
-        print(f"❌ Engine/Executor registry error: {e}")
-    
+        print(f"Engine/Executor registry error: {e}")
+
     print("-" * 50)
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def sql_test_data():
     """Fixture providing test datasets for SQL operations."""
-    print("\n🔧 Setting up SQL test data fixture...")
-    
+    print("\n Setting up SQL test data fixture...")
+
     test_data = {
         "users": ray.data.from_items(
             [
-                {"id": 1, "name": "Alice", "age": 25, "city": "Seattle"},
-                {"id": 2, "name": "Bob", "age": 30, "city": "Portland"},
-                {"id": 3, "name": "Charlie", "age": 35, "city": "Seattle"},
-                {"id": 4, "name": "Diana", "age": 28, "city": "Portland"},
+                {"id": 1, "name": "Alice", "age": 30, "department": "Engineering"},
+                {"id": 2, "name": "Bob", "age": 25, "department": "Marketing"},
+                {"id": 3, "name": "Charlie", "age": 35, "department": "Engineering"},
+                {"id": 4, "name": "Diana", "age": 28, "department": "Sales"},
             ]
         ),
         "orders": ray.data.from_items(
             [
-                {"order_id": 1, "user_id": 1, "amount": 100.50, "product": "laptop"},
-                {"order_id": 2, "user_id": 2, "amount": 75.25, "product": "mouse"},
-                {"order_id": 3, "user_id": 1, "amount": 200.00, "product": "monitor"},
-                {"order_id": 4, "user_id": 3, "amount": 50.00, "product": "keyboard"},
+                {"order_id": 1, "user_id": 1, "amount": 100.0, "status": "completed"},
+                {"order_id": 2, "user_id": 2, "amount": 75.0, "status": "pending"},
+                {"order_id": 3, "user_id": 1, "amount": 150.0, "status": "completed"},
+                {"order_id": 4, "user_id": 3, "amount": 200.0, "status": "completed"},
+                {"order_id": 5, "user_id": 4, "amount": 50.0, "status": "cancelled"},
+            ]
+        ),
+        "products": ray.data.from_items(
+            [
+                {
+                    "product_id": 1,
+                    "name": "Widget A",
+                    "price": 25.0,
+                    "category": "Tools",
+                },
+                {
+                    "product_id": 2,
+                    "name": "Widget B",
+                    "price": 35.0,
+                    "category": "Tools",
+                },
+                {
+                    "product_id": 3,
+                    "name": "Gadget X",
+                    "price": 45.0,
+                    "category": "Electronics",
+                },
+                {
+                    "product_id": 4,
+                    "name": "Gadget Y",
+                    "price": 55.0,
+                    "category": "Electronics",
+                },
+            ]
+        ),
+        "null_table": ray.data.from_items(
+            [
+                {"id": 1, "value": 10},
+                {"id": 2, "value": 20},
+                {"id": 3, "value": None},
             ]
         ),
         "empty_table": ray.data.from_items([]),
-        "null_table": ray.data.from_items(
-            [
-                {"id": 1, "value": 10, "nullable": None},
-                {"id": 2, "value": 20, "nullable": "test"},
-                {"id": 3, "value": None, "nullable": None},
-            ]
-        ),
     }
 
-    print(f"📊 Created {len(test_data)} test datasets:")
-    for name, dataset in test_data.items():
-        row_count = len(dataset.take_all())
-        print(f"   - {name}: {row_count} rows")
-
     # Clear any existing tables first
-    print("🧹 Clearing existing tables...")
+    print("Clearing existing tables...")
     clear_tables()
-    
+
     # Check registry state before registration
     from ray.data.sql.core import get_registry
-    registry = get_registry()
-    print(f"📋 Registry state before registration: {list(registry._tables.keys())}")
 
-    # Register test datasets with explicit logging
-    print("📝 Registering test datasets...")
+    registry = get_registry()
+    print(f"Registry state before registration: {list(registry._tables.keys())}")
+
+    # Register all test datasets
+    print("Registering test datasets...")
     for name, dataset in test_data.items():
-        print(f"   Registering '{name}'...")
+        print(f" Registering '{name}'...")
         register_table(name, dataset)
-        
+
         # Verify registration immediately
         available_tables = list_tables()
         if name in available_tables:
-            print(f"   ✅ '{name}' successfully registered")
+            print(f"  '{name}' registered successfully")
         else:
-            print(f"   ❌ '{name}' registration failed - available: {available_tables}")
+            print(f"  '{name}' registration failed!")
 
     # Final registry state
     final_tables = list_tables()
-    print(f"📋 Final registered tables: {final_tables}")
-    
+    print(f"Final registered tables: {final_tables}")
+
     # Debug registry state after setup
     debug_registry_state("After fixture setup")
 
-    yield test_data
-
-    # Clean up after test
-    print("🧹 Cleaning up test data...")
-    clear_tables()
-    final_cleanup_tables = list_tables()
-    print(f"📋 Tables after cleanup: {final_cleanup_tables}")
+    return test_data
 
 
 def test_basic_select_operations(ray_start_regular_shared, sql_test_data):
     """Test basic SELECT operations."""
-    print("\n🧪 Testing basic SELECT operations...")
+    print("\n Testing basic SELECT operations...")
     debug_registry_state("test_basic_select_operations start")
-    
+
     # SELECT * FROM table
-    print("📝 Executing: SELECT * FROM users")
+    print("Executing: SELECT * FROM users")
     debug_registry_state("Before SELECT * query execution")
     result = sql("SELECT * FROM users")
     rows = result.take_all()
-    print(f"✅ Query returned {len(rows)} rows")
+    print(f"Query executed, got {len(rows)} rows")
     assert len(rows) == 4
-    assert all("id" in row and "name" in row for row in rows)
+    assert all("id" in row for row in rows)
+    assert all("name" in row for row in rows)
 
     # SELECT specific columns
-    print("📝 Executing: SELECT name, age FROM users")
+    print("Executing: SELECT name, age FROM users")
     result = sql("SELECT name, age FROM users")
     rows = result.take_all()
-    print(f"✅ Query returned {len(rows)} rows")
+    print(f"Query executed, got {len(rows)} rows")
     assert len(rows) == 4
     assert all(set(row.keys()) == {"name", "age"} for row in rows)
 
-    # SELECT with aliases
-    result = sql("SELECT name AS full_name, age AS years FROM users")
+    # SELECT with WHERE condition
+    print("Executing: SELECT * FROM users WHERE age > 25")
+    result = sql("SELECT * FROM users WHERE age > 25")
     rows = result.take_all()
-    assert len(rows) == 4
-    assert all(set(row.keys()) == {"full_name", "years"} for row in rows)
+    print(f"Query executed, got {len(rows)} rows")
+    assert len(rows) == 3  # Alice (30), Charlie (35), Diana (28)
+    assert all(row["age"] > 25 for row in rows)
+
+    # SELECT with multiple WHERE conditions
+    print("Executing: SELECT name FROM users WHERE age > 25 AND age < 35")
+    result = sql("SELECT name FROM users WHERE age > 25 AND age < 35")
+    rows = result.take_all()
+    print(f"Query executed, got {len(rows)} rows")
+    assert len(rows) == 2  # Alice (30), Diana (28)
+    expected_names = {"Alice", "Diana"}
+    actual_names = {row["name"] for row in rows}
+    assert actual_names == expected_names
+
+    print("Basic SELECT operations completed successfully!")
 
 
 def test_where_clauses(ray_start_regular_shared, sql_test_data):
@@ -191,16 +224,16 @@ def test_where_clauses(ray_start_regular_shared, sql_test_data):
     assert rows[0]["name"] == "Charlie"
 
     # WHERE with AND
-    result = sql("SELECT name FROM users WHERE age > 25 AND city = 'Seattle'")
+    result = sql("SELECT name FROM users WHERE age > 25 AND department = 'Engineering'")
     rows = result.take_all()
     assert len(rows) == 1
     assert rows[0]["name"] == "Charlie"
 
     # WHERE with OR
-    result = sql("SELECT name FROM users WHERE age < 27 OR city = 'Portland'")
+    result = sql("SELECT name FROM users WHERE age < 27 OR department = 'Sales'")
     rows = result.take_all()
     names = {row["name"] for row in rows}
-    assert names == {"Alice", "Bob", "Diana"}
+    assert names == {"Bob", "Diana"}
 
 
 def test_order_by_operations(ray_start_regular_shared, sql_test_data):
@@ -209,31 +242,32 @@ def test_order_by_operations(ray_start_regular_shared, sql_test_data):
     result = sql("SELECT name FROM users ORDER BY age ASC")
     rows = result.take_all()
     names = [row["name"] for row in rows]
-    assert names == ["Alice", "Diana", "Bob", "Charlie"]
+    assert names == ["Bob", "Diana", "Alice", "Charlie"]
 
     # ORDER BY DESC
     result = sql("SELECT name FROM users ORDER BY age DESC")
     rows = result.take_all()
     names = [row["name"] for row in rows]
-    assert names == ["Charlie", "Bob", "Diana", "Alice"]
+    assert names == ["Charlie", "Alice", "Diana", "Bob"]
 
     # ORDER BY multiple columns
-    result = sql("SELECT name FROM users ORDER BY city DESC, age ASC")
+    result = sql("SELECT name FROM users ORDER BY department DESC, age ASC")
     rows = result.take_all()
     names = [row["name"] for row in rows]
-    assert names == ["Alice", "Charlie", "Diana", "Bob"]
+    assert names == ["Diana", "Bob", "Alice", "Charlie"]
 
 
 def test_limit_operations(ray_start_regular_shared, sql_test_data):
     """Test LIMIT functionality."""
-    print("\n🧪 Testing LIMIT operations...")
+    print("\n Testing LIMIT operations...")
     debug_registry_state("test_limit_operations start")
-    
+
     # Simple LIMIT
-    print("📝 Executing: SELECT name FROM users LIMIT 2")
+    print("Executing: SELECT name FROM users LIMIT 2")
     debug_registry_state("Before LIMIT query execution")
     result = sql("SELECT name FROM users LIMIT 2")
     rows = result.take_all()
+    print(f"Query executed, got {len(rows)} rows")
     assert len(rows) == 2
 
     # LIMIT with ORDER BY
@@ -314,23 +348,30 @@ def test_join_operations(ray_start_regular_shared, sql_test_data):
         "SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id"
     )
     rows = result.take_all()
-    assert len(rows) == 4
+    assert len(rows) == 5  # All orders have matching users
 
     # LEFT JOIN
     result = sql(
         "SELECT u.name, o.amount FROM users u LEFT JOIN orders o ON u.id = o.user_id"
     )
     rows = result.take_all()
-    assert len(rows) == 4
+    assert len(rows) == 5  # All users, some with orders
+
+    # RIGHT JOIN
+    result = sql(
+        "SELECT u.name, o.amount FROM users u RIGHT JOIN orders o ON u.id = o.user_id"
+    )
+    rows = result.take_all()
+    assert len(rows) == 5  # All orders with their users
 
     # Join with WHERE
     result = sql(
         "SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id WHERE o.amount > 100"
     )
     rows = result.take_all()
-    assert len(rows) == 1
-    assert rows[0]["name"] == "Alice"
-    assert rows[0]["amount"] == 200.0
+    assert len(rows) == 2  # Alice (150) and Charlie (200)
+    names = {row["name"] for row in rows}
+    assert "Alice" in names and "Charlie" in names
 
 
 def test_arithmetic_expressions(ray_start_regular_shared, sql_test_data):
@@ -339,15 +380,25 @@ def test_arithmetic_expressions(ray_start_regular_shared, sql_test_data):
     result = sql("SELECT age, age + 5 as age_plus_5 FROM users WHERE name = 'Alice'")
     rows = result.take_all()
     assert len(rows) == 1
-    assert rows[0]["age"] == 25
-    assert rows[0]["age_plus_5"] == 30
+    assert rows[0]["age"] == 30
+    assert rows[0]["age_plus_5"] == 35
 
     # Complex arithmetic
     result = sql("SELECT age, (age * 2) - 10 as formula FROM users WHERE name = 'Bob'")
     rows = result.take_all()
     assert len(rows) == 1
-    assert rows[0]["age"] == 30
-    assert rows[0]["formula"] == 50  # (30*2)-10
+    assert rows[0]["age"] == 25
+    assert rows[0]["formula"] == 40  # (25*2)-10
+
+    # Arithmetic with multiple columns
+    result = sql(
+        "SELECT order_id, amount, amount * 1.1 as amount_with_tax FROM orders WHERE amount > 100"
+    )
+    rows = result.take_all()
+    assert len(rows) == 2  # orders with amount > 100
+    for row in rows:
+        expected_tax = row["amount"] * 1.1
+        assert abs(row["amount_with_tax"] - expected_tax) < 0.01
 
 
 def test_literal_values(ray_start_regular_shared, sql_test_data):
@@ -476,39 +527,6 @@ def test_dataset_chaining(ray_start_regular_shared, sql_test_data):
     # Verify chaining worked
     assert len(final_rows) >= 1
     assert all("name_upper" in row and "age_group" in row for row in final_rows)
-
-
-def test_comprehensive_test_suite(ray_start_regular_shared):
-    """Test the comprehensive test suite functionality."""
-    # This will run the built-in test suite
-    try:
-        success = run_comprehensive_tests()
-        # Note: success might be False due to environment setup, but the function should run
-        assert isinstance(success, bool)
-        print("Comprehensive test suite completed")
-    except Exception as e:
-        print(f"Comprehensive test suite had issues: {e}")
-        # Don't fail the test entirely as this might be due to environment
-
-
-def test_example_usage(ray_start_regular_shared):
-    """Test the example usage functionality."""
-    try:
-        example_usage()
-        print("Example usage completed successfully")
-    except Exception as e:
-        print(f"Example usage had issues: {e}")
-        # Don't fail the test entirely as this might be due to environment
-
-
-def test_sqlglot_features(ray_start_regular_shared):
-    """Test SQLGlot features demonstration."""
-    try:
-        example_sqlglot_features()
-        print("SQLGlot features demo completed successfully")
-    except Exception as e:
-        print(f"SQLGlot features demo had issues: {e}")
-        # Don't fail the test entirely as this might be due to environment
 
 
 def test_api_integration(ray_start_regular_shared):

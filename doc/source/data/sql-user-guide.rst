@@ -18,7 +18,7 @@ Complex Joins
 
 Ray Data SQL supports various join types for combining datasets:
 
-.. code-block:: python
+.. testcode::
 
     import ray.data
     from ray.data.sql import register_table, sql
@@ -68,7 +68,7 @@ Subqueries and CTEs
 
 Use subqueries and Common Table Expressions for complex data analysis:
 
-.. code-block:: python
+.. testcode::
 
     # Subquery in WHERE clause
     high_performers = sql("""
@@ -121,7 +121,7 @@ Window Functions and Analytics
 
 Perform advanced analytics with window functions:
 
-.. code-block:: python
+.. testcode::
 
     # Note: Window functions support may vary - check current capabilities
     
@@ -153,7 +153,7 @@ Schema Inference
 
 Ray Data SQL automatically infers data types from your datasets:
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import get_schema
 
@@ -175,7 +175,7 @@ Type Conversions
 
 Perform explicit type conversions in your queries:
 
-.. code-block:: python
+.. testcode::
 
     # Cast operations
     result = sql("""
@@ -198,7 +198,7 @@ Query Optimization Strategies
 
 Follow these best practices for optimal performance:
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import SQLConfig, LogLevel
 
@@ -237,7 +237,7 @@ Column Pruning
 
 Select only the columns you need:
 
-.. code-block:: python
+.. testcode::
 
     # GOOD: Select specific columns
     result = sql("SELECT name, salary FROM employees WHERE dept_id = 10")
@@ -250,7 +250,7 @@ Partitioning and Data Layout
 
 For large datasets, consider data partitioning:
 
-.. code-block:: python
+.. testcode::
 
     # Create partitioned dataset
     large_dataset = ray.data.from_items([
@@ -279,7 +279,7 @@ Engine Configuration
 
 Ray Data SQL provides extensive configuration options for different environments and use cases:
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import SQLConfig, LogLevel
     from ray.data import DataContext
@@ -337,7 +337,7 @@ SQL Dialect Handling
 
 Ray Data SQL uses SQLGlot for parsing and supports multiple SQL dialects:
 
-.. code-block:: python
+.. testcode::
 
     # Configure dialect handling
     dialect_config = SQLConfig(
@@ -367,7 +367,7 @@ Ray Data SQL uses SQLGlot for parsing and supports multiple SQL dialects:
 
 **Example: Converting from PostgreSQL to DuckDB dialect**
 
-.. code-block:: python
+.. testcode::
 
     # PostgreSQL-style query with specific syntax
     postgres_query = """
@@ -394,7 +394,7 @@ Advanced Configuration Options
 
 **Memory and Resource Management**
 
-.. code-block:: python
+.. testcode::
 
     memory_config = SQLConfig(
         # Memory limits
@@ -415,7 +415,7 @@ Advanced Configuration Options
 
 **Query Optimization and Execution**
 
-.. code-block:: python
+.. testcode::
 
     optimization_config = SQLConfig(
         # Query optimization
@@ -440,7 +440,7 @@ Advanced Configuration Options
 
 **Security and Access Control**
 
-.. code-block:: python
+.. testcode::
 
     security_config = SQLConfig(
         # Table access control
@@ -464,7 +464,7 @@ Memory Management
 
 Handle large datasets efficiently:
 
-.. code-block:: python
+.. testcode::
 
     # For very large datasets, use streaming processing
     large_result = sql("""
@@ -486,7 +486,7 @@ Understanding Current Limitations
 
 **SQL Feature Limitations**
 
-.. code-block:: python
+.. testcode::
 
     # ❌ NOT SUPPORTED: Window functions (limited support)
     try:
@@ -530,7 +530,7 @@ Understanding Current Limitations
 
 **Performance Limitations and Solutions**
 
-.. code-block:: python
+.. testcode::
 
     # ❌ ISSUE: Large cross-joins are expensive
     # This can cause memory issues and poor performance
@@ -571,7 +571,7 @@ Data Type Limitations
 
 **Supported vs. Unsupported Data Types**
 
-.. code-block:: python
+.. testcode::
 
     # ✅ WELL SUPPORTED: Basic types
     supported_data = ray.data.from_items([
@@ -666,7 +666,7 @@ Dialect Compatibility Matrix
 
 **Dialect-Specific Examples**
 
-.. code-block:: python
+.. testcode::
 
     # PostgreSQL-style array operations
     postgres_config = SQLConfig(
@@ -694,7 +694,7 @@ Common Error Patterns and Solutions
 
 **SQL Syntax Errors**
 
-.. code-block:: python
+.. testcode::
 
     try:
         # Common syntax error: missing quotes
@@ -717,7 +717,7 @@ Common Error Patterns and Solutions
 
 **Table and Registration Errors**
 
-.. code-block:: python
+.. testcode::
 
     try:
         result = sql("SELECT * FROM nonexistent_table")
@@ -729,7 +729,7 @@ Common Error Patterns and Solutions
 
 **Memory and Performance Errors**
 
-.. code-block:: python
+.. testcode::
 
     try:
         # Query that might run out of memory
@@ -756,7 +756,7 @@ Advanced Debugging Techniques
 
 **Query Execution Analysis**
 
-.. code-block:: python
+.. testcode::
 
     from ray.data.sql import SQLConfig, LogLevel
     import time
@@ -816,7 +816,7 @@ Mixing SQL with Ray Data Operations
 
 Combine SQL queries with Ray Data transformations:
 
-.. code-block:: python
+.. testcode::
 
     # SQL -> Ray Data -> SQL pipeline
     
@@ -852,7 +852,7 @@ Batch Processing Workflows
 
 Handle large-scale data processing:
 
-.. code-block:: python
+.. testcode::
 
     # Process daily batch files
     def process_daily_data(date_str):
@@ -915,7 +915,7 @@ Follow these conventions for maintainable SQL:
 Resource Management
 -------------------
 
-.. code-block:: python
+.. testcode::
 
     # Clean up tables when done
     from ray.data.sql import clear_tables, list_tables
@@ -937,7 +937,7 @@ Monitoring and Observability
 
 Monitor SQL query performance in production:
 
-.. code-block:: python
+.. testcode::
 
     import time
     from ray.data.sql import SQLConfig, LogLevel
@@ -970,7 +970,7 @@ Testing SQL Queries
 
 Test your SQL queries systematically:
 
-.. code-block:: python
+.. testcode::
 
     def test_employee_aggregations():
         # Setup test data
