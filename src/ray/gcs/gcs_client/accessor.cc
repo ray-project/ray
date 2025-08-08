@@ -671,24 +671,17 @@ const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &NodeInfoAccessor::GetAll() 
   return node_cache_;
 }
 
-Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
-                                       std::vector<rpc::GcsNodeInfo> &nodes) {
-  RAY_LOG(DEBUG) << "Getting information of all nodes.";
-  rpc::GetAllNodeInfoRequest request;
-  rpc::GetAllNodeInfoReply reply;
-  RAY_RETURN_NOT_OK(
-      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
-  nodes = VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
-  return Status::OK();
-}
-
-StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilters(
+StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
     int64_t timeout_ms,
-    rpc::GcsNodeInfo::GcsNodeState state_filter,
-    rpc::GetAllNodeInfoRequest::NodeSelector node_selector) {
+    std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
+    std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector) {
   rpc::GetAllNodeInfoRequest request;
-  *request.add_node_selectors() = std::move(node_selector);
-  request.set_state_filter(state_filter);
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
+  }
+  if (node_selector.has_value()) {
+    *request.add_node_selectors() = std::move(node_selector.value());
+  }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(
       client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));

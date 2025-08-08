@@ -561,15 +561,13 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
         return None
 
 
-def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
+def get_total_num_alive_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
     """Return the total number of alive nodes in the cluster"""
     try:
-        result = gcs_client.get_all_node_info(timeout=timeout)
-        total_num_nodes = 0
-        for node_id, node_info in result.items():
-            if node_info.state == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
-                total_num_nodes += 1
-        return total_num_nodes
+        result = gcs_client.get_all_node_info(
+            timeout=timeout, state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE
+        )
+        return len(result.items())
     except Exception as e:
         logger.info(f"Failed to query number of nodes in the cluster: {e}")
         return None
@@ -940,7 +938,7 @@ def generate_report_data(
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
         library_usages=get_library_usages_to_report(gcs_client),
         extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
-        total_num_nodes=get_total_num_nodes_to_report(gcs_client),
+        total_num_nodes=get_total_num_alive_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
         libc_version=cluster_metadata.get("libc_version"),
         hardware_usages=get_hardware_usages_to_report(gcs_client),
