@@ -155,10 +155,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     - Dictionary keys will be converted to strings
     - Lists, tuples, sets, bytes, bytearrays will be converted to lists
     """
-    if is_dataclass(obj) and not isinstance(obj, type):
-        # Only convert dataclass instances, not dataclass types
-        return sanitize_for_struct(asdict(obj), truncate_length)
-    elif isinstance(obj, Mapping):
+    if isinstance(obj, Mapping):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, (int, float, bool)) or obj is None:
@@ -170,6 +167,8 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
         return [sanitize_for_struct(v, truncate_length=truncate_length) for v in obj]
     else:
         try:
+            if is_dataclass(obj):
+                return sanitize_for_struct(asdict(obj), truncate_length)
             return _add_ellipsis(str(obj), truncate_length)
         except Exception:
             unk_name = f"{UNKNOWN}: {type(obj).__name__}"
