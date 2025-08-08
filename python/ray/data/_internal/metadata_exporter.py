@@ -148,8 +148,8 @@ def _add_ellipsis(s: str, truncate_length: int) -> str:
 
 
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
-    """Prepares the obj for Struct Protobuf format by recursive through
-    dictionaries, lists, etc...
+    """Prepares the obj for Struct Protobuf format by recursively
+    going through dictionaries, lists, etc...
 
     - Dataclasses will be converted to dicts
     - Dictionary keys will be converted to strings
