@@ -78,13 +78,6 @@ def normalize_json_value(value: Any) -> Any:
     elif isinstance(value, (list, tuple, set)):
         # Any iterables should be converted to lists
         return [normalize_json_value(v) for v in value]
-    elif isinstance(value, float):
-        # cosmetic changes
-        if math.isinf(value):
-            return "Infinity" if value > 0 else "-Infinity"
-        elif math.isnan(value):
-            return "NaN"
-        return value
     elif isinstance(value, int):
         # ints -> floats
         return float(value)
