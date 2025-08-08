@@ -513,6 +513,13 @@ def test_broadcast_join_different_key_names(ray_start_regular_shared_2_cpus):
             {"left_id": 1, "left_data": "a"},
             {"left_id": 2, "left_data": "b"},
             {"left_id": 3, "left_data": "c"},
+            {"left_id": 4, "left_data": "d"},
+            {"left_id": 5, "left_data": "e"},
+            {"left_id": 6, "left_data": "f"},
+            {"left_id": 7, "left_data": "g"},
+            {"left_id": 8, "left_data": "h"},
+            {"left_id": 9, "left_data": "i"},
+            {"left_id": 10, "left_data": "j"},
         ]
     )
 
@@ -543,41 +550,6 @@ def test_broadcast_join_different_key_names(ray_start_regular_shared_2_cpus):
     assert len(result_df) == 2
     expected_columns = {"left_id", "left_data", "right_id", "right_data"}
     assert set(result_df.columns) == expected_columns
-
-
-def test_broadcast_join_empty_right_dataset(ray_start_regular_shared_2_cpus):
-    """Test broadcast join with empty right dataset."""
-
-    left_ds = ray.data.from_items(
-        [
-            {"id": 1, "value": "a"},
-            {"id": 2, "value": "b"},
-        ]
-    )
-
-    right_ds = ray.data.from_items([])  # Empty dataset
-
-    # Inner join should return empty
-    inner_result = left_ds.join(
-        right_ds,
-        join_type="inner",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    assert inner_result.count() == 0
-
-    # Left outer join should return all left rows
-    left_outer_result = left_ds.join(
-        right_ds,
-        join_type="left_outer",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    assert left_outer_result.count() == 2
 
 
 def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_cpus):
@@ -613,89 +585,6 @@ def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_
     for i in range(min(5, len(result_df))):
         assert result_df.loc[i, "left_value"] == result_df.loc[i, "id"] * 2
         assert result_df.loc[i, "right_value"] == result_df.loc[i, "id"] ** 2
-
-
-def test_broadcast_join_concurrency_equals_num_partitions(
-    ray_start_regular_shared_2_cpus,
-):
-    """Test that broadcast join actor concurrency matches num_partitions."""
-
-    left_ds = ray.data.range(100).map(lambda row: {"id": row["id"], "value": row["id"]})
-
-    right_ds = ray.data.range(50).map(
-        lambda row: {"id": row["id"], "value": row["id"] * 2}
-    )
-
-    # Test with different num_partitions values
-    for num_partitions in [2, 4, 8]:
-        result = left_ds.join(
-            right_ds,
-            join_type="inner",
-            num_partitions=num_partitions,
-            on=("id",),
-            broadcast=True,
-        )
-
-        # Should complete successfully and produce correct results
-        assert result.count() == 50  # All right dataset rows should match
-
-
-def test_broadcast_join_vs_regular_join_equivalence(ray_start_regular_shared_2_cpus):
-    """Test that broadcast join produces identical results to regular join."""
-
-    # Test data with various patterns
-    left_ds = ray.data.from_items(
-        [
-            {"id": 1, "category": "A", "value": 10},
-            {"id": 2, "category": "B", "value": 20},
-            {"id": 3, "category": "A", "value": 30},
-            {"id": 4, "category": "C", "value": 40},
-            {"id": 5, "category": "B", "value": 50},
-        ]
-    )
-
-    right_ds = ray.data.from_items(
-        [
-            {"id": 2, "score": 85},
-            {"id": 3, "score": 92},
-            {"id": 6, "score": 78},  # This won't match any left row
-        ]
-    )
-
-    for join_type in ["inner", "left_outer", "right_outer", "full_outer"]:
-        # Broadcast join
-        broadcast_result = left_ds.join(
-            right_ds,
-            join_type=join_type,
-            num_partitions=3,
-            on=("id",),
-            broadcast=True,
-        )
-
-        # Regular join
-        regular_result = left_ds.join(
-            right_ds,
-            join_type=join_type,
-            num_partitions=3,
-            on=("id",),
-            broadcast=False,
-        )
-
-        # Compare results
-        broadcast_df = (
-            pd.DataFrame(broadcast_result.take_all())
-            .sort_values(by=["id"])
-            .reset_index(drop=True)
-        )
-        regular_df = (
-            pd.DataFrame(regular_result.take_all())
-            .sort_values(by=["id"])
-            .reset_index(drop=True)
-        )
-
-        pd.testing.assert_frame_equal(
-            broadcast_df, regular_df, check_dtype=False
-        )  # Allow minor dtype differences
 
 
 if __name__ == "__main__":

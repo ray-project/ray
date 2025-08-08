@@ -2397,9 +2397,12 @@ class Dataset:
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
             broadcast: (Optional) Whether to use broadcast join instead of hash shuffle
-                join. In broadcast join, the right dataset is loaded into memory and
+                join. In broadcast join, the smaller dataset is loaded into memory and
                 broadcasted to all workers using map_batches with PyArrow joins.
-                This is efficient when the right dataset is small. Defaults to False.
+                This is efficient when the smaller dataset is much smaller than the larger
+                dataset and can fit in a worker node's memory. Defaults to False.
+                Note that this will check the dataset counts and could materialize the
+                both datasets, triggering a full execution of the dataset.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2474,47 +2477,62 @@ class Dataset:
         plan = self._plan.copy()
 
         if broadcast:
-            # Use map_batches approach for broadcast join like the reference implementation
-            # First materialize and repartition the right dataset to a single partition
-            right_ds = ds.repartition(1).materialize()
-
-            # Get PyArrow table reference from the right dataset
-            right_arrow_refs = right_ds.to_arrow_refs()
-            if len(right_arrow_refs) != 1:
-                # Combine multiple references into one
-                import pyarrow as pa
-
-                right_tables = [ray.get(ref) for ref in right_arrow_refs]
-                if right_tables:
-                    combined_table = pa.concat_tables(right_tables)
-                else:
-                    combined_table = pa.table({})
-                broadcast_table_ref = ray.put(combined_table)
-            else:
-                broadcast_table_ref = right_arrow_refs[0]
-
             # Create the broadcast join callable class
             from ray.data._internal.logical.operators.broadcast_join import (
                 BroadcastJoinFunction,
             )
             from ray.data._internal.logical.operators.join_operator import JoinType
 
+            # Determine which dataset is larger and which is smaller
+            ds_count = ds.count()
+            self_count = self.count()
+            if ds_count == 0 or self_count == 0:
+                raise ValueError("Cannot perform broadcast join on empty datasets")
+
+            if ds_count >= self_count:
+                small_ds = self
+                small_key_columns = on
+                large_key_columns = right_on
+                small_suffix = left_suffix
+                large_suffix = right_suffix
+                self_map = False
+            else:
+                small_ds = ds
+                small_key_columns = right_on
+                large_key_columns = on
+                small_suffix = right_suffix
+                large_suffix = left_suffix
+                self_map = True
+
+            # Convert the join type if necessary since a left join becomes a right join
+            # and vice versa if self is the smaller dataset
+            if not self_map:
+                if join_type == "left_outer":
+                    join_type = "right_outer"
+                elif join_type == "right_outer":
+                    join_type = "left_outer"
+
             join_type_enum = JoinType(join_type)
             join_fn = BroadcastJoinFunction(
-                broadcast_table_ref=broadcast_table_ref,
+                small_table_dataset=small_ds,
                 join_type=join_type_enum,
-                left_key_columns=on,
-                right_key_columns=right_on,
-                left_columns_suffix=left_suffix,
-                right_columns_suffix=right_suffix,
+                large_table_key_columns=large_key_columns,
+                small_table_key_columns=small_key_columns,
+                large_table_columns_suffix=large_suffix,
+                small_table_columns_suffix=small_suffix,
             )
-
-            # Use map_batches to apply the broadcast join
-            return self.map_batches(
-                join_fn,
-                batch_format="pyarrow",
-                concurrency=num_partitions,
-            )
+            if self_map:
+                return self.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                    concurrency=num_partitions,
+                )
+            else:
+                return ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                    concurrency=num_partitions,
+                )
         else:
             op = Join(
                 left_input_op=self._logical_plan.dag,

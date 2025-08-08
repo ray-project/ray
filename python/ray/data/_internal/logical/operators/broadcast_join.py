@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 import ray
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data.block import DataBatch
+from ray.data.dataset import Dataset
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -18,69 +19,82 @@ class BroadcastJoinFunction:
     """A callable class that performs broadcast joins using PyArrow.
 
     This class is designed to be used with Dataset.map_batches() to implement
-    broadcast joins. The right dataset is materialized and broadcasted in __init__,
-    and each call performs a PyArrow join on a batch from the left dataset.
+    broadcast joins. The small table dataset is coalesced and materialized in __init__,
+    and each call performs a PyArrow join on a batch from the large table.
     """
 
     def __init__(
         self,
-        broadcast_table_ref,
+        small_table_dataset: Dataset,
         join_type: JoinType,
-        left_key_columns: Tuple[str],
-        right_key_columns: Tuple[str],
-        left_columns_suffix: Optional[str] = None,
-        right_columns_suffix: Optional[str] = None,
+        large_table_key_columns: Tuple[str],
+        small_table_key_columns: Tuple[str],
+        large_table_columns_suffix: Optional[str] = None,
+        small_table_columns_suffix: Optional[str] = None,
     ):
         """Initialize the broadcast join function.
 
         Args:
-            broadcast_table_ref: Ray object reference to the materialized right table
+            small_table_dataset: The small dataset to be broadcasted
             join_type: Type of join to perform
-            left_key_columns: Join keys for left dataset
-            right_key_columns: Join keys for right dataset
-            left_columns_suffix: Suffix for left columns
-            right_columns_suffix: Suffix for right columns
+            large_table_key_columns: Join keys for large table
+            small_table_key_columns: Join keys for small table
+            large_table_columns_suffix: Suffix for large table columns
+            small_table_columns_suffix: Suffix for small table columns
         """
         self.join_type = join_type
-        self.left_key_columns = left_key_columns
-        self.right_key_columns = right_key_columns
-        self.left_columns_suffix = left_columns_suffix
-        self.right_columns_suffix = right_columns_suffix
+        self.large_table_key_columns = large_table_key_columns
+        self.small_table_key_columns = small_table_key_columns
+        self.large_table_columns_suffix = large_table_columns_suffix
+        self.small_table_columns_suffix = small_table_columns_suffix
 
-        # Materialize the right table from the Ray object reference
+        # Coalesce the small dataset to a single partition and materialize
         try:
-            self.right_table = ray.get(broadcast_table_ref)
+            # Repartition to 1 partition and materialize
+            coalesced_ds = small_table_dataset.repartition(1).materialize()
+
+            # Get PyArrow table reference from the dataset
+            arrow_refs = coalesced_ds.to_arrow_refs()
+            if len(arrow_refs) != 1:
+                # Combine multiple references into one
+                import pyarrow as pa
+
+                arrow_tables = [ray.get(ref) for ref in arrow_refs]
+                if arrow_tables:
+                    self.small_table = pa.concat_tables(arrow_tables)
+                else:
+                    self.small_table = pa.table({})
+            else:
+                self.small_table = ray.get(arrow_refs[0])
         except Exception as e:
             raise UserWarning(
                 f"Warning: {e}. \nThe dataset being broadcast is likely too large to fit in memory."
             )
 
     def __call__(self, batch: DataBatch) -> DataBatch:
-        """Perform PyArrow join on a batch from the left dataset.
+        """Perform PyArrow join on a batch from the large table.
 
         Args:
-            batch: Batch from left dataset
+            batch: Batch from large table
 
         Returns:
             Joined batch
         """
         import pyarrow as pa
 
-        # Convert left batch to PyArrow table
+        # Convert batch to PyArrow table if needed
         if isinstance(batch, dict):
-            left_table = pa.table(batch)
-        else:
-            left_table = batch
+            batch = pa.table(batch)
 
-        # Perform the join
+        # Perform the join using PyArrow's native API
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
-        joined_table = left_table.join(
-            self.right_table,
+        joined_table = batch.join(
+            self.small_table,
             join_type=arrow_join_type,
-            keys=list(self.left_key_columns),
-            right_keys=list(self.right_key_columns),
-            left_suffix=self.left_columns_suffix,
-            right_suffix=self.right_columns_suffix,
+            keys=list(self.large_table_key_columns),
+            right_keys=list(self.small_table_key_columns),
+            left_suffix=self.large_table_columns_suffix,
+            right_suffix=self.small_table_columns_suffix,
         )
 
         return joined_table
