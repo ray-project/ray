@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
@@ -160,7 +160,9 @@ def build_llm_deployment(
 
 
 @PublicAPI(stability="alpha")
-def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
+def build_openai_app(
+    llm_serving_args: Union["LLMServingArgs", Dict[str, Any]]
+) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
@@ -252,8 +254,8 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
 
     Args:
-        llm_serving_args: The list of llm configs or the paths to the llm config to
-            build the app.
+        llm_serving_args: Either a dict with "llm_configs" key containing a list of
+            LLMConfig objects, or an LLMServingArgs object.
 
     Returns:
         The configured Ray Serve Application router.
