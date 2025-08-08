@@ -14,10 +14,8 @@
 
 #pragma once
 
-#include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {

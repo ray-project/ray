@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/thread_pool.h"
+#include "ray/core_worker/task_execution/thread_pool.h"
 
 #include <gtest/gtest.h>
 

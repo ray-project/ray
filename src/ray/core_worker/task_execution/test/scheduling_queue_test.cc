@@ -11,9 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#include "ray/core_worker/transport/scheduling_queue.h"
-
 #include <memory>
 #include <string>
 #include <thread>
@@ -23,8 +20,9 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/transport/actor_scheduling_queue.h"
-#include "ray/core_worker/transport/task_receiver.h"
+#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
+#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 
 // using namespace std::chrono_literals;
 using std::chrono_literals::operator""s;
@@ -418,7 +416,8 @@ TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
 }
 
 TEST(NormalSchedulingQueueTest, TestCancelQueuedTask) {
-  std::unique_ptr<SchedulingQueue> queue = std::make_unique<NormalSchedulingQueue>();
+  std::unique_ptr<NormalSchedulingQueue> queue =
+      std::make_unique<NormalSchedulingQueue>();
   ASSERT_TRUE(queue->TaskQueueEmpty());
   int n_ok = 0;
   int n_rej = 0;

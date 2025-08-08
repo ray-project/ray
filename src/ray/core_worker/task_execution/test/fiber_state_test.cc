@@ -16,7 +16,7 @@
 #include <atomic>
 
 #include "gtest/gtest.h"
-#include "ray/core_worker/fiber.h"
+#include "ray/core_worker/task_execution/fiber.h"
 #include "ray/util/logging.h"
 
 namespace ray {

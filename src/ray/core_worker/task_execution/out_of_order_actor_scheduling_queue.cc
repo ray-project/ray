@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 
 #include <memory>
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
