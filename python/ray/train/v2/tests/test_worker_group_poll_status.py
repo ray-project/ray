@@ -43,7 +43,7 @@ def test_get_error_string_with_numbers():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    assert error_str == "[Rank 0, 1]:\nError parsing object at <ADDR>"
+    assert error_str == "[Rank 0, 1]:\nError parsing object at <NUM>x<NUM>f<NUM>b<NUM>"
 
 
 def test_get_error_string_long_error():
@@ -63,22 +63,6 @@ def test_get_error_string_long_error():
         + long_error_str[:ERR_CHAR_LIMIT]
         + "...\nView individual worker logs for more details."
     )
-    assert error_str == expected_error_str
-
-
-def test_get_error_string_running_worker():
-    """
-    Simulate two workers with identical error strings but one is running
-    and the other is not.
-    """
-    statuses = {
-        0: WorkerStatus(running=False, error="error"),
-        1: WorkerStatus(running=True, error="error"),
-    }
-    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
-    error_str = poll_status.get_error_string()
-
-    expected_error_str = "[Rank 0]:\nerror"
     assert error_str == expected_error_str
 
 

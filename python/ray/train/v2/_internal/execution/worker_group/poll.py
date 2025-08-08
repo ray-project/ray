@@ -3,6 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from ray._private.ray_logging import NUMBERS
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
 from ray.types import ObjectRef
@@ -11,27 +12,19 @@ ERR_CHAR_LIMIT = 1000
 
 
 def _normalize_error_string(error_str: str) -> str:
-    """Normalize error string by replacing numbers with placeholders for grouping.
-
-    This allows errors that are similar except for specific numbers to be grouped together.
-    For example, "Error on line 42" and "Error on line 123" would both become "Error on line <NUM>".
-    """
-    # Replace memory addresses like "object at 0x7f8b..."
-    normalized = re.sub(r"\bat 0x[0-9a-fA-F]+\b", "at <ADDR>", error_str)
-
-    # Replace standalone hex numbers like "0xdeadbeef"
-    normalized = re.sub(r"\b0x[0-9a-fA-F]+\b", "<HEX>", normalized)
-
-    # Replace ALL sequences of digits (not just word-bounded ones)
-    normalized = re.sub(r"\d+", "<NUM>", normalized)
-
+    # Replace numbers with <NUM> based on NUMBERS regex
+    normalized = re.sub(NUMBERS, "<NUM>", error_str)
     return normalized
 
 
 def _truncate_error_string(error_str: str) -> str:
     """Truncates error strings to a maximum length of ERR_CHAR_LIMIT."""
     if len(error_str) > ERR_CHAR_LIMIT:
-        return error_str[:ERR_CHAR_LIMIT] + "..."
+        return (
+            error_str[:ERR_CHAR_LIMIT]
+            + "..."
+            + "\nView individual worker logs for more details."
+        )
     return error_str
 
 
@@ -62,7 +55,7 @@ class WorkerGroupPollStatus:
 
     def get_error_string(self) -> str:
         """
-        Returns a string representation worker group errors.
+        Returns a string representation of worker group errors.
         Groups similar errors (ignoring numbers) and shows original error examples.
         """
         # Group errors by normalized strings (ignoring numbers)
@@ -72,7 +65,7 @@ class WorkerGroupPollStatus:
 
         for world_rank, status in self.worker_statuses.items():
             # Exclude errors from running workers
-            if status.error and not status.running:
+            if status.error:
                 error_str = str(status.error)
                 normalized_error = _normalize_error_string(error_str)
 
@@ -83,21 +76,23 @@ class WorkerGroupPollStatus:
                     normalized_error_to_original[normalized_error] = error_str
 
                 # Fully show errors for non-graceful worker failures
-                if isinstance(status.error, WorkerHealthCheckFailedError):
+                if (
+                    isinstance(status.error, WorkerHealthCheckFailedError)
+                    or status.running
+                ):
                     show_full_error.add(normalized_error)
-
-        # Convert rank lists to comma-separated strings
-        for normalized_error, ranks in normalized_error_to_ranks.items():
-            normalized_error_to_ranks[normalized_error] = ", ".join(ranks)
 
         errors = []
         for normalized_error, ranks in normalized_error_to_ranks.items():
             # Show the original error if there were no duplicates
             error = (
                 normalized_error
-                if "," in ranks
+                if len(ranks) > 1
                 else normalized_error_to_original[normalized_error]
             )
+
+            # Convert rank list to comma-separated strings
+            ranks = ", ".join(ranks)
 
             if normalized_error in show_full_error:
                 errors.append(f"[Rank {ranks}]:\n{error}")
@@ -105,9 +100,6 @@ class WorkerGroupPollStatus:
                 errors.append(f"[Rank {ranks}]:\n{_truncate_error_string(error)}")
 
         error_str = "\n".join(errors)
-
-        if "..." in error_str:
-            error_str += "\nView individual worker logs for more details."
 
         return error_str
 
