@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple
 import threading
 
 import ray
@@ -15,9 +15,10 @@ from ray._private import ray_constants
 
 
 if TYPE_CHECKING:
-    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
-    import torch
-
+    from ray.experimental.gpu_object_manager.gpu_object_store import (
+        GPUObjectStore,
+        GPUObject,
+    )
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
@@ -168,17 +169,22 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
+        gpu_object_refs = set()
         for arg in task_args:
             # If an ObjectRef is managed, it means the actual value is a list of tensors stored
             # on a remote actor. Therefore, this function will trigger a tensor communication
             # operation between the sender and receiver actors.
             if not isinstance(arg, ObjectRef):
                 continue
+            if self.is_managed_object(arg.hex()):
+                gpu_object_refs.add(arg)
 
-            if not self.is_managed_object(arg.hex()):
-                continue
+        # Count the number of readers for each GPU object.
+        for obj_ref in gpu_object_refs:
+            # Import get_collective_groups here to avoid dependency on
+            # collective libraries for default Ray installation.
 
-            gpu_object_meta = self._get_gpu_object_metadata(arg)
+            gpu_object_meta = self._get_gpu_object_metadata(obj_ref)
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_transport_meta
@@ -188,6 +194,8 @@ class GPUObjectManager:
                 # transfer.
                 continue
 
+            obj_id = obj_ref.hex()
+
             tensor_transport_metadata = get_collective_metadata(
                 src_actor,
                 dst_actor,
@@ -196,19 +204,19 @@ class GPUObjectManager:
             )
             send_object(
                 src_actor,
-                arg.hex(),
+                obj_id,
                 tensor_transport_metadata,
                 gpu_object_meta.tensor_transport_backend,
             )
             recv_object(
                 dst_actor,
-                arg.hex(),
+                obj_id,
                 tensor_transport_metadata,
             )
 
-    def get_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
+    def get_gpu_object(self, object_id: str) -> "GPUObject":
         """
-        Get the out-of-band tensors for a given object ID.
+        Get the GPU object for a given object ID.
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
@@ -220,11 +228,11 @@ class GPUObjectManager:
         # Instead, we should wait for the GC callback to clean it up.
         pop_object = not gpu_object_store.is_primary_copy(object_id)
         if pop_object:
-            tensors = self.gpu_object_store.wait_and_pop_object(
+            gpu_object = gpu_object_store.wait_and_pop_object(
                 object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
             )
         else:
-            tensors = self.gpu_object_store.wait_and_get_object(
+            gpu_object = gpu_object_store.wait_and_get_object(
                 object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
             )
-        return tensors
+        return gpu_object

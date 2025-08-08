@@ -193,6 +193,7 @@ def recv_object(
 
     # Receive tensors from the source rank and store them in the
     # `dst_actor`'s GPU object store.
+    #
     # NOTE(swang): We put this task on the background thread to avoid tasks
     # executing on the main thread blocking the data transfer. Technically,
     # this is only needed for the sender task, but we put the receiver task

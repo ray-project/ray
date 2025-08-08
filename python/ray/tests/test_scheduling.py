@@ -445,55 +445,6 @@ def test_lease_request_leak(shutdown_only):
     wait_for_condition(lambda: object_memory_usage() == 0)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_many_args(ray_start_cluster):
-    cluster = ray_start_cluster
-    object_size = int(1e6)
-    cluster.add_node(
-        num_cpus=1,
-        _system_config={
-            # Lower this to prevent excessive delays in pull retries.
-            "object_manager_pull_timeout_ms": 100,
-            "debug_dump_period_milliseconds": 1000,
-        },
-        object_store_memory=int(1e8),
-    )
-    for _ in range(3):
-        cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f(i, *args):
-        print(i)
-        return
-
-    @ray.remote
-    def put():
-        return np.zeros(object_size, dtype=np.uint8)
-
-    xs = [put.remote() for _ in range(200)]
-    ray.wait(xs, num_returns=len(xs), fetch_local=False)
-    (
-        num_tasks_submitted_before,
-        num_leases_requested_before,
-    ) = ray._private.worker.global_worker.core_worker.get_task_submission_stats()
-    tasks = []
-    for i in range(100):
-        args = [np.random.choice(xs) for _ in range(10)]
-        tasks.append(f.remote(i, *args))
-    ray.get(tasks, timeout=30)
-
-    (
-        num_tasks_submitted,
-        num_leases_requested,
-    ) = ray._private.worker.global_worker.core_worker.get_task_submission_stats()
-    num_tasks_submitted -= num_tasks_submitted_before
-    num_leases_requested -= num_leases_requested_before
-    print("submitted:", num_tasks_submitted, "leases requested:", num_leases_requested)
-    assert num_tasks_submitted == 100
-    assert num_leases_requested <= 10 * num_tasks_submitted
-
-
 def test_pull_manager_at_capacity_reports(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, object_store_memory=int(1e8))

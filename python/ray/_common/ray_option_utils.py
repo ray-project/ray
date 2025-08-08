@@ -236,6 +236,7 @@ _actor_only_options = {
     "max_pending_calls": _counting_option("max_pending_calls", default_value=-1),
     "namespace": Option((str, type(None))),
     "get_if_exists": Option(bool, default_value=False),
+    "allow_out_of_order_execution": Option((bool, type(None))),
 }
 
 # Priority is important here because during dictionary update, same key with higher

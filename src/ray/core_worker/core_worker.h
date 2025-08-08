@@ -48,6 +48,7 @@
 #include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/raylet_ipc_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -179,7 +180,8 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<raylet::RayletClient> local_raylet_client,
+             std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
+             std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
@@ -232,7 +234,6 @@ class CoreWorker {
   /// \param exit_detail The detailed reason for a given exit.
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
-  /// \return Void.
   void Disconnect(const rpc::WorkerExitType &exit_type,
                   const std::string &exit_detail,
                   const std::shared_ptr<LocalMemoryBuffer>
@@ -243,11 +244,9 @@ class CoreWorker {
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
-  /// \return void.
   void Shutdown();
 
   /// Start receiving and executing tasks.
-  /// \return void.
   void RunTaskExecutionLoop();
 
   const WorkerID &GetWorkerID() const;
@@ -1022,14 +1021,6 @@ class CoreWorker {
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
 
-  int64_t GetNumTasksSubmitted() const {
-    return normal_task_submitter_->GetNumTasksSubmitted();
-  }
-
-  int64_t GetNumLeasesRequested() const {
-    return normal_task_submitter_->GetNumLeasesRequested();
-  }
-
  public:
   friend class CoreWorkerProcessImpl;
 
@@ -1299,7 +1290,6 @@ class CoreWorker {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_user_callback The user-provided Python callback object that
   /// will be called inside of `success_callback`.
-  /// \return void
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
                 void *python_user_callback);
@@ -1369,6 +1359,9 @@ class CoreWorker {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
+  /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
+  void SubscribeToNodeChanges();
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -1746,11 +1739,11 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  // Client to the raylet shared by core worker interfaces. This needs to be a
-  // shared_ptr for direct calls because we can lease multiple workers through
-  // one client, and we need to keep the connection alive until we return all
-  // of the workers.
-  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
+  // Client to the local Raylet that goes over a local socket.
+  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
+
+  // Client to the local Raylet that goes over a gRPC connection.
+  std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
@@ -1926,6 +1919,9 @@ class CoreWorker {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  /// Used to ensure we only subscribe to node changes once.
+  std::once_flag subscribe_to_node_changes_flag_;
 
   /// Used to block in certain spots if the GCS node cache is needed.
   std::mutex gcs_client_node_cache_populated_mutex_;

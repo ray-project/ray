@@ -2,13 +2,21 @@ load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
+    name = "workspace",
+    srcs = ["workspace.py"],
+    deps = [
+        ci_require("pyyaml"),
+    ],
+)
+
+py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
-        "workspace.py",
     ],
     data = ["@uv_x86_64//:file"],
     deps = [
+        ":workspace",
         ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
@@ -32,7 +40,7 @@ py_test(
         "test_data/requirements_compiled_test_expand.txt",
         "test_data/requirements_compiled_test_update.txt",
         "test_data/requirements_test.txt",
-        "test_data/test.config.yaml",
+        "test_data/test.depsets.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
@@ -42,5 +50,15 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":raydepsets_lib",
+        ":testing_utils",
+    ],
+)
+
+py_library(
+    name = "testing_utils",
+    testonly = True,
+    srcs = ["testing_utils.py"],
+    deps = [
+        ci_require("bazel-runfiles"),
     ],
 )
