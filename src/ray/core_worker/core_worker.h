@@ -1742,10 +1742,7 @@ class CoreWorker {
   // Client to the local Raylet that goes over a local socket.
   std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
 
-  // Client to the raylet shared by core worker interfaces. This needs to be a
-  // shared_ptr for direct calls because we can lease multiple workers through
-  // one client, and we need to keep the connection alive until we return all
-  // of the workers.
+  // Client to the local Raylet that goes over a gRPC connection.
   std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
