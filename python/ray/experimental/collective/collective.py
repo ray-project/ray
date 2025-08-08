@@ -151,7 +151,7 @@ def create_collective_group(
         raise ValueError(f"All actors must be unique, got: {actors}")
 
     metadata_key = None
-    if backend == Backend.TORCH_GLOO:
+    if backend == Backend.TORCH_GLOO or backend == Backend.HCCL:
         # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
