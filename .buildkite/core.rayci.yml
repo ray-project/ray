@@ -416,6 +416,7 @@ steps:
         fi
       - ci/ci.sh build
       - ci/ci.sh test_cpp
+      - sleep 1000000000
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
 
