@@ -5,6 +5,7 @@ py_library(
     name = "conftest",
     srcs = glob(["**/conftest.py"]),
     visibility = [
+        "//python/ray/_common/tests:__subpackages__",
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
@@ -85,6 +86,7 @@ py_test_module_list(
         "RAY_experimental_enable_open_telemetry_on_core": "1",
     },
     files = [
+        "test_aggregated_prometheus_metrics.py",
         "test_metrics_agent.py",
     ],
     name_suffix = "_open_telemetry",
@@ -211,7 +213,6 @@ py_test_module_list(
         "test_list_actors_3.py",
         "test_list_actors_4.py",
         "test_multiprocessing.py",
-        "test_object_assign_owner.py",
         "test_placement_group.py",
         "test_placement_group_2.py",
         "test_placement_group_3.py",
@@ -477,7 +478,6 @@ py_test_module_list(
     size = "large",
     files = [
         "test_output.py",
-        "test_usage_stats.py",
     ],
     tags = [
         "exclusive",
@@ -501,6 +501,7 @@ py_test_module_list(
         "accelerators/test_intel_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
+        "accelerators/test_rbln.py",
         "accelerators/test_tpu.py",
         "test_actor_lineage_reconstruction.py",
         "test_actor_out_of_order.py",

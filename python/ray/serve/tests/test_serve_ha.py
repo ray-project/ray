@@ -4,8 +4,8 @@ from time import sleep
 
 import pytest
 
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.test_utils import wait_for_condition
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.tests.conftest_docker import *  # noqa
 
 scripts = """
@@ -109,7 +109,7 @@ def test_ray_serve_basic(docker_cluster):
 import ray
 import requests
 from ray.serve.schema import ServeInstanceDetails
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.resource_and_label_spec import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
 head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(

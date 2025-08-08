@@ -20,8 +20,8 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
@@ -715,7 +715,7 @@ class Semaphore:
                 self._wake_up_next()
             raise
 
-        if self._value > 0:
+        if self._value < self.get_max_value():
             self._wake_up_next()
         return True
 

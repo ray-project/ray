@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/network_util.h"
+
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
@@ -319,7 +321,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_raylet_id,
     rpc::TensorTransport tensor_transport) {
-  if (object_id_refs_.count(object_id) != 0) {
+  if (object_id_refs_.contains(object_id)) {
     return false;
   }
   if (ObjectID::IsActorID(object_id)) {
@@ -642,12 +644,12 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
 
 bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
-  return freed_objects_.find(object_id) != freed_objects_.end();
+  return freed_objects_.contains(object_id);
 }
 
 bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  if (object_id_refs_.count(object_id) == 0) {
+  if (!object_id_refs_.contains(object_id)) {
     return false;
   }
   return freed_objects_.erase(object_id) != 0u;
@@ -815,7 +817,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
-  } else if (freed_objects_.count(object_id) > 0) {
+  } else if (freed_objects_.contains(object_id)) {
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
     return false;
@@ -852,7 +854,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
-    if (freed_objects_.count(object_id) > 0) {
+    if (freed_objects_.contains(object_id)) {
       // The object has been freed by the language frontend.
       return;
     }
@@ -868,7 +870,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
-      if (check_node_alive_(raylet_id)) {
+      if (!is_node_dead_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
         UnsetObjectPrimaryCopy(it);
@@ -1055,8 +1057,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
       RAY_LOG(DEBUG)
               .WithField(WorkerID::FromBinary(worker_addr.worker_id()))
               .WithField(object_id)
-          << "Adding borrower " << worker_addr.ip_address() << ":" << worker_addr.port()
-          << " to object";
+          << "Adding borrower "
+          << BuildAddress(worker_addr.ip_address(), worker_addr.port()) << " to object";
       new_borrowers.push_back(worker_addr);
     }
   }
@@ -1068,8 +1070,9 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
       RAY_LOG(DEBUG)
               .WithField(WorkerID::FromBinary(nested_borrower.worker_id()))
               .WithField(object_id)
-          << "Adding borrower " << nested_borrower.ip_address() << ":"
-          << nested_borrower.port() << " to object";
+          << "Adding borrower "
+          << BuildAddress(nested_borrower.ip_address(), nested_borrower.port())
+          << " to object";
       new_borrowers.push_back(nested_borrower);
     }
   }
@@ -1221,8 +1224,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
     // from a task, and the task's caller executed in a remote process.
     for (const auto &inner_id : inner_ids) {
       RAY_LOG(DEBUG).WithField(inner_id)
-          << "Adding borrower " << owner_address.ip_address() << ":"
-          << owner_address.port() << " to object, borrower owns outer ID " << object_id;
+          << "Adding borrower "
+          << BuildAddress(owner_address.ip_address(), owner_address.port())
+          << " to object, borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it == object_id_refs_.end()) {
         inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
@@ -1426,7 +1430,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
-      spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
+      spilled_node_id.IsNil() || !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;

@@ -7,6 +7,7 @@ applications:
         engine_kwargs:
           max_model_len: 8192
           tensor_parallel_size: 1
+          enforce_eager: true
         deployment_config:
           autoscaling_config:
             min_replicas: 2
@@ -18,10 +19,11 @@ applications:
         engine_kwargs:
           max_model_len: 8192
           tensor_parallel_size: 1
+          enforce_eager: true
         deployment_config:
           autoscaling_config:
             min_replicas: 6
             max_replicas: 6
-    import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
+    import_path: ray.serve.llm:build_pd_openai_app
     name: llm-endpoint
     route_prefix: /

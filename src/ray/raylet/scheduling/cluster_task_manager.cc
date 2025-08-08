@@ -23,6 +23,7 @@
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace raylet {
@@ -273,8 +274,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
         announce_infeasible_task_(task);
       }
 
-      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it++);
@@ -328,7 +328,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_[shapes_it->first] = std::move(shapes_it->second);
       infeasible_tasks_.erase(shapes_it++);
     }
   }
