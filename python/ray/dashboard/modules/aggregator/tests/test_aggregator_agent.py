@@ -2,13 +2,11 @@ import sys
 import json
 import time
 import base64
-from unittest.mock import Mock, patch
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
 from ray._private import ray_constants
 from ray._private.utils import init_grpc_channel
@@ -25,7 +23,6 @@ from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
 )
 from ray.core.generated.events_event_aggregator_service_pb2 import (
     AddEventsRequest,
-    AddEventsReply,
     RayEventsData,
     TaskEventsMetadata,
 )
