@@ -57,7 +57,7 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &o
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
     const std::vector<ObjectID> &ids, int timeout_ms) {
   bool got_exception;
-  absl::flat_hash_set<ObjectID> id_set(ids.start(), ids.end());
+  absl::flat_hash_set<ObjectID> id_set(ids.begin(), ids.end());
   absl::flat_hash_map<ObjectID, std::shared_ptr<::ray::RayObject>> results;
   ::ray::Status status = memory_store_->Get(id_set,
                                             timeout_ms,
