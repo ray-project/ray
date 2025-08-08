@@ -24,7 +24,7 @@ class Depset:
     append_flags: List[str]
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
-    build_arg_sets: Optional[List[BuildArgSet]] = None
+    build_arg_set: Optional[BuildArgSet] = None
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -42,7 +42,7 @@ def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
 
 
 def _dict_to_depset(
-    depset: dict, build_arg_sets: Optional[List[BuildArgSet]] = None
+    depset: dict, build_arg_set: Optional[BuildArgSet] = None
 ) -> Depset:
     return Depset(
         name=depset.get("name"),
@@ -52,7 +52,7 @@ def _dict_to_depset(
         output=depset.get("output"),
         source_depset=depset.get("source_depset"),
         depsets=depset.get("depsets", []),
-        build_arg_sets=build_arg_sets,
+        build_arg_set=build_arg_set,
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
     )
@@ -68,7 +68,6 @@ class Config:
         build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
         raw_depsets = data.get("depsets", [])
         depsets = []
-        # depsets = [_dict_to_depset(values, build_arg_sets) for values in raw_depsets]
         for depset in raw_depsets:
             build_arg_set_matrix = depset.get("build_arg_sets", [])
             if build_arg_set_matrix:
@@ -84,9 +83,9 @@ class Config:
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_name} not found")
                     depset_yaml = _substitute_build_args(depset, build_arg_set)
-                    depsets.append(_dict_to_depset(depset_yaml, build_arg_sets))
+                    depsets.append(_dict_to_depset(depset_yaml, build_arg_set))
             else:
-                depsets.append(_dict_to_depset(depset, build_arg_sets))
+                depsets.append(_dict_to_depset(depset=depset))
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
     @staticmethod
