@@ -11,10 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "ray/core_worker/transport/actor_task_submitter.h"
 
 // clang-format off
-#include "ray/core_worker/transport/task_receiver.h"
-
 #include <memory>
 
 #include "gmock/gmock.h"

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/scheduling_util.h"
+#include "ray/core_worker/task_execution/scheduling_util.h"
 
 #include <string>
 #include <utility>

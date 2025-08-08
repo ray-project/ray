@@ -19,6 +19,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -29,22 +30,22 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/actor_creator.h"
-#include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/common.h"
-#include "ray/core_worker/fiber.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/actor_scheduling_queue.h"
-#include "ray/core_worker/transport/actor_task_submitter.h"
-#include "ray/core_worker/transport/concurrency_group_manager.h"
-#include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/core_worker/transport/normal_scheduling_queue.h"
-#include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
-#include "ray/core_worker/transport/thread_pool.h"
-#include "ray/rpc/grpc_server.h"
+#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/concurrency_group_manager.h"
+#include "ray/core_worker/task_execution/fiber.h"
+#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
+#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/thread_pool.h"
+#include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
+
+using ResourceMappingType =
+    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
+using RepeatedObjectRefCount =
+    ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
 class TaskReceiver {
  public:
@@ -55,7 +56,7 @@ class TaskReceiver {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrower_refs,
+      RepeatedObjectRefCount *borrower_refs,
       bool *is_retryable_error,
       std::string *application_error)>;
 
