@@ -1,4 +1,5 @@
 import pytest
+import sys
 
 from ray._common.network_utils import parse_address, build_address
 
@@ -64,3 +65,7 @@ class TestParseAddress:
         """Test parsing bare addresses returns None."""
         result = parse_address(address)
         assert result is None
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
