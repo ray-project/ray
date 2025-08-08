@@ -68,14 +68,14 @@ void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear();
 
 const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
-DependencyWaiterImpl::DependencyWaiterImpl(RayletClientInterface &dependency_client)
-    : dependency_client_(dependency_client) {}
+DependencyWaiterImpl::DependencyWaiterImpl(WaitForActorCallArgs wait_for_actor_call_args)
+    : wait_for_actor_call_args_(wait_for_actor_call_args) {}
 
 void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &dependencies,
                                 std::function<void()> on_dependencies_available) {
   auto tag = next_request_id_++;
   requests_[tag] = on_dependencies_available;
-  RAY_CHECK_OK(dependency_client_.WaitForActorCallArgs(dependencies, tag));
+  RAY_CHECK_OK(wait_for_actor_call_args_(dependencies, tag));
 }
 
 /// Fulfills the callback stored by Wait().

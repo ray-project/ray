@@ -133,7 +133,6 @@ ray_cc_library(
         # TODO(eoakes): these are needed due to a circular dependency:
         # raylet_client_pool.cc -> raylet_client.h -> node_manager_client.h
         "//src/ray/raylet_client:raylet_client.h",
-        "//src/ray/raylet_client:raylet_connection.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
