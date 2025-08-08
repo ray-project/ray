@@ -2,6 +2,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
+from typing import Any
 
 import pytest
 
@@ -64,7 +65,13 @@ def ray_start_cluster_with_export_api_write(shutdown_only):
         yield res
 
 
-def normalize_json_value(value):
+def normalize_json_value(value: Any) -> Any:
+    """This function is used for testing purposes
+
+    Dataset Metadata export will convert ints -> floats among other small
+    things. In order to perform a comparision of expected output, we normalize
+    each value in the dictionary
+    """
     if isinstance(value, dict):
         return {str(k): normalize_json_value(v) for k, v in value.items()}
     elif isinstance(value, (list, tuple, set)):
