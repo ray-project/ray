@@ -86,7 +86,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
         self._num_reported_checkpoints = 0
-        self._num_pending_checkpoint_registrations = 0
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
@@ -95,70 +94,64 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     def register_checkpoint(self, checkpoint_result: _TrainingResult):
         """Register new checkpoint and add to bookkeeping.
 
-        This method schedules an asyncio Task to register a new checkpoint
-        and add it to the internal bookkeeping logic. This means the
-        checkpoint manager will decide if this checkpoint should be kept,
-        and if older or worse performing checkpoints should be deleted.
+        This method will register a new checkpoint and add it to the internal
+        bookkeeping logic. This means the checkpoint manager will decide if
+        this checkpoint should be kept, and if older or worse performing
+        checkpoints should be deleted.
 
         Args:
             checkpoint: Tracked checkpoint object to add to bookkeeping.
         """
-        asyncio.create_task(self.async_register_checkpoint(checkpoint_result))
-        self._num_pending_checkpoint_registrations += 1
+        self._latest_checkpoint_result = checkpoint_result
 
-    async def async_register_checkpoint(self, checkpoint_result: _TrainingResult):
-        """Register a new checkpoint and add it to the internal bookkeeping logic.
+        if self._checkpoint_config.checkpoint_score_attribute is not None:
+            # If we're ordering by a score, insert the checkpoint
+            # so that the list remains sorted.
+            _insert_into_sorted_list(
+                self._checkpoint_results,
+                checkpoint_result,
+                key=self._get_checkpoint_score,
+            )
+        else:
+            # If no metric is provided, just append (ordering by time of registration).
+            self._checkpoint_results.append(checkpoint_result)
 
-        This method is called by the `register_checkpoint` method to avoid blocking
-        the main thread.
-        """
-        async with self._condition:
-            self._latest_checkpoint_result = checkpoint_result
+        results_to_delete = {}
+        if self._checkpoint_config.num_to_keep is not None:
+            # Delete the bottom (N - K) checkpoints
+            worst_results = set(
+                self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
+            )
+            # Except for the latest checkpoint.
+            results_to_delete = worst_results - {self._latest_checkpoint_result}
 
-            if self._checkpoint_config.checkpoint_score_attribute is not None:
-                # If we're ordering by a score, insert the checkpoint
-                # so that the list remains sorted.
-                _insert_into_sorted_list(
-                    self._checkpoint_results,
-                    checkpoint_result,
-                    key=self._get_checkpoint_score,
-                )
-            else:
-                # If no metric is provided, just append (ordering by time of registration).
-                self._checkpoint_results.append(checkpoint_result)
+            # Update internal state before actually deleting them.
+            self._checkpoint_results = [
+                checkpoint_result
+                for checkpoint_result in self._checkpoint_results
+                if checkpoint_result not in results_to_delete
+            ]
 
-            results_to_delete = {}
-            if self._checkpoint_config.num_to_keep is not None:
-                # Delete the bottom (N - K) checkpoints
-                worst_results = set(
-                    self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
-                )
-                # Except for the latest checkpoint.
-                results_to_delete = worst_results - {self._latest_checkpoint_result}
+        # Save the checkpoint manager state to storage.
+        # Note: We save the state before deleting the old checkpoints.
+        # If deletion happens first and the process crashes, our snapshot
+        # may point to some stale checkpoints that are already deleted.
+        # TODO: Make this writing operation non-blocking.
+        self._write_state_to_storage()
 
-                # Update internal state before actually deleting them.
-                self._checkpoint_results = [
-                    checkpoint_result
-                    for checkpoint_result in self._checkpoint_results
-                    if checkpoint_result not in results_to_delete
-                ]
+        # Delete the old checkpoints.
+        for checkpoint_result in results_to_delete:
+            checkpoint = checkpoint_result.checkpoint
+            logger.debug("Deleting checkpoint: ", checkpoint)
+            _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
-            # Save the checkpoint manager state to storage.
-            # Note: We save the state before deleting the old checkpoints.
-            # If deletion happens first and the process crashes, our snapshot
-            # may point to some stale checkpoints that are already deleted.
-            # TODO: Make this writing operation non-blocking.
-            self._write_state_to_storage()
+        self._num_reported_checkpoints += 1
 
-            # Delete the old checkpoints.
-            for checkpoint_result in results_to_delete:
-                checkpoint = checkpoint_result.checkpoint
-                logger.debug("Deleting checkpoint: ", checkpoint)
-                _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+        async def async_notify():
+            async with self._condition:
+                self._condition.notify_all()
 
-            self._num_reported_checkpoints += 1
-            self._num_pending_checkpoint_registrations -= 1
-            self._condition.notify_all()
+        asyncio.create_task(self.async_notify())
 
     # --------------------------
     # CheckpointManager state
@@ -335,10 +328,3 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 )
                 for tr in self._checkpoint_results
             ]
-
-    async def wait_for_pending_checkpoint_registrations(self):
-        """Wait for pending checkpoint registrations to be completed."""
-        async with self._condition:
-            await self._condition.wait_for(
-                lambda: self._num_pending_checkpoint_registrations == 0
-            )

@@ -485,7 +485,6 @@ class TrainController:
         ray.actor.exit_actor()
 
     async def _build_result(self) -> Result:
-        await self._checkpoint_manager.wait_for_pending_checkpoint_registrations()
 
         storage = self._checkpoint_manager._storage_context
 
