@@ -147,26 +147,6 @@ def _add_ellipsis(s: str, truncate_length: int) -> str:
     return s
 
 
-def deep_asdict(obj):
-    """Recurses nested `asdict` objects because default
-    `asdict` won't.
-    """
-    if is_dataclass(obj):
-        return deep_asdict(asdict(obj))
-    elif isinstance(obj, Mapping):
-        return {k: deep_asdict(v) for k, v in obj.items()}
-    # we don't use isinstance below because we want to compare against
-    # the base class. NamedTuples, for example, are tuples, but
-    # it's more descriptive to return the original obj
-    elif type(obj) is list:
-        return [deep_asdict(v) for v in obj]
-    elif type(obj) is tuple:
-        return tuple(deep_asdict(v) for v in obj)
-    elif type(obj) is set:
-        return {deep_asdict(v) for v in obj}
-    return obj
-
-
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     """Prepares the obj for Struct Protobuf format by recursive through
     dictionaries, lists, etc...
@@ -177,7 +157,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     """
     if is_dataclass(obj):
         # Only convert dataclass instances, not dataclass types
-        return sanitize_for_struct(deep_asdict(obj), truncate_length)
+        return sanitize_for_struct(asdict(obj), truncate_length)
     elif isinstance(obj, Mapping):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
@@ -248,7 +228,7 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Populate the data metadata proto
     data_context = Struct()
-    data_context.update(sanitize_for_struct(deep_asdict(dataset_metadata.data_context)))
+    data_context.update(sanitize_for_struct(dataset_metadata.data_context))
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,
