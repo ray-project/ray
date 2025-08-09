@@ -429,6 +429,198 @@ def test_default_shuffle_aggregator_args():
     } == args
 
 
+# Broadcast Join Tests
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    ["inner", "left_outer", "right_outer", "full_outer"],
+)
+@pytest.mark.parametrize(
+    "num_rows_left,num_rows_right",
+    [
+        (32, 16),  # Typical case - smaller right dataset
+        (100, 10),  # Larger difference
+        (10, 5),  # Small datasets
+    ],
+)
+def test_broadcast_join_basic(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+    num_rows_left,
+    num_rows_right,
+):
+    """Test basic broadcast join functionality for all join types."""
+
+    # Create test datasets
+    left_ds = ray.data.range(num_rows_left).map(
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+
+    right_ds = ray.data.range(num_rows_right).map(
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Perform broadcast join
+    broadcast_result = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=4,
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Perform regular join for comparison
+    regular_result = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=4,
+        on=("id",),
+        broadcast=False,
+    )
+
+    # Convert to pandas for comparison
+    broadcast_df = (
+        pd.DataFrame(broadcast_result.take_all())
+        .sort_values(by=["id"])
+        .reset_index(drop=True)
+    )
+    regular_df = (
+        pd.DataFrame(regular_result.take_all())
+        .sort_values(by=["id"])
+        .reset_index(drop=True)
+    )
+
+    # Results should be identical
+    pd.testing.assert_frame_equal(broadcast_df, regular_df)
+
+
+def test_broadcast_join_with_suffixes(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with column name suffixes."""
+
+    # Create datasets with overlapping column names
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "left_1"},
+            {"id": 2, "value": "left_2"},
+            {"id": 3, "value": "left_3"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "right_1"},
+            {"id": 2, "value": "right_2"},
+        ]
+    )
+
+    # Test broadcast join with suffixes
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        left_suffix="_left",
+        right_suffix="_right",
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all()).sort_values(by=["id"]).reset_index(drop=True)
+    )
+
+    # Verify suffixes are applied correctly
+    expected_columns = {"id", "value_left", "value_right"}
+    assert set(result_df.columns) == expected_columns
+
+    # Verify join results
+    assert len(result_df) == 2  # Only id=1 and id=2 should match
+    assert result_df.loc[0, "value_left"] == "left_1"
+    assert result_df.loc[0, "value_right"] == "right_1"
+
+
+def test_broadcast_join_different_key_names(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with different key column names."""
+
+    left_ds = ray.data.from_items(
+        [
+            {"left_id": 1, "left_data": "a"},
+            {"left_id": 2, "left_data": "b"},
+            {"left_id": 3, "left_data": "c"},
+            {"left_id": 4, "left_data": "d"},
+            {"left_id": 5, "left_data": "e"},
+            {"left_id": 6, "left_data": "f"},
+            {"left_id": 7, "left_data": "g"},
+            {"left_id": 8, "left_data": "h"},
+            {"left_id": 9, "left_data": "i"},
+            {"left_id": 10, "left_data": "j"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"right_id": 1, "right_data": "x"},
+            {"right_id": 2, "right_data": "y"},
+        ]
+    )
+
+    # Test broadcast join with different key names
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("left_id",),
+        right_on=("right_id",),
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all())
+        .sort_values(by=["left_id"])
+        .reset_index(drop=True)
+    )
+
+    # Verify results
+    assert len(result_df) == 2
+    expected_columns = {"left_id", "left_data", "right_id", "right_data"}
+    assert set(result_df.columns) == expected_columns
+
+
+def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_cpus):
+    """Test that broadcast join is used appropriately for small right datasets."""
+
+    # Large left dataset
+    left_ds = ray.data.range(1000).map(
+        lambda row: {"id": row["id"], "left_value": row["id"] * 2}
+    )
+
+    # Small right dataset (perfect for broadcasting)
+    right_ds = ray.data.range(10).map(
+        lambda row: {"id": row["id"], "right_value": row["id"] ** 2}
+    )
+
+    # Test broadcast join
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=8,
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Should only return 10 rows (matching the small right dataset)
+    assert result.count() == 10
+
+    # Verify correctness by comparing a few values
+    result_df = (
+        pd.DataFrame(result.take_all()).sort_values(by=["id"]).reset_index(drop=True)
+    )
+
+    for i in range(min(5, len(result_df))):
+        assert result_df.loc[i, "left_value"] == result_df.loc[i, "id"] * 2
+        assert result_df.loc[i, "right_value"] == result_df.loc[i, "id"] ** 2
+
+
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
