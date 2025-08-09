@@ -110,6 +110,23 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
 
 
+def infer_tpu_pod_type_from_topology(
+    topology: str, accelerator_type: str
+) -> Optional[str]:
+    """Infer the TPU pod type (e.g. v4-32) from topology and accelerator type."""
+    try:
+        num_chips = 1
+        for value in topology.strip().lower().split("x"):
+            num_chips *= int(value)
+        generation = accelerator_type.lower().replace("tpu-", "")
+        return f"{generation}-{num_chips}"
+    except Exception as e:
+        logger.warning(
+            f"Failed to infer pod type from topology {topology} and type {accelerator_type}: {e}"
+        )
+        return None
+
+
 class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
