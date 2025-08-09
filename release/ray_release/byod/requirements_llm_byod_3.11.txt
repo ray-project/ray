@@ -5,4 +5,4 @@ orjson==3.10.15
 backoff==2.2.1
 langchain_text_splitters==0.3.9
 sentence-transformers==5.1.0
-"unstructured[all-docs]"==0.18.11
+unstructured[all-docs]==0.18.11
