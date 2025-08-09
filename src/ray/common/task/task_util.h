@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"

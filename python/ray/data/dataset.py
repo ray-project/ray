@@ -783,31 +783,31 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
-    def with_columns(self, exprs: Dict[str, Expr]) -> "Dataset":
+    def with_column(self, column_name: str, expr: Expr, **ray_remote_args) -> "Dataset":
         """
-        Add new columns to the dataset.
+        Add a new column to the dataset via an expression.
 
         Examples:
 
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.with_columns({"new_id": col("id") * 2, "new_id_2": col("id") * 3}).schema()
-            Column    Type
-            ------    ----
-            id        int64
-            new_id    int64
-            new_id_2  int64
+            >>> ds.with_column("id_2", (col("id") * 2)).schema()
+            Column  Type
+            ------  ----
+            id      int64
+            id_2    int64
 
         Args:
-            exprs: A dictionary mapping column names to expressions that define the new column values.
+            column_name: The name of the new column.
+            expr: An expression that defines the new column values.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
-            A new dataset with the added columns evaluated via expressions.
+            A new dataset with the added column evaluated via the expression.
         """
-        if not exprs:
-            raise ValueError("at least one expression is required")
-
         from ray.data._internal.logical.operators.map_operator import Project
 
         plan = self._plan.copy()
@@ -815,7 +815,8 @@ class Dataset:
             self._logical_plan.dag,
             cols=None,
             cols_rename=None,
-            exprs=exprs,
+            exprs={column_name: expr},
+            ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)

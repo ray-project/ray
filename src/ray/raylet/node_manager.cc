@@ -1021,7 +1021,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::AnnounceWorkerPort: {
+  case ray::protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
   case protocol::MessageType::ActorCreationTaskDone: {
@@ -2590,8 +2590,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
-    client->GetNodeStats(
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
           if (!status.ok()) {
