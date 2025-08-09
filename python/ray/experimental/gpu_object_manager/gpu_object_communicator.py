@@ -41,21 +41,21 @@ def __ray_get_tensor_transport_metadata__(
     # NOTE: We do not specify a timeout here because the user task that returns
     # it could take arbitrarily long and we don't want to trigger a spurious
     # timeout.
-    tensors = gpu_object_store.wait_and_get_object(obj_id)
+    gpu_object = gpu_object_store.wait_and_get_object(obj_id)
     if tensor_transport == TensorTransportEnum.NIXL:
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
         from ray.util.collective.types import NIXL_GROUP_NAME
 
         nixl_backend: NixlBackend = collective.get_group_handle(NIXL_GROUP_NAME)
-        serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(tensors)
+        serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(gpu_object.data)
         return NixlTransportMetadata(
-            tensor_meta=[(t.shape, t.dtype) for t in tensors],
+            tensor_meta=[(t.shape, t.dtype) for t in gpu_object.data],
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
     else:
         return CollectiveTransportMetadata(
-            tensor_meta=[(t.shape, t.dtype) for t in tensors],
+            tensor_meta=[(t.shape, t.dtype) for t in gpu_object.data],
         )
 
 
