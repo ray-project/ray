@@ -190,7 +190,6 @@ class RayTrainWorker:
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
         dataset_shards: Dict[str, DataIterator] = None,
         checkpoint: Optional[Checkpoint] = None,
-        num_reported_checkpoints: int = 0,
         controller_actor: Optional[ActorHandle] = None,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
@@ -211,7 +210,6 @@ class RayTrainWorker:
             storage_context=storage_context,
             dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
-            num_reported_checkpoints=num_reported_checkpoints,
             controller_actor=controller_actor,
         )
         # Configure the train and root logger for the worker processes.

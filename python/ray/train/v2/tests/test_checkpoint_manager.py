@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 from typing import List, Optional
-from unittest.mock import create_autospec
+from unittest.mock import create_autospec, patch
 
 import pytest
 
@@ -14,7 +14,6 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2._internal.execution.worker_group.worker import ActorMetadata
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -147,7 +146,15 @@ def test_load_state_error(tmp_path, json_state):
         checkpoint_manager._load_state(json_state)
 
 
-def test_before_init_train_context(tmp_path):
+@patch.object(ray, "get_runtime_context", autospec=True)
+async def test_before_init_train_context(mock_get_runtime_context, tmp_path):
+    mock_runtime_context = create_autospec(
+        ray.runtime_context.RuntimeContext, instance=True
+    )
+    mock_actor = create_autospec(ray.actor.ActorHandle, instance=True)
+    mock_runtime_context.current_actor = mock_actor
+    mock_get_runtime_context.return_value = mock_runtime_context
+
     storage_context = StorageContext(
         storage_path=tmp_path,
         experiment_dir_name="my_experiment_name",
@@ -161,7 +168,7 @@ def test_before_init_train_context(tmp_path):
     # Assert without a checkpoint.
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [None] * 4,
-        "num_reported_checkpoints": [0] * 4,
+        "controller_actor": [mock_actor] * 4,
     }
 
     # Assert with a checkpoint
@@ -169,65 +176,8 @@ def test_before_init_train_context(tmp_path):
     checkpoint_manager.register_checkpoint(latest_checkpoint_result)
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
-        "num_reported_checkpoints": [1] * 4,
+        "controller_actor": [mock_actor] * 4,
     }
-
-
-def test_before_init_train_context_from_actor(tmp_path):
-    # Create checkpoint manager actor
-    storage_context = StorageContext(
-        storage_path=tmp_path,
-        experiment_dir_name="my_experiment_name",
-    )
-    checkpoint_manager_actor_cls = ray.remote(CheckpointManager)
-    checkpoint_manager = checkpoint_manager_actor_cls.remote(
-        storage_context=storage_context,
-        checkpoint_config=CheckpointConfig(),
-    )
-
-    # Create workers
-    @ray.remote
-    class DummyActor:
-        pass
-
-    workers = [
-        Worker(
-            actor=DummyActor.remote(),
-            metadata=ActorMetadata(
-                hostname="hostname",
-                node_id="node_id",
-                node_ip="node_ip",
-                pid="pid",
-                accelerator_ids={},
-            ),
-            resources={},
-        )
-        for _ in range(4)
-    ]
-
-    # Assert without a checkpoint.
-    assert ray.get(checkpoint_manager.before_init_train_context.remote(workers)) == {
-        "checkpoint": [None] * 4,
-        "num_reported_checkpoints": [0] * 4,
-        "controller_actor": [checkpoint_manager] * 4,
-    }
-
-    # Assert with a checkpoint.
-    latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
-    ray.get(checkpoint_manager.register_checkpoint.remote(latest_checkpoint_result))
-    train_context_args = ray.get(
-        checkpoint_manager.before_init_train_context.remote(workers)
-    )
-    assert train_context_args.keys() == {
-        "checkpoint",
-        "num_reported_checkpoints",
-        "controller_actor",
-    }
-    assert train_context_args["controller_actor"] == [checkpoint_manager] * 4
-    assert train_context_args["num_reported_checkpoints"] == [1] * 4
-    assert len(train_context_args["checkpoint"]) == 4
-    for checkpoint in train_context_args["checkpoint"]:
-        assert checkpoint.path == latest_checkpoint_result.checkpoint.path
 
 
 if __name__ == "__main__":

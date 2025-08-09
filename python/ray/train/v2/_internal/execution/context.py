@@ -95,9 +95,9 @@ class TrainContext:
     execution_context: ExecutionContext
     storage_context: StorageContext
     dataset_shards: Dict[str, DataIterator]
+    controller_actor: ActorHandle
     checkpoint: Optional[Checkpoint] = None
     num_reported_checkpoints: int = 0
-    controller_actor: Optional[ActorHandle] = None
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:

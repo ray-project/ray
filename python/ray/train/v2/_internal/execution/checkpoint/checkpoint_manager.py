@@ -45,7 +45,6 @@ class _CheckpointManagerState(BaseModel):
     version: int = 0
     checkpoint_results: List[_TrainingResultState]
     latest_checkpoint_result: Optional[_TrainingResultState]
-    num_reported_checkpoints: int
 
 
 def _get_training_result_from_state(
@@ -151,7 +150,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             async with self._condition:
                 self._condition.notify_all()
 
-        asyncio.create_task(self.async_notify())
+        asyncio.create_task(async_notify())
 
     # --------------------------
     # CheckpointManager state
@@ -176,7 +175,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
             latest_checkpoint_result=latest_checkpoint_result,
-            num_reported_checkpoints=self._num_reported_checkpoints,
         )
         return manager_snapshot.model_dump_json()
 
@@ -204,8 +202,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             if manager_snapshot.latest_checkpoint_result is not None
             else None
         )
-
-        self._num_reported_checkpoints = manager_snapshot.num_reported_checkpoints
 
     def _maybe_load_state_from_storage(self):
         """Load the checkpoint manager state from storage.
@@ -303,12 +299,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         )
         train_context_args = {
             "checkpoint": [latest_checkpoint] * len(workers),
-            "num_reported_checkpoints": [self._num_reported_checkpoints] * len(workers),
+            "controller_actor": [ray.get_runtime_context().current_actor]
+            * len(workers),
         }
-        if ray.get_runtime_context().get_actor_id() is not None:
-            train_context_args["controller_actor"] = [
-                ray.get_runtime_context().current_actor
-            ] * len(workers)
         return train_context_args
 
     async def get_all_reported_checkpoints(
