@@ -413,7 +413,7 @@ class ReportHead(SubprocessModule):
 
         Params:
             pid: Required. The PID of the worker.
-            node_id: Required. The ID of the node.
+            node_id: Required. The hex ID of the node.
 
         """
         pid = req.query.get("pid")
