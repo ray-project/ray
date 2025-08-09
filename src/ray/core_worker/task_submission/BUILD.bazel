@@ -6,7 +6,6 @@ ray_cc_library(
     hdrs = ["dependency_resolver.h"],
     visibility = [":__subpackages__"],
     deps = [
-        # XXX: remove.
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker:lease_policy",
@@ -89,7 +88,6 @@ ray_cc_library(
     deps = [
         ":dependency_resolver",
         "//src/ray/core_worker:lease_policy",
-        # XXX: remove
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:task_manager",
         "//src/ray/common:id",
