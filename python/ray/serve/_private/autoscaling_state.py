@@ -88,12 +88,12 @@ class AutoscalingContext:
     app_name: Optional[str] = None
 
     # Current state
-    current_num_replicas: int = 0
-    target_num_replicas: int = 0
+    current_num_replicas: int = None
+    target_num_replicas: int = None
     running_replicas: List[ReplicaID] = None
 
     # Built-in metrics
-    total_num_requests: float = 0.0
+    total_num_requests: float = None
     queued_requests: Optional[float] = None
     requests_per_replica: Dict[ReplicaID, float] = None
 
@@ -102,10 +102,10 @@ class AutoscalingContext:
     raw_metrics: Dict[str, Dict[ReplicaID, List[float]]] = None
 
     # Capacity and bounds
-    min_replicas: int = 1
-    max_replicas: int = 1
-    capacity_adjusted_min_replicas: int = 1
-    capacity_adjusted_max_replicas: int = 1
+    min_replicas: int = None
+    max_replicas: int = None
+    capacity_adjusted_min_replicas: int = None
+    capacity_adjusted_max_replicas: int = None
 
     # Policy state
     policy_state: Dict[str, Any] = None
