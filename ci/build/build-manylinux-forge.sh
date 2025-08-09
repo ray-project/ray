@@ -24,21 +24,14 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 fi
 
-# Install ray dashboard dependencies.
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
-
-NODE_VERSION="14"
-nvm install "$NODE_VERSION"
-nvm use "$NODE_VERSION"
-
 # Install bazel
-npm install -g @bazel/bazelisk
 mkdir -p "$HOME"/bin
-ln -sf "$(which bazelisk)" "$HOME"/bin/bazel
+curl -L -o "$HOME"/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
+chmod +x "$HOME"/bin/bazelisk
+sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
 
 # Use python3.9 as default python3
-ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
+sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
 
 {
   echo "build --config=ci"
