@@ -31,6 +31,7 @@ class BroadcastJoinFunction:
         small_table_key_columns: Tuple[str],
         large_table_columns_suffix: Optional[str] = None,
         small_table_columns_suffix: Optional[str] = None,
+        datasets_swapped: bool = False,
     ):
         """Initialize the broadcast join function.
 
@@ -41,12 +42,14 @@ class BroadcastJoinFunction:
             small_table_key_columns: Join keys for small table
             large_table_columns_suffix: Suffix for large table columns
             small_table_columns_suffix: Suffix for small table columns
+            datasets_swapped: Whether the original left/right datasets were swapped
         """
         self.join_type = join_type
         self.large_table_key_columns = large_table_key_columns
         self.small_table_key_columns = small_table_key_columns
         self.large_table_columns_suffix = large_table_columns_suffix
         self.small_table_columns_suffix = small_table_columns_suffix
+        self.datasets_swapped = datasets_swapped
 
         # Coalesce the small dataset to a single partition and materialize
         try:
@@ -88,13 +91,42 @@ class BroadcastJoinFunction:
 
         # Perform the join using PyArrow's native API
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
-        joined_table = batch.join(
-            self.small_table,
-            join_type=arrow_join_type,
-            keys=list(self.large_table_key_columns),
-            right_keys=list(self.small_table_key_columns),
-            left_suffix=self.large_table_columns_suffix,
-            right_suffix=self.small_table_columns_suffix,
+
+        # Determine whether to coalesce keys based on whether key column names are the same
+        coalesce_keys = list(self.large_table_key_columns) == list(
+            self.small_table_key_columns
         )
+
+        if self.datasets_swapped:
+            # When datasets are swapped, the batch comes from the originally right dataset
+            # and small_table comes from the originally left dataset, so we reverse the join
+            # We also need to convert the join type again because we're reversing the order
+            if arrow_join_type == "left outer":
+                reversed_join_type = "right outer"
+            elif arrow_join_type == "right outer":
+                reversed_join_type = "left outer"
+            else:
+                reversed_join_type = arrow_join_type
+
+            joined_table = self.small_table.join(
+                batch,
+                join_type=reversed_join_type,
+                keys=list(self.small_table_key_columns),
+                right_keys=list(self.large_table_key_columns),
+                left_suffix=self.small_table_columns_suffix,
+                right_suffix=self.large_table_columns_suffix,
+                coalesce_keys=coalesce_keys,
+            )
+        else:
+            # Normal case: batch is from left dataset, small_table is from right dataset
+            joined_table = batch.join(
+                self.small_table,
+                join_type=arrow_join_type,
+                keys=list(self.large_table_key_columns),
+                right_keys=list(self.small_table_key_columns),
+                left_suffix=self.large_table_columns_suffix,
+                right_suffix=self.small_table_columns_suffix,
+                coalesce_keys=coalesce_keys,
+            )
 
         return joined_table

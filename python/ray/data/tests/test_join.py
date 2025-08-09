@@ -620,7 +620,7 @@ def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_
         assert result_df.loc[i, "left_value"] == result_df.loc[i, "id"] * 2
         assert result_df.loc[i, "right_value"] == result_df.loc[i, "id"] ** 2
 
-      
+
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,

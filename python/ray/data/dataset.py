@@ -2655,9 +2655,18 @@ class Dataset:
                 large_suffix = left_suffix
                 self_map = True
 
-            # Convert the join type if necessary since a left join becomes a right join
-            # and vice versa if self is the smaller dataset
-            if not self_map:
+            # Convert the join type if necessary since when datasets are swapped,
+            # left joins become right joins and vice versa
+            if self_map:
+                # self (originally left) is the smaller dataset being broadcast
+                # Since we're mapping over ds (originally right), the join semantics are swapped
+                if join_type == "left_outer":
+                    join_type = "right_outer"
+                elif join_type == "right_outer":
+                    join_type = "left_outer"
+            else:
+                # ds (originally right) is the smaller dataset being broadcast
+                # Since we're mapping over self (originally left), the join semantics are swapped
                 if join_type == "left_outer":
                     join_type = "right_outer"
                 elif join_type == "right_outer":
@@ -2671,6 +2680,7 @@ class Dataset:
                 small_table_key_columns=small_key_columns,
                 large_table_columns_suffix=large_suffix,
                 small_table_columns_suffix=small_suffix,
+                datasets_swapped=self_map,
             )
             if self_map:
                 return self.map_batches(
