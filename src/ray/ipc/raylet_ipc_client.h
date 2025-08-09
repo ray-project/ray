@@ -35,26 +35,9 @@ using MessageType = ray::protocol::MessageType;
 
 namespace ray {
 
-namespace ipc {
-
-/// Client for interacting with the local Raylet over a socket.
-///
-/// Message ordering on the socket is guaranteed.
-///
-/// If the socket is broken and the local Raylet is detected to be dead, calling any
-/// method on the client will quick exit the process.
-class RayletIpcClient {
+class RayletIpcClientInterface {
  public:
-  /// Connect to the Raylet over a local socket.
-  ///
-  /// \param io_service The IO service used for interacting with the socket.
-  /// \param address The address of the socket that the Raylet is listening on.
-  /// \param num_retries The number of times to retry connecting before giving up.
-  /// \param timeout The time to wait between retries.
-  RayletIpcClient(instrumented_io_context &io_service,
-                  const std::string &address,
-                  int num_retries,
-                  int64_t timeout);
+  virtual ~RayletIpcClientInterface() = default;
 
   /// Register this client (worker) with the local Raylet.
   ///
@@ -69,16 +52,16 @@ class RayletIpcClient {
   /// \param[out] raylet_id The node ID for the local Raylet.
   /// \param[out] assigned_port The assigned port for the worker to listen on. If zero,
   ///             the worker should pick a port randomly.
-  ray::Status RegisterClient(const WorkerID &worker_id,
-                             rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             int runtime_env_hash,
-                             const rpc::Language &language,
-                             const std::string &ip_address,
-                             const std::string &serialized_job_config,
-                             const StartupToken &startup_token,
-                             NodeID *raylet_id,
-                             int *assigned_port);
+  virtual ray::Status RegisterClient(const WorkerID &worker_id,
+                                     rpc::WorkerType worker_type,
+                                     const JobID &job_id,
+                                     int runtime_env_hash,
+                                     const rpc::Language &language,
+                                     const std::string &ip_address,
+                                     const std::string &serialized_job_config,
+                                     const StartupToken &startup_token,
+                                     NodeID *raylet_id,
+                                     int *assigned_port) = 0;
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -89,28 +72,28 @@ class RayletIpcClient {
   /// \param disconnect_type The reason why this worker process is disconnected.
   /// \param disconnect_detail The detailed reason for a given exit.
   /// \return ray::Status.
-  ray::Status Disconnect(
+  virtual ray::Status Disconnect(
       const rpc::WorkerExitType &exit_type,
       const std::string &exit_detail,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) = 0;
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
   /// \param port The port.
   /// \return ray::Status.
-  Status AnnounceWorkerPortForWorker(int port);
+  virtual Status AnnounceWorkerPortForWorker(int port) = 0;
 
   /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
   ///
   /// \param port The port.
   /// \param entrypoint The entrypoint of the driver's job.
   /// \return ray::Status.
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint);
+  virtual Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) = 0;
 
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
-  ray::Status ActorCreationTaskDone();
+  virtual ray::Status ActorCreationTaskDone() = 0;
 
   /// Ask the Raylet to pull a set of objects to the local node.
   ///
@@ -119,8 +102,9 @@ class RayletIpcClient {
   /// \param object_ids The IDs of the objects to pull.
   /// \param owner_addresses The owner addresses of the objects.
   /// \return ray::Status.
-  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                              const std::vector<rpc::Address> &owner_addresses);
+  virtual ray::Status AsyncGetObjects(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses) = 0;
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -133,28 +117,28 @@ class RayletIpcClient {
   /// found, and the second element the objects that were not found.
   /// \return ray::StatusOr containing error status or the set of object ids that were
   /// found.
-  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+  virtual ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
-      int64_t timeout_milliseconds);
+      int64_t timeout_milliseconds) = 0;
 
   /// Tell the Raylet to cancel the get request from this worker.
   ///
   /// \return ray::Status.
-  ray::Status CancelGetRequest();
+  virtual ray::Status CancelGetRequest() = 0;
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked();
+  virtual ray::Status NotifyDirectCallTaskBlocked() = 0;
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
   ///
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskUnblocked();
+  virtual ray::Status NotifyDirectCallTaskUnblocked() = 0;
 
   /// Wait for the given objects asynchronously.
   ///
@@ -163,8 +147,8 @@ class RayletIpcClient {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag);
+  virtual ray::Status WaitForActorCallArgs(
+      const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
   /// Push an error to the relevant driver.
   ///
@@ -173,10 +157,10 @@ class RayletIpcClient {
   /// \param The error message.
   /// \param The timestamp of the error.
   /// \return ray::Status.
-  ray::Status PushError(const ray::JobID &job_id,
-                        const std::string &type,
-                        const std::string &error_message,
-                        double timestamp);
+  virtual ray::Status PushError(const ray::JobID &job_id,
+                                const std::string &type,
+                                const std::string &error_message,
+                                double timestamp) = 0;
 
   /// Free a list of objects from object stores.
   ///
@@ -184,7 +168,8 @@ class RayletIpcClient {
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+  virtual ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+                                  bool local_only) = 0;
 
   /// Subscribe this worker to a notification when the provided object is ready in the
   /// local object store.
@@ -193,7 +178,80 @@ class RayletIpcClient {
   ///
   /// \param object_id The ID of the object to subscribe to.
   /// \param owner_address The address of the owner of the object.
-  void SubscribePlasmaReady(const ObjectID &object_id, const rpc::Address &owner_address);
+  virtual void SubscribePlasmaReady(const ObjectID &object_id,
+                                    const rpc::Address &owner_address) = 0;
+};
+
+namespace ipc {
+/// Interface for interacting with the local Raylet over a socket.
+///
+/// Message ordering on the socket is guaranteed.
+///
+/// If the socket is broken and the local Raylet is detected to be dead, calling any
+/// method on the client will quick exit the process.
+class RayletIpcClient : public RayletIpcClientInterface {
+ public:
+  /// Connect to the Raylet over a local socket.
+  ///
+  /// \param io_service The IO service used for interacting with the socket.
+  /// \param address The address of the socket that the Raylet is listening on.
+  /// \param num_retries The number of times to retry connecting before giving up.
+  /// \param timeout The time to wait between retries.
+  RayletIpcClient(instrumented_io_context &io_service,
+                  const std::string &address,
+                  int num_retries,
+                  int64_t timeout);
+
+  ray::Status RegisterClient(const WorkerID &worker_id,
+                             rpc::WorkerType worker_type,
+                             const JobID &job_id,
+                             int runtime_env_hash,
+                             const rpc::Language &language,
+                             const std::string &ip_address,
+                             const std::string &serialized_job_config,
+                             const StartupToken &startup_token,
+                             NodeID *raylet_id,
+                             int *assigned_port) override;
+
+  ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
+                         const std::string &exit_detail,
+                         const std::shared_ptr<LocalMemoryBuffer>
+                             &creation_task_exception_pb_bytes) override;
+
+  Status AnnounceWorkerPortForWorker(int port) override;
+
+  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override;
+
+  ray::Status ActorCreationTaskDone() override;
+
+  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                              const std::vector<rpc::Address> &owner_addresses) override;
+
+  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
+      int64_t timeout_milliseconds) override;
+
+  ray::Status CancelGetRequest() override;
+
+  ray::Status NotifyDirectCallTaskBlocked() override;
+
+  ray::Status NotifyDirectCallTaskUnblocked() override;
+
+  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                                   int64_t tag) override;
+
+  ray::Status PushError(const ray::JobID &job_id,
+                        const std::string &type,
+                        const std::string &error_message,
+                        double timestamp) override;
+
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+                          bool local_only) override;
+
+  void SubscribePlasmaReady(const ObjectID &object_id,
+                            const rpc::Address &owner_address) override;
 
  private:
   /// Send a request to raylet asynchronously.

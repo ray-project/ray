@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -185,6 +186,8 @@ class RayletClientInterface {
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
+  virtual void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) = 0;
+
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
 
@@ -212,6 +215,8 @@ class RayletClientInterface {
   virtual void GetNodeStats(
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
+
+  virtual int64_t GetPinsInFlight() const = 0;
 
   virtual ~RayletClientInterface() = default;
 };
@@ -330,7 +335,7 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
-  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
@@ -340,7 +345,7 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const override { return pins_in_flight_.load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;

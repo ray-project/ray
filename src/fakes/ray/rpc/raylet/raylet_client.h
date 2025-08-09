@@ -128,6 +128,10 @@ class FakeRayletClient : public RayletClientInterface {
   void GetNodeStats(
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override {}
+
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override {}
+
+  int64_t GetPinsInFlight() const override { return 0; }
 };
 
 }  // namespace ray

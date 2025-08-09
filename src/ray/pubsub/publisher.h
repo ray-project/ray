@@ -246,6 +246,15 @@ class PublisherInterface {
  public:
   virtual ~PublisherInterface() = default;
 
+  /// Handle a long poll request from `subscriber_id`.
+  ///
+  /// TODO(sang): Currently, we need to pass the callback for connection because we are
+  /// using long polling internally. This should be changed once the bidirectional grpc
+  /// streaming is supported.
+  virtual void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+                                   rpc::PubsubLongPollingReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) = 0;
+
   /// Register the subscription.
   ///
   /// \param channel_type The type of the channel.
@@ -332,46 +341,19 @@ class Publisher : public PublisherInterface {
 
   ~Publisher() override = default;
 
-  /// Handle a long poll request from `subscriber_id`.
-  ///
-  /// TODO(sang): Currently, we need to pass the callback for connection because we are
-  /// using long polling internally. This should be changed once the bidirectional grpc
-  /// streaming is supported.
   void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                            rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Register the subscription.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id that the subscriber is subscribing to.
-  /// \return True if the registration is new. False otherwise.
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
                             const std::optional<std::string> &key_id) override;
 
-  /// Publish the given object id to subscribers.
-  ///
-  /// \param pub_message The message to publish.
-  /// Required to contain channel_type and key_id fields.
   void Publish(rpc::PubMessage pub_message) override;
 
-  /// Publish to the subscriber that the given key id is not available anymore.
-  /// It will invoke the failure callback on the subscriber side.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param key_id The message id to publish.
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override;
 
-  /// Unregister subscription. It means the given object id won't be published to the
-  /// subscriber anymore.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id of the subscriber.
-  /// \return True if erased. False otherwise.
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const SubscriberID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
@@ -424,6 +406,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
+  friend class FakePublisher;
 
   /// Testing only.
   Publisher() : publish_batch_size_(-1) {}

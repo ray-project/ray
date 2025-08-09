@@ -244,15 +244,15 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
-                            const std::optional<std::string> &key_id_binary) {
+                            const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) {}
+                      const std::string &key_id_binary) override {}
 
-  void Publish(rpc::PubMessage pub_message) {
+  void Publish(rpc::PubMessage pub_message) override {
     if (pub_message.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
       // TODO(swang): Test object locations pubsub too.
       return;
@@ -273,9 +273,13 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const pubsub::SubscriberID &subscriber_id,
-                              const std::optional<std::string> &key_id_binary) {
+                              const std::optional<std::string> &key_id_binary) override {
     return true;
   }
+
+  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+                           rpc::PubsubLongPollingReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {}
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
