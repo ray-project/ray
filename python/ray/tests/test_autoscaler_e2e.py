@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     get_metric_check_condition,
     MetricSamplePattern,
@@ -161,7 +162,7 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
 def test_metrics(local_autoscaling_cluster, shutdown_only):
 
     info = ray.init(address="auto")
-    autoscaler_export_addr = "{}:{}".format(
+    autoscaler_export_addr = build_address(
         info.address_info["node_ip_address"], AUTOSCALER_METRIC_PORT
     )
 
