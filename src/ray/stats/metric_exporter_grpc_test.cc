@@ -57,6 +57,9 @@ class MockMetricsAgentClient : public rpc::MetricsAgentClient {
     callback(Status::OK(), {});
   }
 
+  void HealthCheck(const rpc::HealthCheckRequest &request,
+                   const rpc::ClientCallback<rpc::HealthCheckReply> &callback) override {}
+
   const std::vector<rpc::ReportOCMetricsRequest> &CollectedReportOCMetricsRequests()
       const {
     return reportOCMetricsRequests_;

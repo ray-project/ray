@@ -83,15 +83,12 @@ static inline void Init(
   StatsConfig::instance().SetHarvestInterval(
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
-  // Register the metric recorder.
-  if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        BuildAddress("127.0.0.1", metrics_agent_port),
-        std::chrono::milliseconds(
-            absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-        std::chrono::milliseconds(
-            absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
-  } else {
+  // Establish the connection to the metrics agent. Note that we only do this here for
+  // the legacy OpenCensus backend since for OpenCensus this needs to be a part of the
+  // overall initialization. However, having this as part of the initialization causes
+  // metrics to be dropped if the metrics agent is not running yet. For OpenTelemetry,
+  // we do it separately only after the metrics agent is running.
+  if (!RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
     metrics_io_service_pool = std::make_shared<IOServicePool>(1);
     metrics_io_service_pool->Run();
     instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
@@ -113,6 +110,18 @@ static inline void Init(
     f();
   }
   StatsConfig::instance().SetIsInitialized(true);
+}
+
+static inline void InitOpenTelemetryMetricAgent(const int metrics_agent_port) {
+  if (!RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    return;
+  }
+  OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
+      std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+      std::chrono::milliseconds(
+          absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
+      std::chrono::milliseconds(
+          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
 }
 
 /// Shutdown the initialized stats library.
