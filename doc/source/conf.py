@@ -36,6 +36,10 @@ assert not os.path.exists("../../python/ray/_raylet.so"), (
     "_raylet.so should not be imported for the purpose for doc build, "
     "please rename the file to _raylet.so.bak and try again."
 )
+assert not os.path.exists("../../python/ray/_network_utils.so"), (
+    "_network_utils.so should not be imported for the purpose for doc build, "
+    "please rename the file to _network_utils.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -667,6 +671,7 @@ autodoc_mock_imports = [
     "vllm",
     # Internal compiled modules
     "ray._raylet",
+    "ray._network_utils",
     "ray.core.generated",
     "ray.serve.generated",
 ]
