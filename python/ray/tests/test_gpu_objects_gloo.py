@@ -203,6 +203,20 @@ def test_p2p(ray_start_regular):
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
 
 
+def test_p2p_with_cpu_data(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    sender = actors[0]
+    receiver = actors[1]
+
+    cpu_data = 123
+    ref = sender.echo.remote(cpu_data)
+    result = receiver.double.remote(ref)
+    assert ray.get(result) == cpu_data * 2
+
+
 def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
