@@ -490,7 +490,7 @@ class TestHuaweiNpuProvider(unittest.TestCase):
         mock_pynpudcmi.dcmi_init.assert_called_once()
 
     @patch("ray._private.thirdparty.pynpudcmi", create=True)
-    def test_is_available_success(self, mock_pynpudcmi):
+    def test_initialize_success(self, mock_pynpudcmi):
         """Test successful initialization."""
         mock_pynpudcmi.dcmi_init.return_value = 0
 
