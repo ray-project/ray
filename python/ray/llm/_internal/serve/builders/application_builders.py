@@ -28,7 +28,7 @@ def build_llm_deployment(
 ) -> Application:
     dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
     if dp_size == 1:
-        name_prefix = name_prefix or "LLMDeployment"
+        name_prefix = name_prefix or "LLMDeployment:"
         deployment_kwargs = deployment_kwargs or {}
 
         deployment_options = llm_config.get_serve_options(
@@ -40,10 +40,10 @@ def build_llm_deployment(
 
     # Build data parallel LLM deployment.
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
-    name_prefix = name_prefix or "DPLLMDeployment"
+    name_prefix = name_prefix or "DPLLMDeployment:"
     name = name_prefix + llm_config._get_deployment_name()
     # TODO(rui): support data_parallel_backend=ray and unify
-    # deployment_options handling with LLMDeployment
+    # deployment_options handling with LLMDeployment.
     deployment_options = {
         "name": name,
         "num_replicas": dp_size,

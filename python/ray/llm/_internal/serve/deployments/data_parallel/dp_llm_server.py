@@ -39,11 +39,11 @@ class DPLLMServer(LLMServer):
 
         await super().__init__(llm_config)
 
-    async def _start_engine(self):
-        if self.engine is None:
-            raise ValueError("Engine is not set")
-
-        await self.engine.start()
+    def _push_telemetry_report(self):
+        # Only push telemetry report for the first DP replica.
+        if self.dp_rank == 0:
+            # TODO(rui): refine the telemetry report for DP deployment.
+            super()._push_telemetry_report()
 
     @classmethod
     def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
