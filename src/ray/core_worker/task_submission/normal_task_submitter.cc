@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <string>

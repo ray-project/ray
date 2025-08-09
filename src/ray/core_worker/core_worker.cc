@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/core_worker.h"
 
-#include <algorithm>
 #include <future>
 #include <memory>
 #include <string>
