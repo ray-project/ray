@@ -102,8 +102,6 @@ class AutoscalingContext:
     raw_metrics: Dict[str, Dict[ReplicaID, List[float]]] = None
 
     # Capacity and bounds
-    min_replicas: int = None
-    max_replicas: int = None
     capacity_adjusted_min_replicas: int = None
     capacity_adjusted_max_replicas: int = None
 
@@ -319,8 +317,6 @@ class AutoscalingState:
             target_num_replicas=curr_target_num_replicas,
             running_replicas=self._running_replicas,
             total_num_requests=self.get_total_num_requests(),
-            min_replicas=self._config.min_replicas,
-            max_replicas=self._config.max_replicas,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
             policy_state=self._policy_state,
