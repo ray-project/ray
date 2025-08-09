@@ -211,12 +211,16 @@ class MetricsLogger:
             return tree.map_structure(
                 # If the Stats object has a reduce method, we need to convert the list to a single value
                 lambda s: (
-                    s.peek(compile=compile)
-                    if s._reduce_method is not None
-                    else s.peek(compile=compile)[0]
-                )
-                if isinstance(s, Stats)
-                else s,
+                    (
+                        s.peek(compile=compile)
+                        if s._reduce_method is not None
+                        else (
+                            float("nan") if len(s) == 0 else s.peek(compile=compile)[0]
+                        )
+                    )
+                    if isinstance(s, Stats)
+                    else s
+                ),
                 stats.copy(),
             )
 
