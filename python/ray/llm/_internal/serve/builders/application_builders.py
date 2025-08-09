@@ -38,6 +38,7 @@ def build_llm_deployment(
             llm_config=llm_config, **deployment_kwargs
         )
 
+    # Build data parallel LLM deployment.
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
     name_prefix = name_prefix or "DPLLMDeployment"
     name = name_prefix + llm_config._get_deployment_name()

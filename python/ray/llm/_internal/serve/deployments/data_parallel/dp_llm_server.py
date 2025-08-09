@@ -9,6 +9,16 @@ logger = logging.getLogger(__name__)
 
 
 class DPLLMServer(LLMServer):
+    """
+    Data Parallel LLM Server.
+
+    This class is used to serve data parallel attention (DP Attention)
+    deployment paradigm, where the attention layers are replicated and
+    the MoE layers are sharded. DP Attention is typically used for models
+    like DeepSeek-V3.
+
+    """
+
     async def __init__(self, llm_config: LLMConfig, dp_rank_assigner: DeploymentHandle):
 
         # in DP case, in here, we wait to get all replica names.
