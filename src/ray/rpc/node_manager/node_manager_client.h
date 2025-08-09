@@ -51,6 +51,9 @@ class NodeManagerClient {
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  /// \param[in] raylet_unavailable_timeout_callback The callback function that is used
+  /// by the retryable grpc to remove unresponsive raylet connections from the pool once
+  /// its been unavailable for more than server_unavailable_timeout_seconds.
   NodeManagerClient(const rpc::Address &address,
                     ClientCallManager &client_call_manager,
                     std::function<void()> raylet_unavailable_timeout_callback)

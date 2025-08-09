@@ -248,8 +248,8 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     address.set_raylet_id(node_info->node_id());
     address.set_ip_address(node_info->node_manager_address());
     address.set_port(node_info->node_manager_port());
-    auto lease_client = GetOrConnectLeaseClient(address);
-    lease_client->CancelWorkerLease(
+    auto raylet_client = GetOrConnectRayletClient(address);
+    raylet_client->CancelWorkerLease(
         task_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
   }
 }
@@ -290,7 +290,7 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
     address.set_raylet_id(alive_node.second->node_id());
     address.set_ip_address(alive_node.second->node_manager_address());
     address.set_port(alive_node.second->node_manager_port());
-    auto lease_client = GetOrConnectLeaseClient(address);
+    auto raylet_client = GetOrConnectRayletClient(address);
     auto release_unused_workers_callback =
         [this, node_id](const Status &status,
                         const rpc::ReleaseUnusedActorWorkersReply &reply) {
@@ -302,8 +302,8 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    lease_client->ReleaseUnusedActorWorkers(workers_in_use,
-                                            release_unused_workers_callback);
+    raylet_client->ReleaseUnusedActorWorkers(workers_in_use,
+                                             release_unused_workers_callback);
   }
 }
 
@@ -326,10 +326,10 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  auto lease_client = GetOrConnectLeaseClient(remote_address);
+  auto raylet_client = GetOrConnectRayletClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
-  lease_client->RequestWorkerLease(
+  raylet_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification().GetMessage(),
       actor->GetGrantOrReject(),
       [this, actor, node](const Status &status,
@@ -530,7 +530,7 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
   }
 }
 
-std::shared_ptr<RayletClientInterface> GcsActorScheduler::GetOrConnectLeaseClient(
+std::shared_ptr<RayletClientInterface> GcsActorScheduler::GetOrConnectRayletClient(
     const rpc::Address &raylet_address) {
   return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
