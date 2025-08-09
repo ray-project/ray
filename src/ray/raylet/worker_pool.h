@@ -51,24 +51,23 @@ using WorkerCommandMap =
 
 enum PopWorkerStatus {
   // OK.
-  // A registered worker will be returned with callback.
   OK = 0,
   // Job config is not found.
-  // A nullptr worker will be returned with callback.
   JobConfigMissing = 1,
   // Worker process startup rate is limited.
-  // A nullptr worker will be returned with callback.
   TooManyStartingWorkerProcesses = 2,
   // Worker process has been started, but the worker did not register at the raylet within
   // the timeout.
-  // A nullptr worker will be returned with callback.
   WorkerPendingRegistration = 3,
   // Any fails of runtime env creation.
-  // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
   // The task's job has finished.
-  // A nullptr worker will be returned with callback.
   JobFinished = 5,
+  // The worker process failed to launch because the OS returned an `E2BIG`
+  // (Argument list too long) error. This typically occurs when a `runtime_env`
+  // is so large that its serialized context exceeds the kernel's command-line
+  // argument size limit.
+  ArgumentListTooLong = 6,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
@@ -594,7 +593,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// the environment variables of the parent process.
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env);
+                               const ProcessEnvironment &env,
+                               std::error_code &ec);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -602,7 +602,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// Make this synchronized function for unit test.
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
-                                 PopWorkerStatus status);
+                                 PopWorkerStatus status,
+                                 const std::string &runtime_env_setup_error_message);
 
   /// Look up worker's dynamic options by startup token.
   /// TODO(scv119): replace dynamic options by runtime_env.
@@ -769,9 +770,11 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  virtual void PopWorkerCallbackAsync(PopWorkerCallback callback,
-                                      std::shared_ptr<WorkerInterface> worker,
-                                      PopWorkerStatus status);
+  virtual void PopWorkerCallbackAsync(
+      PopWorkerCallback callback,
+      std::shared_ptr<WorkerInterface> worker,
+      PopWorkerStatus status,
+      const std::string &runtime_env_setup_error_message = "");
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.
