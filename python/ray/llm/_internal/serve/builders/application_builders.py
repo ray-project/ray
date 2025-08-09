@@ -39,7 +39,10 @@ def build_llm_deployment(
         )
 
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
-    return DPLLMServer.as_deployment(num_replicas=dp_size).bind(
+    deployment_options = {
+        "num_replicas": dp_size,
+    }
+    return DPLLMServer.as_deployment(deployment_options).bind(
         llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
     )
 

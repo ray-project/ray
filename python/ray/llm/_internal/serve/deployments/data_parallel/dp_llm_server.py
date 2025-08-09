@@ -36,5 +36,5 @@ class DPLLMServer(LLMServer):
         await self.engine.start()
 
     @classmethod
-    def as_deployment(cls, num_replicas: int) -> serve.Deployment:
-        return serve.deployment(cls).options(num_replicas=num_replicas)
+    def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
+        return serve.deployment(cls).options(**deployment_options)

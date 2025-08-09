@@ -12,6 +12,10 @@ class DPRankAssigner:
 
     async def register(self, replica_ctx: "serve.context.ReplicaContext"):
         async with self.lock:
+            if self.next_rank >= self.dp_size:
+                raise ValueError(
+                    f"Attempted to assign rank {self.next_rank} but dp_size is {self.dp_size}"
+                )
             rank = self.next_rank
             self.next_rank += 1
             return rank
