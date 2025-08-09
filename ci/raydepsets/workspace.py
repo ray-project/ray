@@ -1,7 +1,8 @@
-import yaml
+import os
 from dataclasses import dataclass, field
 from typing import List, Optional
-import os
+
+import yaml
 
 
 @dataclass
