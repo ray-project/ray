@@ -353,6 +353,14 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     return _build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
+def build_dp_openai_app(dp_serving_args: dict) -> "Application":
+    from ray.llm._internal.serve.deployments.data_parallel.dp_app import (
+        build_dp_openai_app as _build_dp_openai_app,
+    )
+
+    return _build_dp_openai_app(dp_serving_args=dp_serving_args)
+
+
 __all__ = [
     "LLMConfig",
     "LLMServingArgs",
