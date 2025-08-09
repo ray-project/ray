@@ -5,12 +5,9 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.serve.handle import DeploymentHandle
 
-DP_SIZE = 2
-
 logger = logging.getLogger(__name__)
 
 
-@serve.deployment(num_replicas=DP_SIZE)
 class DPLLMServer(LLMServer):
     async def __init__(self, llm_config: LLMConfig, dp_rank_assigner: DeploymentHandle):
 
@@ -37,3 +34,7 @@ class DPLLMServer(LLMServer):
             raise ValueError("Engine is not set")
 
         await self.engine.start()
+
+    @classmethod
+    def as_deployment(cls, num_replicas: int) -> serve.Deployment:
+        return serve.deployment(cls).options(num_replicas=num_replicas)
