@@ -31,7 +31,6 @@ from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 
-
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 
 
@@ -48,6 +47,7 @@ _with_aggregator_port = pytest.mark.parametrize(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": False,
             },
         },
     ],
@@ -135,6 +135,7 @@ def test_aggregator_agent_receive_publish_events_normally(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": False,
             },
         },
     ],
@@ -250,6 +251,7 @@ def test_aggregator_agent_receive_multiple_events(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": False,
             },
         },
     ],
@@ -385,6 +387,7 @@ def test_aggregator_agent_profile_events_not_exposed(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": False,
             },
         },
     ],
