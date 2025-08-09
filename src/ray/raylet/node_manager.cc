@@ -146,7 +146,6 @@ NodeManager::NodeManager(
       store_client_(store_client),
       mutable_object_provider_(std::move(mutable_object_provider)),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
-      report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
       dependency_manager_(dependency_manager),
       wait_manager_(/*is_object_local*/

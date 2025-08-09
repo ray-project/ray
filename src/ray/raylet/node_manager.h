@@ -96,8 +96,6 @@ struct NodeManagerConfig {
   std::string dashboard_agent_command;
   /// The command used to start the runtime env agent. Must not be empty.
   std::string runtime_env_agent_command;
-  /// The time between reports resources in milliseconds.
-  uint64_t report_resources_period_ms;
   /// The store socket name.
   std::string store_socket_name;
   /// The path of this ray log dir.
@@ -758,8 +756,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       mutable_object_provider_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
-  /// The period used for the resources report timer.
-  uint64_t report_resources_period_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;
