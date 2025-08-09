@@ -68,11 +68,7 @@ def test_build_anyscale_custom_byod_image() -> None:
             name="name",
             cluster={"byod": {"post_build_script": "foo.sh"}},
         )
-        build_anyscale_custom_byod_image(
-            test.get_anyscale_byod_image(),
-            test.get_anyscale_base_byod_image(),
-            test.get_byod_post_build_script(),
-        )
+        build_anyscale_custom_byod_image(test)
         assert "docker build --build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
         "amazonaws.com/anyscale/ray:abc123-py37 -t 029272617770.dkr.ecr.us-west-2."
         "amazonaws.com/anyscale/ray:abc123-py37-c3fc5fc6d84cea4d7ab885c6cdc966542e"
