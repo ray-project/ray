@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/sequential_actor_submit_queue.h"
+#include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
 
 #include <utility>
 #include <vector>
