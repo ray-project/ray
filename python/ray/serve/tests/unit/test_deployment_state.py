@@ -235,7 +235,12 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
         )
 
-    def reconfigure(self, version: DeploymentVersion):
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
         self.version = version

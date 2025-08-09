@@ -400,6 +400,9 @@ class ReplicaBase(ABC):
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
         self._user_callable_asgi_app: Optional[ASGIApp] = None
 
+        self._rank: Optional[int] = None
+        self._world_size: Optional[int] = None
+
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
@@ -435,6 +438,8 @@ class ReplicaBase(ABC):
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=self._rank,
+            world_size=self._world_size,
         )
 
     def _configure_logger_and_profilers(
@@ -751,7 +756,12 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(
+        self,
+        deployment_config: DeploymentConfig,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -760,6 +770,13 @@ class ReplicaBase(ABC):
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
             )
+
+            # Update rank and world_size if provided
+            if rank is not None:
+                self._rank = rank
+            if world_size is not None:
+                self._world_size = world_size
+
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
                 self._version, deployment_config
@@ -780,7 +797,7 @@ class ReplicaBase(ABC):
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config.
+            # deployment_config and rank/world_size.
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable
             )
@@ -1041,8 +1058,15 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config)
+    async def reconfigure(
+        self,
+        deployment_config,
+        rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+    ) -> ReplicaMetadata:
+        await self._replica_impl.reconfigure(
+            deployment_config, rank=rank, world_size=world_size
+        )
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(

@@ -1715,7 +1715,6 @@ python/ray/serve/_private/utils.py
 python/ray/serve/api.py
     DOC101: Function `start`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
-    DOC201: Function `get_replica_context` does not have a return section in docstring
     DOC201: Function `ingress` does not have a return section in docstring
     DOC101: Function `run_many`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `run_many`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_local_testing_mode: bool].
