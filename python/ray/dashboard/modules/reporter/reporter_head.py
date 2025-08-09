@@ -422,9 +422,7 @@ class ReportHead(SubprocessModule):
         if not node_id_hex:
             raise ValueError("node_id is required")
 
-        addrs = await self._get_stub_address_by_node_id(
-            NodeID.from_hex(node_id_hex)
-        )
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
                 text=f"Failed to get agent address for node at node_id {node_id_hex}, pid {pid}"
@@ -470,9 +468,7 @@ class ReportHead(SubprocessModule):
         if not node_id_hex:
             raise ValueError("node_id is required")
 
-        addrs = await self._get_stub_address_by_node_id(
-            NodeID.from_hex(node_id_hex)
-        )
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
                 text=f"Failed to get agent address for node at node_id {node_id_hex}, pid {pid}"
@@ -544,9 +540,7 @@ class ReportHead(SubprocessModule):
         if not node_id_hex:
             raise ValueError("node_id is required")
 
-        addrs = await self._get_stub_address_by_node_id(
-            NodeID.from_hex(node_id_hex)
-        )
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
                 text=f"Failed to get agent address for node at node_id {node_id_hex}, pid {pid}"
@@ -647,11 +641,9 @@ class ReportHead(SubprocessModule):
                 raise aiohttp.web.HTTPInternalServerError(text=str(e))
         else:
             pid = int(req.query["pid"])
-        
+
         node_id_hex = req.query.get("node_id")
-        addrs = await self._get_stub_address_by_node_id(
-            NodeID.from_hex(node_id_hex)
-        )
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             return aiohttp.web.HTTPInternalServerError(
                 text=f"Failed to execute: no agent address found for node {node_id_hex}"
