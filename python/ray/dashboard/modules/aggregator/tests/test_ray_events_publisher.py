@@ -46,9 +46,6 @@ def base_kwargs():
         "initial_backoff": 0.01,
         "max_backoff": 0.1,
         "jitter_ratio": 0.1,
-        "on_published": Mock(),
-        "on_failed": Mock(),
-        "on_queue_dropped": Mock(),
     }
 
 
@@ -70,7 +67,8 @@ class TestRayEventsPublisherBase:
         # Add one more - should drop oldest
         result = mock_publisher.enqueue("new_item")
         assert result is True
-        base_kwargs["on_queue_dropped"].assert_called_once_with(1)  # item_size = 1
+        stats = mock_publisher.get_and_reset_stats()
+        assert stats["queue_dropped"] == 1  # item_size = 1
 
     def test_start_and_stop_workers(self, mock_publisher, base_kwargs):
         """Test that start and stop work."""
@@ -96,7 +94,9 @@ class TestRayEventsPublisherBase:
         mock_publisher._publish_with_retries("test_item")
 
         assert mock_publisher._publish.call_count == 2
-        base_kwargs["on_published"].assert_called_once_with(1, 0)
+        stats = mock_publisher.get_and_reset_stats()
+        assert stats["published"] == 1
+        assert stats["failed"] == 0
 
     def test_publish_with_retries_max_retries_exceeded(
         self, mock_publisher, base_kwargs
@@ -107,7 +107,8 @@ class TestRayEventsPublisherBase:
 
         # Should try max_retries + 1 times (initial + 2 retries)
         assert len(mock_publisher.publish_calls) == 3
-        base_kwargs["on_failed"].assert_called_once_with(1)  # item_size = 1
+        stats = mock_publisher.get_and_reset_stats()
+        assert stats["failed"] == 1  # item_size = 1
 
 
 class TestGCSPublisher:
@@ -132,7 +133,9 @@ class TestGCSPublisher:
         gcs_publisher.enqueue(([], None))
         base_kwargs["stop_event"].set()
         gcs_publisher.join()
-        base_kwargs["on_published"].assert_called_with(0, 0)
+        stats = gcs_publisher.get_and_reset_stats()
+        assert stats["published"] == 0
+        assert stats["failed"] == 0
         gcs_stub.AddEvents.assert_not_called()
 
     @patch.object(GCSPublisher, "_create_ray_events_data")
@@ -160,10 +163,12 @@ class TestGCSPublisher:
 
         gcs_stub.AddEvents.assert_called_once()
         mock_create_data.assert_called_once_with(events, None)
-        base_kwargs["on_published"].assert_called_with(2, 0)
+        stats = gcs_publisher.get_and_reset_stats()
+        assert stats["published"] == 2
+        assert stats["failed"] == 0
 
     def test_publish_gcs_error_via_worker(self, gcs_publisher, base_kwargs, gcs_stub):
-        """Test GCS error response through the worker with retries then failure callback."""
+        """Test GCS error response through the worker with retries then failure stat."""
         mock_response = Mock()
         mock_response.status.code = 1
         mock_response.status.message = "Error"
@@ -175,10 +180,11 @@ class TestGCSPublisher:
         base_kwargs["stop_event"].set()
         gcs_publisher.join()
 
-        base_kwargs["on_failed"].assert_called_once_with(len(events))
+        stats = gcs_publisher.get_and_reset_stats()
+        assert stats["failed"] == len(events)
 
     def test_publish_exception_via_worker(self, gcs_publisher, base_kwargs, gcs_stub):
-        """Test exception during publishing through the worker triggers failure callback."""
+        """Test exception during publishing through the worker triggers failure stat."""
         gcs_stub.AddEvents.side_effect = Exception("Network error")
 
         events = [Mock(spec=events_base_event_pb2.RayEvent)]
@@ -187,7 +193,8 @@ class TestGCSPublisher:
         base_kwargs["stop_event"].set()
         gcs_publisher.join()
 
-        base_kwargs["on_failed"].assert_called_once_with(len(events))
+        stats = gcs_publisher.get_and_reset_stats()
+        assert stats["failed"] == len(events)
 
 
 class TestExternalPublisher:
@@ -202,7 +209,7 @@ class TestExternalPublisher:
         ext_kwargs.update(
             {
                 "endpoint": "http://example.com/events",
-                "can_expose_fn": lambda x: True,  # Allow all events
+                "events_filter_fn": lambda x: True,  # Allow all events
                 "timeout": 5.0,
             }
         )
@@ -227,7 +234,9 @@ class TestExternalPublisher:
         external_publisher.enqueue([])
         base_kwargs["stop_event"].set()
         external_publisher.join()
-        base_kwargs["on_published"].assert_called_with(0, 0)
+        stats = external_publisher.get_and_reset_stats()
+        assert stats["published"] == 0
+        assert stats["failed"] == 0
         http_session.post.assert_not_called()
 
     def test_publish_all_filtered_out_via_worker(self, base_kwargs):
@@ -238,7 +247,7 @@ class TestExternalPublisher:
             {
                 "http_session": Mock(),
                 "endpoint": "http://example.com/events",
-                "can_expose_fn": lambda x: False,  # Filter out all events
+                "events_filter_fn": lambda x: False,  # Filter out all events
                 "timeout": 5.0,
             }
         )
@@ -250,7 +259,9 @@ class TestExternalPublisher:
         base_kwargs["stop_event"].set()
         publisher.join()
 
-        base_kwargs["on_published"].assert_called_with(0, 2)
+        stats = publisher.get_and_reset_stats()
+        assert stats["published"] == 0
+        assert stats["filtered_out"] == 2
         kwargs["http_session"].post.assert_not_called()
 
     @patch("json.loads")
@@ -279,7 +290,9 @@ class TestExternalPublisher:
             json=[{"event": "data"}, {"event": "data"}],
             timeout=5.0,
         )
-        base_kwargs["on_published"].assert_called_with(2, 0)
+        stats = external_publisher.get_and_reset_stats()
+        assert stats["published"] == 2
+        assert stats["filtered_out"] == 0
 
     @patch("json.loads")
     @patch("ray.dashboard.modules.aggregator.ray_events_publisher.MessageToJson")
@@ -291,7 +304,7 @@ class TestExternalPublisher:
         http_session,
         base_kwargs,
     ):
-        """Test HTTP error during publishing through the worker triggers failure callback."""
+        """Test HTTP error during publishing through the worker triggers failure stat."""
         mock_msg_to_json.return_value = '{"event": "data"}'
         mock_json_loads.return_value = {"event": "data"}
         http_session.post.side_effect = Exception("HTTP error")
@@ -302,7 +315,8 @@ class TestExternalPublisher:
         base_kwargs["stop_event"].set()
         external_publisher.join()
 
-        base_kwargs["on_failed"].assert_called_once_with(len(events))
+        stats = external_publisher.get_and_reset_stats()
+        assert stats["failed"] == len(events)
 
 
 class TestNoopPublisher:
@@ -318,7 +332,14 @@ class TestNoopPublisher:
 
         # These should return expected values
         assert publisher.has_capacity() is True
-        assert publisher.enqueue("anything") is True
+        publisher.enqueue("anything")
+        stats = publisher.get_and_reset_stats()
+        assert stats == {
+            "published": 0,
+            "filtered_out": 0,
+            "failed": 0,
+            "queue_dropped": 0,
+        }
 
 
 if __name__ == "__main__":

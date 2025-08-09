@@ -96,13 +96,13 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 )
 # Destination publisher queues and retry controls
 PUBLISH_DEST_QUEUE_MAX_SIZE = ray_constants.env_integer(
-    f"{env_var_prefix}_PUBLISH_DEST_QUEUE_MAX_SIZE", 10000
+    f"{env_var_prefix}_PUBLISH_DEST_QUEUE_MAX_SIZE", 100
 )
 PUBLISH_MAX_RETRIES = ray_constants.env_integer(
     f"{env_var_prefix}_PUBLISH_MAX_RETRIES", 5
 )
 PUBLISH_INITIAL_BACKOFF_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_PUBLISH_INITIAL_BACKOFF_SECONDS", 0.5
+    f"{env_var_prefix}_PUBLISH_INITIAL_BACKOFF_SECONDS", 0.01
 )
 PUBLISH_MAX_BACKOFF_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_PUBLISH_MAX_BACKOFF_SECONDS", 5.0
@@ -234,13 +234,6 @@ class AggregatorAgent(
         self._events_received_since_last_metrics_update = 0
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-        self._events_published_since_last_metrics_update = 0
-        self._events_filtered_out_since_last_metrics_update = 0
-        self._events_published_to_gcs_since_last_metrics_update = 0
-        self._events_failed_to_publish_to_gcs_since_last_metrics_update = 0
-        self._events_failed_to_publish_to_external_since_last_metrics_update = 0
-        self._events_dropped_in_gcs_publish_queue_since_last_metrics_update = 0
-        self._events_dropped_in_external_publish_queue_since_last_metrics_update = 0
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -268,9 +261,6 @@ class AggregatorAgent(
                 initial_backoff=PUBLISH_INITIAL_BACKOFF_SECONDS,
                 max_backoff=PUBLISH_MAX_BACKOFF_SECONDS,
                 jitter_ratio=PUBLISH_JITTER_RATIO,
-                on_published=self._on_gcs_published,
-                on_failed=self._on_gcs_failed,
-                on_queue_dropped=self._on_gcs_queue_dropped,
             )
         else:
             self._gcs_publisher = NoopPublisher()
@@ -278,7 +268,7 @@ class AggregatorAgent(
         self._external_publisher = ExternalPublisher(
             http_session=self._http_session,
             endpoint=endpoint,
-            can_expose_fn=self._can_expose_event,
+            events_filter_fn=self._can_expose_event,
             timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
             queue_max_size=PUBLISH_DEST_QUEUE_MAX_SIZE,
             num_workers=EXTERNAL_PUBLISHER_NUM_WORKERS,
@@ -288,9 +278,6 @@ class AggregatorAgent(
             initial_backoff=PUBLISH_INITIAL_BACKOFF_SECONDS,
             max_backoff=PUBLISH_MAX_BACKOFF_SECONDS,
             jitter_ratio=PUBLISH_JITTER_RATIO,
-            on_published=self._on_external_published,
-            on_failed=self._on_external_failed,
-            on_queue_dropped=self._on_external_queue_dropped,
         )
 
     async def AddEvents(self, request, context) -> None:
@@ -421,46 +408,16 @@ class AggregatorAgent(
         # On exit (stop), drain remaining buffer into publishers
         self._drain_event_buffer_to_publishers()
 
-    # Callbacks from publishers for metrics update
-    def _on_gcs_published(self, published_count: int, filtered_count: int) -> None:
-        with self._lock:
-            self._events_published_to_gcs_since_last_metrics_update += published_count
-
-    def _on_external_published(self, published_count: int, filtered_count: int) -> None:
-        with self._lock:
-            self._events_published_since_last_metrics_update += published_count
-            self._events_filtered_out_since_last_metrics_update += filtered_count
-
-    def _on_gcs_failed(self, fail_count: int) -> None:
-        with self._lock:
-            self._events_failed_to_publish_to_gcs_since_last_metrics_update += (
-                fail_count
-            )
-
-    def _on_external_failed(self, fail_count: int) -> None:
-        with self._lock:
-            self._events_failed_to_publish_to_external_since_last_metrics_update += (
-                fail_count
-            )
-
-    def _on_gcs_queue_dropped(self, drop_count: int) -> None:
-        with self._lock:
-            self._events_dropped_in_gcs_publish_queue_since_last_metrics_update += (
-                drop_count
-            )
-
-    def _on_external_queue_dropped(self, drop_count: int) -> None:
-        with self._lock:
-            self._events_dropped_in_external_publish_queue_since_last_metrics_update += (
-                drop_count
-            )
-
     def _update_metrics(self) -> None:
         """
         Updates the Prometheus metrics
         """
         if not prometheus_client:
             return
+
+        # Pull publisher stats without holding the aggregator lock to avoid blocking
+        gcs_stats = self._gcs_publisher.get_and_reset_stats()
+        external_stats = self._external_publisher.get_and_reset_stats()
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
@@ -470,34 +427,23 @@ class AggregatorAgent(
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
-            _events_published = self._events_published_since_last_metrics_update
-            _events_filtered_out = self._events_filtered_out_since_last_metrics_update
-            _events_published_to_gcs = (
-                self._events_published_to_gcs_since_last_metrics_update
-            )
-            _events_failed_to_publish_to_gcs = (
-                self._events_failed_to_publish_to_gcs_since_last_metrics_update
-            )
-            _events_failed_to_publish_to_external = (
-                self._events_failed_to_publish_to_external_since_last_metrics_update
-            )
-            _events_dropped_in_gcs_publish_queue = (
-                self._events_dropped_in_gcs_publish_queue_since_last_metrics_update
-            )
-            _events_dropped_in_external_publish_queue = (
-                self._events_dropped_in_external_publish_queue_since_last_metrics_update
+
+            # Publisher stats
+            _events_published_to_gcs = gcs_stats.get("published", 0)
+            _events_failed_to_publish_to_gcs = gcs_stats.get("failed", 0)
+            _events_dropped_in_gcs_publish_queue = gcs_stats.get("queue_dropped", 0)
+
+            _events_published = external_stats.get("published", 0)
+            _events_filtered_out = external_stats.get("filtered_out", 0)
+            _events_failed_to_publish_to_external = external_stats.get("failed", 0)
+            _events_dropped_in_external_publish_queue = external_stats.get(
+                "queue_dropped", 0
             )
 
+            # Now reset aggregator counters
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-            self._events_published_since_last_metrics_update = 0
-            self._events_filtered_out_since_last_metrics_update = 0
-            self._events_published_to_gcs_since_last_metrics_update = 0
-            self._events_failed_to_publish_to_gcs_since_last_metrics_update = 0
-            self._events_failed_to_publish_to_external_since_last_metrics_update = 0
-            self._events_dropped_in_gcs_publish_queue_since_last_metrics_update = 0
-            self._events_dropped_in_external_publish_queue_since_last_metrics_update = 0
 
         labels = {
             "ip": self._ip,

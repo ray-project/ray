@@ -16,7 +16,7 @@ def create_test_metadata(dropped_task_ids: list = None, attempt_number=1):
     return metadata
 
 
-def _result_to_attempts_list(result):
+def result_to_attempts_list(result):
     """Normalize return value from buffer.get() to a python list of attempts."""
     if hasattr(result, "dropped_task_attempts"):
         attempts = result.dropped_task_attempts
@@ -25,7 +25,7 @@ def _result_to_attempts_list(result):
     return list(attempts)
 
 
-def _drain_all_attempts(buffer: TaskMetadataBuffer):
+def drain_all_attempts(buffer: TaskMetadataBuffer):
     """Drain the buffer completely via public API and return list of bytes task_ids.
 
     Continues calling get() until it returns an empty set of attempts.
@@ -33,7 +33,7 @@ def _drain_all_attempts(buffer: TaskMetadataBuffer):
     collected_ids = []
     while True:
         result = buffer.get()
-        attempts = _result_to_attempts_list(result)
+        attempts = result_to_attempts_list(result)
         if len(attempts) == 0:
             break
         collected_ids.extend([a.task_id for a in attempts])
@@ -59,7 +59,7 @@ class TestTaskMetadataBuffer:
 
         # Get the merged results
         result = buffer.get()
-        attempts = _result_to_attempts_list(result)
+        attempts = result_to_attempts_list(result)
 
         # Verify we have all 4 task attempts
         assert len(attempts) == 4
@@ -97,11 +97,11 @@ class TestTaskMetadataBuffer:
         assert buffer.get_and_reset_dropped_metadata_count() == 0
 
         # Drain everything and verify conservation of attempts
-        drained_ids = _drain_all_attempts(buffer)
+        drained_ids = drain_all_attempts(buffer)
         assert len(drained_ids) == num_tasks - expected_drop_attempts
 
         # Draining again should yield nothing
-        assert len(_result_to_attempts_list(buffer.get())) == 0
+        assert len(result_to_attempts_list(buffer.get())) == 0
 
 
 if __name__ == "__main__":

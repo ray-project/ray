@@ -4,7 +4,7 @@ import threading
 import queue
 import random
 import json
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Dict
 
 from google.protobuf.json_format import MessageToJson
 
@@ -34,9 +34,6 @@ class RayEventsPublisherBase(ABC):
         initial_backoff: float,
         max_backoff: float,
         jitter_ratio: float,
-        on_published: Callable[[int, int], None],
-        on_failed: Callable[[int], None],
-        on_queue_dropped: Callable[[int], None],
     ) -> None:
         """Initialize a RayEventsPublisher.
 
@@ -50,9 +47,6 @@ class RayEventsPublisherBase(ABC):
             initial_backoff: Initial backoff time between retries in seconds
             max_backoff: Maximum backoff time between retries in seconds
             jitter_ratio: Random jitter ratio to add to backoff times
-            on_published: Callback when items published successfully (published_count, filtered_count)
-            on_failed: Callback when items fail to publish (failed_count)
-            on_queue_dropped: Callback when items dropped from queue (dropped_count)
         """
         self._name = name
         self._queue: "queue.Queue" = queue.Queue(maxsize=queue_max_size)
@@ -63,10 +57,14 @@ class RayEventsPublisherBase(ABC):
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
         self._jitter_ratio = float(jitter_ratio)
-        self._on_published = on_published
-        self._on_failed = on_failed
-        self._on_queue_dropped = on_queue_dropped
         self._workers = []
+
+        # Internal metrics (since last get_and_reset_stats call)
+        self._metrics_lock = threading.Lock()
+        self._published_since_last: int = 0
+        self._filtered_out_since_last: int = 0
+        self._failed_since_last: int = 0
+        self._queue_dropped_since_last: int = 0
 
     def start(self) -> None:
         for i in range(self._num_workers):
@@ -81,26 +79,40 @@ class RayEventsPublisherBase(ABC):
     def has_capacity(self) -> bool:
         return not self._queue.full()
 
-    def enqueue(self, item) -> bool:
-        """Adds an item to the publisher's queue, dropping oldest item if full.
-
-        Returns True if item was successfully queued, False if dropped due to queue full.
-        """
+    def enqueue(self, item) -> None:
+        """Adds an item to the publisher's queue, dropping oldest item if full."""
         try:
             self._queue.put_nowait(item)
-            return True
         except queue.Full:
             # Drop oldest then try once more
             oldest = self._queue.get_nowait()
             drop_count = self._estimate_item_size(oldest)
-            self._on_queue_dropped(drop_count)
+            with self._metrics_lock:
+                self._queue_dropped_since_last += drop_count
             self._queue.put_nowait(item)
-            return True
 
     def join(self) -> None:
         """Waits for all worker threads to complete."""
         for t in self._workers:
             t.join()
+
+    def get_and_reset_stats(self) -> Dict[str, int]:
+        """Return a snapshot of internal stats since last call and reset them.
+
+        Returns a dict with keys: 'published', 'filtered_out', 'failed', 'queue_dropped'.
+        """
+        with self._metrics_lock:
+            stats = {
+                "published": self._published_since_last,
+                "filtered_out": self._filtered_out_since_last,
+                "failed": self._failed_since_last,
+                "queue_dropped": self._queue_dropped_since_last,
+            }
+            self._published_since_last = 0
+            self._filtered_out_since_last = 0
+            self._failed_since_last = 0
+            self._queue_dropped_since_last = 0
+        return stats
 
     def _worker_loop(self) -> None:
         """Main worker loop that processes items from the queue.
@@ -131,10 +143,13 @@ class RayEventsPublisherBase(ABC):
         while True:
             success, published_count, filtered_count = self._publish(item)
             if success:
-                self._on_published(published_count, filtered_count)
+                with self._metrics_lock:
+                    self._published_since_last += int(published_count)
+                    self._filtered_out_since_last += int(filtered_count)
                 return
             if attempts >= self._max_retries:
-                self._on_failed(fail_count)
+                with self._metrics_lock:
+                    self._failed_since_last += int(fail_count)
                 return
             self._sleep_with_backoff(attempts)
             attempts += 1
@@ -183,9 +198,6 @@ class GCSPublisher(RayEventsPublisherBase):
         initial_backoff: float,
         max_backoff: float,
         jitter_ratio: float,
-        on_published: Callable[[int, int], None],
-        on_failed: Callable[[int], None],
-        on_queue_dropped: Callable[[int], None],
     ) -> None:
         super().__init__(
             name="gcs",
@@ -197,9 +209,6 @@ class GCSPublisher(RayEventsPublisherBase):
             initial_backoff=initial_backoff,
             max_backoff=max_backoff,
             jitter_ratio=jitter_ratio,
-            on_published=on_published,
-            on_failed=on_failed,
-            on_queue_dropped=on_queue_dropped,
         )
         self._gcs_event_stub = gcs_event_stub
         self._timeout = timeout
@@ -263,7 +272,7 @@ class ExternalPublisher(RayEventsPublisherBase):
         *,
         http_session,
         endpoint: str,
-        can_expose_fn: Callable[[object], bool],
+        events_filter_fn: Callable[[object], bool],
         timeout: float,
         queue_max_size: int,
         num_workers: int,
@@ -273,9 +282,6 @@ class ExternalPublisher(RayEventsPublisherBase):
         initial_backoff: float,
         max_backoff: float,
         jitter_ratio: float,
-        on_published: Callable[[int, int], None],
-        on_failed: Callable[[int], None],
-        on_queue_dropped: Callable[[int], None],
     ) -> None:
         super().__init__(
             name="external",
@@ -287,13 +293,10 @@ class ExternalPublisher(RayEventsPublisherBase):
             initial_backoff=initial_backoff,
             max_backoff=max_backoff,
             jitter_ratio=jitter_ratio,
-            on_published=on_published,
-            on_failed=on_failed,
-            on_queue_dropped=on_queue_dropped,
         )
         self._http_session = http_session
         self._endpoint = endpoint
-        self._can_expose_fn = can_expose_fn
+        self._events_filter_fn = events_filter_fn
         self._timeout = timeout
 
     def _publish(self, item) -> Tuple[bool, int, int]:
@@ -301,7 +304,7 @@ class ExternalPublisher(RayEventsPublisherBase):
         events = item
         if not events:
             return True, 0, 0
-        filtered = [e for e in events if self._can_expose_fn(e)]
+        filtered = [e for e in events if self._events_filter_fn(e)]
         filtered_out = len(events) - len(filtered)
         if not filtered:
             # All filtered out -> success but nothing published
@@ -345,3 +348,6 @@ class NoopPublisher:
 
     def enqueue(self, item) -> bool:
         return True
+
+    def get_and_reset_stats(self) -> Dict[str, int]:
+        return {"published": 0, "filtered_out": 0, "failed": 0, "queue_dropped": 0}
