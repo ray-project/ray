@@ -47,7 +47,7 @@
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, SessionName)",
-        "description": "Filter queries to specific ray sessions.",
+        "description": "Filter queries to specific Ray sessions.",
         "error": null,
         "hide": 0,
         "includeAll": true,
@@ -78,7 +78,7 @@
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{SessionName=~\"$SessionName\",{global_filters}}}, instance)",
-        "description": null,
+        "description": "Filter queries to specific Ray nodes by their IP address.",
         "error": null,
         "hide": 0,
         "includeAll": true,
@@ -106,7 +106,7 @@
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
-        "description": "Filter queries to specific Ray clusters for KubeRay. When ingesting metrics across multiple ray clusters, the ray_io_cluster label should be set per cluster. For KubeRay users, this is done automaticaly with Prometheus PodMonitor.",
+        "description": "Filter queries to specific Ray clusters for KubeRay. When ingesting metrics across multiple Ray clusters, the ray_io_cluster label should be set per cluster. For KubeRay users, this is done automatically with Prometheus PodMonitor.",
         "error": null,
         "hide": 0,
         "includeAll": true,
@@ -127,6 +127,39 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "description": "Filter queries to specific Ray node types (head or worker).",
+        "includeAll": true,
+        "multi": true,
+        "name": "RayNodeType",
+        "options": [
+          {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "Head Node",
+            "value": "head"
+          },
+          {
+            "selected": false,
+            "text": "Worker Node",
+            "value": "worker"
+          }
+        ],
+        "query": "head, worker",
+        "type": "custom"
       }
     ]
   },
