@@ -12,7 +12,7 @@ from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 import ray
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
 from ray.util import log_once
 
 try:
@@ -240,7 +240,8 @@ class ResultThread(threading.Thread):
         while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
-            while True:
+            ready_id = None
+            while ready_id is None:
                 try:
                     block = len(unready) == 0
                     new_object_ref = self._new_object_refs.get(block=block)
@@ -253,9 +254,18 @@ class ResultThread(threading.Thread):
                         unready.append(new_object_ref)
                 except queue.Empty:
                     # queue.Empty means no result was retrieved if block=False.
-                    break
+                    pass
 
-            [ready_id], unready = ray.wait(unready, num_returns=1)
+                # Check if any of the available IDs are done. The timeout is required
+                # here to periodically check for new IDs from self._new_object_refs.
+                # NOTE(edoakes): the choice of a 100ms timeout here is arbitrary. Too
+                # low of a timeout would cause higher overhead from busy spinning and
+                # too high would cause higher tail latency to fetch the first result in
+                # some cases.
+                ready, unready = ray.wait(unready, num_returns=1, timeout=0.1)
+                if len(ready) > 0:
+                    ready_id = ready[0]
+
             try:
                 batch = ray.get(ready_id)
             except ray.exceptions.RayError as e:

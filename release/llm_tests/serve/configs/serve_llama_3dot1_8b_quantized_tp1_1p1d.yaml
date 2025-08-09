@@ -1,0 +1,7 @@
+applications:
+  - args:
+      prefill_config: ./configs/model_config/llama_3dot1_8b_quantized_tp1.yaml
+      decode_config: ./configs/model_config/llama_3dot1_8b_quantized_tp1.yaml
+    import_path: ray.serve.llm:build_pd_openai_app
+    name: llm-endpoint
+    route_prefix: /

@@ -8,10 +8,10 @@ import time
 import uuid
 from enum import Enum
 from functools import partial
-from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+from pydantic import BaseModel, Field, root_validator
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -21,12 +21,11 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
-    download_lora_adapter,
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
+from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +284,7 @@ class vLLMEngineWrapper:
                 guided_decoding=guided_decoding,
             )
         elif self.task_type == vLLMTaskType.EMBED:
-            params = vllm.PoolingParams()
+            params = vllm.PoolingParams(task=self.task_type.value)
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
@@ -476,7 +475,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model=self.model,
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_stats=False,
             disable_log_requests=True,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
@@ -567,6 +565,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             len(batch),
             time_taken,
         )
+
+        # Log engine stats after each batch is done conditioned on the flag
+        # passed to the engine.
+        if not self.engine_kwargs.get("disable_log_stats", False):
+            await self.llm.engine.do_log_stats()
 
     def __del__(self):
         if hasattr(self, "llm"):

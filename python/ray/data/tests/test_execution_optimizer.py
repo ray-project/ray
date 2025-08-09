@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -47,8 +49,8 @@ from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.rules.configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
+from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
@@ -59,6 +61,24 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
+
+
+def _should_skip_huggingface_test():
+    """Check if we should skip the HuggingFace test due to version incompatibility."""
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None:
+        return False
+
+    try:
+        datasets_version = __import__("datasets").__version__
+        if datasets_version is None:
+            return False
+
+        return pyarrow_version < parse_version("12.0.0") and parse_version(
+            datasets_version
+        ) >= parse_version("3.0.0")
+    except (ImportError, AttributeError):
+        return False
 
 
 def _check_valid_plan_and_result(
@@ -77,7 +97,7 @@ def _check_valid_plan_and_result(
 
 def test_read_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
-    planner = Planner()
+    planner = create_planner()
     op = get_parquet_read_logical_op()
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -104,7 +124,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
                 _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
-            return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]
+            return [ReadTask(read_fn, BlockMetadata(1, None, None, None))]
 
     with pytest.warns(UserWarning):
         ray.data.read_datasource(StubDatasource()).materialize()
@@ -113,7 +133,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
 def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
@@ -156,7 +176,7 @@ def test_from_operators(ray_start_regular_shared_2_cpus):
         FromPandas,
     ]
     for op_cls in op_classes:
-        planner = Planner()
+        planner = create_planner()
         op = op_cls([], [])
         plan = LogicalPlan(op, ctx)
         physical_op = planner.plan(plan).dag
@@ -227,7 +247,7 @@ def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
 def test_map_batches_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
         read_op,
@@ -255,7 +275,7 @@ def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
 def test_map_rows_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
         read_op,
@@ -282,7 +302,7 @@ def test_map_rows_e2e(ray_start_regular_shared_2_cpus):
 def test_filter_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
@@ -324,7 +344,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     assert isinstance(op, Project), op.name
     assert op.cols == cols
 
-    physical_plan = Planner().plan(logical_plan)
+    physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -348,7 +368,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     assert not op.cols
     assert op.cols_rename == cols_rename
 
-    physical_plan = Planner().plan(logical_plan)
+    physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -358,7 +378,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
 def test_flat_map(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
         read_op,
@@ -423,7 +443,7 @@ def test_random_sample_e2e(ray_start_regular_shared_2_cpus):
 def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
@@ -438,7 +458,7 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
+        == DataContext.get_current().target_max_block_size
     )
 
     # Check that the linked logical operator is the same the input op.
@@ -462,7 +482,7 @@ def test_random_shuffle_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_m
 def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
@@ -475,7 +495,7 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     if shuffle:
         assert (
             physical_op.actual_target_max_block_size
-            == DataContext.get_current().target_shuffle_max_block_size
+            == DataContext.get_current().target_max_block_size
         )
     else:
         assert (
@@ -543,7 +563,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     ctx = DataContext.get_current()
 
     concurrency = 2
-    planner = Planner()
+    planner = create_planner()
     datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
@@ -569,7 +589,7 @@ def test_sort_operator(
 ):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Sort(
         read_op,
@@ -584,7 +604,7 @@ def test_sort_operator(
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
+        == DataContext.get_current().target_max_block_size
     )
 
 
@@ -708,7 +728,7 @@ def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
 def test_aggregate_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Aggregate(
         read_op,
@@ -724,7 +744,7 @@ def test_aggregate_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
+        == DataContext.get_current().target_max_block_size
     )
 
     # Check that the linked logical operator is the same the input op.
@@ -778,7 +798,7 @@ def test_aggregate_validate_keys(ray_start_regular_shared_2_cpus):
 def test_zip_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
@@ -813,24 +833,6 @@ def test_zip_e2e(ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2):
     ds = ds1.zip(ds2)
     assert ds.take() == named_values(["id", "id_1"], zip(range(n), range(1, n + 1)))
     _check_usage_record(["ReadRange", "Zip"])
-
-
-def test_from_dask_e2e(ray_start_regular_shared_2_cpus):
-    import dask.dataframe as dd
-
-    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
-    ddf = dd.from_pandas(df, npartitions=10)
-    ds = ray.data.from_dask(ddf)
-    # `ds.take_all()` triggers execution with new backend, which is
-    # needed for checking operator usage below.
-    assert len(ds.take_all()) == len(df)
-    dfds = ds.to_pandas()
-    assert df.equals(dfds)
-
-    # Underlying implementation uses `FromPandas` operator
-    assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
-    _check_usage_record(["FromPandas"])
 
 
 def test_from_modin_e2e(ray_start_regular_shared_2_cpus):
@@ -955,6 +957,10 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromArrow"])
 
 
+@pytest.mark.skipif(
+    _should_skip_huggingface_test,
+    reason="Skip due to HuggingFace datasets >= 3.0.0 requiring pyarrow >= 12.0.0",
+)
 def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     import datasets
 
@@ -1052,88 +1058,399 @@ def test_from_torch_e2e(ray_start_regular_shared_2_cpus, tmp_path):
     _check_usage_record(["ReadTorch"])
 
 
-@pytest.mark.skip(
-    reason="Limit pushdown currently disabled, see "
-    "https://github.com/ray-project/ray/issues/36295"
-)
-def test_limit_pushdown(ray_start_regular_shared_2_cpus):
+def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
+    """Test limit pushdown behavior - pushes through safe operations."""
+
     def f1(x):
         return x
 
     def f2(x):
         return x
 
-    # Test basic limit pushdown past Map.
+    # Test 1: Basic Limit -> Limit fusion (should still work)
+    ds = ray.data.range(100).limit(5).limit(100)
+    _check_valid_plan_and_result(
+        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    )
+
+    ds = ray.data.range(100).limit(100).limit(5)
+    _check_valid_plan_and_result(
+        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    )
+
+    ds = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
+    _check_valid_plan_and_result(
+        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    )
+
+    # Test 2: Limit should push through MapRows operations (safe)
     ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
     _check_valid_plan_and_result(
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
-    # Test basic Limit -> Limit fusion.
-    ds2 = ray.data.range(100).limit(5).limit(100)
+    # Test 3: Limit should not push through MapBatches operations
+    ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
-        ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds,
+        "Read[ReadRange] -> MapBatches[MapBatches(f2)] -> Limit[limit=1]",
+        [{"id": 0}],
     )
 
-    ds2 = ray.data.range(100).limit(100).limit(5)
+    # Test 4: Limit should NOT push through Filter operations (conservative)
+    ds = (
+        ray.data.range(100, override_num_blocks=100)
+        .filter(lambda x: x["id"] < 50)
+        .limit(1)
+    )
     _check_valid_plan_and_result(
-        ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds, "Read[ReadRange] -> Filter[Filter(<lambda>)] -> Limit[limit=1]", [{"id": 0}]
     )
 
-    ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
+    # Test 5: Limit should push through Project operations (safe)
+    ds = ray.data.range(100, override_num_blocks=100).select_columns(["id"]).limit(5)
     _check_valid_plan_and_result(
-        ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
-    )
-
-    # Test limit pushdown and Limit -> Limit fusion together.
-    ds3 = ray.data.range(100).limit(5).map(f1).limit(100)
-    _check_valid_plan_and_result(
-        ds3,
-        "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
+        ds,
+        "Read[ReadRange] -> Limit[limit=5] -> Project[Project]",
         [{"id": i} for i in range(5)],
     )
 
-    ds3 = ray.data.range(100).limit(100).map(f1).limit(5)
+    # Test 6: Limit should stop at Sort operations (AllToAll)
+    ds = ray.data.range(100).sort("id").limit(5)
     _check_valid_plan_and_result(
-        ds3,
-        "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
-        [{"id": i} for i in range(5)],
-    )
-
-    # Test basic limit pushdown up to Sort.
-    ds4 = ray.data.range(100).sort("id").limit(5)
-    _check_valid_plan_and_result(
-        ds4,
+        ds,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]",
         [{"id": i} for i in range(5)],
     )
 
-    ds4 = ray.data.range(100).sort("id").map(f1).limit(5)
+    # Test 7: More complex interweaved case.
+    ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
     _check_valid_plan_and_result(
-        ds4,
-        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]",
-        [{"id": i} for i in range(5)],
-    )
-    # Test limit pushdown between two Map operators.
-    ds5 = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
-    # Limit operators get pushed down in the logical plan optimization,
-    # then fused together.
-    _check_valid_plan_and_result(
-        ds5,
-        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
-        [{"id": 0}],
-    )
-    # Map operators only get fused in the optimized physical plan, not the logical plan.
-    assert "Map(f1)->Map(f2)" in ds5.stats()
-
-    # More complex interweaved case.
-    ds6 = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
-    _check_valid_plan_and_result(
-        ds6,
+        ds,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
         "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
         [{"id": i} for i in range(5)],
     )
+
+    # Test 8: Test limit pushdown between two Map operators.
+    ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
+        [{"id": 0}],
+    )
+
+
+def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
+    """Test that limit pushdown produces correct results in various scenarios."""
+
+    # Test 1: Simple project + limit
+    ds = ray.data.range(100).select_columns(["id"]).limit(10)
+    result = ds.take_all()
+    expected = [{"id": i} for i in range(10)]
+    assert result == expected
+
+    # Test 2: Multiple operations + limit (with MapRows pushdown)
+    ds = (
+        ray.data.range(100)
+        .map(lambda x: {"id": x["id"], "squared": x["id"] ** 2})
+        .select_columns(["id"])
+        .limit(5)
+    )
+    result = ds.take_all()
+    expected = [{"id": i} for i in range(5)]
+    assert result == expected
+
+    # Test 3: MapRows operations should get limit pushed (safe)
+    ds = ray.data.range(100).map(lambda x: {"id": x["id"] * 2}).limit(5)
+    result = ds.take_all()
+    expected = [{"id": i * 2} for i in range(5)]
+    assert result == expected
+
+    # Test 4: MapBatches operations should not get limit pushed
+    ds = ray.data.range(100).map_batches(lambda batch: {"id": batch["id"] * 2}).limit(5)
+    result = ds.take_all()
+    expected = [{"id": i * 2} for i in range(5)]
+    assert result == expected
+
+    # Test 5: Filter operations should not get limit pushed (conservative)
+    ds = ray.data.range(100).filter(lambda x: x["id"] % 2 == 0).limit(3)
+    result = ds.take_all()
+    expected = [{"id": i} for i in [0, 2, 4]]
+    assert result == expected
+
+    # Test 6: Complex chain with both safe operations (should all get limit pushed)
+    ds = (
+        ray.data.range(100)
+        .select_columns(["id"])  # Project - could be safe if it was the immediate input
+        .map(lambda x: {"id": x["id"] + 1})  # MapRows - NOT safe, stops pushdown
+        .limit(3)
+    )
+    result = ds.take_all()
+    expected = [{"id": i + 1} for i in range(3)]
+    assert result == expected
+
+    # The plan should show all operations after the limit
+    plan_str = ds._plan._logical_plan.dag.dag_str
+    assert (
+        "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
+        == plan_str
+    )
+
+
+def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
+    """Test that limit pushdown scans fewer rows from the data source."""
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self, amount=1):
+            self.value += amount
+            return self.value
+
+        def get(self):
+            return self.value
+
+        def reset(self):
+            self.value = 0
+
+    # Create a custom datasource that tracks how many rows it produces
+    class CountingDatasource(Datasource):
+        def __init__(self):
+            self.counter = Counter.remote()
+
+        def prepare_read(self, parallelism, n_per_block=10):
+            def read_fn(block_idx):
+                # Each block produces n_per_block rows
+                ray.get(self.counter.increment.remote(n_per_block))
+                return [
+                    pd.DataFrame(
+                        {
+                            "id": range(
+                                block_idx * n_per_block, (block_idx + 1) * n_per_block
+                            )
+                        }
+                    )
+                ]
+
+            return [
+                ReadTask(
+                    lambda i=i: read_fn(i),
+                    BlockMetadata(
+                        num_rows=n_per_block,
+                        size_bytes=n_per_block * 8,  # rough estimate
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+                for i in range(parallelism)
+            ]
+
+        def get_rows_produced(self):
+            return ray.get(self.counter.get.remote())
+
+    # Test 1: Project + Limit should scan fewer rows due to pushdown
+    source = CountingDatasource()
+    ds = ray.data.read_datasource(source, override_num_blocks=20, n_per_block=10)
+    ds = ds.select_columns(["id"]).limit(5)
+    result = ds.take_all()
+
+    # Should get correct results
+    assert len(result) == 5
+    assert result == [{"id": i} for i in range(5)]
+
+    # Should have scanned significantly fewer than all 200 rows (20 blocks * 10 rows)
+    # Due to pushdown, we should scan much less
+    rows_produced_1 = source.get_rows_produced()
+    assert rows_produced_1 < 200  # Should be much less than total
+
+    # Test 2: MapRows + Limit should also scan fewer rows due to pushdown
+    source2 = CountingDatasource()
+    ds2 = ray.data.read_datasource(source2, override_num_blocks=20, n_per_block=10)
+    ds2 = ds2.map(lambda x: x).limit(5)
+    result2 = ds2.take_all()
+
+    # Should get correct results
+    assert len(result2) == 5
+    assert result2 == [{"id": i} for i in range(5)]
+
+    # Should also scan fewer than total due to pushdown
+    rows_produced_2 = source2.get_rows_produced()
+    assert rows_produced_2 < 200
+
+    # Both should be efficient with pushdown
+    assert rows_produced_1 < 100  # Should be much less than total
+    assert rows_produced_2 < 100  # Should be much less than total
+
+    # Test 3: Filter + Limit should scan fewer due to early termination, but not pushdown
+    source3 = CountingDatasource()
+    ds3 = ray.data.read_datasource(source3, override_num_blocks=20, n_per_block=10)
+    ds3 = ds3.filter(lambda x: x["id"] % 2 == 0).limit(3)
+    result3 = ds3.take_all()
+
+    # Should get correct results
+    assert len(result3) == 3
+    assert result3 == [{"id": i} for i in [0, 2, 4]]
+
+    # Should still scan fewer than total due to early termination
+    rows_produced_3 = source3.get_rows_produced()
+    assert rows_produced_3 < 200
+
+
+def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
+    """Test limit pushdown behavior with Union operations."""
+
+    # Create two datasets and union with limit
+    ds1 = ray.data.range(100, override_num_blocks=10)
+    ds2 = ray.data.range(200, override_num_blocks=10)
+    ds = ds1.union(ds2).limit(5)
+
+    expected_plan = "Read[ReadRange] -> Limit[limit=5], Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_maprows(ray_start_regular_shared_2_cpus):
+    """Limit after Union + MapRows: limit should be pushed before the MapRows
+    and inside each Union branch."""
+    ds1 = ray.data.range(100, override_num_blocks=10)
+    ds2 = ray.data.range(200, override_num_blocks=10)
+    ds = ds1.union(ds2).map(lambda x: x).limit(5)
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> "
+        "Limit[limit=5] -> MapRows[Map(<lambda>)]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
+    """Limit after Union + Sort: limit must NOT push through the Sort."""
+    ds1 = ray.data.range(100, override_num_blocks=4)
+    ds2 = ray.data.range(50, override_num_blocks=4).map(
+        lambda x: {"id": x["id"] + 1000}
+    )
+    ds = ds1.union(ds2).sort("id").limit(5)
+
+    expected_plan = (
+        "Read[ReadRange], "
+        "Read[ReadRange] -> MapRows[Map(<lambda>)] -> "
+        "Union[Union] -> Sort[Sort] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_multiple_unions(ray_start_regular_shared_2_cpus):
+    """Outer limit over nested unions should create a branch-local limit
+    for every leaf plus the global one."""
+    ds = (
+        ray.data.range(100)
+        .union(ray.data.range(100, override_num_blocks=5))
+        .union(ray.data.range(50))
+        .limit(5)
+    )
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
+    """Limit after Union + Aggregate: limit should stay after Aggregate."""
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100).map(lambda x: {"id": x["id"] + 1000})
+    ds = ds1.union(ds2).groupby("id").count().limit(5)
+    # Result should contain 5 distinct ids with count == 1.
+    res = ds.take_all()
+    # Plan suffix check (no branch limits past Aggregate).
+    assert ds._plan._logical_plan.dag.dag_str.endswith(
+        "Union[Union] -> Aggregate[Aggregate] -> Limit[limit=5]"
+    )
+    assert len(res) == 5 and all(r["count()"] == 1 for r in res)
+
+
+def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
+    """
+    Complex end-to-end case:
+      1. Two branches each with a branch-local Limit pushed to Read.
+         • left  : Project
+         • right : MapRows
+      2. Union of the two branches.
+      3. Global Aggregate (groupby/count).
+      4. Sort (descending id) – pushes stop here.
+      5. Final Limit.
+    Verifies both plan rewrite and result correctness.
+    """
+    # ── left branch ────────────────────────────────────────────────
+    left = ray.data.range(50).select_columns(["id"]).limit(10)
+
+    # ── right branch ───────────────────────────────────────────────
+    right = ray.data.range(50).map(lambda x: {"id": x["id"] + 1000}).limit(10)
+
+    # ── union → aggregate → sort → limit ──────────────────────────
+    ds = left.union(right).groupby("id").count().sort("id", descending=True).limit(3)
+
+    # Expected logical-plan string.
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=10] -> Project[Project], "
+        "Read[ReadRange] -> Limit[limit=10] -> MapRows[Map(<lambda>)] "
+        "-> Union[Union] -> Aggregate[Aggregate] -> Sort[Sort] -> Limit[limit=3]"
+    )
+
+    # Top-3 ids are the three largest (1009, 1008, 1007) with count()==1.
+    expected_result = [
+        {"id": 1009, "count()": 1},
+        {"id": 1008, "count()": 1},
+        {"id": 1007, "count()": 1},
+    ]
+
+    _check_valid_plan_and_result(ds, expected_plan, expected_result)
+
+
+def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
+    r"""
+    Read -> MapBatches -> MapRows -> Project
+         \                               /
+          --------   Union   -------------   → Limit
+    The limit should be pushed in front of each branch
+    (past MapRows, Project) while the original
+    global Limit is preserved after the Union.
+    """
+    # Left branch.
+    left = (
+        ray.data.range(30)
+        .map_batches(lambda b: b)
+        .map(lambda r: {"id": r["id"]})
+        .select_columns(["id"])
+    )
+
+    # Right branch with shifted ids.
+    right = (
+        ray.data.range(30)
+        .map_batches(lambda b: b)
+        .map(lambda r: {"id": r["id"] + 100})
+        .select_columns(["id"])
+    )
+
+    ds = left.union(right).limit(3)
+
+    expected_plan = (
+        "Read[ReadRange] -> "
+        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Project[Project], "
+        "Read[ReadRange] -> "
+        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Project[Project] -> Union[Union] -> Limit[limit=3]"
+    )
+
+    expected_result = [{"id": i} for i in range(3)]  # First 3 rows from left branch.
+
+    _check_valid_plan_and_result(ds, expected_plan, expected_result)
 
 
 def test_execute_to_legacy_block_list(

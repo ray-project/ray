@@ -5,40 +5,43 @@ import re
 import threading
 import time
 import traceback
-from collections import namedtuple, defaultdict
-from typing import List, Tuple, Any, Dict, Set, Union
-from enum import Enum
+from collections import defaultdict, namedtuple
+from typing import Any, Dict, List, Set, Tuple, Union
 
-from prometheus_client.core import (
-    CounterMetricFamily,
-    GaugeMetricFamily,
-    HistogramMetricFamily,
-)
-from opencensus.metrics.export.value import ValueDouble
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
-from opencensus.stats import aggregation
-from opencensus.stats import measure as measure_module
-from opencensus.stats.view_manager import ViewManager
-from opencensus.stats.stats_recorder import StatsRecorder
-from opencensus.stats.base_exporter import StatsExporter
-from prometheus_client.core import Metric as PrometheusMetric
+from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats import aggregation, measure as measure_module
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
     SumAggregationData,
 )
+from opencensus.stats.base_exporter import StatsExporter
+from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats.view import View
-from opencensus.tags import tag_key as tag_key_module
-from opencensus.tags import tag_map as tag_map_module
-from opencensus.tags import tag_value as tag_value_module
+from opencensus.stats.view_manager import ViewManager
+from opencensus.tags import (
+    tag_key as tag_key_module,
+    tag_map as tag_map_module,
+    tag_value as tag_value_module,
+)
+from prometheus_client.core import (
+    CounterMetricFamily,
+    GaugeMetricFamily,
+    HistogramMetricFamily,
+    Metric as PrometheusMetric,
+)
 
 import ray
+from ray._common.network_utils import build_address
+from ray._private.ray_constants import env_bool
+from ray._private.telemetry.metric_cardinality import (
+    WORKER_ID_TAG_KEY,
+    MetricCardinality,
+)
 from ray._raylet import GcsClient
-
 from ray.core.generated.metrics_pb2 import Metric
-from ray._private.ray_constants import env_bool, RAY_METRIC_CARDINALITY_LEVEL
-
 from ray.util.metrics import _is_invalid_metric_name
 
 logger = logging.getLogger(__name__)
@@ -49,8 +52,6 @@ logger = logging.getLogger(__name__)
 RAY_WORKER_TIMEOUT_S = "RAY_WORKER_TIMEOUT_S"
 GLOBAL_COMPONENT_KEY = "CORE"
 RE_NON_ALPHANUMS = re.compile(r"[^a-zA-Z0-9]")
-# Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
-WORKER_ID_TAG_KEY = "WorkerId"
 
 
 class Gauge(View):
@@ -69,6 +70,7 @@ class Gauge(View):
                 "Metric names cannot start with numbers."
             )
         self._measure = measure_module.MeasureInt(name, description, unit)
+        self._description = description
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
             name, description, tags, self.measure, aggregation.LastValueAggregation()
@@ -85,6 +87,10 @@ class Gauge(View):
     @property
     def name(self):
         return self.measure.name
+
+    @property
+    def description(self):
+        return self._description
 
 
 Record = namedtuple("Record", ["gauge", "value", "tags"])
@@ -126,17 +132,6 @@ def fix_grpc_metric(metric: Metric):
                 bucket_bounds = dist_value.bucket_options.explicit.bounds
                 if len(bucket_bounds) > 0 and bucket_bounds[0] == 0:
                     bucket_bounds[0] = 0.000_000_1
-
-
-class MetricCardinalityLevel(str, Enum):
-    """Cardinality level of the metric.
-
-    This is used to determine the cardinality level of the metric.
-    The cardinality level is used to determine the type of the metric.
-    """
-
-    LEGACY = "legacy"
-    RECOMMENDED = "recommended"
 
 
 class OpencensusProxyMetric:
@@ -490,20 +485,6 @@ class OpenCensusProxyCollector:
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
 
-    def _get_metric_cardinality_level_setting(self) -> str:
-        return RAY_METRIC_CARDINALITY_LEVEL.lower()
-
-    def _get_metric_cardinality_level(self) -> MetricCardinalityLevel:
-        """Get the cardinality level of the core metric.
-
-        This is used to determine set of metric labels. Some high cardinality labels
-        such as `WorkerId` and `Name` will be removed on low cardinality level.
-        """
-        try:
-            return MetricCardinalityLevel(self._get_metric_cardinality_level_setting())
-        except ValueError:
-            return MetricCardinalityLevel.LEGACY
-
     def _aggregate_metric_data(
         self,
         datas: List[
@@ -604,11 +585,11 @@ class OpenCensusProxyCollector:
             to_lower_cardinality: Dict[str, List[OpencensusProxyMetric]] = defaultdict(
                 list
             )
-            cardinality_level = self._get_metric_cardinality_level()
+            cardinality_level = MetricCardinality.get_cardinality_level()
             for component in self._components.values():
                 for metric in component.metrics.values():
                     if (
-                        cardinality_level == MetricCardinalityLevel.RECOMMENDED
+                        cardinality_level == MetricCardinality.RECOMMENDED
                         and not metric.is_distribution_aggregation_data()
                     ):
                         # We reduce the cardinality for all metrics except for histogram
@@ -800,7 +781,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
+            build_address(node["NodeManagerAddress"], node["MetricsExportPort"])
             for node in nodes
             if node["alive"] is True
         ]

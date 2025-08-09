@@ -17,6 +17,8 @@
 #include <boost/range/adaptor/map.hpp>
 #include <iostream>
 #include <sstream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -61,8 +63,8 @@ class ResourceRequest {
 
   const LabelSelector &GetLabelSelector() const { return label_selector_; }
 
-  void SetLabelSelector(const LabelSelector &label_selector) {
-    label_selector_ = label_selector;
+  void SetLabelSelector(LabelSelector label_selector) {
+    label_selector_ = std::move(label_selector);
   }
 
   FixedPoint Get(ResourceID resource_id) const { return resources_.Get(resource_id); }
@@ -292,7 +294,7 @@ class TaskResourceInstances {
       }
       has_added_resource = true;
     }
-    // TODO (chenk008): add custom_resources_
+    // TODO(chenk008): add custom_resources_
     buffer << "}";
     return buffer.str();
   }
@@ -306,7 +308,7 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const NodeResourceSet &resources)
+  explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
   NodeResourceSet available;
@@ -380,7 +382,7 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();

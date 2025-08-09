@@ -34,6 +34,7 @@ steps:
           - "12.3.2-cudnn9"
           - "12.4.1-cudnn"
           - "12.5.1-cudnn"
+          - "12.6.3-cudnn"
           - "12.8.1-cudnn"
     instance_type: builder-arm64
     env:
@@ -59,6 +60,7 @@ steps:
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
       - linux_wheels
+      - release_wheels
       - oss
     instance_type: medium-arm64
     commands:
@@ -75,6 +77,7 @@ steps:
     job_env: forge-aarch64
 
   - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
+    key: ray_images_aarch64
     tags:
       - python_dependencies
       - docker
@@ -86,7 +89,8 @@ steps:
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cu12.8.1-cudnn --platform cpu
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
         --image-type ray --architecture aarch64 --upload
     depends_on:
       - manylinux-aarch64

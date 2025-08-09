@@ -16,8 +16,8 @@ from ray_release.test import (
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20250515.tar.gz"
-DATAPLANE_DIGEST = "b6afd94c7acdb0040d032f72a24cf701a03e60794b3f21cce8cdb5ab8796f938"
+DATAPLANE_FILENAME = "dataplane_20250624.tar.gz"
+DATAPLANE_DIGEST = "3cffb55f1a56f0bc6256cbf1a38bf1e764e202a647a4272b80531760f1250059"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = (
@@ -130,8 +130,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",
                         f"PIP_REQUIREMENTS={byod_requirements}",
-                        "--build-arg",
-                        "DEBIAN_REQUIREMENTS=requirements_debian_byod.txt",
                         "-t",
                         byod_image,
                         "-f",

@@ -20,9 +20,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/util/compat.h"
 
 namespace plasma {
@@ -164,10 +164,28 @@ class StoreConn : public ray::ServerConnection {
  public:
   explicit StoreConn(ray::local_stream_socket &&socket);
 
+  explicit StoreConn(ray::local_stream_socket &&socket, bool exit_on_connection_failure);
+
   /// Receive a file descriptor for the store.
   ///
   /// \return A file descriptor.
   ray::Status RecvFd(MEMFD_TYPE_NON_UNIQUE *fd);
+
+  ray::Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) override;
+
+  ray::Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer) override;
+
+ private:
+  // Whether the current process should exit when WriteBuffer or ReadBuffer fails.
+  // Currently it is only turned on when the plasma client is in a core worker.
+  // TODO(myan): The better way is to handle the failure outside of the plasma client
+  // and inside the core worker's logic and propogate the correct exception to the user.
+  bool exit_on_connection_failure_ = false;
+
+  // Shutdown the current process if the passed in status is not OK and the client is
+  // configured to exit on failure.
+  // @param status: The status to check.
+  void ExitIfErrorStatus(const ray::Status &status);
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);

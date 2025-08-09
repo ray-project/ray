@@ -29,9 +29,8 @@
 namespace ray {
 namespace raylet {
 
-typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                                   uint32_t delay_ms)>
-    DelayExecutorFn;
+using DelayExecutorFn = std::function<std::shared_ptr<boost::asio::deadline_timer>(
+    std::function<void()>, uint32_t)>;
 
 // Manages a separate "Agent" process. In constructor (or the `StartAgent` method) it
 // starts a process with `agent_commands` plus some additional arguments.
@@ -62,7 +61,7 @@ class AgentManager {
       bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
+        shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
         fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";

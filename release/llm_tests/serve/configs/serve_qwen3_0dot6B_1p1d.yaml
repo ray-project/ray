@@ -1,7 +1,0 @@
-applications:
-  - args:
-      prefill_config: ./configs/model_config/qwen_3_0dot6B_1replica.yaml
-      decode_config: ./configs/model_config/qwen_3_0dot6B_1replica.yaml
-    import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
-    name: llm-endpoint
-    route_prefix: /

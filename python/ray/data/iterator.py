@@ -278,6 +278,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -365,6 +366,8 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -377,6 +380,11 @@ class DataIterator(abc.ABC):
                 "collate_fn cannot be used with dtypes and device."
                 "You should manually move the output Torch tensors to the"
                 "desired dtype and device outside of collate_fn."
+            )
+
+        if pin_memory and collate_fn is not None:
+            raise ValueError(
+                "pin_memory is only supported when using `DefaultCollateFn`."
             )
 
         if device == "auto":
@@ -420,6 +428,7 @@ class DataIterator(abc.ABC):
             collate_fn = DefaultCollateFn(
                 dtypes=dtypes,
                 device=device,
+                pin_memory=pin_memory,
             )
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
@@ -971,7 +980,6 @@ class DataIterator(abc.ABC):
         from ray.data.dataset import MaterializedDataset
 
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
-
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 class AcceleratorManager(ABC):
@@ -134,5 +134,14 @@ class AcceleratorManager(ABC):
         Returns:
             The accelerator type of this family on the ec2 instance with given type.
             Return None if it's unknown.
+        """
+        return None
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Optional[Dict[str, str]]:
+        """Get accelerator related Ray node labels of the curent node.
+
+        Returns:
+            A dictionary mapping accelerator related label keys to values.
         """
         return None

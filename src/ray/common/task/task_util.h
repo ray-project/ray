@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
@@ -141,7 +147,8 @@ class TaskSpecBuilder {
       const std::string &concurrency_group_name = "",
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {}) {
+      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -175,6 +182,7 @@ class TaskSpecBuilder {
     message_->mutable_labels()->insert(labels.begin(), labels.end());
     message_->mutable_label_selector()->insert(label_selector.begin(),
                                                label_selector.end());
+    message_->set_tensor_transport(tensor_transport);
     return *this;
   }
 
@@ -244,7 +252,7 @@ class TaskSpecBuilder {
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      bool execute_out_of_order = false,
+      bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
@@ -271,7 +279,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
-    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
+    actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());

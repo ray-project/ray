@@ -276,7 +276,6 @@ class IcebergDatasource(Datasource):
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
                 size_bytes=sum(task.length for task in chunk_tasks),
-                schema=pya_schema,
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )
@@ -284,6 +283,7 @@ class IcebergDatasource(Datasource):
                 ReadTask(
                     read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
                     metadata=metadata,
+                    schema=pya_schema,
                 )
             )
 

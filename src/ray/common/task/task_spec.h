@@ -17,11 +17,13 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
@@ -76,20 +78,24 @@ typedef int SchedulingClass;
 struct SchedulingClassDescriptor {
  public:
   explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
                                      rpc::SchedulingStrategy scheduling_strategy)
       : resource_set(std::move(rs)),
+        label_selector(std::move(ls)),
         function_descriptor(std::move(fd)),
         depth(d),
         scheduling_strategy(std::move(scheduling_strategy)) {}
   ResourceSet resource_set;
+  LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
+           label_selector == other.label_selector &&
            function_descriptor == other.function_descriptor &&
            scheduling_strategy == other.scheduling_strategy;
   }
@@ -105,7 +111,21 @@ struct SchedulingClassDescriptor {
     for (const auto &pair : resource_set.GetResourceMap()) {
       buffer << pair.first << " : " << pair.second << ", ";
     }
+    buffer << "}";
+
+    buffer << "label_selector={";
+    for (const auto &constraint : label_selector.GetConstraints()) {
+      buffer << constraint.GetLabelKey() << " "
+             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
+                                                                                  : "!in")
+             << " (";
+      for (const auto &val : constraint.GetLabelValues()) {
+        buffer << val << ", ";
+      }
+      buffer << "), ";
+    }
     buffer << "}}";
+
     return buffer.str();
   }
 
@@ -119,6 +139,16 @@ struct SchedulingClassDescriptor {
     return buffer.str();
   }
 };
+
+template <typename H>
+H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
+  return H::combine(std::move(h),
+                    sched_cls.resource_set,
+                    sched_cls.function_descriptor->Hash(),
+                    sched_cls.depth,
+                    sched_cls.scheduling_strategy,
+                    sched_cls.label_selector);
+}
 }  // namespace ray
 
 namespace std {
@@ -198,17 +228,6 @@ struct hash<ray::rpc::SchedulingStrategy> {
             scheduling_strategy.node_label_scheduling_strategy().soft());
       }
     }
-    return hash_val;
-  }
-};
-
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash_val ^= sched_cls.function_descriptor->Hash();
-    hash_val ^= sched_cls.depth;
-    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
     return hash_val;
   }
 };
@@ -292,11 +311,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
 
+  // Get the task id in binary format.
+  std::string TaskIdBinary() const;
+
   JobID JobId() const;
 
   const rpc::JobConfig &JobConfig() const;
 
   TaskID ParentTaskId() const;
+
+  // Get the parent task id in binary format.
+  std::string ParentTaskIdBinary() const;
 
   ActorID RootDetachedActorId() const;
 
@@ -332,11 +357,33 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
 
+  /// Return true if the argument is passed by reference.
   bool ArgByRef(size_t arg_index) const;
 
-  ObjectID ArgId(size_t arg_index) const;
+  /// Get the ID of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The ID of the argument.
+  ObjectID ArgObjectId(size_t arg_index) const;
 
+  /// Get the raw object ID of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The raw object ID string of the argument.
+  std::string ArgObjectIdBinary(size_t arg_index) const;
+
+  /// Get the reference of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The reference of the argument.
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;
+
+  /// Get the tensor transport of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The tensor transport used to transfer the argument to the task
+  /// executor.
+  rpc::TensorTransport ArgTensorTransport(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 
@@ -465,6 +512,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   WorkerID CallerWorkerId() const;
 
+  std::string CallerWorkerIdBinary() const;
+
   NodeID CallerNodeId() const;
 
   uint64_t SequenceNumber() const;
@@ -503,7 +552,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const std::string &ConcurrencyGroupName() const;
 
-  bool ExecuteOutOfOrder() const;
+  bool AllowOutOfOrderExecution() const;
 
   bool IsSpreadSchedulingStrategy() const;
 
@@ -516,6 +565,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool EnableTaskEvents() const;
 
   TaskAttempt GetTaskAttempt() const;
+
+  const rpc::TensorTransport TensorTransport() const;
 
  private:
   void ComputeResources();

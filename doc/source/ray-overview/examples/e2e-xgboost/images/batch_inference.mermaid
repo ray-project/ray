@@ -1,0 +1,23 @@
+gantt
+    title Offline Batch Inference With Ray Data
+    dateFormat  YYYY-MM-DD
+    axisFormat  ""
+    tickInterval 10day
+    section Chunk 1
+    Read Data         :a1, 2021-01-01, 1d
+    Map(Preprocess)   :a2, 2021-01-02, 1d
+    Map(Predict)      :a3, 2021-01-03, 1d
+    Map(Post-Process) :a4, 2021-01-04, 1d
+    Aggregate         :a6, 2021-01-05, 1d
+    section Chunk 2
+    Read Data         :b1, 2021-01-02, 1d
+    Map(Preprocess)   :b2, 2021-01-03, 1d
+    Map(Predict)      :b3, 2021-01-04, 1d
+    Map(Post-Process) :b4, 2021-01-05, 1d
+    Aggregate         :b6, 2021-01-06, 1d
+    section Chunk 3
+    Read Data         :c1, 2021-01-03, 1d
+    Map(Preprocess)   :c2, 2021-01-04, 1d
+    Map(Predict)      :c3, 2021-01-05, 1d
+    Map(Post-Process) :c4, 2021-01-06, 1d
+    Aggregate         :c6, 2021-01-07, 1d

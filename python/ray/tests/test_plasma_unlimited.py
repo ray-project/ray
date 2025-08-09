@@ -10,11 +10,12 @@ import psutil
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     check_spilled_mb,
     fetch_prometheus,
-    wait_for_condition,
 )
+from ray._common.network_utils import build_address
 
 MB = 1024 * 1024
 
@@ -321,7 +322,7 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
     )
     metrics_export_port = address["metrics_export_port"]
     addr = address["node_ip_address"]
-    prom_addr = f"{addr}:{metrics_export_port}"
+    prom_addr = build_address(addr, metrics_export_port)
 
     x1 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
     # x1 will be spilled.

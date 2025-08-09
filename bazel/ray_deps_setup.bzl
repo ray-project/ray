@@ -172,6 +172,10 @@ def ray_deps_setup():
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
+        patches = [
+            "//thirdparty/patches:boost-headers.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     http_archive(
@@ -198,6 +202,15 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/cython/cython/archive/refs/tags/3.0.12.tar.gz",
         sha256 = "a156fff948c2013f2c8c398612c018e2b52314fdf0228af8fbdb5585e13699c2",
+        patches = [
+            # Use python3 rather than python. macos does not have python installed
+            # by default, and hermetic strict action does not work as python cannot
+            # be found under /usr/bin or any systeme PATH in bazel sandbox.
+            #
+            # This patch can be removed after the following change is included.
+            # https://github.com/cython/cython/pull/7053
+            "//thirdparty/patches:cython.patch",
+        ],
     )
 
     auto_http_archive(
@@ -221,6 +234,14 @@ def ray_deps_setup():
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+    )
+
+    auto_http_archive(
+        name = "com_github_opentelemetry_proto",
+        urls = ["https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip"],
+        strip_prefix = "opentelemetry-proto-1.2.0",
+        build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
+        sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
@@ -258,6 +279,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
         ],
     )
 

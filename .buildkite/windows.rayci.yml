@@ -17,6 +17,7 @@ steps:
       - oss
       - python
       - core_cpp
+      - release_wheels
     job_env: WINDOWS
     instance_type: windows
     commands:
@@ -117,6 +118,7 @@ steps:
       - skip-on-premerge
     job_env: WINDOWS
     instance_type: windows
+    parallelism: 2
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
@@ -127,6 +129,7 @@ steps:
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
     depends_on: windowsbuild
     soft_fail: true
 

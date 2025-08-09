@@ -40,8 +40,6 @@ class PlasmaStoreRunner {
 
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
-  int64_t GetConsumedBytes();
-
   int64_t GetCumulativeCreatedObjects() const {
     return store_->GetCumulativeCreatedObjects();
   }
@@ -65,7 +63,8 @@ class PlasmaStoreRunner {
   bool hugepages_enabled_;
   std::string plasma_directory_;
   std::string fallback_directory_;
-  mutable instrumented_io_context main_service_;
+  mutable instrumented_io_context main_service_{/*enable_lag_probe=*/false,
+                                                /*running_on_single_thread=*/true};
   std::unique_ptr<PlasmaAllocator> allocator_;
   std::unique_ptr<ray::FileSystemMonitor> fs_monitor_;
   std::unique_ptr<PlasmaStore> store_;

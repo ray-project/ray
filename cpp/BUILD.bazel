@@ -1,6 +1,11 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:ray.bzl", "COPTS")
 
 cc_binary(
@@ -29,7 +34,6 @@ cc_binary(
 cc_library(
     name = "ray_api_lib",
     srcs = glob([
-        "src/ray/api.cc",
         "src/ray/api/*.cc",
         "src/ray/api/*.h",
         "src/ray/app/*.cc",
@@ -56,12 +60,17 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
-        "//:ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:constants",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/util",
-        "//src/ray/util:process",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:network_util",
+        "//src/ray/util:process",
         "@boost//:callable_traits",
         "@boost//:dll",
         "@com_google_absl//absl/flags:flag",
@@ -88,9 +97,9 @@ cc_library(
 
 cc_binary(
     name = "default_worker",
-    srcs = glob([
+    srcs = [
         "src/ray/worker/default_worker.cc",
-    ]),
+    ],
     copts = COPTS,
     linkstatic = True,
     deps = select({
@@ -109,61 +118,102 @@ cc_binary(
     }),
 )
 
-genrule(
-    name = "ray_cpp_pkg",
+filegroup(
+    name = "ray_cpp_pkg_files",
     srcs = [
         "default_worker",
         "libray_api.so",
     ],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
-        rm -rf $$PY_CPP_DIR &&
-        BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
-        mkdir -p "$$BOOST_DIR" &&
-        mkdir -p "$$PY_CPP_DIR/lib/" &&
-        cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
-        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
-        cp -f -r $$WORK_DIR/external/nlohmann_json/single_include/* "$$PY_CPP_DIR/include" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/config" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/container" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/container_hash" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/core" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/detail" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/dll" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/exception" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/filesystem" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/functional" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/io" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/iterator" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/lexical_cast" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/move" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/mpl" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/optional" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/parameter" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/preprocessor" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/system" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/type_traits" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/utility" "$$BOOST_DIR" &&
-        cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$BOOST_DIR" &&
-        cp -f $(locations libray_api.so) "$$PY_CPP_DIR/lib/" &&
-        cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
-        THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
-        rm -rf $$THIRDPARTY_DIR &&
-        mkdir $$THIRDPARTY_DIR &&
-        cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
-        cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
-        cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "ray_cpp_hdrs",
+    srcs = ["include/ray/api.h"] + glob([
+        "include/ray/api/*.h",
+    ]),
+    prefix = "ray/cpp/include/",
+    strip_prefix = "include",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "example_files",
+    srcs = glob(["example/*"]),
+    prefix = "ray/cpp/example/",
+    renames = {
+        "example/_WORKSPACE": "WORKSPACE",
+        "example/_BUILD.bazel": "BUILD.bazel",
+        "example/_.bazelrc": ".bazelrc",
+    },
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "msgpack_hdrs_files",
+    srcs = ["@msgpack//:msgpack_hdrs"],
+    prefix = "ray/cpp/include/",
+    strip_prefix = "include",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "nlohmann_json_hdrs_files",
+    srcs = ["@nlohmann_json//:nlohmann_json_hdrs"],
+    prefix = "ray/cpp/include/",
+    strip_prefix = "single_include",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "boost_ray_hdrs_files",
+    srcs = ["@boost//:boost_ray_hdrs"],
+    prefix = "ray/cpp/include/boost/",
+    strip_prefix = "boost",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "default_worker_files",
+    srcs = ["default_worker"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/cpp/",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "libray_api_files",
+    srcs = ["libray_api.so"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/cpp/lib/",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "ray_cpp_pkg_zip",
+    srcs = [
+        ":boost_ray_hdrs_files",
+        ":default_worker_files",
+        ":example_files",
+        ":libray_api_files",
+        ":msgpack_hdrs_files",
+        ":nlohmann_json_hdrs_files",
+        ":ray_cpp_hdrs",
+    ],
+    out = "ray_cpp_pkg.zip",
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "gen_ray_cpp_pkg",
+    srcs = ["gen_ray_cpp_pkg.py"],
+    data = [
+        ":ray_cpp_pkg.zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )
 
 # test
@@ -200,21 +250,23 @@ cc_test(
     data = [
         "counter.so",
         "plus.so",
-        "ray_cpp_pkg",
         "src/ray/test/cluster/test_cross_language_invocation.py",
+        ":ray_cpp_pkg_files",
     ],
     linkstatic = True,
     tags = ["team:core"],
     deps = [
         "ray_api_lib",
+        "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
     name = "cluster_mode_xlang_test",
-    srcs = glob([
+    srcs = [
         "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+    ] + glob([
         "src/ray/test/cluster/*.h",
     ]),
     args = [
@@ -223,7 +275,7 @@ cc_test(
     ],
     copts = COPTS,
     data = [
-        "ray_cpp_pkg",
+        ":ray_cpp_pkg_files",
         "//java:libio_ray_ray_test.jar",
     ],
     linkstatic = True,
@@ -280,9 +332,9 @@ cc_binary(
 
 cc_test(
     name = "simple_kv_store",
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/simple_kv_store.cc",
-    ]),
+    ],
     args = [
         "--ray_code_search_path=$(location simple_kv_store.so)",
         "--ray_head_args '--include-dashboard false'",
@@ -301,9 +353,9 @@ cc_test(
 cc_binary(
     name = "simple_kv_store.so",
     testonly = True,
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/simple_kv_store.cc",
-    ]),
+    ],
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
@@ -351,9 +403,9 @@ cc_binary(
 
 cc_test(
     name = "metric_example",
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/metric_example.cc",
-    ]),
+    ],
     args = [
         "--ray_code_search_path $(location metric_example.so)",
     ],
@@ -376,9 +428,9 @@ cc_test(
 cc_binary(
     name = "metric_example.so",
     testonly = True,
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/metric_example.cc",
-    ]),
+    ],
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
@@ -391,8 +443,6 @@ cc_binary(
         "@nlohmann_json",
     ],
 )
-
-load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
     size = "medium",

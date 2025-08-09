@@ -4,10 +4,10 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 
 
-def test_threaded_actor_execute_out_of_order(shutdown_only):
+def test_threaded_actor_allow_out_of_order_execution(shutdown_only):
     ray.init()
 
     @ray.remote
@@ -29,7 +29,7 @@ def test_threaded_actor_execute_out_of_order(shutdown_only):
     assert ray.get(out_ref_2, timeout=5) == 2
 
 
-def test_async_actor_execute_out_of_order(shutdown_only):
+def test_async_actor_allow_out_of_order_execution(shutdown_only):
     ray.init()
 
     @ray.remote
@@ -49,6 +49,48 @@ def test_async_actor_execute_out_of_order(shutdown_only):
     out_ref_2 = a.echo.remote(inp_ref_2)
 
     assert ray.get(out_ref_2, timeout=5) == 2
+
+
+class TestAllowOutOfOrderExecutionValidation:
+    @pytest.fixture(scope="class", autouse=True)
+    def start_ray_cluster(self):
+        ray.init()
+        yield
+        ray.shutdown()
+
+    def test_options_with_in_order_async_actor_raises_error(self):
+        @ray.remote
+        class Actor:
+            async def method(self):
+                pass
+
+        with pytest.raises(ValueError):
+            Actor.options(allow_out_of_order_execution=False).remote()
+
+    def test_remote_with_in_order_concurrent_actor_raises_error(self):
+        class Actor:
+            async def method(self):
+                pass
+
+        with pytest.raises(ValueError):
+            ray.remote(allow_out_of_order_execution=False)(Actor).remote()
+
+    def test_options_with_in_order_multi_threaded_actor_raises_error(self):
+        @ray.remote(max_concurrency=2)
+        class Actor:
+            pass
+
+        with pytest.raises(ValueError):
+            Actor.options(allow_out_of_order_execution=False).remote()
+
+    def test_remote_with_in_order_multi_threaded_actor_raises_error(self):
+        class Actor:
+            pass
+
+        with pytest.raises(ValueError):
+            ray.remote(max_concurrency=2, allow_out_of_order_execution=False)(
+                Actor
+            ).remote()
 
 
 if __name__ == "__main__":

@@ -1,15 +1,17 @@
-import enum
+import logging
 import math
 import time
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict
 
 import ray
 from .autoscaler import Autoscaler
-from .autoscaling_actor_pool import AutoscalingActorPool
+from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
+from .util import get_max_scale_up
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data.context import WARN_PREFIX, AutoscalingConfig
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -17,18 +19,10 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
-class _AutoscalingAction(enum.Enum):
-    NO_OP = 0
-    SCALE_UP = 1
-    SCALE_DOWN = -1
+logger = logging.getLogger(__name__)
 
 
 class DefaultAutoscaler(Autoscaler):
-
-    # Default threshold of actor pool utilization to trigger scaling up.
-    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.8
-    # Default threshold of actor pool utilization to trigger scaling down.
-    DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD: float = 0.5
 
     # Min number of seconds between two autoscaling requests.
     MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
@@ -37,48 +31,58 @@ class DefaultAutoscaler(Autoscaler):
         self,
         topology: "Topology",
         resource_manager: "ResourceManager",
+        *,
         execution_id: str,
-        actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,  # noqa: E501
-        actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,  # noqa: E501
+        config: AutoscalingConfig,
     ):
-        self._actor_pool_scaling_up_threshold = actor_pool_scaling_up_threshold
-        self._actor_pool_scaling_down_threshold = actor_pool_scaling_down_threshold
+        super().__init__(topology, resource_manager, execution_id)
+
+        self._actor_pool_scaling_up_threshold = (
+            config.actor_pool_util_upscaling_threshold
+        )
+        self._actor_pool_scaling_down_threshold = (
+            config.actor_pool_util_downscaling_threshold
+        )
+
+        self._validate_autoscaling_config()
+
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
-        super().__init__(topology, resource_manager, execution_id)
 
     def try_trigger_scaling(self):
         self._try_scale_up_cluster()
         self._try_scale_up_or_down_actor_pool()
 
-    def _calculate_actor_pool_util(self, actor_pool: AutoscalingActorPool):
-        """Calculate the utilization of the given actor pool."""
-        if actor_pool.current_size() == 0:
-            return 0
-        else:
-            return actor_pool.num_active_actors() / actor_pool.current_size()
-
-    def _derive_scaling_action(
+    def _derive_target_scaling_config(
         self,
-        actor_pool: AutoscalingActorPool,
+        actor_pool: "AutoscalingActorPool",
         op: "PhysicalOperator",
         op_state: "OpState",
-    ) -> Tuple[_AutoscalingAction, Optional[str]]:
-        # Do not scale up, if the op is completed or no more inputs are coming.
+    ) -> ActorPoolScalingRequest:
+        # If all inputs have been consumed, short-circuit
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return _AutoscalingAction.SCALE_DOWN, "consumed all inputs"
+            return ActorPoolScalingRequest.downscale(
+                delta=-1, reason="consumed all inputs"
+            )
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
-            return _AutoscalingAction.SCALE_UP, "pool below min size"
+            return ActorPoolScalingRequest.upscale(
+                delta=actor_pool.min_size() - actor_pool.current_size(),
+                reason="pool below min size",
+            )
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
-            return _AutoscalingAction.SCALE_DOWN, "pool exceeding max size"
+            return ActorPoolScalingRequest.downscale(
+                # NOTE: For scale down delta has to be negative
+                delta=-(actor_pool.current_size() - actor_pool.max_size()),
+                reason="pool exceeding max size",
+            )
 
         # Determine whether to scale up based on the actor pool utilization.
-        util = self._calculate_actor_pool_util(actor_pool)
+        util = actor_pool.get_pool_util()
         if util >= self._actor_pool_scaling_up_threshold:
             # Do not scale up if either
             #   - Previous scale up has not finished yet
@@ -87,54 +91,52 @@ class DefaultAutoscaler(Autoscaler):
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
             if actor_pool.num_pending_actors() > 0:
-                return _AutoscalingAction.NO_OP, "pending actors"
+                return ActorPoolScalingRequest.no_op(reason="pending actors")
             elif actor_pool.current_size() >= actor_pool.max_size():
-                return _AutoscalingAction.NO_OP, "reached max size"
+                return ActorPoolScalingRequest.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
-                return _AutoscalingAction.NO_OP, "operator exceeding resource quota"
-            elif (
-                op_state.total_enqueued_input_bundles()
-                <= actor_pool.num_free_task_slots()
-            ):
-                return _AutoscalingAction.NO_OP, (
-                    f"pool has sufficient task slots remaining: "
-                    f"enqueued inputs {op_state.total_enqueued_input_bundles()} <= "
-                    f"free slots {actor_pool.num_free_task_slots()})"
+                return ActorPoolScalingRequest.no_op(
+                    reason="operator exceeding resource quota"
                 )
+            budget = self._resource_manager.get_budget(op)
+            if get_max_scale_up(actor_pool, budget) == 0:
+                return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
 
-            return (
-                _AutoscalingAction.SCALE_UP,
-                f"utilization of {util} >= {self._actor_pool_scaling_up_threshold}",
+            return ActorPoolScalingRequest.upscale(
+                delta=1,
+                reason=(
+                    f"utilization of {util} >= "
+                    f"{self._actor_pool_scaling_up_threshold}"
+                ),
             )
         elif util <= self._actor_pool_scaling_down_threshold:
-            if not actor_pool.can_scale_down():
-                return _AutoscalingAction.NO_OP, "not allowed"
-            elif actor_pool.current_size() <= actor_pool.min_size():
-                return _AutoscalingAction.NO_OP, "reached min size"
+            if actor_pool.current_size() <= actor_pool.min_size():
+                return ActorPoolScalingRequest.no_op(reason="reached min size")
 
-            return (
-                _AutoscalingAction.SCALE_DOWN,
-                f"utilization of {util} <= {self._actor_pool_scaling_down_threshold}",
+            return ActorPoolScalingRequest.downscale(
+                delta=-1,
+                reason=(
+                    f"utilization of {util} <= "
+                    f"{self._actor_pool_scaling_down_threshold}"
+                ),
             )
         else:
-            return _AutoscalingAction.NO_OP, (
-                f"{self._actor_pool_scaling_down_threshold} < "
-                f"{util} < {self._actor_pool_scaling_up_threshold}"
+            return ActorPoolScalingRequest.no_op(
+                reason=(
+                    f"utilization of {util} w/in limits "
+                    f"[{self._actor_pool_scaling_down_threshold}, "
+                    f"{self._actor_pool_scaling_up_threshold}]"
+                )
             )
 
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
-                # Try to scale up or down the actor pool.
-                recommended_action, reason = self._derive_scaling_action(
-                    actor_pool, op, state
+                # Trigger auto-scaling
+                actor_pool.scale(
+                    self._derive_target_scaling_config(actor_pool, op, state)
                 )
-
-                if recommended_action is _AutoscalingAction.SCALE_UP:
-                    actor_pool.scale_up(1, reason=reason)
-                elif recommended_action is _AutoscalingAction.SCALE_DOWN:
-                    actor_pool.scale_down(1, reason=reason)
 
     def _try_scale_up_cluster(self):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
@@ -206,3 +208,24 @@ class DefaultAutoscaler(Autoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         return ExecutionResources.from_resource_dict(ray.cluster_resources())
+
+    def _validate_autoscaling_config(self):
+        for op, state in self._topology.items():
+            for actor_pool in op.get_autoscaling_actor_pools():
+                self._validate_actor_pool_autoscaling_config(actor_pool, op)
+
+    def _validate_actor_pool_autoscaling_config(
+        self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"
+    ):
+        if (
+            actor_pool.max_actor_concurrency()
+            == actor_pool.max_tasks_in_flight_per_actor()
+            and self._actor_pool_scaling_up_threshold > 1.0
+        ):
+            logger.warning(
+                f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
+                f"upscaling threshold ({self._actor_pool_scaling_up_threshold}) is above "
+                f"100%, but actor pool utilization won't be able to exceed it because "
+                f"actor pool is configured to avoid buffering (its "
+                f"`max_tasks_in_flight_per_actor` == `max_concurrency`)"
+            )

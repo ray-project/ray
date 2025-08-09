@@ -50,7 +50,7 @@ class ActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
-                                        bool execute_out_of_order,
+                                        bool allow_out_of_order_execution,
                                         bool fail_if_actor_unreachable,
                                         bool owned) = 0;
   virtual void ConnectActor(const ActorID &actor_id,
@@ -76,15 +76,16 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
   ActorTaskSubmitter(rpc::CoreWorkerClientPool &core_worker_client_pool,
                      CoreWorkerMemoryStore &store,
-                     TaskFinisherInterface &task_finisher,
+                     TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
+                     const TensorTransportGetter &tensor_transport_getter,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
-        resolver_(store, task_finisher, actor_creator),
-        task_finisher_(task_finisher),
+        resolver_(store, task_manager, actor_creator, tensor_transport_getter),
+        task_manager_(task_manager),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service),
         reference_counter_(reference_counter) {
@@ -106,13 +107,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
-  /// \param[in] execute_out_of_order Whether to execute tasks out of order.
+  /// \param[in] allow_out_of_order_execution Whether to execute tasks out of order.
   /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
   /// \param[in] owned Whether the actor is owned by the current process.
   /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
-                                bool execute_out_of_order,
+                                bool allow_out_of_order_execution,
                                 bool fail_if_actor_unreachable,
                                 bool owned);
 
@@ -249,6 +250,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
+  /// Queue the streaming generator up for resubmission.
+  /// \return true if the task is still executing and the submitter agrees to resubmit
+  /// when it finishes. false case is a TODO.
+  bool QueueGeneratorForResubmit(const TaskSpecification &spec);
+
  private:
   struct PendingTaskWaitingForDeathInfo {
     int64_t deadline_ms;
@@ -266,25 +272,25 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status(std::move(status)),
           timeout_error_info(std::move(timeout_error_info)) {}
   };
-  /// A helper function to get task finisher without holding mu_
+  /// A helper function to get task manager without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
   /// - FailPendingTask
-  TaskFinisherInterface &GetTaskFinisherWithoutMu() {
+  TaskManagerInterface &GetTaskManagerWithoutMu() {
     mu_.AssertNotHeld();
-    return task_finisher_;
+    return task_manager_;
   }
 
   struct ClientQueue {
     ClientQueue(ActorID actor_id,
-                bool execute_out_of_order,
+                bool allow_out_of_order_execution,
                 int32_t max_pending_calls,
                 bool fail_if_actor_unreachable,
                 bool owned)
         : max_pending_calls(max_pending_calls),
           fail_if_actor_unreachable(fail_if_actor_unreachable),
           owned(owned) {
-      if (execute_out_of_order) {
+      if (allow_out_of_order_execution) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
         actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>(actor_id);
@@ -378,7 +384,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] task_spec The task to send.
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
-  /// \return Void.
   void PushActorTask(ClientQueue &queue,
                      const TaskSpecification &task_spec,
                      bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -394,19 +399,21 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// wait until the notification is received to decide whether we should
   /// fail pending tasks or restart the actor.
   /// \param[in] actor_id Actor ID.
-  /// \return Void.
   void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Fail all in-flight tasks.
-  void FailInflightTasks(
+  /// Mark all in-flight tasks as failed if the actor was restarted. This will cause the
+  /// tasks to be retried as usual.
+  void FailInflightTasksOnRestart(
       const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
-  void RestartActor(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// Restart the actor from DEAD by sending a RestartActorForLineageReconstruction rpc to
+  /// GCS.
+  void RestartActorForLineageReconstruction(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void NotifyGCSWhenActorOutOfScope(const ActorID &actor_id,
                                     uint64_t num_restarts_due_to_lineage_reconstructions);
@@ -421,11 +428,14 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
 
+  // Generators that are currently running and need to be resubmitted.
+  absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
+
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
+  TaskManagerInterface &task_manager_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;

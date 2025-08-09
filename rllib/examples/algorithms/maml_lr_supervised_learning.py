@@ -224,9 +224,7 @@ def sample_task(batch_size=10, noise_std=0.1, training_data=False, return_params
 
 
 # Define arguments.
-parser = add_rllib_example_script_args(
-    default_iters=70_000,
-)
+parser = add_rllib_example_script_args(default_iters=70_000)
 
 parser.add_argument(
     "--meta-train-batch-size",
@@ -326,6 +324,7 @@ if __name__ == "__main__":
         .learners(
             # Add the `DifferentiableLearnerConfig`s.
             differentiable_learner_configs=[diff_learner_config],
+            num_gpus_per_learner=args.num_gpus_per_learner or 0,
         )
         .training(
             lr=args.meta_lr,
@@ -366,12 +365,15 @@ if __name__ == "__main__":
         return_params=True,
     )
 
+    if config.num_gpus_per_learner > 0:
+        test_batch = meta_learner._convert_batch_type(test_batch)
+
     # Run inference and plot results.
     with torch.no_grad():
         # Generate a grid for the support.
-        x_grid = torch.tensor(np.arange(-5.0, 5.0, 0.02), dtype=torch.float32).view(
-            -1, 1
-        )
+        x_grid = torch.tensor(
+            np.arange(-5.0, 5.0, 0.02), dtype=torch.float32, device=meta_learner._device
+        ).view(-1, 1)
         # Get label prediction from the model trained by MAML.
         y_pred = meta_learner.module[DEFAULT_MODULE_ID]({Columns.OBS: x_grid})["y_pred"]
 
@@ -416,9 +418,7 @@ if __name__ == "__main__":
         loss_per_module[DEFAULT_MODULE_ID].backward()
         optim.step()
         # Show the loss for few-shot learning (fine-tuning).
-        print(
-            f"Few shot loss: {loss_per_module[DEFAULT_MODULE_ID].detach().numpy().item()}"
-        )
+        print(f"Few shot loss: {loss_per_module[DEFAULT_MODULE_ID].item()}")
 
     # Run the model again after fine-tuning.
     with torch.no_grad():

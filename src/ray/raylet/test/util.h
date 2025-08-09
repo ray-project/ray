@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/raylet/worker.h"
@@ -29,9 +30,9 @@ class MockWorker : public WorkerInterface {
   MockWorker(WorkerID worker_id, int port, int runtime_env_hash = 0)
       : worker_id_(worker_id),
         port_(port),
-        is_detached_actor_(false),
         runtime_env_hash_(runtime_env_hash),
-        job_id_(JobID::FromInt(859)) {}
+        job_id_(JobID::FromInt(859)),
+        proc_(Process::CreateNewDummy()) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -47,6 +48,11 @@ class MockWorker : public WorkerInterface {
     task_ = assigned_task;
     task_assign_time_ = absl::Now();
     root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
+    const auto &task_spec = assigned_task.GetTaskSpecification();
+    SetJobId(task_spec.JobId());
+    SetBundleId(task_spec.PlacementGroupBundleId());
+    SetOwnerAddress(task_spec.CallerAddress());
+    AssignTaskId(task_spec.TaskId());
   };
 
   absl::Time GetAssignedTaskTime() const override { return task_assign_time_; };
@@ -79,15 +85,20 @@ class MockWorker : public WorkerInterface {
   void MarkDead() override { RAY_CHECK(false) << "Method unused"; }
   bool IsDead() const override {
     RAY_CHECK(false) << "Method unused";
-    return false;
+    return killing_.load(std::memory_order_acquire);
   }
+  void KillAsync(instrumented_io_context &io_service, bool force) override {
+    bool expected = false;
+    killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+  }
+  bool IsKilled() const { return killing_.load(std::memory_order_acquire); }
   void MarkBlocked() override { blocked_ = true; }
   void MarkUnblocked() override { blocked_ = false; }
   bool IsBlocked() const override { return blocked_; }
 
-  Process GetProcess() const override { return Process::CreateNewDummy(); }
+  Process GetProcess() const override { return proc_; }
   StartupToken GetStartupToken() const override { return 0; }
-  void SetProcess(Process proc) override { RAY_CHECK(false) << "Method unused"; }
+  void SetProcess(Process proc) override { proc_ = std::move(proc); }
 
   Language GetLanguage() const override {
     RAY_CHECK(false) << "Method unused";
@@ -119,16 +130,16 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return "";
   }
-  void MarkDetachedActor() override { is_detached_actor_ = true; }
-  bool IsDetachedActor() const override { return is_detached_actor_; }
+
+  bool IsDetachedActor() const override {
+    return task_.GetTaskSpecification().IsDetachedActor();
+  }
+
   const std::shared_ptr<ClientConnection> Connection() const override {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
-  const rpc::Address &GetOwnerAddress() const override {
-    RAY_CHECK(false) << "Method unused";
-    return address_;
-  }
+  const rpc::Address &GetOwnerAddress() const override { return address_; }
 
   void ActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
@@ -184,7 +195,6 @@ class MockWorker : public WorkerInterface {
   std::vector<double> borrowed_cpu_instances_;
   std::optional<bool> is_gpu_;
   std::optional<bool> is_actor_worker_;
-  bool is_detached_actor_;
   BundleID bundle_id_;
   bool blocked_ = false;
   RayTask task_;
@@ -193,6 +203,8 @@ class MockWorker : public WorkerInterface {
   TaskID task_id_;
   JobID job_id_;
   ActorID root_detached_actor_id_;
+  Process proc_;
+  std::atomic<bool> killing_ = false;
 };
 
 }  // namespace raylet

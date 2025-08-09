@@ -24,8 +24,8 @@ from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.train._internal.storage import StorageContext, get_fs_and_path
 from ray.train.constants import (
-    _v2_migration_warnings_enabled,
     V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.utils import _log_deprecation_warning
 from ray.tune import (

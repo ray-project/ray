@@ -1,4 +1,4 @@
-.. _task-pattern-nested-tasks:
+.. _nested-tasks:
 
 Pattern: Using nested tasks to achieve nested parallelism
 =========================================================

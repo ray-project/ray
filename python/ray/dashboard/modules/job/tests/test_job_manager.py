@@ -10,16 +10,16 @@ from uuid import uuid4
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_HEAD_NODE_ID_KEY,
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
-from ray._private.test_utils import (
-    SignalActor,
+from ray._common.network_utils import build_address
+from ray._common.test_utils import (
     async_wait_for_condition,
-    wait_for_condition,
 )
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -1188,7 +1188,7 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
     port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
-    monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
+    monkeypatch.setenv("RAY_ADDRESS", f"http://{build_address(ip, port)}")
     print_ray_address_cmd = (
         'python -c"' "import os;" "import ray;" "ray.init();" "print('SUCCESS!');" '"'
     )

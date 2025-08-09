@@ -74,6 +74,10 @@ class _SerializationContext:
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport
 
+    @property
+    def use_external_transport(self) -> bool:
+        return self._use_external_transport
+
     def reset_out_of_band_tensors(
         self, tensors: List["torch.Tensor"]
     ) -> Tuple[List["torch.Tensor"], Set[int]]:
@@ -120,7 +124,7 @@ class _SerializationContext:
         # CPU and another from CPU to shared memory. Ideally we should elide
         # the first copy and memcpy directly from GPU to the shared memory
         # buffer.
-        if tensor_device_type == "cuda":
+        if tensor_device_type != "cpu":
             tensor = tensor.to("cpu")
 
         # Numpy does not have an equivalent dtype for all torch dtypes, so
@@ -140,12 +144,17 @@ class _SerializationContext:
         target_device: Device,
     ):
 
-        # Found a placeholder for a tensor that was serialized via NCCL.
+        # Found a placeholder for a tensor that was serialized via accelerator.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
             placeholder = val
             self._deserialized_tensor_placeholders.add(placeholder)
-            assert placeholder < len(self._out_of_band_tensors)
+            assert placeholder < len(self._out_of_band_tensors), (
+                "placeholder",
+                placeholder,
+                "out_of_band_tensors",
+                self._out_of_band_tensors,
+            )
             tensor = self._out_of_band_tensors[placeholder]
             if target_device == Device.CPU:
                 tensor = tensor.to("cpu")
@@ -171,10 +180,10 @@ class _SerializationContext:
         elif target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
         else:
-            target_device_type = "cpu"
+            target_device_type = target_device.value
 
         # TODO(swang): Support local P2P transfers if available.
-        if target_device_type == "cuda":
+        if target_device_type != "cpu":
 
             def convert_numpy_to_tensor(np_array):
                 if not isinstance(np_array, np.ndarray):

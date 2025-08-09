@@ -1,15 +1,6 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
-    name = "stats_opentelemetry",
-    srcs = ["opentelemetry_metrics.cc"],
-    deps = [
-        "@io_opentelemetry_cpp//sdk/src/logs",
-        "@io_opentelemetry_cpp//sdk/src/trace",
-    ],
-)
-
-ray_cc_library(
     name = "stats_metric",
     srcs = [
         "metric.cc",
@@ -22,6 +13,8 @@ ray_cc_library(
         "tag_defs.h",
     ],
     deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/telemetry:open_telemetry_metric_recorder",
         "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
@@ -56,7 +49,8 @@ ray_cc_library(
     }),
     deps = [
         ":stats_metric",
-        "//:reporter_rpc",
+        "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/util:network_util",
         "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],

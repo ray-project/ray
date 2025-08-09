@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
-    MultiplexedReplicaInfo,
+    RequestRoutingInfo,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -80,14 +80,16 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
-    def shutdown_cached_handles(self):
+    def shutdown_cached_handles(self, _skip_asyncio_check: bool = False):
         """Shuts down all cached handles.
 
         Remove the reference to the cached handles so that they can be
         garbage collected.
         """
         for cache_key in list(self.handle_cache):
-            self.handle_cache[cache_key].shutdown()
+            self.handle_cache[cache_key].shutdown(
+                _skip_asyncio_check=_skip_asyncio_check
+            )
             del self.handle_cache[cache_key]
 
     def shutdown(self, timeout_s: float = 30.0) -> None:
@@ -270,7 +272,6 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
-                    docs_path=deployment._docs_path,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -289,8 +290,6 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
-                if deployment_args["docs_path"]:
-                    deployment_args_proto.docs_path = deployment_args["docs_path"]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
@@ -480,14 +479,14 @@ class ServeControllerClient:
         return handle
 
     @_ensure_connected
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed replica information for replica.
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
 
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self._controller.record_multiplexed_replica_info.remote(info)
+        self._controller.record_request_routing_info.remote(info)
 
     @_ensure_connected
     def update_global_logging_config(self, logging_config: LoggingConfig):

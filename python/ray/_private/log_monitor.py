@@ -7,17 +7,17 @@ import os
 import platform
 import re
 import shutil
+import sys
 import time
 import traceback
-import sys
 from typing import Callable, List, Optional, Set
 
-from ray._raylet import GcsClient
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-from ray._private.ray_logging import setup_component_logger
 from ray._private import logging_utils
+from ray._private.ray_logging import setup_component_logger
+from ray._raylet import GcsClient
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at

@@ -19,7 +19,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -49,9 +49,9 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
                                      rpc::GcsUnregisterSubscriberReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) final;
 
-  std::string DebugString() const;
-
-  void RemoveSubscriberFrom(const std::string &sender_id);
+  /// This function is only for external callers. Internally, can just erase from
+  /// sender_to_subscribers_ and everything should be on the Publisher's io_service_.
+  void AsyncRemoveSubscriberFrom(const std::string &sender_id);
 
  private:
   /// Not owning the io service, to allow sharing it with pubsub::Publisher.

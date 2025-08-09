@@ -9,10 +9,10 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._private.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ class ServeHead(SubprocessModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @validate_endpoint()
     async def put_all_applications(self, req: Request) -> Response:
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
         from ray.serve.config import ProxyLocation
         from ray.serve.schema import ServeDeploySchema

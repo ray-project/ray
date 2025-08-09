@@ -4,6 +4,7 @@ import ipaddress
 import logging
 import os
 import pathlib
+import posixpath
 import sys
 import time
 from math import floor
@@ -17,17 +18,18 @@ import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray._common.utils import get_or_create_event_loop
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.network_utils import build_address
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.network_utils import parse_address
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
-
-from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -89,7 +91,7 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.head_node_ip = gcs_address.split(":")[0]
+        self.head_node_ip = parse_address(gcs_address)[0]
         self.metrics = metrics
         self._session_name = session_name
 
@@ -135,7 +137,7 @@ class HttpServerDashboardHead:
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
             )
         )
-        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Cache-Control"] = "no-store"
         return resp
 
     @routes.get("/favicon.ico")
@@ -171,9 +173,7 @@ class HttpServerDashboardHead:
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.PurePosixPath(
-                pathlib.posixpath.realpath(request.path)
-            )
+            request_path = pathlib.PurePosixPath(posixpath.realpath(request.path))
             if request_path != parent and parent not in request_path.parents:
                 logger.info(
                     f"Rejecting {request_path=} because it is not relative to {parent=}"
@@ -290,7 +290,8 @@ class HttpServerDashboardHead:
             else self.http_host
         )
         logger.info(
-            "Dashboard head http address: %s:%s", self.http_host, self.http_port
+            "Dashboard head http address: %s",
+            build_address(self.http_host, self.http_port),
         )
         # Dump registered http routes.
         dump_routes = [r for r in app.router.routes() if r.method != hdrs.METH_HEAD]

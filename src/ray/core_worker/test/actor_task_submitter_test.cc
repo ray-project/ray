@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/reference_count.h"
-#include "mock/ray/core_worker/task_manager.h"
+#include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_util.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -78,7 +78,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   rpc::Address addr;
   absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
-  std::vector<uint64_t> received_seq_nos;
+  std::vector<int64_t> received_seq_nos;
   int64_t acked_seqno = 0;
 };
 
@@ -92,14 +92,15 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             })),
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
-        task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
+        task_manager_(std::make_shared<MockTaskManagerInterface>()),
         io_work(io_context.get_executor()),
         reference_counter_(std::make_shared<MockReferenceCounter>()),
         submitter_(
             *client_pool_,
             *store_,
-            *task_finisher_,
+            *task_manager_,
             actor_creator_,
+            [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
             [this](const ActorID &actor_id, int64_t num_queued) {
               last_queue_warning_ = num_queued;
             },
@@ -114,7 +115,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
+  std::shared_ptr<MockTaskManagerInterface> task_manager_;
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
@@ -122,14 +123,14 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
 };
 
 TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
 
@@ -146,9 +147,9 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _))
       .Times(worker_client_->callbacks.size());
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
   worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK());
   worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK());
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
@@ -161,14 +162,14 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -199,14 +200,14 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestDependencies) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -234,11 +235,11 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto data = GenerateRandomObject();
 
   // Each Put schedules a callback onto io_context, and let's run it.
-  ASSERT_TRUE(store_->Put(*data, obj1));
+  store_->Put(*data, obj1);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
-  ASSERT_TRUE(store_->Put(*data, obj2));
+  store_->Put(*data, obj2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
@@ -246,14 +247,14 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -277,17 +278,17 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
-  if (execute_out_of_order) {
+  if (allow_out_of_order_execution) {
     // Put the dependencies in the store in the opposite order of task
     // submission.
     auto data = GenerateRandomObject();
     // task2 is submitted first as we allow out of order execution.
-    ASSERT_TRUE(store_->Put(*data, obj2));
+    store_->Put(*data, obj2);
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 1);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
     // then task1 is submitted
-    ASSERT_TRUE(store_->Put(*data, obj1));
+    store_->Put(*data, obj1);
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1, 0));
@@ -295,10 +296,10 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // Put the dependencies in the store in the opposite order of task
     // submission.
     auto data = GenerateRandomObject();
-    ASSERT_TRUE(store_->Put(*data, obj2));
+    store_->Put(*data, obj2);
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 0);
-    ASSERT_TRUE(store_->Put(*data, obj1));
+    store_->Put(*data, obj1);
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
@@ -306,14 +307,14 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorDead) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -331,31 +332,31 @@ TEST_P(ActorTaskSubmitterTest, TestActorDead) {
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Simulate the actor dying. All in-flight tasks should get failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task1.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task1.TaskId(), _, _, _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _)).Times(0);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(0);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::IOError("")));
 
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
       actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
   // Actor marked as dead. All queued tasks should get failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
       .Times(1);
   submitter_.DisconnectActor(
       actor_id, 2, /*dead=*/true, death_cause, /*is_restartable=*/false);
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -375,12 +376,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task4.TaskId(), _, _, _)).Times(1);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task4.TaskId(), _, _, _)).Times(1);
   // First task finishes. Second task fails.
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::IOError("")));
@@ -405,14 +406,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -433,12 +434,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // All tasks will eventually finish.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _)).Times(4);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(4);
   // Tasks 2 and 3 will be retried.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
       .Times(1)
       .WillRepeatedly(Return(true));
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _, _))
       .Times(1)
       .WillRepeatedly(Return(true));
   // First task finishes. Second task fails.
@@ -476,14 +477,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -502,10 +503,10 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
   // All tasks will eventually finish.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _)).Times(3);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(3);
 
   // Tasks 2 will be retried
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
       .Times(1)
       .WillRepeatedly(Return(true));
   // First task finishes. Second task hang. Third task finishes.
@@ -522,7 +523,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   submitter_.ConnectActor(actor_id, addr, 1);
 
   // Upon re-connect, task 2 (failed) should be retried.
-  // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
+  // Retry task 2 manually (simulating task_manager and SendPendingTask's behavior)
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
   task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(3);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
@@ -534,14 +535,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -554,7 +555,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
 
   // Actor restarts, but we don't receive the disconnect message until later.
@@ -565,7 +566,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(1);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
 
   // We receive the RESTART message late. Nothing happens.
@@ -577,7 +578,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task3.TaskId(), _, _, _)).Times(1);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task3.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task3.GetTaskAttempt(), Status::OK()));
 
   // The actor dies twice. We receive the last RESTART message first.
@@ -591,7 +592,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Tasks submitted when the actor is in RESTARTING state will fail immediately.
   // This happens in an io_service.post. Search `SendPendingTasks_ForceFail` to locate
   // the code.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task4.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task4.TaskId(), _, _, _, _, _))
       .Times(1);
   ASSERT_EQ(io_context.poll_one(), 1);
 
@@ -615,21 +616,21 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task5 = CreateActorTaskHelper(actor_id, worker_id, 4);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task5.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task5.TaskId(), _, _, _, _, _))
       .Times(1);
   ASSERT_TRUE(submitter_.SubmitTask(task5).ok());
   ASSERT_EQ(io_context.poll_one(), 0);
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
-  const auto execute_out_of_order = GetParam();
+  const auto allow_out_of_order_execution = GetParam();
   const auto caller_worker_id = WorkerID::FromRandom();
   rpc::Address actor_addr1;
   actor_addr1.set_worker_id(WorkerID::FromRandom().Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ false,
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, actor_addr1, 0);
@@ -643,7 +644,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // Submit a task.
   ASSERT_TRUE(submitter_.SubmitTask(task1_first_attempt).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1_first_attempt.TaskId(), _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task1_first_attempt.TaskId(), _, _, _))
       .Times(1);
   ASSERT_TRUE(
       worker_client_->ReplyPushTask(task1_first_attempt.GetTaskAttempt(), Status::OK()));
@@ -656,10 +657,10 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_EQ(io_context.poll_one(), 1);
   // Actor failed, but the task replies are delayed (or in some scenarios, lost).
   // We should still be able to fail the inflight tasks.
-  EXPECT_CALL(*task_finisher_,
+  EXPECT_CALL(*task_manager_,
               FailOrRetryPendingTask(task2_first_attempt.TaskId(), _, _, _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_,
+  EXPECT_CALL(*task_manager_,
               FailOrRetryPendingTask(task3_first_attempt.TaskId(), _, _, _, _, _))
       .Times(1);
   const auto death_cause = CreateMockDeathCause();
@@ -672,12 +673,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // Submit retries for task2 and task3.
   auto task2_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 3);
   task2_second_attempt.GetMutableMessage().set_task_id(
-      task2_first_attempt.TaskId().Binary());
+      task2_first_attempt.TaskIdBinary());
   task2_second_attempt.GetMutableMessage().set_attempt_number(
       task2_first_attempt.AttemptNumber() + 1);
   auto task3_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 4);
   task3_second_attempt.GetMutableMessage().set_task_id(
-      task3_first_attempt.TaskId().Binary());
+      task3_first_attempt.TaskIdBinary());
   task3_second_attempt.GetMutableMessage().set_attempt_number(
       task3_first_attempt.AttemptNumber() + 1);
   ASSERT_TRUE(submitter_.SubmitTask(task2_second_attempt).ok());
@@ -694,9 +695,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // The task reply of the first attempt of task2 is now received.
   // Since the first attempt is already failed, it will not
   // be marked as failed or finished again.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2_first_attempt.TaskId(), _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task2_first_attempt.TaskId(), _, _, _))
       .Times(0);
-  EXPECT_CALL(*task_finisher_,
+  EXPECT_CALL(*task_manager_,
               FailOrRetryPendingTask(task2_first_attempt.TaskId(), _, _, _, _, _))
       .Times(0);
   // First attempt of task2 replied with OK.
@@ -706,11 +707,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // and task3.
   ASSERT_EQ(worker_client_->callbacks.size(), 3);
 
-  EXPECT_CALL(*task_finisher_,
-              CompletePendingTask(task2_second_attempt.TaskId(), _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task2_second_attempt.TaskId(), _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_,
-              CompletePendingTask(task3_second_attempt.TaskId(), _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task3_second_attempt.TaskId(), _, _, _))
       .Times(1);
   // Second attempt of task2 replied with OK.
   ASSERT_TRUE(
@@ -724,9 +723,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // The task reply of the first attempt of task3 is now received.
   // Since the first attempt is already failed, it will not
   // be marked as failed or finished again.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task3_first_attempt.TaskId(), _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task3_first_attempt.TaskId(), _, _, _))
       .Times(0);
-  EXPECT_CALL(*task_finisher_,
+  EXPECT_CALL(*task_manager_,
               FailOrRetryPendingTask(task3_first_attempt.TaskId(), _, _, _, _, _))
       .Times(0);
   // First attempt of task3 replied with error.
@@ -736,14 +735,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -755,7 +754,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
   // Submit a task.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
 
   // Actor failed and is now restarting.
@@ -767,14 +766,14 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(0);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
+  EXPECT_CALL(*task_manager_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(0);
+  EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
       .Times(1);
   ASSERT_EQ(io_context.poll_one(), 1);
 }
 
 TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
-  auto execute_out_of_order = GetParam();
+  auto allow_out_of_order_execution = GetParam();
   int32_t max_pending_calls = 10;
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -782,7 +781,7 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       max_pending_calls,
-                                      execute_out_of_order,
+                                      allow_out_of_order_execution,
                                       /*fail_if_actor_unreachable*/ true,
                                       /*owned*/ false);
   addr.set_port(0);
@@ -823,7 +822,31 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecuteOutOfOrder,
+TEST_P(ActorTaskSubmitterTest, TestActorRestartResubmit) {
+  auto allow_out_of_order_execution = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      allow_out_of_order_execution,
+                                      /*fail_if_actor_unreachable*/ true,
+                                      /*owned*/ false);
+
+  // Generator is pushed to worker -> generator queued for resubmit -> comes back from
+  // worker -> resubmit happens.
+  auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
+  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  io_context.run_one();
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 1);
+  ASSERT_TRUE(submitter_.QueueGeneratorForResubmit(task1));
+  EXPECT_CALL(*task_manager_, MarkGeneratorFailedAndResubmit(task1.TaskId())).Times(1);
+  worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK());
+}
+
+INSTANTIATE_TEST_SUITE_P(AllowOutOfOrderExecution,
                          ActorTaskSubmitterTest,
                          ::testing::Values(true, false));
 
