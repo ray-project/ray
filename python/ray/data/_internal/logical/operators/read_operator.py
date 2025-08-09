@@ -32,6 +32,7 @@ class Read(AbstractMap, SourceOperator):
         self._mem_size = mem_size
         self._concurrency = concurrency
         self._detected_parallelism = None
+        self._per_block_limit = None
 
     def output_data(self):
         return None
@@ -48,6 +49,19 @@ class Read(AbstractMap, SourceOperator):
         Get the true parallelism that should be used during execution.
         """
         return self._detected_parallelism
+
+    def set_per_block_limit(self, limit: int):
+        """
+        Set the per-block limit for this read operation.
+        When set, each block will read at most `limit` rows.
+        """
+        self._per_block_limit = limit
+
+    def get_per_block_limit(self) -> Optional[int]:
+        """
+        Get the per-block limit for this read operation.
+        """
+        return self._per_block_limit
 
     def infer_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
@@ -79,6 +93,9 @@ class Read(AbstractMap, SourceOperator):
 
         if all(meta.num_rows is not None for meta in metadata):
             num_rows = sum(meta.num_rows for meta in metadata)
+            # Apply per-block limit if set
+            if self._per_block_limit is not None:
+                num_rows = min(num_rows, self._per_block_limit)
         else:
             num_rows = None
 
