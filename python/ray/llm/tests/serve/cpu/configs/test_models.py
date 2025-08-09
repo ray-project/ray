@@ -68,6 +68,23 @@ class TestModelConfig:
                 accelerator_type="A100_40G",  # Should use A100-40G instead
             )
 
+    def test_model_loading_config_forbids_extra_fields(self):
+        """Test that ModelLoadingConfig rejects extra fields."""
+
+        with pytest.raises(
+            pydantic.ValidationError, match="Extra inputs are not permitted"
+        ):
+            ModelLoadingConfig(
+                model_id="test_model",
+                model_source="test_source",
+                engine_kwargs={"max_model_len": 8000},  # This should be rejected
+            )
+
+        valid_config = ModelLoadingConfig(
+            model_id="test_model", model_source="test_source"
+        )
+        assert valid_config.model_id == "test_model"
+
     def test_invalid_generation_config(self, disable_placement_bundles):
         """Test that passing an invalid generation_config raises an error."""
         with pytest.raises(

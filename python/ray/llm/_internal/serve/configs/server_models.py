@@ -108,6 +108,10 @@ class LoraConfig(BaseModelExtended):
 
 
 class ModelLoadingConfig(BaseModelExtended):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
