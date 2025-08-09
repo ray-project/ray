@@ -11,7 +11,8 @@ from typing import IO, List, Optional, Tuple, Union
 
 import ray
 from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
-from ray._raylet import ObjectRef
+
+# from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
 logger = logging.getLogger(__name__)
@@ -131,7 +132,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         )
 
     def _write_multiple_objects(
-        self, f: IO, object_refs: List[ObjectRef], owner_addresses: List[str], url: str
+        self,
+        f: IO,
+        object_refs: List["ray.ObjectRef"],
+        owner_addresses: List[str],
+        url: str,
     ) -> List[str]:
         """Fuse all given objects into a given file handle.
 
@@ -220,7 +225,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
     ) -> int:
         """Restore objects from the external storage.
 
@@ -335,7 +340,7 @@ class FileSystemStorage(ExternalStorage):
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
     ):
         total = 0
         for i in range(len(object_refs)):
@@ -498,7 +503,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             )
 
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
     ):
         from smart_open import open
 
@@ -623,7 +628,7 @@ def spill_objects(object_refs, owner_addresses):
 
 
 def restore_spilled_objects(
-    object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
 ):
     """Restore objects from the external storage.
 
@@ -643,7 +648,7 @@ def delete_spilled_objects(urls: List[str]):
     _external_storage.delete_spilled_objects(urls)
 
 
-def _get_unique_spill_filename(object_refs: List[ObjectRef]):
+def _get_unique_spill_filename(object_refs: List["ray.ObjectRef"]):
     """Generate a unqiue spill file name.
 
     Args:
