@@ -253,7 +253,7 @@ class LLMServer(_LLMServerBase):
         await self.engine.start()
 
     def _push_telemetry_report(self):
-        # Push telemetry reports for the model in the current deployment.
+        """Push telemetry reports for the model in the current deployment."""
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:

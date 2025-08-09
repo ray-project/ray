@@ -16,25 +16,16 @@ class DPLLMServer(LLMServer):
     deployment paradigm, where the attention layers are replicated and
     the MoE layers are sharded. DP Attention is typically used for models
     like DeepSeek-V3.
-
     """
 
     async def __init__(self, llm_config: LLMConfig, dp_rank_assigner: DeploymentHandle):
-
-        # in DP case, in here, we wait to get all replica names.
-        # we assign a rank to each replica.
-        # Then locally construct dp rank based on current replica name and the
-        # consistent rank assignment. Since the logic is similar the mapping
-        # should be identical given the global view of replica names.
-
-        # For engine, set dp_size and dp_rank.
         self.dp_rank_assigner = dp_rank_assigner
 
         replica_ctx = serve.get_replica_context()
         self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx)
         logger.info(f"DP rank: {self.dp_rank}")
 
-        # override the engine_kwargs
+        # override the engine_kwargs to assign the DP rank.
         llm_config.engine_kwargs["data_parallel_rank"] = self.dp_rank
 
         await super().__init__(llm_config)
