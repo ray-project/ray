@@ -2286,53 +2286,52 @@ def test_map_names(target_max_block_size_infinite_or_default):
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
+    reason="with_columns requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
-    "column_name, expr, expected_value",
+    "exprs, expected_value",
     [
         # Arithmetic operations
-        ("result", col("id") + 1, 1),  # 0 + 1 = 1
-        ("result", col("id") + 5, 5),  # 0 + 5 = 5
-        ("result", col("id") - 1, -1),  # 0 - 1 = -1
-        ("result", col("id") * 2, 0),  # 0 * 2 = 0
-        ("result", col("id") * 3, 0),  # 0 * 3 = 0
-        ("result", col("id") / 2, 0.0),  # 0 / 2 = 0.0
+        ({"result": col("id") + 1}, 1),  # 0 + 1 = 1
+        ({"result": col("id") + 5}, 5),  # 0 + 5 = 5
+        ({"result": col("id") - 1}, -1),  # 0 - 1 = -1
+        ({"result": col("id") * 2}, 0),  # 0 * 2 = 0
+        ({"result": col("id") * 3}, 0),  # 0 * 3 = 0
+        ({"result": col("id") / 2}, 0.0),  # 0 / 2 = 0.0
         # More complex arithmetic
-        ("result", (col("id") + 1) * 2, 2),  # (0 + 1) * 2 = 2
-        ("result", (col("id") * 2) + 3, 3),  # 0 * 2 + 3 = 3
+        ({"result": (col("id") + 1) * 2}, 2),  # (0 + 1) * 2 = 2
+        ({"result": (col("id") * 2) + 3}, 3),  # 0 * 2 + 3 = 3
         # Comparison operations
-        ("result", col("id") > 0, False),  # 0 > 0 = False
-        ("result", col("id") >= 0, True),  # 0 >= 0 = True
-        ("result", col("id") < 1, True),  # 0 < 1 = True
-        ("result", col("id") <= 0, True),  # 0 <= 0 = True
-        ("result", col("id") == 0, True),  # 0 == 0 = True
+        ({"result": col("id") > 0}, False),  # 0 > 0 = False
+        ({"result": col("id") >= 0}, True),  # 0 >= 0 = True
+        ({"result": col("id") < 1}, True),  # 0 < 1 = True
+        ({"result": col("id") <= 0}, True),  # 0 <= 0 = True
+        ({"result": col("id") == 0}, True),  # 0 == 0 = True
         # Operations with literals
-        ("result", col("id") + lit(10), 10),  # 0 + 10 = 10
-        ("result", col("id") * lit(5), 0),  # 0 * 5 = 0
-        ("result", lit(2) + col("id"), 2),  # 2 + 0 = 2
-        ("result", lit(10) / (col("id") + 1), 10.0),  # 10 / (0 + 1) = 10.0
+        ({"result": col("id") + lit(10)}, 10),  # 0 + 10 = 10
+        ({"result": col("id") * lit(5)}, 0),  # 0 * 5 = 0
+        ({"result": lit(2) + col("id")}, 2),  # 2 + 0 = 2
+        ({"result": lit(10) / (col("id") + 1)}, 10.0),  # 10 / (0 + 1) = 10.0
     ],
 )
-def test_with_column(
+def test_with_columns(
     ray_start_regular_shared,
-    column_name,
-    expr,
+    exprs,
     expected_value,
     target_max_block_size_infinite_or_default,
 ):
-    """Verify that `with_column` works with various operations."""
-    ds = ray.data.range(5).with_column(column_name, expr)
+    """Verify that `with_columns` works with various operations."""
+    ds = ray.data.range(5).with_columns(exprs)
     result = ds.take(1)[0]
     assert result["id"] == 0
-    assert result[column_name] == expected_value
+    assert result["result"] == expected_value
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
+    reason="with_columns requires PyArrow >= 20.0.0",
 )
-def test_with_column_nonexistent_column(
+def test_with_columns_nonexistent_column(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
     """Verify that referencing a non-existent column with col() raises an exception."""
@@ -2341,22 +2340,26 @@ def test_with_column_nonexistent_column(
 
     # Try to reference a non-existent column - this should raise an exception
     with pytest.raises(UserCodeException):
-        ds.with_column("result", col("nonexistent_column") + 1).materialize()
+        ds.with_columns({"result": col("nonexistent_column") + 1}).materialize()
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
+    reason="with_columns requires PyArrow >= 20.0.0",
 )
-def test_with_column_multiple_expressions(
+def test_with_columns_multiple_expressions(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
-    """Verify that `with_column` correctly handles multiple expressions at once."""
+    """Verify that `with_columns` correctly handles multiple expressions at once."""
     ds = ray.data.range(5)
 
-    ds = ds.with_column("plus_one", col("id") + 1)
-    ds = ds.with_column("times_two", col("id") * 2)
-    ds = ds.with_column("ten_minus_id", 10 - col("id"))
+    exprs = {
+        "plus_one": col("id") + 1,
+        "times_two": col("id") * 2,
+        "ten_minus_id": 10 - col("id"),
+    }
+
+    ds = ds.with_columns(exprs)
 
     first_row = ds.take(1)[0]
     assert first_row["id"] == 0

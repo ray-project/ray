@@ -302,3 +302,20 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "core_worker_test",
+    size = "small",
+    srcs = ["core_worker_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_fakes",
+        "//:ray_mock",
+        "//src/ray/common:test_util",
+        "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:reference_count",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
