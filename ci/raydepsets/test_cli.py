@@ -19,8 +19,9 @@ from ci.raydepsets.cli import (
     _flatten_flags,
     Depset,
     DEFAULT_UV_FLAGS,
+    _get_depset,
 )
-from ci.raydepsets.workspace import Workspace
+from ci.raydepsets.workspace import Workspace, _substitute_build_args, BuildArgSet
 from click.testing import CliRunner
 from ci.raydepsets.testing_utils import (
     copy_data_to_tmpdir,
@@ -80,12 +81,12 @@ class TestCli(unittest.TestCase):
             ]
             assert manager.config.depsets[0].output == "requirements_compiled.txt"
 
-    def test_dependency_set_manager_get_depset(self):
+    def test_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                _get_depset(manager.config.depsets, "fake_depset")
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -339,8 +340,9 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 5
+            assert len(manager.build_graph.nodes()) == 6
             assert len(manager.build_graph.edges()) == 3
+            # assert that the compile depsets are first
             assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
             assert (
                 manager.build_graph.nodes["subset_general_depset"]["operation"]
@@ -350,11 +352,31 @@ class TestCli(unittest.TestCase):
                 manager.build_graph.nodes["expand_general_depset"]["operation"]
                 == "expand"
             )
-
             sorted_nodes = list(topological_sort(manager.build_graph))
-            assert sorted_nodes[0] == "ray_base_test_depset"
-            assert sorted_nodes[1] == "general_depset"
-            assert sorted_nodes[2] == "expanded_depset"
+            # assert that the root nodes are the compile depsets
+            assert "ray_base_test_depset" in sorted_nodes[:3]
+            assert "general_depset" in sorted_nodes[:3]
+            assert "build_args_test_depset_py311" in sorted_nodes[:3]
+
+    def test_substitute_build_args(self):
+        build_arg_set = BuildArgSet(
+            name="py311_cpu",
+            build_args={
+                "PYTHON_VERSION": "py311",
+                "CUDA_VERSION": "cu128",
+            },
+        )
+        depset_dict = {
+            "name": "test_depset_${PYTHON_VERSION}_${CUDA_VERSION}",
+            "operation": "compile",
+            "requirements": ["requirements_test.txt"],
+            "output": "requirements_compiled_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt",
+        }
+        substituted_depset = _substitute_build_args(depset_dict, build_arg_set)
+        assert (
+            substituted_depset["output"] == "requirements_compiled_test_py311_cu128.txt"
+        )
+        assert substituted_depset["name"] == "test_depset_py311_cu128"
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -473,6 +495,64 @@ depsets:
                 "CUDA_VERSION": 128,
                 "PYTHON_VERSION": "py311",
             }
+
+    def test_from_dict_build_arg_set_matrix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            workspace = Workspace(dir=tmpdir)
+            config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+            assert config.build_arg_sets[0].build_args["PYTHON_VERSION"] == "py311"
+            assert config.build_arg_sets[0].build_args["CUDA_VERSION"] == "cpu"
+
+    def test_get_depset_with_build_arg_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            depset = _get_depset(
+                manager.config.depsets,
+                "build_args_test_depset_py311",
+                build_arg_set="py311_cpu",
+            )
+            assert depset.name == "build_args_test_depset_py311"
+            assert depset.build_arg_set.name == "py311_cpu"
+            assert depset.build_arg_set.build_args["PYTHON_VERSION"] == "py311"
+            assert depset.build_arg_set.build_args["CUDA_VERSION"] == "cpu"
+
+    def test_get_depset_without_build_arg_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            depset = _get_depset(manager.config.depsets, "ray_base_test_depset")
+            assert depset.name == "ray_base_test_depset"
+            assert depset.build_arg_set is None
+
+    def test_invalid_build_arg_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
+                f.write(
+                    """
+depsets:
+    - name: invalid_build_arg_set
+      operation: compile
+      requirements:
+          - requirements_test.txt
+      output: requirements_compiled_invalid_build_arg_set.txt
+      build_arg_sets:
+          - invalid_build_arg_set
+                """
+                )
+            with self.assertRaises(KeyError):
+                DependencySetManager(
+                    config_path="test.depsets.yaml",
+                    workspace_dir=tmpdir,
+                )
 
 
 if __name__ == "__main__":
