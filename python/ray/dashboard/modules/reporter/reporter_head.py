@@ -451,7 +451,7 @@ class ReportHead(SubprocessModule):
 
         Params:
             pid: Required. The PID of the worker.
-            node_id: Required. The ID of the node.
+            node_id: Required. The hex ID of the node.
             duration: Optional. Duration in seconds for profiling (default: 5, max: 60).
             format: Optional. Output format (default: "flamegraph").
             native: Optional. Whether to use native profiling (default: false).
