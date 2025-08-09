@@ -426,7 +426,7 @@ class ReportHead(SubprocessModule):
         addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node at node_id {node_id_hex}, pid {pid}"
+                text=f"Failed to get agent address for node at node_id {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
