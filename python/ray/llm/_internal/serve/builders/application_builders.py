@@ -39,7 +39,12 @@ def build_llm_deployment(
         )
 
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
+    name_prefix = name_prefix or "DPLLMDeployment"
+    name = name_prefix + llm_config._get_deployment_name()
+    # TODO(rui): support data_parallel_backend=ray and unify
+    # deployment_options handling with LLMDeployment
     deployment_options = {
+        "name": name,
         "num_replicas": dp_size,
     }
     return DPLLMServer.as_deployment(deployment_options).bind(
