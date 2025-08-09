@@ -1,11 +1,13 @@
 import json
 import os
-from dataclasses import asdict
+from dataclasses import dataclass
+from typing import Tuple
 
 import pytest
 
 import ray
 from ray.data import DataContext
+from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.metadata_exporter import (
     UNKNOWN,
     Operator,
@@ -62,9 +64,81 @@ def ray_start_cluster_with_export_api_write(shutdown_only):
         yield res
 
 
+@dataclass
+class TestDataclass:
+    """A test dataclass for testing dataclass serialization."""
+
+    list_field: list = None
+    dict_field: dict = None
+    string_field: str = "test"
+    int_field: int = 1
+    float_field: float = 1.0
+    set_field: set = None
+    tuple_field: Tuple[int] = None
+    bool_field: bool = True
+    none_field: None = None
+
+    def __post_init__(self):
+        self.list_field = [1, 2, 3]
+        self.dict_field = {1: 2, "3": "4"}
+        self.set_field = {1, 2, 3}
+        self.tuple_field = (1, 2, 3)
+
+
+class DummyLogicalOperator(LogicalOperator):
+    """A dummy logical operator for testing _get_logical_args with various data types."""
+
+    def __init__(self, input_op=None):
+        super().__init__("DummyOperator", [])
+
+        # Test various data types that might be returned by _get_logical_args
+        self._string_value = "test_string"
+        self._int_value = 42
+        self._float_value = 3.14
+        self._bool_value = True
+        self._none_value = None
+        self._list_value = [1, 2, 3, "string", None]
+        self._dict_value = {"key1": "value1", "key2": 123, "key3": None}
+        self._nested_dict = {
+            "level1": {
+                "level2": {
+                    "level3": "deep_value",
+                    "numbers": [1, 2, 3],
+                    "mixed": {"a": 1, "b": "string", "c": None},
+                }
+            }
+        }
+        self._tuple_value = (1, "string", None, 3.14)
+        self._set_value = {1, 2, 3, "string"}  # Sets should be converted to lists
+        self._bytes_value = b"binary_data"
+        self._complex_dict = {
+            "string_keys": {"a": 1, "b": 2},
+            "int_keys": {1: "one", 2: "two"},  # This should cause issues if not handled
+            "mixed_keys": {"str": "value", 1: "int_key", None: "none_key"},
+        }
+        self._empty_containers = {
+            "empty_list": [],
+            "empty_dict": {},
+            "empty_tuple": (),
+            "empty_set": set(),
+        }
+        self._special_values = {
+            "zero": 0,
+            "negative": -1,
+            "large_int": 999999999999999999,
+            "small_float": 0.0000001,
+            "inf": float("inf"),
+            "neg_inf": float("-inf"),
+            "nan": float("nan"),
+        }
+
+        self._data_class = TestDataclass()
+
+
 @pytest.fixture
 def dummy_dataset_topology():
     """Create a dummy Topology."""
+    dummy_operator = DummyLogicalOperator()
     dummy_topology = Topology(
         operators=[
             Operator(
@@ -73,6 +147,7 @@ def dummy_dataset_topology():
                 uuid="uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                args=sanitize_for_struct(dummy_operator._get_args()),
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)->Filter(<lambda>)",
@@ -80,6 +155,7 @@ def dummy_dataset_topology():
                 uuid="uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                args=sanitize_for_struct(dummy_operator._get_args()),
             ),
         ],
     )
@@ -124,7 +200,8 @@ def _test_dataset_metadata_export(topology):
     data = _get_exported_data()
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_DATASET_METADATA"
-    assert data[0]["event_data"]["topology"] == sanitize_for_struct(asdict(topology))
+
+    assert data[0]["event_data"]["topology"] == sanitize_for_struct(topology)
     assert data[0]["event_data"]["dataset_id"] == STUB_DATASET_ID
     assert data[0]["event_data"]["job_id"] == STUB_JOB_ID
     assert data[0]["event_data"]["start_time"] is not None
@@ -246,7 +323,7 @@ def test_export_multiple_datasets(
     first_entry = datasets_by_id[first_dataset_id]
     assert first_entry["source_type"] == "EXPORT_DATASET_METADATA"
     assert first_entry["event_data"]["topology"] == sanitize_for_struct(
-        asdict(dummy_dataset_topology)
+        dummy_dataset_topology
     )
     assert first_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert first_entry["event_data"]["start_time"] is not None
@@ -258,7 +335,7 @@ def test_export_multiple_datasets(
     second_entry = datasets_by_id[second_dataset_id]
     assert second_entry["source_type"] == "EXPORT_DATASET_METADATA"
     assert second_entry["event_data"]["topology"] == sanitize_for_struct(
-        asdict(second_topology)
+        second_topology
     )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
@@ -313,10 +390,11 @@ class BasicObject:
         ),
         # Objects that can be converted to string
         (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
-        # Objects that can't be JSON serialized but can be stringified
-        ({1, 2, 3}, "{1, 2, 3}", 100),  # Falls back to str()
+        # Sets can be converted to Lists
+        ({1, 2, 3}, [1, 2, 3], 100),
+        ((1, 2, 3), [1, 2, 3], 100),
         # Objects that can't be serialized or stringified
-        (UnserializableObject(), UNKNOWN, 100),
+        (UnserializableObject(), f"{UNKNOWN}: {UnserializableObject.__name__}", 100),
         # Empty containers
         ({}, {}, 100),
         ([], [], 100),
@@ -326,12 +404,32 @@ class BasicObject:
             [1, "hello", {"key": "value"}, None],
             100,
         ),
+        # Bytearrays/bytes - should be converted to lists
+        (bytearray(b"hello"), [104, 101, 108, 108, 111], 100),
+        (bytearray([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5], 100),
+        (bytes(b"test"), [116, 101, 115, 116], 100),
+        # Dataclass
+        (
+            TestDataclass(),
+            {
+                "list_field": [1, 2, 3],
+                "dict_field": {"1": 2, "3": "4"},  # key should be strings
+                "string_field": "test",
+                "int_field": 1,
+                "float_field": 1.0,
+                "set_field": [1, 2, 3],  # sets will be converted to Lists
+                "tuple_field": [1, 2, 3],  # tuples will be converted to Lists
+                "bool_field": True,
+                "none_field": None,
+            },
+            100,
+        ),
     ],
 )
 def test_sanitize_for_struct(input_obj, expected_output, truncate_length):
     """Test sanitize_for_struct with various input types and truncation lengths."""
     result = sanitize_for_struct(input_obj, truncate_length)
-    assert result == expected_output
+    assert result == expected_output, f"Expected {expected_output}, got {result}"
 
 
 if __name__ == "__main__":
