@@ -17,6 +17,7 @@ from websockets.sync.client import connect
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.network_utils import parse_address
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
@@ -571,7 +572,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     # Simulate an HTTP disconnect
     http_url = get_application_url("HTTP", app_name="disconnect")
     ip_port = http_url.replace("http://", "").split("/")[0]  # remove the route prefix
-    ip, port = ip_port.split(":")
+    ip, port = parse_address(ip_port)
     conn = http.client.HTTPConnection(ip, int(port))
     conn.request("GET", "/disconnect")
     wait_for_condition(
