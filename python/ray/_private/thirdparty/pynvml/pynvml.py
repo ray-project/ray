@@ -208,32 +208,33 @@ NVML_INFOROM_POWER          = 2
 NVML_INFOROM_COUNT          = 3
 
 _nvmlReturn_t = c_uint
-NVML_SUCCESS                        = 0
-NVML_ERROR_UNINITIALIZED            = 1
-NVML_ERROR_INVALID_ARGUMENT         = 2
-NVML_ERROR_NOT_SUPPORTED            = 3
-NVML_ERROR_NO_PERMISSION            = 4
-NVML_ERROR_ALREADY_INITIALIZED      = 5
-NVML_ERROR_NOT_FOUND                = 6
-NVML_ERROR_INSUFFICIENT_SIZE        = 7
-NVML_ERROR_INSUFFICIENT_POWER       = 8
-NVML_ERROR_DRIVER_NOT_LOADED        = 9
-NVML_ERROR_TIMEOUT                  = 10
-NVML_ERROR_IRQ_ISSUE                = 11
-NVML_ERROR_LIBRARY_NOT_FOUND        = 12
-NVML_ERROR_FUNCTION_NOT_FOUND       = 13
-NVML_ERROR_CORRUPTED_INFOROM        = 14
-NVML_ERROR_GPU_IS_LOST              = 15
-NVML_ERROR_RESET_REQUIRED           = 16
-NVML_ERROR_OPERATING_SYSTEM         = 17
-NVML_ERROR_LIB_RM_VERSION_MISMATCH  = 18
-NVML_ERROR_IN_USE                   = 19
-NVML_ERROR_MEMORY                   = 20
-NVML_ERROR_NO_DATA                  = 21
-NVML_ERROR_VGPU_ECC_NOT_SUPPORTED   = 22
-NVML_ERROR_INSUFFICIENT_RESOURCES   = 23
-NVML_ERROR_FREQ_NOT_SUPPORTED       = 24
-NVML_ERROR_UNKNOWN                  = 999
+NVML_SUCCESS                         = 0
+NVML_ERROR_UNINITIALIZED             = 1
+NVML_ERROR_INVALID_ARGUMENT          = 2
+NVML_ERROR_NOT_SUPPORTED             = 3
+NVML_ERROR_NO_PERMISSION             = 4
+NVML_ERROR_ALREADY_INITIALIZED       = 5
+NVML_ERROR_NOT_FOUND                 = 6
+NVML_ERROR_INSUFFICIENT_SIZE         = 7
+NVML_ERROR_INSUFFICIENT_POWER        = 8
+NVML_ERROR_DRIVER_NOT_LOADED         = 9
+NVML_ERROR_TIMEOUT                   = 10
+NVML_ERROR_IRQ_ISSUE                 = 11
+NVML_ERROR_LIBRARY_NOT_FOUND         = 12
+NVML_ERROR_FUNCTION_NOT_FOUND        = 13
+NVML_ERROR_CORRUPTED_INFOROM         = 14
+NVML_ERROR_GPU_IS_LOST               = 15
+NVML_ERROR_RESET_REQUIRED            = 16
+NVML_ERROR_OPERATING_SYSTEM          = 17
+NVML_ERROR_LIB_RM_VERSION_MISMATCH   = 18
+NVML_ERROR_IN_USE                    = 19
+NVML_ERROR_MEMORY                    = 20
+NVML_ERROR_NO_DATA                   = 21
+NVML_ERROR_VGPU_ECC_NOT_SUPPORTED    = 22
+NVML_ERROR_INSUFFICIENT_RESOURCES    = 23
+NVML_ERROR_FREQ_NOT_SUPPORTED        = 24
+NVML_ERROR_ARGUMENT_VERSION_MISMATCH = 25
+NVML_ERROR_UNKNOWN                   = 999
 
 _nvmlFanState_t = c_uint
 NVML_FAN_NORMAL             = 0
@@ -682,6 +683,9 @@ _nvmlHostVgpuMode_t = c_uint
 NVML_HOST_VGPU_MODE_NON_SRIOV   = 0
 NVML_HOST_VGPU_MODE_SRIOV       = 1
 
+def NVML_STRUCT_VERSION(data, version):
+    return sizeof(data) | (version << 24)
+
 ## Error Checking ##
 class NVMLError(Exception):
     _valClassMapping = dict()
@@ -702,6 +706,7 @@ class NVMLError(Exception):
         NVML_ERROR_FUNCTION_NOT_FOUND:  "Function Not Found",
         NVML_ERROR_CORRUPTED_INFOROM:   "Corrupted infoROM",
         NVML_ERROR_GPU_IS_LOST:         "GPU is lost",
+        NVML_ERROR_ARGUMENT_VERSION_MISMATCH : "Argument version mismatch",
         NVML_ERROR_RESET_REQUIRED:      "GPU requires restart",
         NVML_ERROR_OPERATING_SYSTEM:    "The operating system has blocked the request.",
         NVML_ERROR_LIB_RM_VERSION_MISMATCH: "RM has detected an NVML/RM version mismatch.",
@@ -1085,6 +1090,29 @@ class c_nvmlVgpuProcessUtilizationSample_t(_PrintableStructure):
         ('encUtil', c_uint),
         ('decUtil', c_uint),
     ]
+
+class c_nvmlProcessUtilizationInfo_v1_t(_PrintableStructure):
+    _fields_ = [
+        ('timeStamp', c_ulonglong),
+        ('pid', c_uint),
+        ('smUtil', c_uint),
+        ('memUtil', c_uint),
+        ('encUtil', c_uint),
+        ('decUtil', c_uint),
+        ('jpgUtil', c_uint),
+        ('ofaUtil', c_uint)
+    ]
+
+class c_nvmlProcessesUtilizationInfo_v1_t(_PrintableStructure):
+    _pack_ = 4 # Used for version hashing
+    _fields_ = [
+        ("version", c_uint),
+        ("processSamplesCount", c_uint),
+        ("lastSeenTimeStamp", c_ulonglong),
+        ("procUtilArray", POINTER(c_nvmlProcessUtilizationInfo_v1_t))
+    ]
+
+nvmlProcessesUtilizationInfo_v1 = NVML_STRUCT_VERSION(c_nvmlProcessesUtilizationInfo_v1_t, 1)
 
 class c_nvmlVgpuLicenseExpiry_t(_PrintableStructure):
     _fields_ = [
@@ -3335,6 +3363,32 @@ def nvmlDeviceGetProcessUtilization(handle, timeStamp):
         return c_samples[0:c_count.value]
     else:
         # error case
+        raise NVMLError(ret)
+
+def nvmlDeviceGetProcessesUtilizationInfo(handle, lastSeenTimeStamp):
+    c_procUtilInfo = c_nvmlProcessesUtilizationInfo_v1_t(
+        version=nvmlProcessesUtilizationInfo_v1,
+        procUtilArray=None,
+        processSamplesCount=0,
+        lastSeenTimeStamp=lastSeenTimeStamp,
+    )
+
+    fn = _nvmlGetFunctionPointer("nvmlDeviceGetProcessesUtilizationInfo")
+    # First call to get the size
+    ret = fn(handle, byref(c_procUtilInfo))
+    
+    if (ret == NVML_ERROR_INSUFFICIENT_SIZE):
+        sampleArray = c_procUtilInfo.processSamplesCount * c_nvmlProcessUtilizationInfo_v1_t
+        c_procUtilInfo.procUtilArray = sampleArray()
+
+        # Second call with properly allocated buffer
+        ret = fn(handle, byref(c_procUtilInfo))
+        _nvmlCheckReturn(ret)
+    
+        return c_procUtilInfo.procUtilArray[0:c_procUtilInfo.processSamplesCount]
+    elif (ret == NVML_ERROR_NOT_FOUND):
+        return [] # No processes running on the GPU
+    else:
         raise NVMLError(ret)
 
 def nvmlVgpuInstanceGetMetadata(vgpuInstance):
