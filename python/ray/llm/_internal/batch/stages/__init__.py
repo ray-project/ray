@@ -9,6 +9,9 @@ from ray.llm._internal.batch.stages.prepare_image_stage import PrepareImageStage
 from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangEngineStage
 from ray.llm._internal.batch.stages.tokenize_stage import DetokenizeStage, TokenizeStage
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMEngineStage
+from ray.llm._internal.batch.stages.vllm_shared_engine_stage import (
+    vLLMSharedEngineStage,
+)
 
 __all__ = [
     "StatefulStage",
@@ -17,6 +20,7 @@ __all__ = [
     "TokenizeStage",
     "DetokenizeStage",
     "vLLMEngineStage",
+    "vLLMSharedEngineStage",
     "SGLangEngineStage",
     "wrap_preprocess",
     "wrap_postprocess",

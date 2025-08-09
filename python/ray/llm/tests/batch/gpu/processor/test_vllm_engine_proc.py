@@ -7,7 +7,27 @@ import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.vllm_engine_proc import (
     vLLMEngineProcessorConfig,
+    vLLMSharedEngineProcessorConfig,
 )
+from ray.serve.llm import LLMConfig, ModelLoadingConfig
+
+CHAT_TEMPLATE = """
+{% if messages[0]['role'] == 'system' %}
+    {% set offset = 1 %}
+{% else %}
+    {% set offset = 0 %}
+{% endif %}
+{{ bos_token }}
+{% for message in messages %}
+    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
+        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+    {% endif %}
+    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
+{% endfor %}
+{% if add_generation_prompt %}
+    {{ '<|im_start|>assistant\n' }}
+{% endif %}
+    """
 
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
@@ -69,27 +89,6 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
 def test_generation_model(gpu_type, model_opt_125m):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
-    chat_template = """
-{% if messages[0]['role'] == 'system' %}
-    {% set offset = 1 %}
-{% else %}
-    {% set offset = 0 %}
-{% endif %}
-
-{{ bos_token }}
-{% for message in messages %}
-    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
-        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
-    {% endif %}
-
-    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
-{% endfor %}
-
-{% if add_generation_prompt %}
-    {{ '<|im_start|>assistant\n' }}
-{% endif %}
-    """
-
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
@@ -104,7 +103,7 @@ def test_generation_model(gpu_type, model_opt_125m):
         accelerator_type=gpu_type,
         concurrency=1,
         apply_chat_template=True,
-        chat_template=chat_template,
+        chat_template=CHAT_TEMPLATE,
         tokenize=True,
         detokenize=True,
     )
@@ -241,6 +240,153 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
+
+
+class TestSharedvLLMEngine:
+    def test_multi_turn_shared_engine(self, gpu_type, model_opt_125m):
+        """Test multi-turn conversation using a shared vLLM engine."""
+        shared_processor_config = vLLMSharedEngineProcessorConfig(
+            llm_config=LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_opt_125m,
+                ),
+                engine_kwargs=dict(
+                    enable_prefix_caching=False,
+                    enable_chunked_prefill=True,
+                    max_num_batched_tokens=2048,
+                    max_model_len=2048,
+                    # Skip CUDA graph capturing to reduce startup time.
+                    enforce_eager=True,
+                ),
+            ),
+            model_source=model_opt_125m,
+            batch_size=16,
+            accelerator_type=gpu_type,
+            concurrency=1,
+            apply_chat_template=True,
+            chat_template=CHAT_TEMPLATE,
+            tokenize=True,
+            detokenize=True,
+        )
+
+        processor1 = ProcessorBuilder.build(
+            config=shared_processor_config,
+            preprocess=lambda row: dict(
+                messages=[
+                    {"role": "system", "content": "You are a calculator"},
+                    {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+                ],
+                sampling_params=dict(
+                    temperature=0.3,
+                    max_tokens=50,
+                    detokenize=False,
+                ),
+            ),
+            postprocess=lambda row: {
+                "resp1": row["generated_text"],
+            },
+        )
+
+        processor2 = ProcessorBuilder.build(
+            config=shared_processor_config,
+            preprocess=lambda row: dict(
+                **row,
+                messages=[
+                    {"role": "system", "content": "Based on the previous conversation"},
+                    {"role": "user", "content": "What is this number minus 2?"},
+                ],
+                sampling_params=dict(
+                    temperature=0.3,
+                    max_tokens=50,
+                    detokenize=False,
+                ),
+            ),
+            postprocess=lambda row: {
+                **row,
+                "resp2": row["generated_text"],
+            },
+        )
+
+        ds = ray.data.range(10)
+        ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+
+        ds_turn1 = processor1(ds)
+        ds_turn2 = processor2(ds_turn1)
+
+        outs = ds_turn2.take_all()
+
+        assert len(outs) == 10
+        assert all("resp1" in out for out in outs)
+        assert all("resp2" in out for out in outs)
+
+    def test_shared_engine_instantiation(self, gpu_type, model_opt_125m):
+        """Test that shared engine deployments are properly instantiated."""
+        with patch(
+            "ray.llm._internal.batch.processor.vllm_engine_proc.build_llm_deployment"
+        ) as mock_build_deployment, patch(
+            "ray.llm._internal.batch.processor.vllm_engine_proc.run"
+        ) as mock_run:
+            mock_build_deployment.return_value = MagicMock()
+            mock_run.return_value = MagicMock()
+
+            shared_processor_config = vLLMSharedEngineProcessorConfig(
+                llm_config=LLMConfig(
+                    model_loading_config=ModelLoadingConfig(
+                        model_id=model_opt_125m,
+                    ),
+                    engine_kwargs=dict(
+                        enable_prefix_caching=False,
+                        enable_chunked_prefill=True,
+                        max_num_batched_tokens=2048,
+                        max_model_len=2048,
+                        # Skip CUDA graph capturing to reduce startup time.
+                        enforce_eager=True,
+                    ),
+                ),
+                model_source=model_opt_125m,
+                batch_size=16,
+                accelerator_type=gpu_type,
+                concurrency=1,
+                apply_chat_template=True,
+                chat_template=CHAT_TEMPLATE,
+                tokenize=True,
+                detokenize=True,
+            )
+
+            processor1 = ProcessorBuilder.build(config=shared_processor_config)
+            processor2 = ProcessorBuilder.build(config=shared_processor_config)
+
+            assert mock_build_deployment.call_count == 1
+
+            # Using a different instance of vLLMSharedEngineProcessorConfig results
+            # in a new deployment despite the same configurations.
+            shared_processor_config2 = vLLMSharedEngineProcessorConfig(
+                llm_config=LLMConfig(
+                    model_loading_config=ModelLoadingConfig(
+                        model_id=model_opt_125m,
+                    ),
+                    engine_kwargs=dict(
+                        enable_prefix_caching=False,
+                        enable_chunked_prefill=True,
+                        max_num_batched_tokens=2048,
+                        max_model_len=2048,
+                        # Skip CUDA graph capturing to reduce startup time.
+                        enforce_eager=True,
+                    ),
+                ),
+                model_source=model_opt_125m,
+                batch_size=16,
+                accelerator_type=gpu_type,
+                concurrency=1,
+                apply_chat_template=True,
+                chat_template=CHAT_TEMPLATE,
+                tokenize=True,
+                detokenize=True,
+            )
+
+            processor3 = ProcessorBuilder.build(config=shared_processor_config2)
+
+            assert mock_build_deployment.call_count == 2
 
 
 class TestVLLMEngineProcessorConfig:

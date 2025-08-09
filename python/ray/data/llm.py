@@ -7,6 +7,7 @@ from ray.llm._internal.batch.processor import (
     ProcessorConfig as _ProcessorConfig,
     SGLangEngineProcessorConfig as _SGLangEngineProcessorConfig,
     vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
+    vLLMSharedEngineProcessorConfig as _vLLMSharedEngineProcessorConfig,
 )
 from ray.util.annotations import PublicAPI
 
@@ -245,6 +246,108 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
+class vLLMSharedEngineProcessorConfig(_vLLMSharedEngineProcessorConfig):
+    """The configuration for the vLLM shared engine processor.
+
+    This configuration is for sharing a single vLLM engine instance across multiple processors
+    using Ray Serve. It wraps an LLMConfig, which specifies the vLLM engine and deployment
+    settings, and adds additional offline processor options.
+
+    Use vLLMSharedEngineProcessorConfig only when you want multiple processors to share
+    the same vLLM engine (e.g. save compute resources for multi-turn conversations). For most
+    use cases where engine sharing is not needed, use vLLMEngineProcessorConfig instead.
+
+    Args:
+        llm_config: The LLMConfig for the serve deployment. This directly configures
+            the vLLM engine (engine_kwargs) and deployment settings.
+        model_source: The model source to use for the vLLM engine.
+        batch_size: The batch size to send to the vLLM engine. Large batch sizes are
+            likely to saturate the compute resources and could achieve higher throughput.
+            On the other hand, small batch sizes are more fault-tolerant and could
+            reduce bubbles in the data pipeline. You can tune the batch size to balance
+            the throughput and fault-tolerance based on your use case.
+        task_type: The task type to use. If not specified, will use 'generate' by default.
+        runtime_env: The runtime environment to use for the vLLM engine. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        max_pending_requests: The maximum number of pending requests. If not specified,
+            will use the default value from the vLLM engine.
+        max_concurrent_batches: The maximum number of concurrent batches in the engine.
+            This is to overlap the batch processing to avoid the tail latency of
+            each batch. The default value may not be optimal when the batch size
+            or the batch processing latency is too small, but it should be good
+            enough for batch size >= 64.
+        apply_chat_template: Whether to apply chat template.
+        chat_template: The chat template to use. This is usually not needed if the
+            model checkpoint already contains the chat template.
+        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
+            If not, vLLM will tokenize the prompt in the engine.
+        detokenize: Whether to detokenize the output.
+        has_image: Whether the input messages have images.
+        accelerator_type: The accelerator type used by the LLM stage in a processor.
+            Default to None, meaning that only the CPU will be used.
+        concurrency: The number of workers for data parallelism. Default to 1.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMSharedEngineProcessorConfig, build_llm_processor
+            from ray.serve.llm import LLMConfig, ModelLoadingConfig
+
+            config = vLLMSharedEngineProcessorConfig(
+                llm_config=LLMConfig(
+                    model_loading_config=ModelLoadingConfig(
+                        model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                    ),
+                    engine_kwargs=dict(
+                        enable_prefix_caching=True,
+                        enable_chunked_prefill=True,
+                        max_num_batched_tokens=4096,
+                    ),
+                ),
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                concurrency=1,
+                batch_size=64,
+            )
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "system", "content": "You are a calculator"},
+                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+                    ],
+                    sampling_params=dict(
+                        temperature=0.3,
+                        max_tokens=20,
+                        detokenize=False,
+                    ),
+                ),
+                postprocess=lambda row: dict(
+                    resp=row["generated_text"],
+                ),
+            )
+
+            # The processor requires specific input columns, which depend on
+            # your processor config. You can use the following API to check
+            # the required input columns:
+            processor.log_input_column_names()
+            # Example log:
+            # The first stage of the processor is ChatTemplateStage.
+            # Required input columns:
+            #     messages: A list of messages in OpenAI chat format.
+
+            ds = ray.data.range(300)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -312,7 +415,7 @@ def build_llm_processor(
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
     return ProcessorBuilder.build(
-        config,
+        config=config,
         preprocess=preprocess,
         postprocess=postprocess,
     )
@@ -323,6 +426,7 @@ __all__ = [
     "Processor",
     "HttpRequestProcessorConfig",
     "vLLMEngineProcessorConfig",
+    "vLLMSharedEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "build_llm_processor",
 ]

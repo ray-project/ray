@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Type
 
-from pydantic import Field
+from pydantic import Field, BaseModel
 
 import ray
 from ray.data import Dataset
@@ -14,6 +14,14 @@ from ray.llm._internal.batch.stages import (
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+# Avoid runtime circular imports; only import for type checking
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.llm._internal.batch.processor.vllm_engine_proc import (
+        vLLMSharedEngineProcessorConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +295,18 @@ class ProcessorBuilder:
         Returns:
             The built processor.
         """
+
+        from ray.llm._internal.batch.processor.vllm_engine_proc import (
+            vLLMSharedEngineProcessorConfig,
+        )
+
+        if isinstance(config, vLLMSharedEngineProcessorConfig):
+            from ray.llm._internal.batch.processor.shared_engine import (
+                _shared_engine_registry,
+            )
+
+            _shared_engine_registry.register_config(config)
+
         type_name = type(config).__name__
         if type_name not in cls._registry:
             raise ValueError(
