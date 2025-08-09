@@ -91,7 +91,8 @@ class TaskEventBufferTest : public ::testing::Test {
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>());
+        std::make_unique<MockEventAggregatorClient>(),
+        "test_session_name");
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -156,6 +157,7 @@ class TaskEventBufferTest : public ::testing::Test {
         rpc::TaskStatus::RUNNING,
         1,
         /*is_actor_task_event=*/false,
+        "test_session_name",
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
   }
@@ -172,6 +174,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                              rpc::TaskStatus::RUNNING,
                                              running_ts,
                                              /*is_actor_task_event=*/false,
+                                             "test_session_name",
                                              nullptr,
                                              state_update);
   }

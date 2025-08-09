@@ -207,7 +207,7 @@ class StandardAutoscaler:
             config_reader: Path to a Ray Autoscaler YAML, or a function to read
                 and return the latest config.
             load_metrics: Provides metrics for the Ray cluster.
-            session_name: The session name of the cluster this autoscaler
+            session_name: The current Ray session name when this autoscaler
                 is deployed.
             max_launch_batch: Max number of nodes to launch in one request.
             max_concurrent_launches: Max number of nodes that can be

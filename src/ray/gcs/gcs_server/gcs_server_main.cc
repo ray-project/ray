@@ -42,9 +42,7 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
-DEFINE_string(session_name,
-              "",
-              "session_name: The session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {

@@ -560,8 +560,7 @@ def test_metrics_export_event_aggregator_agent(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)

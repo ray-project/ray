@@ -371,7 +371,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="The session name (cluster id) of this cluster.",
+        help="The current Ray session name.",
     )
     parser.add_argument(
         "--stdout-filepath",
