@@ -536,6 +536,7 @@ def test_status_invalid_runtime_env(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
+        cli_output = remove_ansi_escape_sequences(cli_output.decode())
         cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
         assert "Failed to set up runtime environment" in cli_status["message"]
