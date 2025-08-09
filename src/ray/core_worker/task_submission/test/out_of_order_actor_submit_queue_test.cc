@@ -17,8 +17,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
-#include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
+#include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 
 namespace ray {
 namespace core {
