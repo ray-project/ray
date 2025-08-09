@@ -256,7 +256,7 @@ def ray_deps_setup():
             "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
         ],
         patches = [
-            # TODO (israbbani): Separate the compiler flags and remove this patch
+            # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@com_github_ray_project_ray//thirdparty/patches:abseil-cpp-shadow.patch",
         ],
     )
@@ -361,7 +361,7 @@ def ray_deps_setup():
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:msgpack-windows-iovec.patch",
-            # TODO (israbbani): Separate the compiler flags and remove this patch
+            # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@com_github_ray_project_ray//thirdparty/patches:msgpack-shadow.patch",
         ],
     )
