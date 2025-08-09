@@ -39,7 +39,7 @@ class DummyAllocator : public IAllocator {
   std::optional<Allocation> Allocate(size_t bytes) override {
     allocated_ += bytes;
     auto allocation = Allocation();
-    allocation.size = bytes;
+    allocation.size_ = bytes;
     return std::move(allocation);
   }
 
@@ -47,7 +47,7 @@ class DummyAllocator : public IAllocator {
     return absl::nullopt;
   }
 
-  void Free(Allocation allocation) override { allocated_ -= allocation.size; }
+  void Free(Allocation allocation) override { allocated_ -= allocation.size_; }
 
   int64_t GetFootprintLimit() const override {
     return std::numeric_limits<int64_t>::max();
@@ -99,39 +99,40 @@ struct ObjectStatsCollectorTest : public Test {
     for (const auto &obj_entry : object_store_->object_table_) {
       const auto &obj = obj_entry.second;
 
-      if (obj->ref_count > 0) {
+      if (obj->ref_count_ > 0) {
         num_objects_in_use++;
-        num_bytes_in_use += obj->object_info.GetObjectSize();
+        num_bytes_in_use += obj->object_info_.GetObjectSize();
       }
 
-      if (obj->state == ObjectState::PLASMA_CREATED) {
+      if (obj->state_ == ObjectState::PLASMA_CREATED) {
         num_objects_unsealed++;
-        num_bytes_unsealed += obj->object_info.GetObjectSize();
+        num_bytes_unsealed += obj->object_info_.GetObjectSize();
       } else {
-        if (obj->ref_count == 1 &&
-            obj->source == plasma::flatbuf::ObjectSource::CreatedByWorker) {
+        if (obj->ref_count_ == 1 &&
+            obj->source_ == plasma::flatbuf::ObjectSource::CreatedByWorker) {
           num_objects_spillable++;
-          num_bytes_spillable += obj->object_info.GetObjectSize();
+          num_bytes_spillable += obj->object_info_.GetObjectSize();
         }
 
-        if (obj->ref_count == 0) {
+        if (obj->ref_count_ == 0) {
           num_objects_evictable++;
-          num_bytes_evictable += obj->object_info.GetObjectSize();
+          num_bytes_evictable += obj->object_info_.GetObjectSize();
         }
       }
 
-      if (obj->source == plasma::flatbuf::ObjectSource::CreatedByWorker) {
+      if (obj->source_ == plasma::flatbuf::ObjectSource::CreatedByWorker) {
         num_objects_created_by_worker++;
-        num_bytes_created_by_worker += obj->object_info.GetObjectSize();
-      } else if (obj->source == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
+        num_bytes_created_by_worker += obj->object_info_.GetObjectSize();
+      } else if (obj->source_ == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
         num_objects_restored++;
-        num_bytes_restored += obj->object_info.GetObjectSize();
-      } else if (obj->source == plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
+        num_bytes_restored += obj->object_info_.GetObjectSize();
+      } else if (obj->source_ ==
+                 plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
         num_objects_received++;
-        num_bytes_received += obj->object_info.GetObjectSize();
-      } else if (obj->source == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
+        num_bytes_received += obj->object_info_.GetObjectSize();
+      } else if (obj->source_ == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
         num_objects_errored++;
-        num_bytes_errored += obj->object_info.GetObjectSize();
+        num_bytes_errored += obj->object_info_.GetObjectSize();
       }
     }
 

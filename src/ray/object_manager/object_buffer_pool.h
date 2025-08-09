@@ -39,18 +39,18 @@ class ObjectBufferPool {
               uint8_t *data,
               uint64_t buffer_length,
               std::shared_ptr<Buffer> buffer_ref)
-        : chunk_index(chunk_index),
-          data(data),
-          buffer_length(buffer_length),
-          buffer_ref(buffer_ref){};
+        : chunk_index_(chunk_index),
+          data_(data),
+          buffer_length_(buffer_length),
+          buffer_ref_(buffer_ref){};
     /// The index of this object chunk within the object, starting with 0.
-    uint64_t chunk_index;
+    uint64_t chunk_index_;
     /// A pointer to the start position of this object chunk.
-    uint8_t *data;
+    uint8_t *data_;
     /// The size of this object chunk.
-    uint64_t buffer_length;
+    uint64_t buffer_length_;
     /// A shared reference to the underlying buffer, keeping it alive.
-    std::shared_ptr<Buffer> buffer_ref;
+    std::shared_ptr<Buffer> buffer_ref_;
   };
 
   /// Constructor.
@@ -174,25 +174,25 @@ class ObjectBufferPool {
     CreateBufferState(uint64_t metadata_size,
                       uint64_t data_size,
                       std::vector<ChunkInfo> chunk_info)
-        : metadata_size(metadata_size),
-          data_size(data_size),
-          chunk_info(chunk_info),
-          chunk_state(chunk_info.size(), CreateChunkState::AVAILABLE),
-          num_seals_remaining(chunk_info.size()) {}
+        : metadata_size_(metadata_size),
+          data_size_(data_size),
+          chunk_info_(chunk_info),
+          chunk_state_(chunk_info.size(), CreateChunkState::AVAILABLE),
+          num_seals_remaining_(chunk_info.size()) {}
     /// Total size of the object metadata.
-    uint64_t metadata_size;
+    uint64_t metadata_size_;
     /// Total size of the object data.
-    uint64_t data_size;
+    uint64_t data_size_;
     /// A vector maintaining information about the chunks which comprise
     /// an object.
-    std::vector<ChunkInfo> chunk_info;
+    std::vector<ChunkInfo> chunk_info_;
     /// The state of each chunk, which is used to enforce strict state
     /// transitions of each chunk.
-    std::vector<CreateChunkState> chunk_state;
+    std::vector<CreateChunkState> chunk_state_;
     /// The number of chunks left to seal before the buffer is sealed.
-    uint64_t num_seals_remaining;
+    uint64_t num_seals_remaining_;
     /// The number of inflight copy operations.
-    uint64_t num_inflight_copies = 0;
+    uint64_t num_inflight_copies_ = 0;
   };
 
   /// Returned when GetChunk or CreateChunk fails.

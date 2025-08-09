@@ -182,28 +182,28 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
 
 scheduling::NodeID HybridSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::HYBRID)
+  RAY_CHECK(options.scheduling_type_ == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
-  if (!options.avoid_gpu_nodes || resource_request.Has(ResourceID::GPU())) {
+  if (!options.avoid_gpu_nodes_ || resource_request.Has(ResourceID::GPU())) {
     return ScheduleImpl(resource_request,
-                        options.spread_threshold,
-                        options.avoid_local_node,
-                        options.require_node_available,
+                        options.spread_threshold_,
+                        options.avoid_local_node_,
+                        options.require_node_available_,
                         NodeFilter::kAny,
-                        options.preferred_node_id,
-                        options.schedule_top_k_absolute,
-                        options.scheduler_top_k_fraction);
+                        options.preferred_node_id_,
+                        options.schedule_top_k_absolute_,
+                        options.scheduler_top_k_fraction_);
   }
 
   // Try schedule on non-GPU nodes.
   auto best_node_id = ScheduleImpl(resource_request,
-                                   options.spread_threshold,
-                                   options.avoid_local_node,
+                                   options.spread_threshold_,
+                                   options.avoid_local_node_,
                                    /*require_node_available*/ true,
                                    NodeFilter::kNonGpu,
-                                   options.preferred_node_id,
-                                   options.schedule_top_k_absolute,
-                                   options.scheduler_top_k_fraction);
+                                   options.preferred_node_id_,
+                                   options.schedule_top_k_absolute_,
+                                   options.scheduler_top_k_fraction_);
   if (!best_node_id.IsNil()) {
     return best_node_id;
   }
@@ -211,13 +211,13 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
   return ScheduleImpl(resource_request,
-                      options.spread_threshold,
-                      options.avoid_local_node,
-                      options.require_node_available,
+                      options.spread_threshold_,
+                      options.avoid_local_node_,
+                      options.require_node_available_,
                       NodeFilter::kAny,
-                      options.preferred_node_id,
-                      options.schedule_top_k_absolute,
-                      options.scheduler_top_k_fraction);
+                      options.preferred_node_id_,
+                      options.schedule_top_k_absolute_,
+                      options.scheduler_top_k_fraction_);
 }
 
 }  // namespace raylet_scheduling_policy

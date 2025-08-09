@@ -110,7 +110,7 @@ void CoreWorkerClient::SendRequests() {
         [this, this_ptr, seq_no, task_size, callback = std::move(pair.second)](
             Status status, rpc::PushTaskReply &&reply) {
           {
-            absl::MutexLock lock(&mutex_);
+            absl::MutexLock lk(&mutex_);
             if (seq_no > max_finished_seq_no_) {
               max_finished_seq_no_ = seq_no;
             }

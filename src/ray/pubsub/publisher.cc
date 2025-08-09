@@ -326,12 +326,13 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
   }
 
   // No message should have been added to the reply.
-  RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
-  *long_polling_connection_->reply->mutable_publisher_id() = publisher_id_.Binary();
+  RAY_CHECK(long_polling_connection_->reply_->pub_messages().empty());
+  *long_polling_connection_->reply_->mutable_publisher_id() = publisher_id_.Binary();
   int64_t num_total_bytes = 0;
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
-      if (long_polling_connection_->reply->pub_messages().size() >= publish_batch_size_) {
+      if (long_polling_connection_->reply_->pub_messages().size() >=
+          publish_batch_size_) {
         break;
       }
 
@@ -350,14 +351,14 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
       // Avoid sending empty message to the subscriber. The message might have been
       // cleared because the subscribed entity's buffer was full.
       if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
-        *long_polling_connection_->reply->add_pub_messages() = msg;
+        *long_polling_connection_->reply_->add_pub_messages() = msg;
       }
     }
   }
 
   RAY_LOG(DEBUG) << "sending reply back"
-                 << long_polling_connection_->reply->DebugString();
-  long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
+                 << long_polling_connection_->reply_->DebugString();
+  long_polling_connection_->send_reply_callback_(Status::OK(), nullptr, nullptr);
 
   // Clean up & update metadata.
   long_polling_connection_.reset();

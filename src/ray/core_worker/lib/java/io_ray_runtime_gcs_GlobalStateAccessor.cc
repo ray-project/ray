@@ -64,8 +64,8 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto job_info_list = gcs_accessor->GetAllJobInfo();
   return NativeVectorToJavaList<std::string>(
-      env, job_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, job_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 
@@ -85,8 +85,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env,
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto node_info_list = gcs_accessor->GetAllNodeInfo();
   return NativeVectorToJavaList<std::string>(
-      env, node_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, node_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 
@@ -110,8 +110,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
   auto actor_info_list =
       gcs_accessor->GetAllActorInfo(std::nullopt, job_id, actor_state_name);
   return NativeVectorToJavaList<std::string>(
-      env, actor_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, actor_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 
@@ -161,8 +161,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto placement_group_info_list = gcs_accessor->GetAllPlacementGroupInfo();
   return NativeVectorToJavaList<std::string>(
-      env, placement_group_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, placement_group_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 

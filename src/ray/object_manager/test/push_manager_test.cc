@@ -51,22 +51,22 @@ TEST(TestPushManager, TestPushState) {
         NodeID::FromRandom(), ObjectID::FromRandom(), 2, [&](int64_t chunk_id) {
           sent_chunks.push_back(chunk_id);
         }};
-    ASSERT_EQ(state.num_chunks, 2);
-    ASSERT_EQ(state.next_chunk_id, 0);
-    ASSERT_EQ(state.num_chunks_to_send, 2);
+    ASSERT_EQ(state.num_chunks_, 2);
+    ASSERT_EQ(state.next_chunk_id_, 0);
+    ASSERT_EQ(state.num_chunks_to_send_, 2);
 
     state.SendOneChunk();
-    ASSERT_EQ(state.num_chunks, 2);
-    ASSERT_EQ(state.next_chunk_id, 1);
-    ASSERT_EQ(state.num_chunks_to_send, 1);
+    ASSERT_EQ(state.num_chunks_, 2);
+    ASSERT_EQ(state.next_chunk_id_, 1);
+    ASSERT_EQ(state.num_chunks_to_send_, 1);
     ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0}));
 
     state.SendOneChunk();
-    ASSERT_EQ(state.num_chunks, 2);
-    ASSERT_EQ(state.next_chunk_id, 0);
-    ASSERT_EQ(state.num_chunks_to_send, 0);
+    ASSERT_EQ(state.num_chunks_, 2);
+    ASSERT_EQ(state.next_chunk_id_, 0);
+    ASSERT_EQ(state.num_chunks_to_send_, 0);
     ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0, 1}));
-    ASSERT_EQ(state.num_chunks_to_send, 0);
+    ASSERT_EQ(state.num_chunks_to_send_, 0);
   }
 
   // resend all chunks.
@@ -77,28 +77,28 @@ TEST(TestPushManager, TestPushState) {
           sent_chunks.push_back(chunk_id);
         }};
     state.SendOneChunk();
-    ASSERT_EQ(state.num_chunks, 3);
-    ASSERT_EQ(state.next_chunk_id, 1);
-    ASSERT_EQ(state.num_chunks_to_send, 2);
+    ASSERT_EQ(state.num_chunks_, 3);
+    ASSERT_EQ(state.next_chunk_id_, 1);
+    ASSERT_EQ(state.num_chunks_to_send_, 2);
     ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0}));
 
     // resend chunks when 1 chunk is in flight.
     ASSERT_EQ(1, state.ResendAllChunks([&](int64_t chunk_id) {
       sent_chunks.push_back(chunk_id);
     }));
-    ASSERT_EQ(state.num_chunks, 3);
-    ASSERT_EQ(state.next_chunk_id, 1);
-    ASSERT_EQ(state.num_chunks_to_send, 3);
+    ASSERT_EQ(state.num_chunks_, 3);
+    ASSERT_EQ(state.next_chunk_id_, 1);
+    ASSERT_EQ(state.num_chunks_to_send_, 3);
 
     for (auto i = 0; i < 3; i++) {
       state.SendOneChunk();
-      ASSERT_EQ(state.num_chunks, 3);
-      ASSERT_EQ(state.next_chunk_id, (2 + i) % 3);
-      ASSERT_EQ(state.num_chunks_to_send, 3 - i - 1);
+      ASSERT_EQ(state.num_chunks_, 3);
+      ASSERT_EQ(state.next_chunk_id_, (2 + i) % 3);
+      ASSERT_EQ(state.num_chunks_to_send_, 3 - i - 1);
     }
 
     ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0, 1, 2, 0}));
-    ASSERT_EQ(state.num_chunks_to_send, 0);
+    ASSERT_EQ(state.num_chunks_to_send_, 0);
   }
 }
 

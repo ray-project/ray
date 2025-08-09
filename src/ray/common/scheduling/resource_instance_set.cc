@@ -202,8 +202,8 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
         allocations[resource_id] = std::move(*allocation);
       } else {
         // Allocation failed. Restore partially allocated resources.
-        for (const auto &[resource_id, allocation] : allocations) {
-          Free(resource_id, allocation);
+        for (const auto &[id, allocated] : allocations) {
+          Free(id, allocated);
         }
         return std::nullopt;
       }
