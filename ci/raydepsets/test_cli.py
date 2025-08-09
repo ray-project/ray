@@ -1,34 +1,34 @@
-import pytest
-import sys
-from typing import Optional
-from pathlib import Path
-import subprocess
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+from pathlib import Path
+from typing import Optional
 
+import pytest
 import runfiles
+from click.testing import CliRunner
 from networkx import topological_sort
 
 from ci.raydepsets.cli import (
-    load,
+    DEFAULT_UV_FLAGS,
     DependencySetManager,
-    _uv_binary,
-    _override_uv_flags,
+    Depset,
     _append_uv_flags,
     _flatten_flags,
-    Depset,
-    DEFAULT_UV_FLAGS,
+    _override_uv_flags,
+    _uv_binary,
+    load,
 )
-from ci.raydepsets.workspace import Workspace
-from click.testing import CliRunner
 from ci.raydepsets.testing_utils import (
+    append_to_file,
     copy_data_to_tmpdir,
     replace_in_file,
-    save_packages_to_file,
     save_file_as,
-    append_to_file,
+    save_packages_to_file,
 )
+from ci.raydepsets.workspace import Workspace
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
