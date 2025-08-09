@@ -13,6 +13,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
+from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
     check_deployment_status,
@@ -324,6 +325,7 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": DEFAULT_AUTOSCALING_POLICY},
     }
 
 
@@ -377,6 +379,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": DEFAULT_AUTOSCALING_POLICY},
     }
 
     for i in range(3):

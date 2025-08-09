@@ -1,5 +1,7 @@
+import inspect
 import json
 import time
+import types
 
 import pytest
 
@@ -89,10 +91,15 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "_policy": policy,
+        "policy": {"name": policy},
     }
     if policy is None:
-        autoscaling_config.pop("_policy")
+        autoscaling_config.pop("policy")
+
+    policy_name = DEFAULT_AUTOSCALING_POLICY
+    if isinstance(policy, types.FunctionType):
+        module = inspect.getmodule(policy)
+        policy_name = f"{module.__name__}.{policy.__name__}"
 
     @serve.deployment(autoscaling_config=autoscaling_config)
     def autoscaling_app():
@@ -177,6 +184,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
+                                    "policy": {"name": policy_name},
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
