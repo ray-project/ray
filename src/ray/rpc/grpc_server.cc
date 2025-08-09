@@ -108,15 +108,17 @@ void GrpcServer::Run() {
     // Only add localhost listener if we're not already binding to localhost
     if (ip_address_ != "127.0.0.1" && ip_address_ != "localhost") {
       int localhost_port = port_;
-      builder.AddListeningPort("127.0.0.1:" + std::to_string(port_), server_creds, &localhost_port);
+      builder.AddListeningPort(
+          "127.0.0.1:" + std::to_string(port_), server_creds, &localhost_port);
     }
   } else {
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
     // Only add localhost listener if we're not already binding to localhost
     if (ip_address_ != "127.0.0.1" && ip_address_ != "localhost") {
       int localhost_port = port_;
-      builder.AddListeningPort(
-          "127.0.0.1:" + std::to_string(port_), grpc::InsecureServerCredentials(), &localhost_port);
+      builder.AddListeningPort("127.0.0.1:" + std::to_string(port_),
+                               grpc::InsecureServerCredentials(),
+                               &localhost_port);
     }
   }
   // Register all the services to this server.
