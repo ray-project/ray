@@ -413,20 +413,20 @@ class ReportHead(SubprocessModule):
 
         Params:
             pid: Required. The PID of the worker.
-            ip: Required. The IP address of the node.
+            node_id: Required. The hex ID of the node.
 
         """
         pid = req.query.get("pid")
-        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
         if not pid:
             raise ValueError("pid is required")
-        if not ip:
-            raise ValueError("ip is required")
+        if not node_id_hex:
+            raise ValueError("node_id is required")
 
-        addrs = await self._get_stub_address_by_ip(ip)
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node at IP {ip}"
+                text=f"Failed to get agent address for node at node_id {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
@@ -451,7 +451,7 @@ class ReportHead(SubprocessModule):
 
         Params:
             pid: Required. The PID of the worker.
-            ip: Required. The IP address of the node.
+            node_id: Required. The hex ID of the node.
             duration: Optional. Duration in seconds for profiling (default: 5, max: 60).
             format: Optional. Output format (default: "flamegraph").
             native: Optional. Whether to use native profiling (default: false).
@@ -463,16 +463,16 @@ class ReportHead(SubprocessModule):
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
         """
         pid = req.query.get("pid")
-        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
         if not pid:
             raise ValueError("pid is required")
-        if not ip:
-            raise ValueError("ip is required")
+        if not node_id_hex:
+            raise ValueError("node_id is required")
 
-        addrs = await self._get_stub_address_by_ip(ip)
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node at IP {ip}"
+                text=f"Failed to get agent address for node at node_id {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
@@ -517,7 +517,7 @@ class ReportHead(SubprocessModule):
         Params:
             req: A request with the following query parameters:
                 pid: Required. The PID of the GPU training worker.
-                ip: Required. The IP address of the node where the GPU training worker is running.
+                node_id: Required. The ID of the node where the GPU training worker is running.
                 num_iterations: Number of training steps for profiling. Defaults to 4
                     This is the number of calls to the torch Optimizer.step().
 
@@ -535,16 +535,16 @@ class ReportHead(SubprocessModule):
         """
 
         pid = req.query.get("pid")
-        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
         if not pid:
             raise ValueError("pid is required")
-        if not ip:
-            raise ValueError("ip is required")
+        if not node_id_hex:
+            raise ValueError("node_id is required")
 
-        addrs = await self._get_stub_address_by_ip(ip)
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node at IP {ip}, pid {pid}"
+                text=f"Failed to get agent address for node at node_id {node_id_hex}, pid {pid}"
             )
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
@@ -592,7 +592,7 @@ class ReportHead(SubprocessModule):
 
         Params (1):
             pid: The PID of the worker.
-            ip: The IP address of the node.
+            node_id: The ID of the node.
 
         Params (2):
             task_id: The ID of the task.
@@ -640,24 +640,16 @@ class ReportHead(SubprocessModule):
                 )
             except ValueError as e:
                 raise aiohttp.web.HTTPInternalServerError(text=str(e))
-            node_id_hex = req.query.get("node_id")
-            addrs = await self._get_stub_address_by_node_id(
-                NodeID.from_hex(node_id_hex)
-            )
-            if not addrs:
-                return aiohttp.web.HTTPInternalServerError(
-                    text=f"Failed to execute: no agent address found for node {node_id_hex}"
-                )
-            _, ip, _, grpc_port = addrs
         else:
             pid = int(req.query["pid"])
-            ip = req.query.get("ip")
-            addrs = await self._get_stub_address_by_ip(ip)
-            if not addrs:
-                return aiohttp.web.HTTPInternalServerError(
-                    text=f"Failed to execute: no agent address found for node IP {ip}"
-                )
-            _, ip, _, grpc_port = addrs
+
+        node_id_hex = req.query.get("node_id")
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
+        if not addrs:
+            return aiohttp.web.HTTPInternalServerError(
+                text=f"Failed to execute: no agent address found for node {node_id_hex}"
+            )
+        _, ip, _, grpc_port = addrs
 
         assert pid is not None
         ip_port = build_address(ip, grpc_port)
