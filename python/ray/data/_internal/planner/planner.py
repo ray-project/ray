@@ -59,7 +59,6 @@ def plan_input_data_op(
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for InputData."""
     assert len(physical_children) == 0
-
     return InputDataBuffer(
         data_context,
         input_data=logical_op.input_data,
@@ -96,7 +95,7 @@ def plan_count_op(logical_op, physical_children, data_context):
         [physical_children[0]], data_context, column_name=Count.COLUMN_NAME
     )
 
-
+  
 def plan_join_op(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
