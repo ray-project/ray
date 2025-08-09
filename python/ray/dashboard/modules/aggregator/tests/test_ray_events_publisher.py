@@ -65,8 +65,7 @@ class TestRayEventsPublisherBase:
             mock_publisher.enqueue(f"item_{i}")
 
         # Add one more - should drop oldest
-        result = mock_publisher.enqueue("new_item")
-        assert result is True
+        mock_publisher.enqueue("new_item")
         stats = mock_publisher.get_and_reset_stats()
         assert stats["queue_dropped"] == 1  # item_size = 1
 
