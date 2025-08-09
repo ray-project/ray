@@ -1202,3 +1202,62 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                         )
 
         return values
+
+
+@PublicAPI(stability="alpha")
+class CeleryAdapterConfig(BaseModel):
+    """
+    Celery adapter config. You can use it to configure the Celery task processor for your Serve application.
+    """
+
+    broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
+    backend_url: str = Field(
+        ..., description="The URL of the backend to use for Celery."
+    )
+    broker_transport_options: Optional[Dict[str, Any]] = Field(
+        default=None, description="The broker transport options to use for Celery."
+    )
+    worker_concurrency: Optional[int] = Field(
+        default=10,
+        description="The number of concurrent worker threads for the task processor.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskProcessorConfig(BaseModel):
+    """
+    Task processor config. You can use it to configure the task processor for your Serve application.
+    """
+
+    queue_name: str = Field(
+        ..., description="The name of the queue to use for task processing."
+    )
+    adapter_config: Union[CeleryAdapterConfig] = Field(
+        ..., description="The adapter config. Currently only Celery is supported."
+    )
+    max_retries: Optional[int] = Field(
+        default=3,
+        description="The maximum number of times to retry a task before marking it as failed.",
+    )
+    failed_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the failed task queue. This is used to move failed tasks to a dead-letter queue after max retries.",
+    )
+    unprocessable_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the unprocessable task queue. This is used to move unprocessable tasks(like tasks with serialization issue, or missing handler) to a dead-letter queue.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskResult(BaseModel):
+    """
+    Task result Model.
+    """
+
+    id: str = Field(..., description="The ID of the task.")
+    status: str = Field(..., description="The status of the task.")
+    created_at: Optional[float] = Field(
+        default=None, description="The timestamp of the task creation."
+    )
+    result: Any = Field(..., description="The result of the task.")
