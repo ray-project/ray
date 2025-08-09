@@ -42,6 +42,13 @@ def build_llm_deployment(
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
     name_prefix = name_prefix or "DPLLMDeployment:"
     name = name_prefix + llm_config._get_deployment_name()
+    num_replicas = llm_config.deployment_config.get("num_replicas", None)
+    if num_replicas is not None and num_replicas != dp_size:
+        raise ValueError(
+            f"num_replicas in deployment_config (={num_replicas}) does not match "
+            f"engine_kwargs.data_parallel_size (={dp_size})"
+        )
+
     # TODO(rui): support data_parallel_backend=ray and unify
     # deployment_options handling with LLMDeployment.
     deployment_options = {
