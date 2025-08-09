@@ -1,26 +1,29 @@
-import json
 import os
 import shutil
-import sys
-from typing import Tuple
+from typing import Tuple, List, Dict
 from pathlib import Path
+import sys
 
 import click
-import yaml
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.buildkite.step import get_step_for_test_group
+from ray_release.byod.build import _image_exist
 from ray_release.config import (
+    RELEASE_PACKAGE_DIR,
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
 )
 from ray_release.configs.global_config import init_global_config
-from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
+from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
-from ray_release.wheels import get_buildkite_repo_branch
 
-PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+RELEASE_BYOD_DIR = (
+    os.path.join(bazel_workspace_dir, "release/ray_release/byod")
+    if bazel_workspace_dir
+    else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+)
 
 
 @click.command()
@@ -52,18 +55,11 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     ),
     help="Global config to use for test execution.",
 )
-@click.option(
-    "--run-per-test",
-    default=1,
-    type=int,
-    help=("The number of time we run test on the same commit"),
-)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
-    run_per_test: int = 1,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -72,23 +68,9 @@ def main(
     settings = get_pipeline_settings()
 
     tmpdir = None
-
-    env = {}
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
-    priority = settings["priority"]
-
-    logger.info(
-        f"Found the following buildkite pipeline settings:\n\n"
-        f"  frequency =               {settings['frequency']}\n"
-        f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
-        f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
-        f"  ray_test_repo =           {settings['ray_test_repo']}\n"
-        f"  ray_test_branch =         {settings['ray_test_branch']}\n"
-        f"  priority =                {settings['priority']}\n"
-        f"  no_concurrency_limit =    {settings['no_concurrency_limit']}\n"
-    )
 
     try:
         test_collection = read_and_validate_release_test_collection(
@@ -120,53 +102,54 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    grouped_tests = group_tests(filtered_tests)
+    custom_byod_images = set()
+    for test in tests:
+        if not test.require_custom_byod_image():
+            continue
+        custom_byod_image_build = (
+            test.get_anyscale_byod_image(),
+            test.get_anyscale_base_byod_image(),
+            test.get_byod_post_build_script(),
+        )
+        logger.info(f"To be built: {custom_byod_image_build[0]}")
+        custom_byod_images.add(custom_byod_image_build)
+    create_custom_build_yaml(list(custom_byod_images))
 
-    group_str = ""
-    for group, tests in grouped_tests.items():
-        group_str += f"\n{group}:\n"
-        for test, smoke in tests:
-            group_str += f"  {test['name']}"
-            if smoke:
-                group_str += " [smoke test]"
-            group_str += "\n"
 
-    logger.info(f"Tests to run:\n{group_str}")
+def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> None:
+    """Create a yaml file for building custom BYOD images."""
+    import yaml
 
-    no_concurrency_limit = settings["no_concurrency_limit"]
-    if no_concurrency_limit:
-        logger.warning("Concurrency is not limited for this run!")
+    if not custom_byod_images:
+        return
 
-    _, buildkite_branch = get_buildkite_repo_branch()
-    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
-        env["REPORT_TO_RAY_TEST_DB"] = "1"
+    build_config = {"group": "Custom images build", "steps": []}
 
-    steps = get_step_for_test_group(
-        grouped_tests,
-        minimum_run_per_test=run_per_test,
-        test_collection_file=test_collection_file,
-        env=env,
-        priority=priority.value,
-        global_config=global_config,
-        is_concurrency_limit=not no_concurrency_limit,
-    )
+    for image, base_image, post_build_script in custom_byod_images:
+        step = {
+            "label": f":tapioca: build custom: {image}",
+            "key": f"custom_build_"
+            + image.replace("/", "_").replace(":", "_").replace(".", "_")[-40:],
+            "instance_type": "release-medium",
+            "commands": [
+                "pip3 install --user -U pip",
+                "pip3 install --user -r release/requirements_buildkite.txt",
+                "pip3 install --user --no-deps -e release/",
+                "pip3 install --user awscli",
+                "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
+                f"python release/ray_release/scripts/custom_byod_build.py --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
+            ],
+        }
+        if "ray-ml" in image:
+            step["depends_on"] = "anyscalemlbuild"
+        elif "ray-llm" in image:
+            step["depends_on"] = "anyscalellmbuild"
+        else:
+            step["depends_on"] = "anyscalebuild"
+        build_config["steps"].append(step)
 
-    if "BUILDKITE" in os.environ:
-        if os.path.exists(PIPELINE_ARTIFACT_PATH):
-            shutil.rmtree(PIPELINE_ARTIFACT_PATH)
-
-        os.makedirs(PIPELINE_ARTIFACT_PATH, exist_ok=True, mode=0o755)
-
-        with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
-            json.dump(steps, fp)
-
-        settings["frequency"] = settings["frequency"].value
-        settings["priority"] = settings["priority"].value
-        with open(os.path.join(PIPELINE_ARTIFACT_PATH, "settings.json"), "wt") as fp:
-            json.dump(settings, fp)
-
-    steps_str = json.dumps(steps)
-    print(steps_str)
+    with open(".buildkite/release/custom_byod_build.rayci.yml", "w") as f:
+        yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
 if __name__ == "__main__":
