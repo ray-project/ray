@@ -58,15 +58,18 @@ ray_cc_library(
     name = "actor_task_submitter",
     srcs = ["actor_task_submitter.cc"],
     hdrs = ["actor_task_submitter.h"],
-    visibility = ["//src/ray/core_worker:__pkg__", ":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
-        "//src/ray/core_worker:actor_creator",
         ":actor_submit_queue",
         ":dependency_resolver",
         ":out_of_order_actor_submit_queue",
         ":sequential_actor_submit_queue",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/core_worker:actor_creator",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/rpc:core_worker_client",
         "@com_google_absl//absl/base:core_headers",
@@ -79,7 +82,10 @@ ray_cc_library(
     name = "normal_task_submitter",
     srcs = ["normal_task_submitter.cc"],
     hdrs = ["normal_task_submitter.h"],
-    visibility = ["//src/ray/core_worker:__pkg__", ":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
         ":dependency_resolver",
         "//src/ray/core_worker:lease_policy",
