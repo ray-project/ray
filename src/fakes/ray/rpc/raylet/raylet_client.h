@@ -73,11 +73,6 @@ class FakeRayletClient : public RayletClientInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override {}
 
-  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag) override {
-    return Status::OK();
-  }
-
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
@@ -133,6 +128,10 @@ class FakeRayletClient : public RayletClientInterface {
   void GetNodeStats(
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override {}
+
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override {}
+
+  int64_t GetPinsInFlight() const override { return 0; }
 };
 
 }  // namespace ray

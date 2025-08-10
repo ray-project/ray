@@ -24,6 +24,7 @@ from ray.dashboard.utils import (
     DashboardHeadModuleConfig,
     async_loop_forever,
 )
+from ray._common.network_utils import build_address
 
 import psutil
 
@@ -301,7 +302,7 @@ class DashboardHead:
         # Setup prometheus metrics export server
         assert internal_kv._internal_kv_initialized()
         assert gcs_client is not None
-        address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
+        address = build_address(self.ip, DASHBOARD_METRIC_PORT)
         await gcs_client.async_internal_kv_put(
             "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
         )
@@ -436,7 +437,9 @@ class DashboardHead:
                 dashboard_head_modules, subprocess_module_handles
             )
             http_host, http_port = self.http_server.get_address()
-            logger.info(f"http server initialized at {http_host}:{http_port}")
+            logger.info(
+                f"http server initialized at {build_address(http_host, http_port)}"
+            )
         else:
             logger.info("http server disabled.")
 
@@ -455,7 +458,7 @@ class DashboardHead:
         # server address to Ray via stdin / stdout or a pipe.
         self.gcs_client.internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS.encode(),
-            f"{dashboard_http_host}:{http_port}".encode(),
+            build_address(dashboard_http_host, http_port).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
