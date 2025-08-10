@@ -1,9 +1,11 @@
 import sys
-import pytest
 import tempfile
 from pathlib import Path
-from ci.raydepsets.workspace import Workspace
+
+import pytest
+
 from ci.raydepsets.tests.utils import copy_data_to_tmpdir
+from ci.raydepsets.workspace import Workspace
 
 
 def test_workspace_init():
