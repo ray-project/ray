@@ -72,11 +72,9 @@ void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) con
   RayExportEvent(export_node_data_ptr).SendEvent();
 }
 
-// Note: ServerCall will populate the cluster_id.
 void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
                                         rpc::GetClusterIdReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Registering GCS client!";
   reply->set_cluster_id(cluster_id_.Binary());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
@@ -84,24 +82,24 @@ void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
 void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
-  RAY_LOG(INFO).WithField(node_id)
-      << "Registering node info, address = " << request.node_info().node_manager_address()
-      << ", node name = " << request.node_info().node_name();
-  auto on_done = [this, node_id, request, reply, send_reply_callback](
-                     const Status &status) {
-    RAY_CHECK_OK(status);
-    RAY_LOG(INFO).WithField(node_id)
-        << "Finished registering node info, address = "
-        << request.node_info().node_manager_address()
-        << ", node name = " << request.node_info().node_name()
-        << ", is_head_node = " << request.node_info().is_head_node();
-    RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
-    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
-    WriteNodeExportEvent(request.node_info());
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  if (request.node_info().is_head_node()) {
+  const rpc::GcsNodeInfo &node_info = request.node_info();
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  RAY_LOG(INFO)
+          .WithField(node_id)
+          .WithField("node_name", node_info.node_name())
+          .WithField("node_address", node_info.node_manager_address())
+      << "Registering new node.";
+
+  auto on_done =
+      [this, node_id, node_info, reply, send_reply_callback](const Status &status) {
+        RAY_CHECK_OK(status) << "Failed to register node '" << node_id << "'.";
+        RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
+        RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, node_info, nullptr));
+        AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info));
+        WriteNodeExportEvent(node_info);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      };
+  if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
     // 2. happens when a new head node is started
@@ -116,18 +114,18 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_CHECK_LE(head_nodes.size(), 1UL);
     if (head_nodes.size() == 1) {
       OnNodeFailure(head_nodes[0],
-                    [this, request, on_done, node_id](const Status &status) {
+                    [this, node_id, node_info, on_done](const Status &status) {
                       RAY_CHECK_OK(status);
                       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                          node_id, request.node_info(), {on_done, io_context_}));
+                          node_id, node_info, {on_done, io_context_}));
                     });
     } else {
       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-          node_id, request.node_info(), {on_done, io_context_}));
+          node_id, node_info, {on_done, io_context_}));
     }
   } else {
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-        node_id, request.node_info(), {on_done, io_context_}));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Put(node_id, node_info, {on_done, io_context_}));
   }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
@@ -291,9 +289,15 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   if (request.has_state_filter()) {
     switch (request.state_filter()) {
     case rpc::GcsNodeInfo::ALIVE:
+      if (!has_node_selectors) {
+        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
+      }
       add_to_response(alive_nodes_);
       break;
     case rpc::GcsNodeInfo::DEAD:
+      if (!has_node_selectors) {
+        reply->mutable_node_info_list()->Reserve(dead_nodes_.size());
+      }
       add_to_response(dead_nodes_);
       break;
     default:
@@ -301,6 +305,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       break;
     }
   } else {
+    if (!has_node_selectors) {
+      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
+    }
     add_to_response(alive_nodes_);
     add_to_response(dead_nodes_);
   }
@@ -395,8 +402,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     auto death_info = removed_node->mutable_death_info();
     death_info->CopyFrom(node_death_info);
 
-    RAY_LOG(INFO).WithField(node_id)
-        << "Removing node, node name = " << removed_node->node_name()
+    RAY_LOG(INFO).WithField(node_id).WithField("node_name", removed_node->node_name())
         << ", death reason = " << rpc::NodeDeathInfo_Reason_Name(death_info->reason())
         << ", death message = " << death_info->reason_message();
     // Record stats that there's a new removed node.
