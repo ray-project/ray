@@ -1,15 +1,18 @@
 """
 Plan FillNa logical operator.
+
+This module contains the planning logic for converting FillNa logical operators
+into physical execution plans using MapOperator.
 """
 
-from typing import List
+from typing import Any, Dict, List
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.planner.plan_udf_map_op import (
     _create_map_transformer_for_block_based_map_op,
     _generate_transform_fn_for_map_block,
@@ -24,7 +27,23 @@ def plan_fillna_op(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
-    """Plan a FillNa logical operator."""
+    """Plan a FillNa logical operator into a physical MapOperator.
+
+    This function converts a FillNa logical operator into a physical execution
+    plan that fills missing values (null/None/NaN) in the dataset with specified
+    replacement values.
+
+    Args:
+        op: The FillNa logical operator containing fill configuration.
+        physical_children: List containing exactly one input physical operator.
+        data_context: The execution context for data processing.
+
+    Returns:
+        A MapOperator that performs the fillna operation on input data.
+
+    Raises:
+        AssertionError: If physical_children doesn't contain exactly one operator.
+    """
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
@@ -32,6 +51,14 @@ def plan_fillna_op(
     subset = op.subset
 
     def fn(batch: pa.Table) -> pa.Table:
+        """Transform function that fills missing values in a PyArrow table.
+        
+        Args:
+            batch: Input PyArrow table to process.
+            
+        Returns:
+            PyArrow table with missing values filled.
+        """
         try:
             if batch.num_rows == 0:
                 return batch
@@ -40,7 +67,7 @@ def plan_fillna_op(
             columns_to_fill = subset if subset else batch.schema.names
 
             # Create a new table with filled values
-            new_columns = {}
+            new_columns: Dict[str, pa.Array] = {}
 
             for col_name in batch.schema.names:
                 column = batch.column(col_name)
@@ -80,8 +107,28 @@ def plan_fillna_op(
     )
 
 
-def _fill_column(column, fill_value):
-    """Fill a column with a value using PyArrow's built-in capabilities."""
+def _fill_column(column: pa.Array, fill_value: Any) -> pa.Array:
+    """Fill missing values in a single PyArrow column.
+
+    Handles null values and NaN values for floating point columns using PyArrow's
+    built-in capabilities with appropriate type handling and casting.
+
+    Args:
+        column: The PyArrow array to fill missing values in.
+        fill_value: The value to use for filling missing entries.
+
+    Returns:
+        A new PyArrow array with missing values filled.
+
+    Examples:
+        .. doctest::
+
+            >>> import pyarrow as pa
+            >>> column = pa.array([1, None, 3])
+            >>> filled = _fill_column(column, 0)
+            >>> filled.to_pylist()
+            [1, 0, 3]
+    """
     try:
         # For null type columns, let PyArrow infer the type from the fill value
         if pa.types.is_null(column.type):
@@ -113,5 +160,5 @@ def _fill_column(column, fill_value):
         return filled_column
 
     except Exception:
-        # If all else fails, return original column
+        # If all else fails, return original column to maintain data integrity
         return column

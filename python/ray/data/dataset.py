@@ -790,6 +790,8 @@ class Dataset:
         value: Union[Any, Dict[str, Any]] = None,
         *,
         subset: Optional[List[str]] = None,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
     ) -> "Dataset":
         """Fill missing values (null/NaN) in the dataset.
 
@@ -839,12 +841,19 @@ class Dataset:
                 ])
                 ds.fillna(0, subset=["a"]).show()
 
+        Time complexity: O(dataset size / parallelism)
+
         Args:
             value: Value to use to fill missing values. Can be a scalar value to fill all
                 missing values, or a dictionary mapping column names to fill values for
                 specific columns.
             subset: List of column names to consider for filling. If None, all columns
                 are considered.
+            compute: This argument is deprecated. Use ``ray_remote_args`` to configure
+                distributed execution.
+            ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             A new dataset with missing values filled.
@@ -854,6 +863,8 @@ class Dataset:
             self._logical_plan.dag,
             value=value,
             subset=subset,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(fillna_op, self.context)
         return Dataset(plan, logical_plan)
@@ -865,6 +876,8 @@ class Dataset:
         how: str = "any",
         subset: Optional[List[str]] = None,
         thresh: Optional[int] = None,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
     ) -> "Dataset":
         """Drop rows with missing values (null/NaN) from the dataset.
 
@@ -932,6 +945,8 @@ class Dataset:
                 ])
                 ds.dropna(thresh=2).show()
 
+        Time complexity: O(dataset size / parallelism)
+
         Args:
             how: Determines how to drop rows:
                 - "any": Drop rows where any value is missing (default)
@@ -940,6 +955,11 @@ class Dataset:
                 are considered.
             thresh: Minimum number of non-null values required to keep a row. If specified,
                 this overrides the 'how' parameter.
+            compute: This argument is deprecated. Use ``ray_remote_args`` to configure
+                distributed execution.
+            ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             A new dataset with rows containing missing values removed.
@@ -956,6 +976,8 @@ class Dataset:
             how=how,
             subset=subset,
             thresh=thresh,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(dropna_op, self.context)
         return Dataset(plan, logical_plan)
