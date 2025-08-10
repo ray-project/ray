@@ -45,7 +45,8 @@ TEST_F(SchedulingIDsTest, BasicTest) {
 TEST_F(SchedulingIDsTest, PrepopulateResourceIDTest) {
   ASSERT_EQ(kCPU_ResourceLabel, scheduling::ResourceID(CPU).Binary());
   ASSERT_EQ(kGPU_ResourceLabel, scheduling::ResourceID(GPU).Binary());
-  ASSERT_EQ(kObjectStoreMemory_ResourceLabel, scheduling::ResourceID(OBJECT_STORE_MEM).Binary());
+  ASSERT_EQ(kObjectStoreMemory_ResourceLabel,
+            scheduling::ResourceID(OBJECT_STORE_MEM).Binary());
   ASSERT_EQ(kMemory_ResourceLabel, scheduling::ResourceID(MEM).Binary());
 
   // mean while NodeID is not populated.

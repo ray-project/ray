@@ -28,10 +28,10 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <thread>
 
 #include "ray/common/ray_syncer/node_state.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -318,7 +318,9 @@ struct SyncerServerTest {
   bool WaitUntil(std::function<bool()> predicate, int64_t time_s) {
     auto start = std::chrono::steady_clock::now();
 
-    while (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count() <= time_s) {
+    while (std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::steady_clock::now() - start)
+               .count() <= time_s) {
       std::promise<bool> p;
       auto f = p.get_future();
       io_context.post([&p, predicate]() mutable { p.set_value(predicate()); }, "TEST");
@@ -886,9 +888,13 @@ class SyncerReactorTest : public ::testing::Test {
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
 
     auto start = std::chrono::steady_clock::now();
-    while (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count() <= 5) {
+    while (std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::steady_clock::now() - start)
+               .count() <= 5) {
       RAY_LOG(INFO) << "Waiting: "
-                    << std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count();
+                    << std::chrono::duration_cast<std::chrono::seconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
       if (rpc_service_->reactor != nullptr) {
         break;
       };
