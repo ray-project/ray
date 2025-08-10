@@ -575,6 +575,8 @@ message TaskSpec {
   map<string, string> label_selector = 43;
   // The tensor transport type for this task.
   TensorTransport tensor_transport = 44;
+  // The lease id for this task
+  bytes lease_id = 45;
 }
 
 message TaskInfoEntry {

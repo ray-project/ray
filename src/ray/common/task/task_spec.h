@@ -567,6 +567,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const rpc::TensorTransport TensorTransport() const;
 
+  LeaseID LeaseId() const;
+
  private:
   void ComputeResources();
 

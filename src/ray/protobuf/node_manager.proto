@@ -136,8 +136,8 @@ message CancelResourceReserveReply {}
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
-  // Unique id of the leased worker we are now returning.
-  bytes worker_id = 2;
+  // The lease id of the owner of the leased worker
+  bytes lease_id = 2;
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
   bool disconnect_worker = 3;
@@ -163,8 +163,8 @@ message ShutdownRayletRequest {
 message ShutdownRayletReply {}
 
 message CancelWorkerLeaseRequest {
-  // The task to cancel.
-  bytes task_id = 1;
+  // The lease_id of the task to cancel.
+  bytes lease_id = 1;
 }
 
 message CancelWorkerLeaseReply {
@@ -318,7 +318,7 @@ message NotifyGCSRestartRequest {}
 message NotifyGCSRestartReply {}
 
 message GetTaskFailureCauseRequest {
-  bytes task_id = 1;
+  bytes lease_id = 1;
 }
 
 message GetTaskFailureCauseReply {

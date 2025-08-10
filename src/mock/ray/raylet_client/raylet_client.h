@@ -41,7 +41,8 @@ class MockRayletClientInterface : public RayletClientInterface {
                const WorkerID &worker_id,
                bool disconnect_worker,
                const std::string &disconnect_worker_error_detail,
-               bool worker_exiting),
+               bool worker_exiting,
+               const LeaseID &lease_id),
               (override));
   MOCK_METHOD(void,
               GetTaskFailureCause,
@@ -60,7 +61,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(void,
               CancelWorkerLease,
-              (const TaskID &task_id,
+              (const LeaseID &lease_id,
                const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback),
               (override));
   MOCK_METHOD(

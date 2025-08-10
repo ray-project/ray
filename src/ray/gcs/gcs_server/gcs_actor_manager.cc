@@ -1112,7 +1112,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         // worker exit to avoid process and resource leak.
         NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
       }
-      CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
+      CancelActorInScheduling(actor, actor->GetCreationTaskSpecification().LeaseId());
     }
   }
 
@@ -1828,7 +1828,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
       NotifyCoreWorkerToKillActor(
           actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
     }
-    CancelActorInScheduling(actor, task_id);
+    CancelActorInScheduling(actor, actor->GetCreationTaskSpecification().LeaseId());
     RestartActor(actor_id,
                  /*need_reschedule=*/true,
                  GenKilledByApplicationCause(GetActor(actor_id)));
@@ -1853,8 +1853,8 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
 }
 
 void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
-                                              const TaskID &task_id) {
-  RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(task_id)
+                                              const LeaseID &lease_id) {
+  RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
       << "Cancel actor in scheduling";
   const auto &actor_id = actor->GetActorID();
   const auto &node_id = actor->GetNodeID();
@@ -1872,7 +1872,7 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
     // it doesn't responds, and the actor should be still in leasing state.
     // NOTE: We will cancel outstanding lease request by calling
     // `raylet_client->CancelWorkerLease`.
-    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
+    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, lease_id);
     // Return the actor's acquired resources (if any).
     gcs_actor_scheduler_->OnActorDestruction(actor);
   }

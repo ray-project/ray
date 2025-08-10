@@ -75,18 +75,18 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Attempt to cancel an already queued task.
+  /// Attempt to cancel an already queued lease.
   ///
-  /// \param task_id: The id of the task to remove.
+  /// \param lease_id: The lease_id of the task to remove.
   /// \param failure_type: The failure type.
   /// \param scheduling_failure_message: The failure message.
   ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "") override;
+  /// \return True if lease was successfully removed. This function will return
+  /// false if the lease is already running.
+  bool CancelLease(const LeaseID &lease_id,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                   const std::string &scheduling_failure_message = "") override;
 
   bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,

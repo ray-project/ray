@@ -334,12 +334,12 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
   }
 }
 
-bool ClusterTaskManager::CancelTask(
-    const TaskID &task_id,
+bool ClusterTaskManager::CancelLease(
+    const LeaseID &lease_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  auto predicate = [task_id](const std::shared_ptr<internal::Work> &work) {
-    return work->task.GetTaskSpecification().TaskId() == task_id;
+  auto predicate = [lease_id](const std::shared_ptr<internal::Work> &work) {
+    return work->task.GetTaskSpecification().LeaseId() == lease_id;
   };
 
   return CancelTasks(predicate, failure_type, scheduling_failure_message);

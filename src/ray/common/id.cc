@@ -323,6 +323,37 @@ JobID PlacementGroupID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
+// Define the static counter for LeaseID
+std::atomic<uint32_t> LeaseID::counter_{0};
+
+LeaseID LeaseID::FromRandom() {
+  std::string data(kUniqueBytesLength, 0);
+
+  // Fill unique bytes with counter value and increment
+  uint32_t current_counter = counter_.fetch_add(1);
+  std::memcpy(data.data(), &current_counter, sizeof(current_counter));
+  std::copy_n(WorkerID::FromRandom().Data(), kUniqueIDSize, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return LeaseID::FromBinary(data);
+}
+
+LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id) {
+  std::string data(kUniqueBytesLength, 0);
+
+  // Fill unique bytes with counter value and increment
+  uint32_t current_counter = counter_.fetch_add(1);
+  std::memcpy(data.data(), &current_counter, sizeof(current_counter));
+  std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return LeaseID::FromBinary(data);
+}
+
+WorkerID LeaseID::GetWorkerID(const LeaseID &lease_id) {
+  return WorkerID::FromBinary(
+      std::string(reinterpret_cast<const char *>(lease_id.Data() + kUniqueBytesLength),
+                  kUniqueIDSize));
+}
+
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
     if (id.IsNil()) {                                             \
@@ -339,6 +370,7 @@ ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 ID_OSTREAM_OPERATOR(PlacementGroupID);
+ID_OSTREAM_OPERATOR(LeaseID);
 
 const NodeID kGCSNodeID = NodeID::FromBinary(std::string(kUniqueIDSize, 0));
 

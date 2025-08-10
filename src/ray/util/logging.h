@@ -104,6 +104,7 @@ inline constexpr std::string_view kLogKeyActorID = "actor_id";
 inline constexpr std::string_view kLogKeyTaskID = "task_id";
 inline constexpr std::string_view kLogKeyObjectID = "object_id";
 inline constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
+inline constexpr std::string_view kLogKeyLeaseID = "lease_id";
 
 // Define your specialization DefaultLogKey<your_type>::key to get .WithField(t)
 // See src/ray/common/id.h

@@ -281,13 +281,13 @@ void RayletClient::ReportWorkerBacklog(
 }
 
 Status RayletClient::ReturnWorker(int worker_port,
-                                  const WorkerID &worker_id,
+                                  const LeaseID &lease_id,
                                   bool disconnect_worker,
                                   const std::string &disconnect_worker_error_detail,
                                   bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
-  request.set_worker_id(worker_id.Binary());
+  request.set_lease_id(lease_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
@@ -299,10 +299,10 @@ Status RayletClient::ReturnWorker(int worker_port,
 }
 
 void RayletClient::GetTaskFailureCause(
-    const TaskID &task_id,
+    const LeaseID &lease_id,
     const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
   rpc::GetTaskFailureCauseRequest request;
-  request.set_task_id(task_id.Binary());
+  request.set_lease_id(lease_id.Binary());
   grpc_client_->GetTaskFailureCause(
       request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
         RAY_LOG_IF_ERROR(INFO, status) << "Error getting task result: " << status;
@@ -388,10 +388,10 @@ void RayletClient::ReleaseUnusedActorWorkers(
 }
 
 void RayletClient::CancelWorkerLease(
-    const TaskID &task_id,
+    const LeaseID &lease_id,
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
   rpc::CancelWorkerLeaseRequest request;
-  request.set_task_id(task_id.Binary());
+  request.set_lease_id(lease_id.Binary());
   grpc_client_->CancelWorkerLease(request, callback);
 }
 

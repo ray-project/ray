@@ -229,10 +229,10 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
 
 void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
                                         const ActorID &actor_id,
-                                        const TaskID &task_id) {
+                                        const LeaseID &lease_id) {
   // NOTE: This method will cancel the outstanding lease request and remove leasing
   // information from the internal state.
-  RAY_LOG(DEBUG) << "Canceling worker leasing of task " << task_id;
+  RAY_LOG(DEBUG) << "Canceling worker lease request " << lease_id;
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
@@ -250,7 +250,7 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     address.set_port(node_info->node_manager_port());
     auto lease_client = GetOrConnectLeaseClient(address);
     lease_client->CancelWorkerLease(
-        task_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
+        lease_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
   }
 }
 
@@ -323,12 +323,15 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   }
 
   rpc::Address remote_address;
+  remote_address.set_worker_id(actor->GetWorkerID().Binary());
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
+  actor->GetMutableTaskSpec()->set_lease_id(LeaseID::FromRandom().Binary());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
+  RAY_CHECK(actor->GetCreationTaskSpecification().LeaseId() != LeaseID::Nil());
   lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification().GetMessage(),
       actor->GetGrantOrReject(),
@@ -685,7 +688,8 @@ size_t GcsActorScheduler::GetPendingActorsCount() const {
 
 bool GcsActorScheduler::CancelInFlightActorScheduling(
     const std::shared_ptr<GcsActor> &actor) {
-  return cluster_task_manager_.CancelTask(actor->GetCreationTaskSpecification().TaskId());
+  return cluster_task_manager_.CancelLease(
+      actor->GetCreationTaskSpecification().LeaseId());
 }
 
 }  // namespace gcs

@@ -67,8 +67,10 @@ class WorkerInterface {
   virtual int Port() const = 0;
   virtual int AssignedPort() const = 0;
   virtual void SetAssignedPort(int port) = 0;
+  virtual void AssignLeaseId(const LeaseID &lease_id) = 0;
   virtual void AssignTaskId(const TaskID &task_id) = 0;
   virtual const TaskID &GetAssignedTaskId() const = 0;
+  virtual const LeaseID &GetAssignedLeaseId() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual std::optional<bool> GetIsGpu() const = 0;
   virtual std::optional<bool> GetIsActorWorker() const = 0;
@@ -179,8 +181,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   int Port() const;
   int AssignedPort() const;
   void SetAssignedPort(int port);
+  void AssignLeaseId(const LeaseID &lease_id);
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
+  const LeaseID &GetAssignedLeaseId() const;
   const JobID &GetAssignedJobId() const;
   std::optional<bool> GetIsGpu() const;
   std::optional<bool> GetIsActorWorker() const;
@@ -232,6 +236,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     SetJobId(task_spec.JobId());
     SetBundleId(task_spec.PlacementGroupBundleId());
     SetOwnerAddress(task_spec.CallerAddress());
+    AssignLeaseId(task_spec.LeaseId());
     AssignTaskId(task_spec.TaskId());
     SetIsGpu(task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
     RAY_CHECK(!task_spec.IsActorTask());
@@ -255,7 +260,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
-
   void SetJobId(const JobID &job_id);
   void SetIsGpu(bool is_gpu);
   void SetIsActorWorker(bool is_actor_worker);
@@ -287,6 +291,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::shared_ptr<ClientConnection> connection_;
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
+  /// The lease id of the worker's currently assigned task.
+  LeaseID lease_id_;
   /// Job ID for the worker's current assigned task.
   JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker

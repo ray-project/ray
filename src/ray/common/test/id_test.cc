@@ -14,6 +14,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/task/task_spec.h"
@@ -171,6 +174,69 @@ TEST(PlacementGroupIDTest, TestPlacementGroup) {
     auto job_id = JobID::FromInt(1);
     const PlacementGroupID placement_group_id = PlacementGroupID::Of(job_id);
     ASSERT_EQ(job_id, placement_group_id.JobId());
+  }
+}
+
+TEST(LeaseIDTest, TestLeaseID) {
+  {
+    // Test LeaseID creation and worker extraction
+    const WorkerID worker_id = WorkerID::FromRandom();
+
+    const LeaseID lease_id = LeaseID::FromWorkerId(worker_id);
+    ASSERT_FALSE(lease_id.IsNil());
+    ASSERT_EQ(lease_id.WorkerId(), worker_id);
+
+    // Test size is correct (4 bytes unique + 28 bytes WorkerID = 32 bytes)
+    ASSERT_EQ(LeaseID::Size(), 32);
+    ASSERT_EQ(lease_id.Binary().size(), 32);
+  }
+
+  {
+    // Test LeaseID FromRandom
+    const LeaseID random_lease_id = LeaseID::FromRandom();
+    ASSERT_FALSE(random_lease_id.IsNil());
+  }
+
+  {
+    // Test uniqueness - different calls should produce different LeaseIDs (due to
+    // counter)
+    const WorkerID worker_id = WorkerID::FromRandom();
+    const LeaseID lease_id1 = LeaseID::FromWorkerId(worker_id);
+    const LeaseID lease_id2 = LeaseID::FromWorkerId(worker_id);
+
+    ASSERT_NE(lease_id1, lease_id2);
+    ASSERT_EQ(lease_id1.WorkerId(), lease_id2.WorkerId());
+  }
+
+  {
+    // Test hex/binary roundtrip
+    const WorkerID worker_id = WorkerID::FromRandom();
+    const LeaseID original = LeaseID::FromWorkerId(worker_id);
+
+    const LeaseID from_hex = LeaseID::FromHex(original.Hex());
+    const LeaseID from_binary = LeaseID::FromBinary(original.Binary());
+
+    ASSERT_EQ(original, from_hex);
+    ASSERT_EQ(original, from_binary);
+    ASSERT_EQ(original.WorkerId(), from_hex.WorkerId());
+    ASSERT_EQ(original.WorkerId(), from_binary.WorkerId());
+  }
+
+  {
+    // Test counter increments correctly
+    const WorkerID worker_id1 = WorkerID::FromRandom();
+    const WorkerID worker_id2 = WorkerID::FromRandom();
+
+    const LeaseID lease1 = LeaseID::FromWorkerId(worker_id1);
+    const LeaseID lease2 = LeaseID::FromWorkerId(worker_id2);
+    const LeaseID random1 = LeaseID::FromRandom();
+    const LeaseID random2 = LeaseID::FromRandom();
+
+    // All should be different due to counter increment
+    ASSERT_NE(lease1, lease2);
+    ASSERT_NE(lease1, random1);
+    ASSERT_NE(lease2, random1);
+    ASSERT_NE(random1, random2);
   }
 }
 

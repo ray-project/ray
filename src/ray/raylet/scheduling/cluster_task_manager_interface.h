@@ -45,8 +45,8 @@ class ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(
-      const TaskID &task_id,
+  virtual bool CancelLease(
+      const LeaseID &lease_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;

@@ -303,7 +303,7 @@ class MockRayletClient : public FakeRayletClient {
   }
 
   void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
     std::lock_guard<std::mutex> lock(mu_);
     num_leases_canceled += 1;

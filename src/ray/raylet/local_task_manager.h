@@ -80,7 +80,7 @@ class LocalTaskManager : public ILocalTaskManager {
       TaskDependencyManagerInterface &task_dependency_manager,
       internal::NodeInfoGetter get_node_info,
       WorkerPoolInterface &worker_pool,
-      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
@@ -243,7 +243,7 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
-      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+      absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayTask &task,
       rpc::RequestWorkerLeaseReply *reply,
@@ -340,7 +340,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
   /// parameters of methods if necessary once we remove the legacy scheduler.
   WorkerPoolInterface &worker_pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Callback to get references to task arguments. These will be pinned while
   /// the task is running.

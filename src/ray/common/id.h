@@ -34,6 +34,7 @@ namespace ray {
 
 class TaskID;
 class WorkerID;
+class LeaseID;
 class UniqueID;
 class JobID;
 
@@ -376,6 +377,44 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 
+class LeaseID : public BaseID<LeaseID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 4;
+
+ public:
+  /// Length of `LeaseID` in bytes.
+  static constexpr size_t kLength = kUniqueBytesLength + kUniqueIDSize;
+
+  /// Size of `LeaseID` in bytes.
+  ///
+  /// \return Size of `LeaseID` in bytes.
+  static constexpr size_t Size() { return kLength; }
+
+  /// Creates a `LeaseID` from a specific worker ID.
+  ///
+  /// \param worker_id The worker id to which this lease belongs.
+  ///
+  /// \return The `LeaseID` for the worker lease.
+  static LeaseID FromWorkerId(const WorkerID &worker_id);
+
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
+  static LeaseID FromRandom();
+
+  /// Constructor of `LeaseID`.
+  LeaseID() : BaseID() {}
+
+  /// Get the worker id to which this lease belongs.
+  ///
+  /// \return The worker id to which this lease belongs.
+  static WorkerID GetWorkerID(const LeaseID &lease_id);
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+  static std::atomic<uint32_t> counter_;
+};
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
@@ -386,6 +425,8 @@ static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
 static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
               "PlacementGroupID size is not as expected");
+static_assert(sizeof(LeaseID) == LeaseID::kLength + sizeof(size_t),
+              "LeaseID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
@@ -393,6 +434,7 @@ std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream &operator<<(std::ostream &os, const LeaseID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                           \
   class RAY_EXPORT type : public UniqueID {                                              \
@@ -591,6 +633,11 @@ struct DefaultLogKey<PlacementGroupID> {
   constexpr static std::string_view key = kLogKeyPlacementGroupID;
 };
 
+template <>
+struct DefaultLogKey<LeaseID> {
+  constexpr static std::string_view key = kLogKeyLeaseID;
+};
+
 }  // namespace ray
 
 namespace std {
@@ -607,6 +654,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(LeaseID);
 #include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID

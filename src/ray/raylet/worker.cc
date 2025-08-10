@@ -180,6 +180,10 @@ void Worker::AssignTaskId(const TaskID &task_id) {
   }
 }
 
+void Worker::AssignLeaseId(const LeaseID &lease_id) { lease_id_ = lease_id; };
+
+const LeaseID &Worker::GetAssignedLeaseId() const { return lease_id_; }
+
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }

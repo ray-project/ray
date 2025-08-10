@@ -284,7 +284,7 @@ int main(int argc, char *argv[]) {
   /// called `ray.get` or `ray.wait`.
   std::unique_ptr<ray::raylet::DependencyManager> dependency_manager;
   /// Map of workers leased out to clients.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<ray::raylet::WorkerInterface>>
+  absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
 
   // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does

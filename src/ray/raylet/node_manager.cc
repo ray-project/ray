@@ -126,7 +126,7 @@ NodeManager::NodeManager(
     LocalObjectManagerInterface &local_object_manager,
     DependencyManager &dependency_manager,
     WorkerPoolInterface &worker_pool,
-    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
@@ -596,18 +596,18 @@ void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
 void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
                                             rpc::GetTaskFailureCauseReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  const TaskID task_id = TaskID::FromBinary(request.task_id());
-  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
+  const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
+  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for lease " << lease_id;
 
-  auto it = task_failure_reasons_.find(task_id);
+  auto it = task_failure_reasons_.find(lease_id);
   if (it != task_failure_reasons_.end()) {
-    RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
+    RAY_LOG(DEBUG) << "lease " << lease_id << " has failure reason "
                    << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
                    << ", fail immediately: " << !it->second.should_retry;
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
     reply->set_fail_task_immediately(!it->second.should_retry);
   } else {
-    RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
+    RAY_LOG(INFO) << "didn't find failure cause for lease " << lease_id;
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1340,7 +1340,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  ReleaseWorker(worker->WorkerId());
+  ReleaseWorker(worker->GetAssignedLeaseId());
+  // Reset the worker's lease ID since it's no longer leased
+  worker->AssignLeaseId(LeaseID::Nil());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
@@ -1659,7 +1661,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   RayTask task{std::move(*request.mutable_resource_spec())};
-
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
   const auto caller_node =
@@ -1847,12 +1848,12 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
-  auto worker_id = WorkerID::FromBinary(request.worker_id());
-  std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
-
+  auto lease_id = LeaseID::FromBinary(request.lease_id());
+  std::shared_ptr<WorkerInterface> worker = leased_workers_[lease_id];
+  RAY_CHECK(worker != nullptr);
   Status status;
-  ReleaseWorker(worker_id);
-
+  ReleaseWorker(lease_id);
+  worker->AssignLeaseId(LeaseID::Nil());
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
@@ -1962,7 +1963,8 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
   std::vector<std::shared_ptr<WorkerInterface>> unused_actor_workers;
   for (auto &iter : leased_workers_) {
     // We only kill *actor* workers.
-    if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
+    if (!iter.second->GetActorId().IsNil() &&
+        !in_use_worker_ids.count(iter.second->WorkerId())) {
       unused_actor_workers.push_back(iter.second);
     }
   }
@@ -1981,8 +1983,8 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
 void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  const TaskID task_id = TaskID::FromBinary(request.task_id());
-  bool canceled = cluster_task_manager_.CancelTask(task_id);
+  const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
+  bool canceled = cluster_task_manager_.CancelLease(lease_id);
   // The task cancellation failed if we did not have the task queued, since
   // this means that we may not have received the task request yet. It is
   // successful if we did have the task queued, since we have now replied to
@@ -2113,6 +2115,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
     // Unset the worker's assigned task. We keep the assigned task ID for
     // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
+    worker->AssignLeaseId(LeaseID::Nil());
     worker->AssignTaskId(TaskID::Nil());
     worker->SetOwnerAddress(rpc::Address());
   }
@@ -2789,7 +2792,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
+          SetTaskFailureReason(worker_to_kill->GetAssignedLeaseId(),
                                std::move(task_failure_reason),
                                should_retry);
 
@@ -2901,14 +2904,14 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
   return oom_kill_suggestions_ss.str();
 }
 
-void NodeManager::SetTaskFailureReason(const TaskID &task_id,
+void NodeManager::SetTaskFailureReason(const LeaseID &lease_id,
                                        const rpc::RayErrorInfo &failure_reason,
                                        bool should_retry) {
-  RAY_LOG(DEBUG).WithField(task_id) << "set failure reason for task ";
+  RAY_LOG(DEBUG).WithField(lease_id) << "set failure reason for lease ";
   ray::TaskFailureEntry entry(failure_reason, should_retry);
-  auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
+  auto result = task_failure_reasons_.emplace(lease_id, std::move(entry));
   if (!result.second) {
-    RAY_LOG(WARNING).WithField(task_id)
+    RAY_LOG(WARNING).WithField(lease_id)
         << "Trying to insert failure reason more than once for the same "
            "task, the previous failure will be removed.";
   }
