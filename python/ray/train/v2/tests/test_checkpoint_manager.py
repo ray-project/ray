@@ -89,7 +89,7 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         ),
     ],
 )
-def test_save_load_state_equivalence(
+async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
     # Mock the delete function as we don't want report checkpoints to be deleted.
