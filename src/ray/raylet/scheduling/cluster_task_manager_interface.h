@@ -43,8 +43,8 @@ class ClusterTaskManagerInterface {
   /// \param failure_type: The failure type.
   /// \param scheduling_failure_message: The failure message.
   ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
+  /// \return True if lease was successfully cancelled. This function will return
+  /// false if the lease is already granted.
   virtual bool CancelLease(
       const LeaseID &lease_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =

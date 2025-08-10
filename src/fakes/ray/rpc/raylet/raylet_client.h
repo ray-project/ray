@@ -31,8 +31,7 @@ class FakeRayletClient : public RayletClientInterface {
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1,
-      const bool is_selected_based_on_locality = false,
-      const LeaseID &lease_id = LeaseID::NilFromWorker()) override {}
+      const bool is_selected_based_on_locality = false) override {}
 
   ray::Status ReturnWorker(int worker_port,
                            const WorkerID &worker_id,

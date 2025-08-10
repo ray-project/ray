@@ -328,8 +328,6 @@ std::atomic<uint32_t> LeaseID::counter_{0};
 
 LeaseID LeaseID::FromRandom() {
   std::string data(kUniqueBytesLength, 0);
-
-  // Fill unique bytes with counter value and increment
   uint32_t current_counter = counter_.fetch_add(1);
   std::memcpy(data.data(), &current_counter, sizeof(current_counter));
   std::copy_n(WorkerID::FromRandom().Data(), kUniqueIDSize, std::back_inserter(data));
@@ -339,8 +337,6 @@ LeaseID LeaseID::FromRandom() {
 
 LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id) {
   std::string data(kUniqueBytesLength, 0);
-
-  // Fill unique bytes with counter value and increment
   uint32_t current_counter = counter_.fetch_add(1);
   std::memcpy(data.data(), &current_counter, sizeof(current_counter));
   std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));

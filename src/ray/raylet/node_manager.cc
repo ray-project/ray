@@ -1341,8 +1341,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
   // Erase any lease metadata.
   ReleaseWorker(worker->GetAssignedLeaseId());
-  // Reset the worker's lease ID since it's no longer leased
-  worker->AssignLeaseId(LeaseID::Nil());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
@@ -1853,7 +1851,6 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   RAY_CHECK(worker != nullptr);
   Status status;
   ReleaseWorker(lease_id);
-  worker->AssignLeaseId(LeaseID::Nil());
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.

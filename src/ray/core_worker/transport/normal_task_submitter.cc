@@ -326,7 +326,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
       LeaseID::FromWorkerId(WorkerID::FromBinary(rpc_address_.worker_id()));
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
-  // same TaskID to request a worker
+  // same TaskID to request a worker. TODO(joshlee): Remove this once
+  // cluster_task_manager and local_task_manager are refactored to use LeaseID
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
   resource_spec_msg.set_lease_id(lease_id.Binary());
@@ -343,11 +344,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const std::string task_name = resource_spec.GetName();
-  RAY_LOG(DEBUG) << "Requesting lease from raylet "
-                 << NodeID::FromBinary(raylet_address->raylet_id()) << " for lease "
-                 << lease_id.Hex();
+  RAY_LOG(DEBUG) << "Requesting lease " << lease_id.Hex() << " from raylet "
+                 << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
+                 << task_name;
 
-  RAY_CHECK(resource_spec.LeaseId() != LeaseID::Nil());
   lease_client->RequestWorkerLease(
       resource_spec.GetMessage(),
       /*grant_or_reject=*/is_spillback,

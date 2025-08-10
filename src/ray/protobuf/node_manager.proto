@@ -163,7 +163,7 @@ message ShutdownRayletRequest {
 message ShutdownRayletReply {}
 
 message CancelWorkerLeaseRequest {
-  // The lease_id of the task to cancel.
+  // The lease to cancel.
   bytes lease_id = 1;
 }
 
