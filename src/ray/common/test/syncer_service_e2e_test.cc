@@ -52,8 +52,8 @@ class LocalNode : public ray::syncer::ReporterInterface {
         "LocalNodeStateUpdate");
   }
 
-  std::optional<ray::syncer::RaySyncMessage> CreateSyncMessage(int64_t current_version,
-                                                  ray::syncer::MessageType) const override {
+  std::optional<ray::syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t current_version, ray::syncer::MessageType) const override {
     if (current_version > version_) {
       return std::nullopt;
     }
