@@ -35,9 +35,13 @@ class TargetTemplate(Enum):
     HEATMAP = HEATMAP_TARGET_TEMPLATE
 
 
+class ExpressionType(Enum):
+    MATH = "math"
+
+
 @dataclass
 class Target:
-    """Defines a Grafana target (time-series query) within a panel.
+    """Defines a Grafana generic target within a panel.
 
     A panel will have one or more targets. By default, all targets are rendered as
     stacked area charts, with the exception of legend="MAX", which is rendered as
@@ -45,13 +49,48 @@ class Target:
     rendered hidden by default.
 
     Attributes:
-        expr: The prometheus query to evaluate.
         legend: The legend string to format for each time-series.
+        hide: Whether to hide the target from the legend.
     """
 
-    expr: str
     legend: str
+    hide: bool = False
+
+
+@dataclass
+class QueryTarget(Target):
+    """Defines a Grafana target (time-series query) within a panel.
+
+    Attributes:
+        expr: The prometheus query to evaluate.
+        template: The template to use for the target.
+    """
+
+    expr: str = ""
     template: Optional[TargetTemplate] = TargetTemplate.GRAPH
+
+    def __post_init__(self):
+        assert self.expr, "expr must be provided for QueryTarget"
+
+
+@dataclass
+class ExpressionTarget(Target):
+    """Defines a Grafana target (time-series query) within a panel.
+
+    Expressions perform calculations on the results of other queries or expressions.
+    For example, given a queries named "A" and "B", the expression "$A + $B" would be
+    rendered with the sum of the results of queries "A" and "B".
+
+    Attributes:
+        expression: The expression to evaluate.
+        type: The type of expression.
+    """
+
+    expression: str = ""
+    type: ExpressionType = ExpressionType.MATH
+
+    def __post_init__(self):
+        assert self.expression, "expression must be provided for ExpressionTarget"
 
 
 HEATMAP_TEMPLATE = {
