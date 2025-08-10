@@ -20,8 +20,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/transport/scheduling_queue.h"
-#include "ray/core_worker/transport/scheduling_util.h"
+#include "ray/core_worker/task_execution/scheduling_queue.h"
+#include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
