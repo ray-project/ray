@@ -2640,38 +2640,27 @@ class Dataset:
             if ds_count == 0 or self_count == 0:
                 raise ValueError("Cannot perform broadcast join on empty datasets")
 
-            if ds_count >= self_count:
-                small_ds = self
-                small_key_columns = on
-                large_key_columns = right_on
-                small_suffix = left_suffix
-                large_suffix = right_suffix
-                self_map = False
-            else:
+            # Always broadcast the smaller dataset and map over the larger one
+            if self_count >= ds_count:
+                # self (left) is larger, ds (right) is smaller
+                large_ds = self
                 small_ds = ds
-                small_key_columns = right_on
                 large_key_columns = on
-                small_suffix = right_suffix
+                small_key_columns = right_on
                 large_suffix = left_suffix
-                self_map = True
-
-            # Convert the join type if necessary since when datasets are swapped,
-            # left joins become right joins and vice versa
-            if self_map:
-                # self (originally left) is the smaller dataset being broadcast
-                # Since we're mapping over ds (originally right), the join semantics are swapped
-                if join_type == "left_outer":
-                    join_type = "right_outer"
-                elif join_type == "right_outer":
-                    join_type = "left_outer"
+                small_suffix = right_suffix
+                datasets_swapped = False
             else:
-                # ds (originally right) is the smaller dataset being broadcast
-                # Since we're mapping over self (originally left), the join semantics are swapped
-                if join_type == "left_outer":
-                    join_type = "right_outer"
-                elif join_type == "right_outer":
-                    join_type = "left_outer"
+                # ds (right) is larger, self (left) is smaller
+                large_ds = ds
+                small_ds = self
+                large_key_columns = right_on
+                small_key_columns = on
+                large_suffix = right_suffix
+                small_suffix = left_suffix
+                datasets_swapped = True
 
+            # No need to convert join types - we'll handle this properly in BroadcastJoinFunction
             join_type_enum = JoinType(join_type)
             join_fn = BroadcastJoinFunction(
                 small_table_dataset=small_ds,
@@ -2680,20 +2669,15 @@ class Dataset:
                 small_table_key_columns=small_key_columns,
                 large_table_columns_suffix=large_suffix,
                 small_table_columns_suffix=small_suffix,
-                datasets_swapped=self_map,
+                datasets_swapped=datasets_swapped,
             )
-            if self_map:
-                return self.map_batches(
-                    join_fn,
-                    batch_format="pyarrow",
-                    concurrency=num_partitions,
-                )
-            else:
-                return ds.map_batches(
-                    join_fn,
-                    batch_format="pyarrow",
-                    concurrency=num_partitions,
-                )
+            
+            # Always map over the larger dataset
+            return large_ds.map_batches(
+                join_fn,
+                batch_format="pyarrow",
+                concurrency=num_partitions,
+            )
         else:
             op = Join(
                 left_input_op=self._logical_plan.dag,

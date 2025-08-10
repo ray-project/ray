@@ -98,19 +98,23 @@ class BroadcastJoinFunction:
         )
 
         if self.datasets_swapped:
-            # When datasets are swapped, the batch comes from the originally right dataset
-            # and small_table comes from the originally left dataset, so we reverse the join
-            # We also need to convert the join type again because we're reversing the order
+            # When datasets are swapped:
+            # - batch comes from the originally RIGHT dataset (larger)
+            # - small_table is the originally LEFT dataset (smaller, broadcasted)
+            # We want to maintain LEFT.join(RIGHT) semantics, so: small_table.join(batch)
+            
+            # Convert join type for the swapped operation
             if arrow_join_type == "left outer":
-                reversed_join_type = "right outer"
+                actual_join_type = "right outer"
             elif arrow_join_type == "right outer":
-                reversed_join_type = "left outer"
+                actual_join_type = "left outer"
             else:
-                reversed_join_type = arrow_join_type
+                actual_join_type = arrow_join_type
 
+            # Perform small_table.join(batch) = LEFT.join(RIGHT)
             joined_table = self.small_table.join(
                 batch,
-                join_type=reversed_join_type,
+                join_type=actual_join_type,
                 keys=list(self.small_table_key_columns),
                 right_keys=list(self.large_table_key_columns),
                 left_suffix=self.small_table_columns_suffix,
@@ -118,7 +122,12 @@ class BroadcastJoinFunction:
                 coalesce_keys=coalesce_keys,
             )
         else:
-            # Normal case: batch is from left dataset, small_table is from right dataset
+            # Normal case:
+            # - batch comes from the originally LEFT dataset (larger)
+            # - small_table is the originally RIGHT dataset (smaller, broadcasted)
+            # We maintain LEFT.join(RIGHT) semantics: batch.join(small_table)
+            
+            # Perform batch.join(small_table) = LEFT.join(RIGHT)
             joined_table = batch.join(
                 self.small_table,
                 join_type=arrow_join_type,
