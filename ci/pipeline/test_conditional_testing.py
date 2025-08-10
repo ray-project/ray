@@ -4,8 +4,8 @@ import sys
 import tempfile
 from typing import List, Set
 
-import runfiles
 import pytest
+import runfiles
 import yaml
 
 from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet

@@ -1,11 +1,12 @@
 import os
-import tempfile
 import sys
+import tempfile
+
 import pytest
 
+from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 from ci.ray_ci.doc.autodoc import Autodoc
 from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function, mock_w00t
-from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 
 
 def test_walk():

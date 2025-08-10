@@ -2,8 +2,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.builder import DEFAULT_PYTHON_VERSION
+from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.utils import ci_init
 
 
