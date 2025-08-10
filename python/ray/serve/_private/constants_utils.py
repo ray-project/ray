@@ -49,27 +49,40 @@ T = TypeVar("T")
 
 def _get_env_value(
     name: str,
-    default: T,
+    default: Optional[T],
     value_type: Type[T],
     value_requirement: Optional[Callable[[T], bool]] = None,
     error_message: str = None,
-) -> T:
+) -> Optional[T]:
     """Get environment variable with type conversion and validation.
 
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
         value_type: Type to convert the environment variable value to.
-        value_requirement: Optional function to validate the converted value.
-        error_message: Error message description for validation failures.
+        value_requirement: Optional validation function that takes the converted
+            value and returns a boolean indicating if the value is valid.
+        error_message: Error message to use if type conversion fails
+            or validation check fails.
 
     Returns:
-        The converted and validated environment variable value.
+        The converted and validated environment variable,
+        or the default value if the environment variable is not set.
 
     Raises:
-        ValueError: If type conversion fails or validation fails.
+        ValueError: If the environment variable value cannot be converted to the specified
+            type, or if it or default value fails the optional validation check.
     """
+    if value_requirement and default is not None and not value_requirement(default):
+        raise ValueError(
+            f"Got unexpected default value `{default}` for `{name}` environment variable! "
+            f"Expected {error_message} `{value_type.__name__}`."
+        )
+
     raw = os.environ.get(name, default)
+    if raw is None:
+        return None
+
     try:
         value = value_type(raw)
     except ValueError as e:
@@ -79,13 +92,14 @@ def _get_env_value(
 
     if value_requirement and not value_requirement(value):
         raise ValueError(
-            f"Got unexpected value `{value}` for `{name}` environment variable! Expected {error_message} `{value_type.__name__}`."
+            f"Got unexpected value `{value}` for `{name}` environment variable! "
+            f"Expected {error_message} `{value_type.__name__}`."
         )
 
     return value
 
 
-def get_env_int(name: str, default: int) -> int:
+def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
     """Get environment variable as an integer.
 
     Args:
@@ -101,7 +115,7 @@ def get_env_int(name: str, default: int) -> int:
     return _get_env_value(name, default, int)
 
 
-def get_env_int_positive(name: str, default: int) -> int:
+def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     """Get environment variable as a positive integer.
 
     Args:
@@ -117,7 +131,7 @@ def get_env_int_positive(name: str, default: int) -> int:
     return _get_env_value(name, default, int, lambda x: x > 0, "positive")
 
 
-def get_env_int_non_negative(name: str, default: int) -> int:
+def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]:
     """Get environment variable as a non-negative integer.
 
     Args:
@@ -133,7 +147,7 @@ def get_env_int_non_negative(name: str, default: int) -> int:
     return _get_env_value(name, default, int, lambda x: x >= 0, "non negative")
 
 
-def get_env_float(name: str, default: float) -> float:
+def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
     """Get environment variable as a float.
 
     Args:
@@ -149,7 +163,7 @@ def get_env_float(name: str, default: float) -> float:
     return _get_env_value(name, default, float)
 
 
-def get_env_float_positive(name: str, default: float) -> float:
+def get_env_float_positive(name: str, default: Optional[float]) -> Optional[float]:
     """Get environment variable as a positive float.
 
     Args:
@@ -165,7 +179,7 @@ def get_env_float_positive(name: str, default: float) -> float:
     return _get_env_value(name, default, float, lambda x: x > 0, "positive")
 
 
-def get_env_float_non_negative(name: str, default: float) -> float:
+def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[float]:
     """Get environment variable as a non-negative float.
 
     Args:

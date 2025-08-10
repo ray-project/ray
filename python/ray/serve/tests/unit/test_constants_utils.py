@@ -95,13 +95,13 @@ def mock_environ():
 
 class TestEnvValueFunctions:
     def test_get_env_int(self, mock_environ):
-        assert 0 == get_env_int("TEST_VAR", 0)
+        assert get_env_int("TEST_VAR", 0) == 0
 
         mock_environ["TEST_VAR"] = "42"
-        assert 42 == get_env_int("TEST_VAR", 0)
+        assert get_env_int("TEST_VAR", 0) == 42
 
         mock_environ["TEST_VAR"] = "-1"
-        assert -1 == get_env_int("TEST_VAR", 0)
+        assert get_env_int("TEST_VAR", 0) == -1
 
         mock_environ["TEST_VAR"] = "0.1"
         with pytest.raises(ValueError, match=".*`0.1` cannot be converted to `int`!*"):
@@ -112,34 +112,37 @@ class TestEnvValueFunctions:
             get_env_int_positive("TEST_VAR", 5)
 
     def test_get_env_int_positive(self, mock_environ):
-        assert 1 == get_env_int_positive("TEST_VAR", 1)
+        assert get_env_int_positive("TEST_VAR", 1) == 1
 
         mock_environ["TEST_VAR"] = "42"
-        assert 42 == get_env_int_positive("TEST_VAR", 0)
+        assert get_env_int_positive("TEST_VAR", 1) == 42
 
         mock_environ["TEST_VAR"] = "-1"
         with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
             get_env_int_positive("TEST_VAR", 5)
 
     def test_get_env_int_non_negative(self, mock_environ):
-        assert 0 == get_env_int_non_negative("TEST_VAR", 0)
-        assert 1 == get_env_int_non_negative("TEST_VAR", 1)
+        assert get_env_int_non_negative("TEST_VAR", 0) == 0
+        assert get_env_int_non_negative("TEST_VAR", 1) == 1
 
         mock_environ["TEST_VAR"] = "42"
-        assert 42 == get_env_int_non_negative("TEST_VAR", 0)
+        assert get_env_int_non_negative("TEST_VAR", 0) == 42
+
+        with pytest.raises(ValueError, match=".*unexpected default value `-1`.*"):
+            get_env_int_non_negative("TEST_VAR", -1)
 
         mock_environ["TEST_VAR"] = "-1"
         with pytest.raises(ValueError, match=".*Expected non negative `int`.*"):
             get_env_int_non_negative("TEST_VAR", 5)
 
     def test_get_env_float(self, mock_environ):
-        assert 0.0 == get_env_float("TEST_VAR", 0.0)
+        assert get_env_float("TEST_VAR", 0.0) == 0.0
 
         mock_environ["TEST_VAR"] = "3.14"
-        assert 3.14 == get_env_float("TEST_VAR", 0.0)
+        assert get_env_float("TEST_VAR", 0.0) == 3.14
 
         mock_environ["TEST_VAR"] = "-2.5"
-        assert -2.5 == get_env_float("TEST_VAR", 0.0)
+        assert get_env_float("TEST_VAR", 0.0) == -2.5
 
         mock_environ["TEST_VAR"] = "abc"
         with pytest.raises(
@@ -148,21 +151,25 @@ class TestEnvValueFunctions:
             get_env_float("TEST_VAR", 0.0)
 
     def test_get_env_float_positive(self, mock_environ):
-        assert 1.5 == get_env_float_positive("TEST_VAR", 1.5)
+        assert get_env_float_positive("TEST_VAR", 1.5) == 1.5
+        assert get_env_float_positive("TEST_VAR", None) is None
 
         mock_environ["TEST_VAR"] = "42.5"
-        assert 42.5 == get_env_float_positive("TEST_VAR", 0.0)
+        assert get_env_float_positive("TEST_VAR", 1.0) == 42.5
+
+        with pytest.raises(ValueError, match=".*unexpected default value `0.0`.*"):
+            get_env_float_positive("TEST_VAR", 0.0)
 
         mock_environ["TEST_VAR"] = "-1.2"
         with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
             get_env_float_positive("TEST_VAR", 5.0)
 
     def test_get_env_float_non_negative(self, mock_environ):
-        assert 0.0 == get_env_float_non_negative("TEST_VAR", 0.0)
-        assert 1.5 == get_env_float_non_negative("TEST_VAR", 1.5)
+        assert get_env_float_non_negative("TEST_VAR", 0.0) == 0.0
+        assert get_env_float_non_negative("TEST_VAR", 1.5) == 1.5
 
         mock_environ["TEST_VAR"] = "42.5"
-        assert 42.5 == get_env_float_non_negative("TEST_VAR", 0.0)
+        assert get_env_float_non_negative("TEST_VAR", 0.0) == 42.5
 
         mock_environ["TEST_VAR"] = "-1.2"
         with pytest.raises(ValueError, match=".*Expected non negative `float`.*"):
