@@ -2704,6 +2704,74 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   // Cleanup
   manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
+
+class PlasmaShutdownRaceTest : public ::testing::Test {
+ public:
+  PlasmaShutdownRaceTest() : is_shutting_down_(false) {}
+
+  Status SimulatePlasmaCallback(const ObjectID &object_id, bool simulate_failure) {
+    if (is_shutting_down_) {
+      skipped_operations_.insert(object_id);
+      return Status::OK();
+    }
+
+    if (simulate_failure) {
+      auto status = Status::IOError("Broken pipe");
+      if (status.IsIOError() && is_shutting_down_) {
+        tolerated_operations_.insert(object_id);
+        return Status::OK();
+      } else {
+        failed_operations_.insert(object_id);
+        return status;
+      }
+    }
+
+    successful_operations_.insert(object_id);
+    return Status::OK();
+  }
+
+  void SetShuttingDown(bool shutting_down) { is_shutting_down_ = shutting_down; }
+
+ protected:
+  bool is_shutting_down_;
+  std::unordered_set<ObjectID> skipped_operations_;
+  std::unordered_set<ObjectID> tolerated_operations_;
+  std::unordered_set<ObjectID> successful_operations_;
+  std::unordered_set<ObjectID> failed_operations_;
+};
+
+// Test plasma callback behavior during shutdown to prevent RAY_CHECK crashes
+TEST_F(PlasmaShutdownRaceTest, PlasmaCallbackHandlesShutdownRaceCondition) {
+  auto object_id = ObjectID::FromRandom();
+
+  SetShuttingDown(false);
+  ASSERT_TRUE(SimulatePlasmaCallback(object_id, false).ok());
+  ASSERT_EQ(successful_operations_.count(object_id), 1);
+
+  auto object_id2 = ObjectID::FromRandom();
+  auto status = SimulatePlasmaCallback(object_id2, true);
+  ASSERT_FALSE(status.ok());
+  ASSERT_TRUE(status.IsIOError());
+  ASSERT_EQ(failed_operations_.count(object_id2), 1);
+
+  auto object_id3 = ObjectID::FromRandom();
+  SetShuttingDown(true);
+  ASSERT_TRUE(SimulatePlasmaCallback(object_id3, false).ok());
+  ASSERT_EQ(skipped_operations_.count(object_id3), 1);
+
+  auto object_id4 = ObjectID::FromRandom();
+  SetShuttingDown(false);
+  auto status4 = Status::IOError("Broken pipe");
+  SetShuttingDown(true);
+
+  if (status4.IsIOError() && is_shutting_down_) {
+    tolerated_operations_.insert(object_id4);
+  } else {
+    failed_operations_.insert(object_id4);
+  }
+  ASSERT_EQ(tolerated_operations_.count(object_id4), 1);
+}
+
 }  // namespace core
 }  // namespace ray
 

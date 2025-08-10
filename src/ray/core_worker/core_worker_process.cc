@@ -424,33 +424,30 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        
+
         // Check if the core worker is shutting down before attempting plasma operations.
         // During shutdown, the plasma store connection may already be broken, so we
         // should avoid plasma operations entirely.
         if (core_worker->IsShuttingDown()) {
-          RAY_LOG(INFO) << "Skipping plasma store operation for error object " << object_id 
-                       << " because core worker is shutting down.";
+          RAY_LOG(INFO) << "Skipping plasma store operation for error object "
+                        << object_id << " because core worker is shutting down.";
           return;
         }
-        
-        auto status = core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+
+        auto status =
+            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
         if (!status.ok()) {
-          if (status.IsIOError() && 
-              (status.message().find("Broken pipe") != std::string::npos ||
-               status.message().find("Connection reset") != std::string::npos ||
-               status.message().find("Bad file descriptor") != std::string::npos)) {
-            // This is likely a shutdown race where the plasma store
-            // connection was closed before we could complete the operation.
-            // Log as warning since this is expected during shutdown scenarios.
-            RAY_LOG(WARNING) << "Failed to put error object " << object_id 
-                            << " in plasma store due to connection error (likely shutdown): " 
-                            << status.ToString();
+          // During shutdown, plasma store connections can be closed causing IOError.
+          // We only tolerate IOError during shutdown to avoid masking real errors.
+          if (status.IsIOError() && core_worker->IsShuttingDown()) {
+            // Double-check shutdown state - this handles the race where shutdown
+            // began after our first check but before the plasma operation.
+            RAY_LOG(WARNING) << "Failed to put error object " << object_id
+                             << " in plasma store during shutdown: " << status.ToString();
           } else {
-            // For other types of errors, maintain the original
-            // behavior with RAY_CHECK_OK to catch real issues.
-            RAY_CHECK_OK(status) << "Failed to put error object " << object_id 
-                                << " in plasma store: " << status.ToString();
+            // For any other error, or IOError when not shutting down, this indicates
+            // a real problem that should crash the process.
+            RAY_CHECK_OK(status);
           }
         }
       },
