@@ -284,11 +284,13 @@ def create_streaming_read_task(
 
     # Create metadata for this task
     # For streaming, we can estimate records per task
-    estimated_rows = max_records if max_records > 0 else None
-    
+    estimated_rows = (
+        max_records if max_records is not None and max_records > 0 else None
+    )
+
     # Provide source identifier for tracking
     input_source = streaming_config.get("source_identifier", partition_id)
-    
+
     metadata = BlockMetadata(
         num_rows=estimated_rows,  # Estimate based on max_records
         size_bytes=None,  # Unknown until read for streaming
@@ -340,9 +342,7 @@ class StreamingPosition:
         position_type: Type of position ("offset", "timestamp", "sequence", etc.).
     """
 
-    def __init__(
-        self, value: Union[str, int, datetime], position_type: str = "offset"
-    ):
+    def __init__(self, value: Union[str, int, datetime], position_type: str = "offset"):
         """Initialize a streaming position.
 
         Args:
@@ -389,7 +389,7 @@ class StreamingMetrics:
             metrics = StreamingMetrics()
             metrics.record_read(record_count=100, byte_count=5000)
             metrics.record_error()
-            
+
             throughput = metrics.get_throughput()
             print(f"Records/sec: {throughput['records_per_second']}")
     """
@@ -430,4 +430,4 @@ class StreamingMetrics:
                 "bytes_per_second": self.bytes_read / duration,
                 "error_rate": self.read_errors / max(1, self.records_read),
             }
-        return {"records_per_second": 0, "bytes_per_second": 0, "error_rate": 0} 
+        return {"records_per_second": 0, "bytes_per_second": 0, "error_rate": 0}

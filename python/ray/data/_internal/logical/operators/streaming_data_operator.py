@@ -124,7 +124,9 @@ class StreamingTrigger:
             raise ValueError(f"Invalid interval format: {interval_str}")
 
     @classmethod
-    def continuous(cls, checkpoint_location: Optional[str] = None) -> "StreamingTrigger":
+    def continuous(
+        cls, checkpoint_location: Optional[str] = None
+    ) -> "StreamingTrigger":
         """Create a continuous processing trigger.
 
         Processes data as soon as it arrives with minimal latency.
@@ -305,38 +307,39 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
         """Infer metadata and schema from streaming datasource."""
         from ray.data.block import BlockMetadataWithSchema
         from ray.data._internal.util import unify_schemas_with_validation
-        
+
         # Get a sample of read tasks to infer metadata and schema
         try:
-            read_tasks = self.datasource.get_read_tasks(min(self.parallelism, 3))
+            # Use a small, constant number for schema inference to avoid performance issues
+            sample_parallelism = min(
+                3, max(1, self.parallelism if self.parallelism > 0 else 1)
+            )
+            read_tasks = self.datasource.get_read_tasks(sample_parallelism)
         except Exception:
-            # If we can't get read tasks, return empty metadata
             empty_meta = BlockMetadata(None, None, None, None)
             return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
-        
+
         if len(read_tasks) == 0:
             empty_meta = BlockMetadata(None, None, None, None)
             return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
-        
-        # Aggregate metadata from read tasks
+
         metadata = [read_task.metadata for read_task in read_tasks]
-        
+
         # For streaming, we can estimate based on max_records_per_task
-        if all(meta.num_rows is not None for meta in metadata):
-            # This gives us an estimate per batch, not total (which is unbounded)
+        if all(meta is not None and meta.num_rows is not None for meta in metadata):
             estimated_rows_per_batch = sum(meta.num_rows for meta in metadata)
         else:
             estimated_rows_per_batch = None
-        
+
         # Size bytes is unknown for streaming
         size_bytes = None
-        
+
         # Collect input files/sources
         input_files = []
         for meta in metadata:
             if meta.input_files is not None:
                 input_files.extend(meta.input_files)
-        
+
         # Create streaming metadata - note we use estimated_rows_per_batch, not total rows
         streaming_meta = BlockMetadata(
             num_rows=estimated_rows_per_batch,
@@ -344,17 +347,16 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
             input_files=input_files if input_files else None,
             exec_stats=None,
         )
-        
+
         # Infer schema from read tasks
         schemas = [
-            read_task.schema for read_task in read_tasks 
-            if read_task.schema is not None
+            read_task.schema for read_task in read_tasks if read_task.schema is not None
         ]
-        
+
         schema = None
         if schemas:
             schema = unify_schemas_with_validation(schemas)
-        
+
         return BlockMetadataWithSchema(metadata=streaming_meta, schema=schema)
 
     def is_lineage_serializable(self) -> bool:
@@ -363,4 +365,4 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Unbounded streams have unknown output count."""
-        return None 
+        return None

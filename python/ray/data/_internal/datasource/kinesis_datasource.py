@@ -17,16 +17,13 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
-# Global state for tracking current positions across shards
-_kinesis_current_positions = {}
-
 
 def _parse_kinesis_position(position: str) -> Optional[str]:
     """Parse Kinesis sequence number from position string.
-    
+
     Args:
         position: Position string in format "sequence:123" or just "123".
-    
+
     Returns:
         Parsed sequence number as string, or None if invalid.
     """
@@ -41,183 +38,171 @@ def _parse_kinesis_position(position: str) -> Optional[str]:
     return None
 
 
-def _read_kinesis_shard(
+def _create_kinesis_reader(
     stream_name: str,
     shard_id: str,
     kinesis_config: Dict[str, Any],
+    start_sequence: Optional[str] = None,
+    end_sequence: Optional[str] = None,
     max_records: int = 1000,
-) -> Iterator[Dict[str, Any]]:
-    """Read records from a Kinesis shard.
-    
+) -> tuple[callable, callable]:
+    """Create a Kinesis reader function with encapsulated state.
+
     Args:
         stream_name: Kinesis stream name.
         shard_id: Shard identifier.
         kinesis_config: Kinesis client configuration.
+        start_sequence: Starting sequence number.
+        end_sequence: Ending sequence number.
         max_records: Maximum records to read per call.
-    
+
+    Returns:
+        Tuple of (read_function, get_position_function).
+
     Yields:
         Dictionary records from Kinesis.
     """
-    _check_import("kinesis_datasource", module="boto3", package="boto3")
-    
+    _check_import(module="boto3", package="boto3")
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
-    
-    # Track position
-    position_key = f"{stream_name}-{shard_id}"
-    
-    # Set up metrics
+
+    # State variables encapsulated in closure
+    current_sequence_number = start_sequence
+    kinesis_client = None
+    shard_iterator = None
     metrics = StreamingMetrics()
-    
-    try:
-        kinesis = boto3.client("kinesis", **kinesis_config)
-        
-        # Get shard iterator
-        iterator_response = kinesis.get_shard_iterator(
-            StreamName=stream_name,
-            ShardId=shard_id,
-            ShardIteratorType="TRIM_HORIZON"
-        )
-        
-        shard_iterator = iterator_response["ShardIterator"]
-        records_read = 0
-        
-        while shard_iterator and records_read < max_records:
-            try:
-                # Get records from shard
-                response = kinesis.get_records(
-                    ShardIterator=shard_iterator,
-                    Limit=min(100, max_records - records_read)  # AWS limit is 10k
+
+    def read_shard() -> Iterator[Dict[str, Any]]:
+        """Read records from Kinesis shard, maintaining position state."""
+        nonlocal current_sequence_number, kinesis_client, shard_iterator
+
+        try:
+            # Initialize client if needed
+            if kinesis_client is None:
+                kinesis_client = boto3.client("kinesis", **kinesis_config)
+
+            # Initialize shard iterator if needed
+            if shard_iterator is None:
+                if current_sequence_number:
+                    iterator_type = "AT_SEQUENCE_NUMBER"
+                    starting_sequence_number = current_sequence_number
+                else:
+                    iterator_type = "LATEST"
+                    starting_sequence_number = None
+
+                response = kinesis_client.get_shard_iterator(
+                    StreamName=stream_name,
+                    ShardId=shard_id,
+                    ShardIteratorType=iterator_type,
+                    StartingSequenceNumber=starting_sequence_number,
                 )
-                
-                records = response.get("Records", [])
-                shard_iterator = response.get("NextShardIterator")
-                
-                for record in records:
-                    if records_read >= max_records:
-                        break
-                    
-                    try:
-                        # Decode record data
-                        data_bytes = record["Data"]
-                        data_str = data_bytes.decode("utf-8") if isinstance(data_bytes, bytes) else str(data_bytes)
-                        
-                        # Convert record to dictionary
-                        processed_record = {
+                shard_iterator = response["ShardIterator"]
+
+            # Read records from shard
+            if shard_iterator:
+                try:
+                    response = kinesis_client.get_records(
+                        ShardIterator=shard_iterator, Limit=max_records
+                    )
+
+                    records = response["Records"]
+                    shard_iterator = response.get("NextShardIterator")
+
+                    for record in records:
+                        # Check if we've reached the end sequence
+                        if (
+                            end_sequence is not None
+                            and record["SequenceNumber"] >= end_sequence
+                        ):
+                            logger.info(
+                                f"Reached end sequence {end_sequence} for {stream_name}:{shard_id}"
+                            )
+                            return  # Stop reading
+
+                        # Update current position
+                        current_sequence_number = record["SequenceNumber"]
+
+                        # Convert Kinesis record to dict
+                        record_dict = {
+                            "SequenceNumber": record["SequenceNumber"],
+                            "Data": record["Data"].decode("utf-8"),
+                            "PartitionKey": record["PartitionKey"],
+                            "ApproximateArrivalTimestamp": record.get(
+                                "ApproximateArrivalTimestamp", datetime.now()
+                            ),
                             "stream_name": stream_name,
                             "shard_id": shard_id,
-                            "sequence_number": record["SequenceNumber"],
-                            "partition_key": record["PartitionKey"],
-                            "data": data_str,
-                            "approximate_arrival_timestamp": record["ApproximateArrivalTimestamp"],
                         }
-                        
-                        # Try to parse JSON data
-                        try:
-                            processed_record["data_json"] = json.loads(data_str)
-                        except (json.JSONDecodeError, TypeError):
-                            processed_record["data_json"] = None
-                        
-                        # Update position tracking
-                        _kinesis_current_positions[position_key] = record["SequenceNumber"]
-                        
-                        # Record metrics
-                        data_size = len(data_bytes) if isinstance(data_bytes, bytes) else len(data_str)
-                        metrics.record_read(1, data_size)
-                        
-                        records_read += 1
-                        yield processed_record
-                        
-                    except Exception as e:
-                        logger.warning(f"Error processing Kinesis record: {e}")
-                        metrics.record_error()
-                        continue
-                
-                # Stop if no more data
-                if not records:
-                    break
-                    
-            except (BotoCoreError, ClientError) as e:
-                logger.error(f"Error reading from Kinesis shard {shard_id}: {e}")
-                metrics.record_error()
-                break
-                
-    except Exception as e:
-        logger.error(f"Error setting up Kinesis client: {e}")
-        raise RuntimeError(f"Kinesis read error: {e}") from e
 
+                        # Track metrics
+                        metrics.record_read(1, len(record["Data"]))
 
-def _get_kinesis_position(stream_name: str, shard_id: str) -> str:
-    """Get current position for a Kinesis shard.
-    
-    Args:
-        stream_name: Kinesis stream name.
-        shard_id: Shard identifier.
-    
-    Returns:
-        Current position string in format "sequence:123".
-    """
-    position_key = f"{stream_name}-{shard_id}"
-    sequence = _kinesis_current_positions.get(position_key, "TRIM_HORIZON")
-    return f"sequence:{sequence}"
+                        yield record_dict
+
+                except (BotoCoreError, ClientError) as e:
+                    logger.error(f"Error reading from Kinesis shard {shard_id}: {e}")
+                    metrics.record_error()
+                    # Don't yield anything on error, let the retry logic handle it
+
+        except Exception as e:
+            logger.error(f"Unexpected error in Kinesis reader: {e}")
+            metrics.record_error()
+            raise
+
+    def get_current_position() -> str:
+        """Get current sequence number position."""
+        return f"sequence:{current_sequence_number or 'LATEST'}"
+
+    return read_shard, get_current_position
 
 
 @PublicAPI(stability="alpha")
 class KinesisDatasource(StreamingDatasource):
-    """Kinesis datasource for reading from Amazon Kinesis Data Streams.
-    
-    This datasource supports reading from Kinesis streams in both batch and streaming
-    modes. It handles multiple shards automatically.
-    
+    """Kinesis datasource for reading from Amazon Kinesis data streams.
+
+    This datasource provides structured streaming capabilities for Amazon Kinesis,
+    supporting real-time data ingestion with configurable triggers and automatic
+    position tracking.
+
     Examples:
-        Basic usage:
-        
+        Basic Kinesis stream reading:
+
         .. testcode::
             :skipif: True
-            
+
+            import ray
             from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
-            
-            # Create Kinesis datasource
-            datasource = KinesisDatasource(
+
+            # Read from Kinesis stream with default configuration
+            ds = ray.data.read_kinesis(
                 stream_name="my-stream",
                 kinesis_config={
                     "region_name": "us-west-2"
                 }
             )
-            
-        With credentials:
-        
+
+        Advanced configuration with custom triggers:
+
         .. testcode::
             :skipif: True
-            
-            from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
-            
-            # Create datasource with explicit credentials
-            datasource = KinesisDatasource(
-                stream_name="secure-stream",
+
+            import ray
+            from ray.data._internal.logical.operators.streaming_data_operator import StreamingTrigger
+
+            # Read with fixed interval trigger
+            trigger = StreamingTrigger.fixed_interval("10s")
+            ds = ray.data.read_kinesis(
+                stream_name="my-stream",
                 kinesis_config={
                     "region_name": "us-west-2",
                     "aws_access_key_id": "your-key",
                     "aws_secret_access_key": "your-secret"
-                }
-            )
-            
-        With specific sequence numbers:
-        
-        .. testcode::
-            :skipif: True
-            
-            from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
-            
-            # Read from specific sequence range
-            datasource = KinesisDatasource(
-                stream_name="events",
-                kinesis_config={"region_name": "us-west-2"},
-                start_sequence="sequence:12345",
-                end_sequence="sequence:67890"
+                },
+                trigger=trigger,
+                max_records_per_task=500
             )
     """
-    
+
     def __init__(
         self,
         stream_name: str,
@@ -225,159 +210,162 @@ class KinesisDatasource(StreamingDatasource):
         max_records_per_task: int = 1000,
         start_sequence: Optional[str] = None,
         end_sequence: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         """Initialize Kinesis datasource.
-        
+
         Args:
-            stream_name: Kinesis stream name.
-            kinesis_config: Kinesis client configuration dictionary.
-            max_records_per_task: Maximum records per task per batch.
-            start_sequence: Starting sequence number position.
-            end_sequence: Ending sequence number position.
+            stream_name: Name of the Kinesis stream to read from.
+            kinesis_config: Kinesis client configuration (region, credentials, etc.).
+            max_records_per_task: Maximum records per shard per task per batch.
+            start_sequence: Starting sequence number for reading.
+            end_sequence: Ending sequence number for reading.
             **kwargs: Additional arguments passed to StreamingDatasource.
         """
         self.stream_name = stream_name
         self.kinesis_config = kinesis_config
-        
+
         # Create streaming config
         streaming_config = {
             "stream_name": self.stream_name,
             "kinesis_config": self.kinesis_config,
             "source_identifier": f"kinesis://{kinesis_config.get('region_name', 'unknown')}/{stream_name}",
         }
-        
+
         super().__init__(
             max_records_per_task=max_records_per_task,
             start_position=start_sequence,
             end_position=end_sequence,
             streaming_config=streaming_config,
-            **kwargs
+            **kwargs,
         )
-    
+
     def _validate_config(self) -> None:
         """Validate Kinesis configuration.
-        
+
         Raises:
-            ValueError: If configuration is invalid.
-            ImportError: If boto3 is not available.
+            ValueError: If required configuration is missing or invalid.
         """
-        _check_import(self, module="boto3", package="boto3")
-        
         if not self.stream_name:
-            raise ValueError("stream_name must be provided and non-empty")
-            
-        if not self.kinesis_config:
-            raise ValueError("kinesis_config must be provided")
-            
+            raise ValueError("stream_name is required for Kinesis datasource")
+
+        if not isinstance(self.kinesis_config, dict):
+            raise ValueError("kinesis_config must be a dictionary")
+
         if "region_name" not in self.kinesis_config:
             raise ValueError("region_name is required in kinesis_config")
-    
+
     def get_name(self) -> str:
-        """Get datasource name.
-        
-        Returns:
-            String identifier for this datasource.
-        """
-        return f"kinesis({self.stream_name})"
-    
+        """Return datasource name."""
+        return f"kinesis://{self.stream_name}"
+
     def get_streaming_partitions(self) -> List[Dict[str, Any]]:
-        """Get Kinesis shards to read from.
-        
+        """Get partitions (shards) for the Kinesis stream.
+
         Returns:
-            List of shard metadata dictionaries.
+            List of partition info dictionaries, one per shard.
         """
-        _check_import(self, module="boto3", package="boto3")
-        
+        _check_import("boto3")
         import boto3
-        
-        partitions = []
-        
+
         try:
-            kinesis = boto3.client("kinesis", **self.kinesis_config)
-            
-            # Describe stream to get shards
-            response = kinesis.describe_stream(StreamName=self.stream_name)
-            shards = response["StreamDescription"]["Shards"]
-            
-            for shard in shards:
+            kinesis_client = boto3.client("kinesis", **self.kinesis_config)
+
+            # Get stream description to find shards
+            response = kinesis_client.describe_stream(StreamName=self.stream_name)
+            stream_description = response["StreamDescription"]
+
+            partitions = []
+            for shard in stream_description["Shards"]:
                 shard_id = shard["ShardId"]
-                partition_info = {
-                    "partition_id": f"{self.stream_name}-{shard_id}",
-                    "stream_name": self.stream_name,
-                    "shard_id": shard_id,
-                    "start_sequence": _parse_kinesis_position(self.start_position) if self.start_position else None,
-                    "end_sequence": _parse_kinesis_position(self.end_position) if self.end_position else None,
-                }
-                partitions.append(partition_info)
-                
+                partitions.append(
+                    {
+                        "stream_name": self.stream_name,
+                        "shard_id": shard_id,
+                        "partition_id": f"{self.stream_name}-{shard_id}",
+                        "start_sequence": self.start_position,
+                        "end_sequence": self.end_position,
+                    }
+                )
+
+            logger.info(
+                f"Found {len(partitions)} shards for Kinesis stream {self.stream_name}"
+            )
+            return partitions
+
         except Exception as e:
-            logger.error(f"Error discovering Kinesis shards: {e}")
-            raise
-        
-        return partitions
-    
+            logger.error(f"Error listing Kinesis shards: {e}")
+            raise RuntimeError(f"Failed to get Kinesis partitions: {e}") from e
+
     def _create_streaming_read_task(self, partition_info: Dict[str, Any]) -> ReadTask:
-        """Create read task for a Kinesis shard.
-        
+        """Create a read task for a Kinesis shard.
+
         Args:
-            partition_info: Shard metadata from get_streaming_partitions.
-            
+            partition_info: Partition information containing shard details.
+
         Returns:
-            ReadTask for this shard.
+            ReadTask for reading from the shard.
         """
         stream_name = partition_info["stream_name"]
         shard_id = partition_info["shard_id"]
         partition_id = partition_info["partition_id"]
-        
-        def read_kinesis_fn():
-            """Read from Kinesis shard."""
-            return _read_kinesis_shard(
-                stream_name=stream_name,
-                shard_id=shard_id,
-                kinesis_config=self.kinesis_config,
-                max_records=self.max_records_per_task,
+        start_sequence = partition_info.get("start_sequence")
+        end_sequence = partition_info.get("end_sequence")
+
+        # Create stateful reader functions
+        read_shard_fn, get_position_fn = _create_kinesis_reader(
+            stream_name=stream_name,
+            shard_id=shard_id,
+            kinesis_config=self.kinesis_config,
+            start_sequence=_parse_kinesis_position(start_sequence)
+            if start_sequence
+            else None,
+            end_sequence=_parse_kinesis_position(end_sequence)
+            if end_sequence
+            else None,
+            max_records=self.max_records_per_task,
+        )
+
+        def get_schema() -> pa.Schema:
+            """Return schema for Kinesis records."""
+            return pa.schema(
+                [
+                    ("SequenceNumber", pa.string()),
+                    ("Data", pa.string()),
+                    ("PartitionKey", pa.string()),
+                    ("ApproximateArrivalTimestamp", pa.timestamp("us")),
+                    ("stream_name", pa.string()),
+                    ("shard_id", pa.string()),
+                ]
             )
-        
-        def get_position_fn():
-            """Get current Kinesis position."""
-            return _get_kinesis_position(stream_name, shard_id)
-        
-        def get_schema_fn():
-            """Get Kinesis record schema."""
-            return pa.schema([
-                ("stream_name", pa.string()),
-                ("shard_id", pa.string()),
-                ("sequence_number", pa.string()),
-                ("partition_key", pa.string()),
-                ("data", pa.string()),
-                ("approximate_arrival_timestamp", pa.timestamp("ms")),
-                ("data_json", pa.string()),  # JSON will be stored as string
-            ])
-        
+
         return create_streaming_read_task(
             partition_id=partition_id,
             streaming_config=self.streaming_config,
-            read_source_fn=read_kinesis_fn,
+            read_source_fn=read_shard_fn,
             get_position_fn=get_position_fn,
-            get_schema_fn=get_schema_fn,
+            get_schema_fn=get_schema,
             start_position=self.start_position,
             end_position=self.end_position,
             max_records=self.max_records_per_task,
         )
-    
+
     def get_streaming_schema(self) -> Optional[pa.Schema]:
-        """Get schema for Kinesis records.
-        
+        """Return the schema for Kinesis streaming data.
+
         Returns:
-            PyArrow schema for Kinesis record structure.
+            PyArrow schema for Kinesis records.
         """
-        return pa.schema([
-            ("stream_name", pa.string()),
-            ("shard_id", pa.string()),
-            ("sequence_number", pa.string()),
-            ("partition_key", pa.string()),
-            ("data", pa.string()),
-            ("approximate_arrival_timestamp", pa.timestamp("ms")),
-            ("data_json", pa.string()),
-        ]) 
+        return pa.schema(
+            [
+                ("SequenceNumber", pa.string()),
+                ("Data", pa.string()),
+                ("PartitionKey", pa.string()),
+                ("ApproximateArrivalTimestamp", pa.timestamp("us")),
+                ("stream_name", pa.string()),
+                ("shard_id", pa.string()),
+                ("partition_id", pa.string()),
+                ("read_timestamp", pa.timestamp("us")),
+                ("current_position", pa.string()),
+            ]
+        )
