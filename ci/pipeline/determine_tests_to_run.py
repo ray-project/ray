@@ -5,9 +5,8 @@ import fnmatch
 import os
 import subprocess
 import sys
-from typing import List, Optional, Set, Tuple
 from pprint import pformat
-
+from typing import List, Optional, Set, Tuple
 
 _ALL_TAGS = set(
     """
