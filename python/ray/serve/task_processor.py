@@ -13,10 +13,12 @@ from ray.serve.schema import (
     TaskProcessorConfig,
     TaskResult,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@PublicAPI(stability="alpha")
 class AsyncCapability(Enum):
     """
     Enum defining different async capabilities a TaskProcessor can support.
@@ -33,6 +35,7 @@ class AsyncCapability(Enum):
     HEALTH_CHECK = auto()  # Ability to perform health checks asynchronously
 
 
+@PublicAPI(stability="alpha")
 class TaskProcessorAdapter(ABC):
     """
     Abstract base class for task processing adapters.
@@ -308,6 +311,7 @@ class TaskProcessorAdapter(ABC):
         raise NotImplementedError("Subclass must implement health_check_async function")
 
 
+@PublicAPI(stability="alpha")
 class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     """
     Celery-based task processor adapter.
