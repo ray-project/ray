@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/task_receiver.h"
+#include "ray/core_worker/task_execution/task_receiver.h"
 
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "ray/core_worker/common.h"
 
 namespace ray {
 namespace core {
