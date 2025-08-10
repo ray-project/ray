@@ -148,7 +148,13 @@ class CloudFileSystem:
                 object_uri = f"{scheme}://{parts[1]}"
 
         if object_uri.startswith("s3://"):
-            fs = pa_fs.S3FileSystem(anonymous=anonymous)
+            endpoint = os.getenv("AWS_ENDPOINT_URL_S3", None)
+            virtual_hosted_style = os.getenv("AWS_S3_ADDRESSING_STYLE", None)
+            fs = pa_fs.S3FileSystem(
+                anonymous=anonymous,
+                endpoint_override=endpoint,
+                force_virtual_addressing=(virtual_hosted_style == "virtual"),
+            )
             path = object_uri[5:]  # Remove "s3://"
         elif object_uri.startswith("gs://"):
             fs = pa_fs.GcsFileSystem(anonymous=anonymous)
