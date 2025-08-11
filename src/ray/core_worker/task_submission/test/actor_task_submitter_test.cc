@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/actor_task_submitter.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
 
 #include <memory>
 #include <utility>
