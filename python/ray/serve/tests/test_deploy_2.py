@@ -13,7 +13,6 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
-from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
     check_deployment_status,

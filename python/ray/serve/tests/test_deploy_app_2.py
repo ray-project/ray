@@ -15,7 +15,6 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
