@@ -3376,7 +3376,7 @@ def nvmlDeviceGetProcessesUtilizationInfo(handle, lastSeenTimeStamp):
     fn = _nvmlGetFunctionPointer("nvmlDeviceGetProcessesUtilizationInfo")
     # First call to get the size
     ret = fn(handle, byref(c_procUtilInfo))
-    
+
     if (ret == NVML_ERROR_INSUFFICIENT_SIZE):
         sampleArray = c_procUtilInfo.processSamplesCount * c_nvmlProcessUtilizationInfo_v1_t
         c_procUtilInfo.procUtilArray = sampleArray()
@@ -3384,7 +3384,7 @@ def nvmlDeviceGetProcessesUtilizationInfo(handle, lastSeenTimeStamp):
         # Second call with properly allocated buffer
         ret = fn(handle, byref(c_procUtilInfo))
         _nvmlCheckReturn(ret)
-    
+
         return c_procUtilInfo.procUtilArray[0:c_procUtilInfo.processSamplesCount]
     elif (ret == NVML_ERROR_NOT_FOUND):
         return [] # No processes running on the GPU

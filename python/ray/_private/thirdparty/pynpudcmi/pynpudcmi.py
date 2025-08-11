@@ -1,5 +1,3 @@
-import psutil
-import uuid
 import threading
 import string
 import sys
@@ -141,13 +139,13 @@ def dcmi_init():
 
     if dcmi_handle is None:
         libLoadLock.acquire()
-    
+
         try:
             if dcmi_handle is None:
                 dcmi_path = _check_driver_location()
                 dcmi_handle = cdll.LoadLibrary(dcmi_path)
                 _dcmiCheckReturn(dcmi_handle.dcmi_init())
-        
+
         finally:
             libLoadLock.release()
 
@@ -220,10 +218,10 @@ def dcmi_get_device_memory_info_v2(card_id, device_id):
 def dcmi_get_card_list():
     if dcmi_handle is None:
         raise DCMIError(DCMI_ERR_CODE_NOT_REDAY)
-    
+
     card_num = c_int(0)
     card_list = (c_int*64)() # Up to 64 npus
-    
+
     ret = dcmi_handle.dcmi_get_card_list(byref(card_num), byref(card_list), 64)
 
     _dcmiCheckReturn(ret)
@@ -233,7 +231,7 @@ def dcmi_get_card_list():
 def dcmi_get_device_id_in_card(card_id):
     if dcmi_handle is None:
         raise DCMIError(DCMI_ERR_CODE_NOT_REDAY)
-    
+
     device_id_max = c_int(0)
     mcu_id = c_int(0)
     cpu_id = c_int(0)
@@ -268,12 +266,12 @@ def dcmi_get_device_power_info(card_id, device_id):
 def dcmi_get_device_hbm_info(card_id, device_id):
     if dcmi_handle is None:
         raise DCMIError(DCMI_ERR_CODE_NOT_REDAY)
-    
+
     info = dcmi_hbm_info()
     ret = dcmi_handle.dcmi_get_device_hbm_info(card_id, device_id, byref(info))
 
     _dcmiCheckReturn(ret)
-    
+
     return info
 
 def dcmi_get_device_utilization_rate(card_id, device_id, input_type):
