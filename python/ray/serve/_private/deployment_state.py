@@ -2511,86 +2511,52 @@ class DeploymentState:
         return self._replicas.count(exclude_version=self._target_state.version) > 0
 
     def _check_rank_consistency_and_reassign_minimally(self):
-        """Check rank consistency and perform minimal reassignment if needed.
-
-        This ensures:
-        1. No duplicate ranks exist
-        2. Ranks are continuous from 0 to N-1
-        3. Minimal number of replicas get new ranks during reassignment
-        """
-        # Get all replicas that should have ranks assigned during their lifecycle
-        # RUNNING: have ranks and are operational
-        # STARTING: have ranks assigned during startup
-        # RECOVERING: have ranks assigned during recovery
-        # STOPPING: keep ranks during draining/graceful shutdown
+        """Verify rank system invariants and reassign ranks when needed."""
         active_replicas = self._replicas.get(
             states=[
                 ReplicaState.RUNNING,
                 ReplicaState.STARTING,
                 ReplicaState.RECOVERING,
                 ReplicaState.STOPPING,
+                ReplicaState.PENDING_MIGRATION,
+                ReplicaState.UPDATING,
             ]
         )
+
+        if not active_replicas:
+            return
+
         active_replica_ids = {
             replica.replica_id.unique_id for replica in active_replicas
         }
 
-        # Clean up any stale rank assignments (should be rare with lifecycle approach)
-        assigned_replica_ids = set(self._replica_ranks.keys())
-        stale_replica_ids = assigned_replica_ids - active_replica_ids
+        # Clean up stale ranks
+        stale_replica_ids = set(self._replica_ranks.keys()) - active_replica_ids
         for replica_id in stale_replica_ids:
-            logger.warning(f"Cleaning up stale rank for inactive replica {replica_id}")
             self.release_replica_rank(replica_id)
 
-        # Check for missing ranks (this should be rare with lifecycle approach)
+        # Verify system invariants
         unranked_replica_ids = active_replica_ids - set(self._replica_ranks.keys())
         if unranked_replica_ids:
-            logger.warning(
-                f"Found {len(unranked_replica_ids)} active replicas without ranks, assigning now"
+            raise RuntimeError(
+                f"RANK SYSTEM BUG: Active replicas without ranks: {unranked_replica_ids}"
             )
-            for replica_id in unranked_replica_ids:
-                rank = self._get_next_available_rank()
-                self._replica_ranks[replica_id] = rank
-                logger.info(
-                    f"Assigned missing rank {rank} to active replica {replica_id}"
-                )
 
-        # Now check consistency: duplicates and continuity
         current_ranks = list(self._replica_ranks.values())
-        expected_count = len(active_replicas)
+        duplicates = [
+            rank for rank in set(current_ranks) if current_ranks.count(rank) > 1
+        ]
+        if duplicates:
+            raise RuntimeError(f"RANK SYSTEM BUG: Duplicate ranks found: {duplicates}")
 
-        if expected_count == 0:
-            return  # No replicas, nothing to check
-
-        # Check for duplicates
-        rank_counts = {}
-        for rank in current_ranks:
-            rank_counts[rank] = rank_counts.get(rank, 0) + 1
-
-        duplicates = {rank: count for rank, count in rank_counts.items() if count > 1}
-
-        # Check for continuity (should be 0, 1, 2, ..., N-1)
-        expected_ranks = set(range(expected_count))
+        # Reassign ranks if at target count but not contiguous
+        expected_ranks = set(range(len(active_replicas)))
         actual_ranks = set(current_ranks)
 
-        has_duplicates = len(duplicates) > 0
-        is_continuous = actual_ranks == expected_ranks
-
-        if has_duplicates:
-            logger.error(
-                f"Found duplicate ranks in deployment {self._id}: {duplicates}"
-            )
-
-        if not is_continuous:
-            logger.warning(
-                f"Ranks are not continuous in deployment {self._id}. Expected: {sorted(expected_ranks)}, Actual: {sorted(actual_ranks)}"
-            )
-
-        # If we have consistency issues, perform minimal reassignment
-        if has_duplicates or not is_continuous:
-            logger.info(
-                f"Performing minimal rank reassignment for deployment {self._id} to fix consistency issues"
-            )
+        if (
+            actual_ranks != expected_ranks
+            and len(active_replicas) == self._target_state.target_num_replicas
+        ):
             self._perform_minimal_rank_reassignment(active_replicas)
 
     def _perform_minimal_rank_reassignment(self, active_replicas):
@@ -2608,7 +2574,6 @@ class DeploymentState:
         current_assignments = dict(self._replica_ranks)
 
         # Find which ranks are correctly assigned and which replicas can keep their ranks
-        ranks_in_use = set()
         replicas_to_keep = {}  # replica_id -> rank (these keep their current ranks)
         replicas_to_reassign = []  # replica objects that need new ranks
 
@@ -2616,26 +2581,20 @@ class DeploymentState:
             replica_id = replica.replica_id.unique_id
             current_rank = current_assignments.get(replica_id)
 
-            # If replica has a valid rank (in expected range and not already taken)
-            if (
-                current_rank is not None
-                and current_rank in expected_ranks
-                and current_rank not in ranks_in_use
-            ):
+            # If replica has a valid rank (in expected range)
+            if current_rank is not None and current_rank in expected_ranks:
                 replicas_to_keep[replica_id] = current_rank
-                ranks_in_use.add(current_rank)
             else:
                 replicas_to_reassign.append(replica)
 
         # Find available ranks for reassignment
-        available_ranks = expected_ranks - ranks_in_use
+        available_ranks = expected_ranks - set(self._replica_ranks.values())
         available_ranks = sorted(available_ranks)
 
         if len(available_ranks) != len(replicas_to_reassign):
-            logger.error(
+            raise RuntimeError(
                 f"Rank reassignment logic error: {len(available_ranks)} available ranks, {len(replicas_to_reassign)} replicas to reassign"
             )
-            return
 
         # Clear all rank assignments and rebuild
         self._replica_ranks.clear()
