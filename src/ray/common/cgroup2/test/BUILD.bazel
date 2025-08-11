@@ -4,6 +4,9 @@ ray_cc_library(
     name = "cgroup_test_utils",
     srcs = ["cgroup_test_utils.cc"],
     hdrs = ["cgroup_test_utils.h"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         "//src/ray/common:status",
         "//src/ray/common:status_or",
@@ -15,6 +18,7 @@ ray_cc_test(
     name = "sysfs_cgroup_driver_test",
     srcs = ["sysfs_cgroup_driver_test.cc"],
     tags = [
+        "no_windows",
         "team:core",
     ],
     deps = [
