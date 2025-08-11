@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "ray/core_worker/task_execution/task_receiver.h"
 
 #include <memory>
 #include <string>
@@ -18,11 +19,10 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_count.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 namespace core {
@@ -139,7 +139,7 @@ class TaskReceiverTest : public ::testing::Test {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+      RepeatedObjectRefCount *borrowed_refs) {
     return Status::OK();
   }
 
