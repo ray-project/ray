@@ -176,7 +176,7 @@ class IQLConfig(MARWILConfig):
         super().validate()
 
         # Ensure hyperparameters are meaningful.
-        if self.beta > 0.0:
+        if self.beta <= 0.0:
             self._value_error(
                 "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
             )

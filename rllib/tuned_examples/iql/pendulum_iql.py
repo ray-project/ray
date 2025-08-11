@@ -65,7 +65,9 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * (args.num_learners or 1) ** 0.5,
+        actor_lr=3e-5 * (args.num_learners or 1) ** 0.5,
+        critic_lr=3e-4 * (args.num_learners or 1) ** 0.5,
+        value_lr=1e-4 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=1024,
     )
     .rl_module(
@@ -76,7 +78,7 @@ config = (
 )
 
 stop = {
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800.0,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -200.0,
     TRAINING_ITERATION: 1250,
 }
 
