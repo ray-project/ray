@@ -200,15 +200,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100) by (instance)',
-                legend="CPU Usage: {{instance}}",
+                expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance", RayNodeType=~"$RayNodeType",{global_filters}}} / 100) by (instance, RayNodeType)',
+                legend="CPU Usage: {{instance}} ({{RayNodeType}})",
             ),
             Target(
-                expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100) by (instance)',
-                legend="CPU Usage: {{instance}} (head)",
-            ),
-            Target(
-                expr='sum(ray_node_cpu_count{{instance=~"$Instance",{global_filters}}})',
+                expr='sum(ray_node_cpu_count{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -220,15 +216,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} / 100) by (instance, GpuIndex, GpuDeviceName)',
-                legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="GPU Usage: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
-                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} / 100) by (instance, GpuIndex, GpuDeviceName)',
-                legend="GPU Usage: {{instance}} (head), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
-            ),
-            Target(
-                expr='sum(ray_node_gpus_available{{instance=~"$Instance",{global_filters}}})',
+                expr='sum(ray_node_gpus_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -240,15 +232,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_node_disk_usage{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}) by (instance)',
-                legend="Disk Used: {{instance}}",
+                expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Disk Used: {{instance}} ({{RayNodeType}})",
             ),
             Target(
-                expr='sum(ray_node_disk_usage{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}) by (instance)',
-                legend="Disk Used: {{instance}} (head)",
-            ),
-            Target(
-                expr='sum(ray_node_disk_free{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}})',
+                expr='sum(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -260,20 +248,12 @@ DEFAULT_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}) by (instance)',
-                legend="Write: {{instance}}",
+                expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Write: {{instance}} ({{RayNodeType}})",
             ),
             Target(
-                expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}) by (instance)',
-                legend="Write: {{instance}} (head)",
-            ),
-            Target(
-                expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}) by (instance)',
-                legend="Read: {{instance}}",
-            ),
-            Target(
-                expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}) by (instance)',
-                legend="Read: {{instance}} (head)",
+                expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Read: {{instance}} ({{RayNodeType}})",
             ),
         ],
     ),
@@ -284,15 +264,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}) by (instance)',
-                legend="Memory Used: {{instance}}",
+                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used: {{instance}} ({{RayNodeType}})",
             ),
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}) by (instance)',
-                legend="Memory Used: {{instance}} (head)",
-            ),
-            Target(
-                expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+                expr='sum(ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -304,12 +280,8 @@ DEFAULT_GRAFANA_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} * 100) by (instance)',
-                legend="Memory Used: {{instance}}",
-            ),
-            Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} * 100) by (instance)',
-                legend="Memory Used: {{instance}} (head)",
+                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * 100) by (instance, RayNodeType)',
+                legend="Memory Used: {{instance}} ({{RayNodeType}})",
             ),
         ],
         fill=0,
@@ -322,8 +294,8 @@ DEFAULT_GRAFANA_PANELS = [
         unit="failures",
         targets=[
             Target(
-                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance",{global_filters}}}) by (Name, instance)',
-                legend="OOM Killed: {{Name}}, {{instance}}",
+                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (Name, instance, RayNodeType)',
+                legend="OOM Killed: {{Name}}, {{instance}} ({{RayNodeType}})",
             ),
         ],
     ),
@@ -371,11 +343,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
-                legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * 1024 * 1024) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Used GRAM: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
-                expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 1024 * 1024',
+                expr='(sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})) * 1024 * 1024',
                 legend="MAX",
             ),
         ],
@@ -439,12 +411,12 @@ DEFAULT_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='sum(ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
-                legend="Recv: {{instance}}",
+                expr='sum(ray_node_network_receive_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Recv: {{instance}} ({{RayNodeType}})",
             ),
             Target(
-                expr='sum(ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
-                legend="Send: {{instance}}",
+                expr='sum(ray_node_network_send_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Send: {{instance}} ({{RayNodeType}})",
             ),
         ],
     ),
