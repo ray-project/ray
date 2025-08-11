@@ -297,7 +297,6 @@ def test_unpickleable_stacktrace(shutdown_only):
     expected_output = """System error: Failed to unpickle serialized exception
 Original exception (string repr):
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
-    exc_info=True)
   File "FILE", line ZZ, in f
     return g(c)
   File "FILE", line ZZ, in g
@@ -323,7 +322,6 @@ Traceback (most recent call last):
 RuntimeError: Failed to unpickle serialized exception
 Original exception (string repr):
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
-    exc_info=True)
   File "FILE", line ZZ, in f
     return g(c)
   File "FILE", line ZZ, in g
