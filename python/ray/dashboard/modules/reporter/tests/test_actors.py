@@ -3,6 +3,7 @@ import os
 import sys
 import time
 
+import psutil
 import pytest
 import requests
 
