@@ -21,6 +21,13 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
+  - name: build_args_test_depset_${PYTHON_VERSION}
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_general_${PYTHON_VERSION}_${CUDA_VERSION}.txt
+    build_arg_sets:
+      - py311_cpu
   - name: subset_general_depset
     operation: subset
     source_depset: general_depset
