@@ -616,6 +616,34 @@ DATA_GRAFANA_PANELS = [
         stack=True,
     ),
     Panel(
+        id=2,
+        title="Operator External OutQueue Size (Blocks)",
+        description="Number of blocks in operator's external output queue",
+        unit="blocks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_output_queue_blocks{{{global_filters}}}) by (dataset, operator)",
+                legend="Number of Blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=27,
+        title="Operator External OutQueue Size (bytes)",
+        description="Byte size of blocks in operator's external output queue",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_output_queue_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Number of Bytes: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=34,
         title="Size of Blocks used in Pending Tasks (Bytes)",
         description="Byte size of input blocks used by pending tasks.",
