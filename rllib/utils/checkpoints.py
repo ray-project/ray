@@ -1036,7 +1036,8 @@ def try_import_msgpack(error: bool = False):
         error: Whether to raise an error if msgpack/msgpack_numpy cannot be imported.
 
     Returns:
-        The `msgpack` module.
+        The `msgpack` module, with the msgpack_numpy module already patched in. This
+        means you can already encde and decode numpy arrays with the returned module.
 
     Raises:
         ImportError: If error=True and msgpack/msgpack_numpy is not installed.

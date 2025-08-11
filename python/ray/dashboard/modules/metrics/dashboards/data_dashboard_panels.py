@@ -273,6 +273,35 @@ ROWS_GENERATED_PANEL = Panel(
     fill=0,
     stack=False,
 )
+EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
+    id=panel_id_gen.next(),
+    title="Operator External Inqueue Size (Blocks)",
+    description="Number of blocks in operator's external input queue",
+    unit="blocks",
+    targets=[
+        Target(
+            expr="sum(ray_data_num_external_inqueue_blocks{{{global_filters}}}) by (dataset, operator)",
+            legend="Number of Blocks: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
+    id=panel_id_gen.next(),
+    title="Operator External Inqueue Size (bytes)",
+    description="Byte size of blocks in operator's external input queue",
+    unit="bytes",
+    targets=[
+        Target(
+            expr="sum(ray_data_num_external_inqueue_bytes{{{global_filters}}}) by (dataset, operator)",
+            legend="Number of Bytes: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
 
 OUTPUT_BLOCKS_TAKEN_PANEL = Panel(
     id=panel_id_gen.next(),
@@ -598,36 +627,6 @@ INTERNAL_INQUEUE_BYTES_PANEL = Panel(
     stack=True,
 )
 
-INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
-    id=panel_id_gen.next(),
-    title="Operator Internal Outqueue Size (Blocks)",
-    description="Number of blocks in operator's internal output queue",
-    unit="blocks",
-    targets=[
-        Target(
-            expr="sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}}}) by (dataset, operator)",
-            legend="Number of Blocks: {{dataset}}, {{operator}}",
-        )
-    ],
-    fill=0,
-    stack=False,
-)
-
-INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
-    id=panel_id_gen.next(),
-    title="Operator Internal Outqueue Size (Bytes)",
-    description=("Byte size of output blocks in the operator's internal output queue."),
-    unit="bytes",
-    targets=[
-        Target(
-            expr="sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters}}}) by (dataset, operator)",
-            legend="Bytes Size: {{dataset}}, {{operator}}",
-        )
-    ],
-    fill=0,
-    stack=True,
-)
-
 PENDING_TASK_INPUTS_PANEL = Panel(
     id=panel_id_gen.next(),
     title="Size of Blocks used in Pending Tasks (Bytes)",
@@ -812,6 +811,19 @@ OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
 )
 
 DATA_GRAFANA_ROWS = [
+    # Overview Row
+    Row(
+        title="Overview",
+        id=panel_id_gen.next(),
+        panels=[
+            BLOCKS_GENERATED_PANEL,
+            BYTES_GENERATED_PANEL,
+            ROWS_GENERATED_PANEL,
+            RUNNING_TASKS_PANEL,
+            OBJECT_STORE_MEMORY_PANEL,
+        ],
+        collapsed=False,
+    ),
     # Inputs Row
     Row(
         title="Inputs",
@@ -823,7 +835,7 @@ DATA_GRAFANA_ROWS = [
             INPUT_BYTES_PROCESSED_PANEL,
             INPUT_BYTES_SUBMITTED_PANEL,
         ],
-        collapsed=False,
+        collapsed=True,
     ),
     # Pending Inputs Row
     Row(
@@ -841,8 +853,10 @@ DATA_GRAFANA_ROWS = [
         title="Pending Outputs",
         id=panel_id_gen.next(),
         panels=[
-            INTERNAL_OUTQUEUE_BLOCKS_PANEL,
-            INTERNAL_OUTQUEUE_BYTES_PANEL,
+            INTERNAL_INQUEUE_BLOCKS_PANEL,
+            INTERNAL_INQUEUE_BYTES_PANEL,
+            EXTERNAL_INQUEUE_BLOCKS_PANEL,
+            EXTERNAL_INQUEUE_BYTES_PANEL,
             MAX_BYTES_TO_READ_PANEL,
         ],
         collapsed=True,
@@ -852,9 +866,6 @@ DATA_GRAFANA_ROWS = [
         title="Outputs",
         id=panel_id_gen.next(),
         panels=[
-            BLOCKS_GENERATED_PANEL,
-            BYTES_GENERATED_PANEL,
-            ROWS_GENERATED_PANEL,
             OUTPUT_BLOCKS_TAKEN_PANEL,
             OUTPUT_BYTES_TAKEN_PANEL,
             OUTPUT_BYTES_BY_NODE_PANEL,
@@ -864,7 +875,7 @@ DATA_GRAFANA_ROWS = [
             AVERAGE_BYTES_PER_BLOCK_PANEL,
             AVERAGE_BLOCKS_PER_TASK_PANEL,
         ],
-        collapsed=False,
+        collapsed=True,
     ),
     # Resource Budget / Usage Row
     Row(
@@ -900,7 +911,6 @@ DATA_GRAFANA_ROWS = [
         id=panel_id_gen.next(),
         panels=[
             SUBMITTED_TASKS_PANEL,
-            RUNNING_TASKS_PANEL,
             TASKS_WITH_OUTPUT_PANEL,
             FINISHED_TASKS_PANEL,
             TASK_THROUGHPUT_BY_NODE_PANEL,

@@ -303,6 +303,9 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        for next_op in self.op.output_dependencies:
+            next_op.metrics.num_external_inqueue_blocks = self.output_queue.num_blocks
+            next_op.metrics.num_external_inqueue_bytes = self.output_queue.memory_usage
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
