@@ -30,7 +30,7 @@ should step.
 .. scale: 75 %
 ..    A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides an `external messaging protocol <https://github.com/ray-project/ray/blob/master/rllib/env/utils/external_env_protocol.py>`__
+RLlib provides an `external messaging protocol <https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py>`__
 called :ref:`RLlink <rllink-protocol-docs>` for this purpose as well as the option to customize your :py:class:`~ray.rllib.env.env_runner.EnvRunner` class
 toward communicating through :ref:`RLlink <rllink-protocol-docs>` with one or more clients.
 An example, `tcp-based EnvRunner implementation with RLlink is available here <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__.
