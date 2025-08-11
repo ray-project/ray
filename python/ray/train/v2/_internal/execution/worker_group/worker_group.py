@@ -3,7 +3,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -96,6 +96,7 @@ class WorkerGroupContext:
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
+    placement_group_specs: Optional[List[Tuple[PlacementGroup, range]]] = None
 
 
 class WorkerGroup:
@@ -293,7 +294,13 @@ class WorkerGroup:
                 ) from timeout_exc
 
             # TODO: Figure out ordering between these different calls/callbacks.
-            worker_group_state_builder.with_placement_group(pg)
+            placement_group_specs = worker_group_context.placement_group_specs
+            if placement_group_specs:
+                pgs = list({pg for pg, _ in placement_group_specs})
+            else:
+                pgs = [pg]
+
+            worker_group_state_builder.with_placement_groups(pgs)
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
@@ -370,10 +377,18 @@ class WorkerGroup:
         for callback in self._callbacks:
             callback.after_worker_group_training_start(self)
 
+    def _get_placement_group_for_index(self, index: int) -> Optional[PlacementGroup]:
+        specs = self._worker_group_context.placement_group_specs
+        if specs:
+            for pg, bundle_range in specs:
+                if index in bundle_range:
+                    return pg
+        return None
+
     def _create_workers(
         self,
         num_workers: int,
-        placement_group: PlacementGroup,
+        default_pg: PlacementGroup,
         resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
 
@@ -385,14 +400,19 @@ class WorkerGroup:
             **bundle_to_remote_args(resources_per_worker),
         )(self._worker_cls)
 
-        actors = [
-            worker_actor_cls.options(
+        actors = []
+        for i in range(num_workers):
+            # Override the default placement group if heterogenous groups are specified.
+            placement_group = self._get_placement_group_for_index(i)
+            if placement_group is None:
+                placement_group = default_pg
+            actor = worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=placement_group, placement_group_bundle_index=i
-                ),
+                    placement_group=placement_group,
+                    placement_group_bundle_index=i,
+                )
             ).remote()
-            for i in range(num_workers)
-        ]
+            actors.append(actor)
 
         try:
             actor_metadatas = ray_get_safe(
