@@ -88,7 +88,7 @@ def parse_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="Salesforce/SFR-Embedding-Mistral",
+        default="Salesforce/SFR-Embedding-2_R",
         help="Embedding model name",
     )
     parser.add_argument(
