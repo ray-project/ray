@@ -57,7 +57,7 @@ class RayletClientPool {
   void Disconnect(ray::NodeID id);
 
   explicit RayletClientPool(RayletClientFactoryFn client_factory)
-      : client_factory_(std::move(client_factory)) {};
+      : client_factory_(std::move(client_factory)){};
 
   static rpc::Address GenerateRayletAddress(const NodeID &node_id,
                                             const std::string &ip_address,
