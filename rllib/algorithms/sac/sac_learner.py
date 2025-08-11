@@ -51,7 +51,7 @@ class SACLearner(DQNLearner):
 
         self.target_entropy: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
-                self.get_target_entropy(module_id)
+                self._get_target_entropy(module_id)
             )
         )
 
@@ -94,7 +94,7 @@ class SACLearner(DQNLearner):
         )
         # Add also the target entropy for the new module.
         self.target_entropy[module_id] = self._get_tensor_variable(
-            self.get_target_entropy(module_id)
+            self._get_target_entropy(module_id)
         )
 
     def _get_target_entropy(self, module_id):
