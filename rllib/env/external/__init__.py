@@ -7,6 +7,6 @@ from ray.rllib.env.external.rllink import (
 
 __all__ = [
     "get_rllink_message",
-    "RLlink",
     "send_rllink_message",
+    "RLlink",
 ]

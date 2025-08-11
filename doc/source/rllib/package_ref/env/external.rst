@@ -16,6 +16,7 @@ ray.rllib.env.external.rllink.RLlink
 
 .. autosummary::
    :nosignatures:
+   :toctree: doc/
 
    ~get_rllink_message
    ~send_rllink_message
