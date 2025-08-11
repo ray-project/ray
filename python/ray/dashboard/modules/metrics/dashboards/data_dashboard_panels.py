@@ -303,6 +303,21 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     stack=False,
 )
 
+INQUEUE_BLOCKS_COMBINED_PANEL = Panel(
+    id=panel_id_gen.next(),
+    title="Operator Total Inqueue Size (Blocks)",
+    description="Total number of blocks in operator's internal and external input queues",
+    unit="blocks",
+    targets=[
+        Target(
+            expr="sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}}} + ray_data_num_external_inqueue_blocks{{{global_filters}}}) by (dataset, operator)",
+            legend="Total Blocks: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 OUTPUT_BLOCKS_TAKEN_PANEL = Panel(
     id=panel_id_gen.next(),
     title="Output Blocks Taken by Downstream Operators / Second",
@@ -821,6 +836,7 @@ DATA_GRAFANA_ROWS = [
             ROWS_GENERATED_PANEL,
             RUNNING_TASKS_PANEL,
             OBJECT_STORE_MEMORY_PANEL,
+            INQUEUE_BLOCKS_COMBINED_PANEL,
         ],
         collapsed=False,
     ),
@@ -844,6 +860,8 @@ DATA_GRAFANA_ROWS = [
         panels=[
             INTERNAL_INQUEUE_BLOCKS_PANEL,
             INTERNAL_INQUEUE_BYTES_PANEL,
+            EXTERNAL_INQUEUE_BLOCKS_PANEL,
+            EXTERNAL_INQUEUE_BYTES_PANEL,
             PENDING_TASK_INPUTS_PANEL,
         ],
         collapsed=True,
@@ -853,10 +871,6 @@ DATA_GRAFANA_ROWS = [
         title="Pending Outputs",
         id=panel_id_gen.next(),
         panels=[
-            INTERNAL_INQUEUE_BLOCKS_PANEL,
-            INTERNAL_INQUEUE_BYTES_PANEL,
-            EXTERNAL_INQUEUE_BLOCKS_PANEL,
-            EXTERNAL_INQUEUE_BYTES_PANEL,
             MAX_BYTES_TO_READ_PANEL,
         ],
         collapsed=True,
@@ -888,7 +902,6 @@ DATA_GRAFANA_ROWS = [
             GPU_BUDGET_PANEL,
             MEMORY_BUDGET_PANEL,
             OBJECT_STORE_MEMORY_BUDGET_PANEL,
-            OBJECT_STORE_MEMORY_PANEL,
             FREED_MEMORY_PANEL,
             SPILLED_MEMORY_PANEL,
             BYTES_SPILLED_PANEL,
