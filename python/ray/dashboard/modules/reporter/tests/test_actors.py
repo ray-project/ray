@@ -19,19 +19,8 @@ KILL_ACTOR_ENDPOINT = "/api/actors/kill"
 
 
 def _actor_killed(pid: str) -> bool:
-    """Check if a process with given pid is running using."""
+    """Check if a process with given pid is running."""
     return not psutil.pid_exists(int(pid))
-
-
-def _actor_killed_loop(worker_pid: str, timeout_secs=5) -> bool:
-    dead = False
-    for _ in range(timeout_secs):
-        time.sleep(1)
-        if _actor_killed(worker_pid):
-            dead = True
-            break
-    return dead
-
 
 def _kill_actor_using_dashboard_gcs(
     webui_url: str, actor_id: str, expected_status_code: int, force_kill=False
@@ -86,7 +75,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     # Kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    assert _actor_killed_loop(worker_pid)
+    wait_for_condition(lambda: _actor_killed(worker_pid),5)
 
     # Create an actor and have it loop
     a = Actor.remote()
@@ -104,12 +93,15 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     # Try to kill the actor, it should not die since a task is running
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    assert not _actor_killed_loop(worker_pid, timeout_secs=1)
+    try:
+        wait_for_condition(lambda: _actor_killed(worker_pid), 1)
+    except RuntimeError as e:
+        assert str(e) == "The condition wasn't met before the timeout expired."
 
     # Force kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=True)
     assert "Force killed actor with id" in resp["msg"]
-    assert _actor_killed_loop(worker_pid)
+    wait_for_condition(lambda: _actor_killed(worker_pid),5)
 
 
 if __name__ == "__main__":
