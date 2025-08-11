@@ -21,7 +21,7 @@ from ci.raydepsets.cli import (
     _uv_binary,
     load,
 )
-from ci.raydepsets.testing_utils import (
+from ci.raydepsets.tests.utils import (
     append_to_file,
     copy_data_to_tmpdir,
     replace_in_file,
@@ -48,11 +48,6 @@ def _create_test_manager(
 
 
 class TestCli(unittest.TestCase):
-    def test_workspace_init(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Workspace(tmpdir)
-            assert workspace.dir is not None
-
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
             load,
@@ -103,12 +98,12 @@ class TestCli(unittest.TestCase):
     def test_compile(self):
         compiled_file = Path(
             _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/test_data/requirements_compiled_test.txt"
+                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
             )
         )
         output_file = Path(
             _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/test_data/requirements_compiled.txt"
+                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled.txt"
             )
         )
         shutil.copy(compiled_file, output_file)
@@ -478,22 +473,6 @@ depsets:
             output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
-
-    def test_parse_build_arg_sets(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            workspace = Workspace(dir=tmpdir)
-            config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-            assert config.build_arg_sets[0].name == "py311_cpu"
-            assert config.build_arg_sets[0].build_args == {
-                "CUDA_VERSION": "cpu",
-                "PYTHON_VERSION": "py311",
-            }
-            assert config.build_arg_sets[1].name == "py311_cuda128"
-            assert config.build_arg_sets[1].build_args == {
-                "CUDA_VERSION": 128,
-                "PYTHON_VERSION": "py311",
-            }
 
     def test_from_dict_build_arg_set_matrix(self):
         with tempfile.TemporaryDirectory() as tmpdir:
