@@ -1,4 +1,5 @@
 import threading
+from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from ray.data import DataIterator
@@ -9,7 +10,34 @@ from ray.train.v2._internal.execution.context import (
 from ray.train.v2.api.context import TrainContext as ExternalTrainContext
 
 
-class TrainFnUtils:
+class TrainFnUtils(ABC):
+    @abstractmethod
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def get_checkpoint(self) -> Optional[Checkpoint]:
+        pass
+
+    @abstractmethod
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        pass
+
+    @abstractmethod
+    def get_context(self) -> ExternalTrainContext:
+        pass
+
+    @abstractmethod
+    def is_running_with_ray_train(self) -> bool:
+        pass
+
+
+class RayTrainTrainFnUtils:
     """Utility class providing an abstraction layer between user-facing APIs
         and :class:`~ray.train.v2._internal.execution.context.TrainContext`.
 
@@ -61,6 +89,9 @@ class TrainFnUtils:
 
     def get_context(self) -> ExternalTrainContext:
         return ExternalTrainContext()
+
+    def is_running_with_ray_train(self) -> bool:
+        return True
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None

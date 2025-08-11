@@ -105,6 +105,14 @@ class DataParallelTrainer:
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
 
+    def _get_train_func(self) -> Callable[[], None]:
+        return construct_train_func(
+            self.train_loop_per_worker,
+            config=self.train_loop_config,
+            train_func_context=self.backend_config.train_func_context,
+            fn_arg_name="train_loop_per_worker",
+        )
+
     def fit(self) -> Result:
         """Launches the Ray Train controller to run training on workers.
 
@@ -115,12 +123,7 @@ class DataParallelTrainer:
             ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
             ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
         """
-        train_fn = construct_train_func(
-            self.train_loop_per_worker,
-            config=self.train_loop_config,
-            train_func_context=self.backend_config.train_func_context,
-            fn_arg_name="train_loop_per_worker",
-        )
+        train_fn = self._get_train_func()
         train_fn_ref = ObjectRefWrapper(train_fn)
 
         result = self._initialize_and_run_controller(

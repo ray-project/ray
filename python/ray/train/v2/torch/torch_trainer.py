@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from ray.train import Checkpoint, DataConfig
+from ray.train import Checkpoint, DataConfig, Result
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
@@ -194,8 +194,21 @@ class TorchTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        running_without_ray_train: bool = False,
     ):
+
         from ray.train.torch.config import TorchConfig
+
+        self.running_without_ray_train = running_without_ray_train
+
+        if self.running_without_ray_train:
+            from ray.train.v2._internal.execution.torch_without_ray_train import (
+                TorchBackendWithoutRayTrain,
+            )
+
+            self.backend_without_ray_train = TorchBackendWithoutRayTrain(
+                datasets=datasets
+            )
 
         torch_config = torch_config or TorchConfig()
         if not torch_config.backend:
@@ -213,3 +226,9 @@ class TorchTrainer(DataParallelTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )
+
+    def fit(self) -> Result:
+        if self.running_without_ray_train:
+            self.backend_without_ray_train.fit(self._get_train_func())
+        else:
+            return super(TorchTrainer, self).fit()
