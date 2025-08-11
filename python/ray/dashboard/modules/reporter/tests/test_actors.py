@@ -9,6 +9,8 @@ import requests
 import ray
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
+from ray._common.test_utils import wait_for_condition
+from ray._private.state_api_test_utils import _is_actor_task_running
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +18,8 @@ KILL_ACTOR_ENDPOINT = "/api/actors/kill"
 
 
 def _actor_killed(pid: str) -> bool:
-    """Check For the existence of a unix pid."""
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return True
-    else:
-        return False
+    """Check if a process with given pid is running using."""
+    return not psutil.pid_exists(int(pid))
 
 
 def _actor_killed_loop(worker_pid: str, timeout_secs=5) -> bool:
@@ -97,7 +94,11 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     a.loop.remote()
 
     # wait for loop() to start
-    time.sleep(0.5)
+    wait_for_condition(
+        lambda: _is_actor_task_running(worker_pid, "Actor.loop"),
+        timeout=10,
+        retry_interval_ms=100,
+    )
 
     # Try to kill the actor, it should not die since a task is running
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
