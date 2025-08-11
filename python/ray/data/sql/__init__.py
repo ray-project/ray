@@ -1,5 +1,4 @@
-"""
-Ray Data SQL API - Production-ready SQL interface for Ray Datasets.
+"""Ray Data SQL API - Production-ready SQL interface for Ray Datasets.
 
 This module provides a comprehensive SQL interface for Ray Datasets, allowing you to
 execute SQL queries against distributed data using Ray's parallel processing
@@ -49,13 +48,9 @@ Examples:
         >>> print(filtered.take_all())
 """
 
-import ray.data
 from ray.data.sql.config import LogLevel, SQLConfig
 from ray.data.sql.core import (
     RaySQL,
-    _dataset_name,
-    _ray_data_register_table,
-    _ray_data_sql,
     clear_tables,
     get_engine,
     get_registry,
@@ -64,20 +59,13 @@ from ray.data.sql.core import (
     register_table,
     sql,
 )
-
-
-# Apply monkey patches to integrate with Ray Data API
-# Store original functions for potential restoration
-_original_ray_data_sql = getattr(ray.data, "sql", None)
-_original_register_table = getattr(ray.data, "register_table", None)
-
-# Apply patches
-ray.data.sql = _ray_data_sql
-ray.data.register_table = _ray_data_register_table
-
-# Add the name method to Dataset class following Ray API patterns
-if not hasattr(ray.data.Dataset, "name"):
-    ray.data.Dataset.name = _dataset_name
+from ray.data.sql.exceptions import (
+    SQLError,
+    SQLParseError,
+    SQLExecutionError,
+    TableNotFoundError,
+    ColumnNotFoundError,
+)
 
 # Public API exports
 __all__ = [
@@ -93,12 +81,14 @@ __all__ = [
     "RaySQL",
     "SQLConfig",
     "LogLevel",
+    # Exception classes
+    "SQLError",
+    "SQLParseError",
+    "SQLExecutionError",
+    "TableNotFoundError",
+    "ColumnNotFoundError",
 ]
-
 
 # Module-level documentation
 __version__ = "1.0.0"
 __author__ = "Ray Data Team"
-__doc__ = (
-    __doc__ or "Ray Data SQL API - Production-ready SQL interface for Ray Datasets"
-)

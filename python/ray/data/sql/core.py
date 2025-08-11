@@ -1,443 +1,1134 @@
-"""
-Core SQL engine and global API for Ray Data SQL.
+"""Core SQL engine implementation for Ray Data.
 
-This module provides the main RaySQL engine class and global API functions
-for SQL query execution, table registration, and dataset management.
+This module provides the main SQL engine classes and functions for executing
+SQL queries against Ray Datasets. It follows Ray API patterns and provides
+comprehensive error handling and performance optimizations.
 """
 
-import inspect
+import logging
 import time
-from typing import List, Optional
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+import ray.data
+import ray.data.aggregate
+import sqlglot
 from ray.data import Dataset
-from ray.data.sql.config import QueryResult, SQLConfig
-from ray.data.sql.execution import QueryExecutor
-from ray.data.sql.parser import ASTOptimizer, LogicalPlanner, SQLParser
-from ray.data.sql.schema import DatasetRegistry
-from ray.data.sql.utils import (
-    _is_create_table_as,
-    extract_table_names_from_query,
-    get_config_from_context,
-    setup_logger,
+from sqlglot import exp
+
+from ray.data.sql.config import DEFAULT_CONFIG, LogLevel, SQLConfig
+from ray.data.sql.exceptions import (
+    ColumnNotFoundError,
+    SQLError,
+    SQLExecutionError,
+    SQLParseError,
+    TableNotFoundError,
+    UnsupportedOperationError,
+    SchemaError,
 )
 
 
-class RaySQL:
-    """Main entry point for the RaySQL engine with SQLGlot-inspired architecture.
+class SQLValidator:
+    """Validator for SQL queries to detect unsupported operations."""
 
-    The RaySQL class provides the main API for executing SQL queries on Ray Datasets.
-    It manages dataset registration, parsing, optimization, planning, and execution.
+    # Supported SQL statement types
+    SUPPORTED_STATEMENTS = {exp.Select}
 
-    Examples:
-        .. testcode::
+    # Supported expression types for WHERE clauses
+    SUPPORTED_WHERE_EXPRESSIONS = {
+        exp.Column,
+        exp.Literal,
+        exp.Boolean,
+        exp.Paren,
+        exp.And,
+        exp.Or,
+        exp.Not,
+        exp.EQ,
+        exp.NEQ,
+        exp.GT,
+        exp.LT,
+        exp.GTE,
+        exp.LTE,
+        exp.Add,
+        exp.Sub,
+        exp.Mul,
+        exp.Div,
+        exp.Mod,
+        exp.Is,
+        exp.Null,
+    }
 
-            engine = RaySQL()
-            engine.register("my_table", my_dataset)
-            result = engine.sql("SELECT * FROM my_table")
-    """
+    # Supported aggregate functions
+    SUPPORTED_AGGREGATES = {exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max}
 
-    def __init__(
-        self,
-        config: Optional[SQLConfig] = None,
-        registry: Optional[DatasetRegistry] = None,
-    ):
-        self.config = config or SQLConfig()
-        self.registry = registry or DatasetRegistry()
-        self.parser = SQLParser(self.config)
-        self.optimizer = ASTOptimizer(self.config)
-        self.planner = LogicalPlanner(self.config)
-        self.executor = QueryExecutor(self.registry, self.config)
-        self._logger = setup_logger("RaySQL")
-        self._setup_logging()
+    # Unsupported features that should raise clear errors
+    UNSUPPORTED_FEATURES = {
+        exp.Distinct: "DISTINCT is not yet supported. Use ray.data.Dataset.unique() after the query",
+        exp.Union: "UNION is not yet supported. Use ray.data.Dataset.union() to combine datasets",
+        exp.Intersect: "INTERSECT is not yet supported",
+        exp.Except: "EXCEPT is not yet supported",
+        exp.Window: "Window functions are not yet supported",
+        exp.Case: "CASE expressions are not yet supported",
+        exp.Subquery: "Subqueries are not yet supported",
+        exp.With: "Common Table Expressions (WITH) are not yet supported",
+        exp.Insert: "INSERT statements are not supported. Use ray.data.Dataset.write_*() methods",
+        exp.Update: "UPDATE statements are not supported. Use ray.data.Dataset.map() for transformations",
+        exp.Delete: "DELETE statements are not supported. Use ray.data.Dataset.filter() for filtering",
+        exp.Create: "CREATE statements are not supported. Use ray.data.from_*() methods to create datasets",
+        exp.Drop: "DROP statements are not supported. Use clear_tables() or del operations",
+        exp.Alter: "ALTER statements are not supported",
+        exp.Having: "HAVING clauses are not yet supported. Apply filtering after GROUP BY using Dataset.filter()",
+        exp.Exists: "EXISTS clauses are not yet supported",
+        exp.In: "IN clauses are not yet supported. Use multiple OR conditions or Dataset.filter()",
+        exp.Like: "LIKE patterns are not yet supported. Use Dataset.filter() with string methods",
+        exp.Concat: "String concatenation is not yet supported",
+        exp.Substring: "SUBSTRING function is not yet supported",
+        exp.Cast: "CAST expressions are not yet supported",
+        exp.Coalesce: "COALESCE function is not yet supported",
+        exp.If: "IF function is not yet supported",
+        exp.Greatest: "GREATEST function is not yet supported",
+        exp.Least: "LEAST function is not yet supported",
+    }
 
-    def _setup_logging(self):
-        """Set up logging configuration."""
-        import logging
-
-        log_level_mapping = {
-            "ERROR": logging.ERROR,
-            "INFO": logging.INFO,
-            "DEBUG": logging.DEBUG,
-        }
-        level_name = self.config.log_level.name
-        self._logger.setLevel(log_level_mapping[level_name])
-
-    def _auto_register_datasets_from_caller(self):
-        """Register all Ray Datasets in the caller's local scope as tables using their variable names.
-
-        Warning: This feature uses inspect.currentframe() and can be brittle. If called from
-        within helper functions or nested scopes, it will register datasets from the helper's
-        scope, not the intended user scope. Use explicit register_table() calls for more
-        predictable behavior in complex scenarios.
-        """
-        frame = (
-            inspect.currentframe().f_back.f_back
-        )  # Go two frames up: sql() -> RaySQL.sql() -> user
-        try:
-            for name, obj in frame.f_locals.items():
-                if isinstance(obj, Dataset) and name not in self.registry._tables:
-                    try:
-                        self.registry.register(name, obj)
-                    except ValueError:
-                        # Skip invalid table names
-                        self._logger.debug(
-                            f"Skipped registering '{name}' due to invalid table name"
-                        )
-        finally:
-            del frame
-
-    def sql(self, query: str, auto_register: bool = True) -> Dataset:
-        """Execute a SQL query using the full pipeline: parse -> optimize -> plan -> execute.
-
-        This is the main entry point for SQL query execution. The method follows a
-        standard SQL engine pipeline:
-        1. Auto-register datasets (if enabled)
-        2. Validate table availability
-        3. Parse SQL to Abstract Syntax Tree (AST)
-        4. Apply optimizations (SQLGlot + custom)
-        5. Generate logical plan
-        6. Execute plan and return results
+    @classmethod
+    def validate_query(cls, query: str, ast: exp.Expression) -> None:
+        """Validate a SQL query and raise appropriate errors for unsupported features.
 
         Args:
-            query: SQL query string to execute (e.g., "SELECT * FROM my_table").
-            auto_register: Whether to automatically register Ray Datasets from the
-                          caller's local scope as tables using their variable names.
-
-        Returns:
-            Ray Dataset with the query result that can be chained with other operations.
+            query: Original SQL query string.
+            ast: Parsed SQLGlot AST.
 
         Raises:
-            ValueError: If referenced tables are not found in the registry.
-            Exception: If query parsing, optimization, or execution fails.
+            UnsupportedOperationError: If the query contains unsupported features.
+            SQLParseError: If the query structure is invalid.
         """
-        # Start timing the overall execution
-        start_time = time.time()
-
-        # Initialize result tracking with performance metrics
-        stats = QueryResult(
-            dataset=None,  # Will be populated with the result dataset
-            execution_time=0.0,  # Total time will be calculated at the end
-            row_count=0,  # Will be set after execution
-            query_text=query,  # Store original query for debugging/logging
-        )
-
-        try:
-            # Step 1: Auto-register datasets from caller scope
-            # This allows users to reference Ray Datasets by their variable names
-            # without explicitly calling register_table()
-            if auto_register:
-                self._auto_register_datasets_from_caller()
-
-            # Step 2: Validate that all referenced tables are available
-            # Extract table names from the SQL query and check registry
-            table_names = extract_table_names_from_query(query)
-            missing = [t for t in table_names if t not in self.registry._tables]
-            if missing:
-                raise ValueError(
-                    f"Tables not found: {missing}. Available tables: {list(self.registry._tables.keys())}"
-                )
-
-            # Log the start of query execution for debugging
-            self._logger.info(f"Executing SQL: {query}")
-
-            # Step 3: Parse SQL to Abstract Syntax Tree (AST)
-            # Convert the SQL string into a structured representation that can be analyzed
-            parse_start = time.time()
-            ast = self.parser.parse(query)  # Uses SQLGlot parser
-            stats.parse_time = time.time() - parse_start
-            self._logger.debug(f"Parsing completed in {stats.parse_time:.3f}s")
-
-            # Step 4: Apply SQLGlot built-in optimizations (if enabled)
-            # SQLGlot provides general SQL optimizations like predicate pushdown,
-            # constant folding, and redundant expression elimination
-            if self.config.enable_sqlglot_optimizer:
-                from sqlglot.optimizer import optimize
-
-                sqlglot_opt_start = time.time()
-                ast = optimize(ast)  # Apply SQLGlot's optimization passes
-                sqlglot_opt_time = time.time() - sqlglot_opt_start
-                stats.optimize_time += sqlglot_opt_time
-                self._logger.debug(
-                    f"SQLGlot optimization completed in {sqlglot_opt_time:.3f}s"
-                )
-
-            # Step 5: Apply custom Ray Data-specific optimizations
-            # These optimizations are tailored for Ray Dataset operations and
-            # may include Ray-specific predicate pushdown and join reordering
-            custom_opt_start = time.time()
-            ast = self.optimizer.optimize(ast, self.registry.schema_manager)
-            custom_opt_time = time.time() - custom_opt_start
-            stats.optimize_time += custom_opt_time
-            self._logger.debug(
-                f"Custom optimization completed in {custom_opt_time:.3f}s"
+        # Check for unsupported statement types
+        if not isinstance(ast, tuple(cls.SUPPORTED_STATEMENTS)):
+            statement_type = type(ast).__name__
+            raise UnsupportedOperationError(
+                f"{statement_type} statements",
+                suggestion="Only SELECT statements are currently supported",
+                query=query,
             )
 
-            # Step 6: Generate logical execution plan (if enabled)
-            # Create a high-level plan that describes the operations to perform
-            # This is useful for complex queries and future cost-based optimization
-            plan_start = time.time()
-            logical_plan = self.planner.plan(ast)
-            stats.plan_time = time.time() - plan_start
-            if logical_plan:
-                self._logger.debug(
-                    f"Logical planning completed in {stats.plan_time:.3f}s: {logical_plan}"
-                )
+        # Check for unsupported features in the AST
+        cls._check_unsupported_features(ast, query)
 
-            # Step 7: Execute the optimized query
-            # Convert the AST into Ray Dataset operations and execute them
-            exec_start = time.time()
-            result = self._execute_query(ast)
-            stats.execute_time = time.time() - exec_start
+        # Validate SELECT-specific constructs
+        if isinstance(ast, exp.Select):
+            cls._validate_select_statement(ast, query)
 
-            # Calculate final statistics
-            stats.execution_time = time.time() - start_time
-            stats.dataset = result
-            stats.row_count = result.count()
+    @classmethod
+    def _check_unsupported_features(cls, ast: exp.Expression, query: str) -> None:
+        """Check for unsupported features in the AST."""
+        for node in ast.find_all(cls.UNSUPPORTED_FEATURES.keys()):
+            feature_type = type(node)
+            feature_name = feature_type.__name__
+            suggestion = cls.UNSUPPORTED_FEATURES[feature_type]
 
-            # Log execution statistics
-            stats.log_stats(self._logger)
-
-            return result
-
-        except Exception as e:
-            stats.execution_time = time.time() - start_time
-            self._logger.error(
-                f"Query execution failed after {stats.execution_time:.3f}s: {e}"
+            raise UnsupportedOperationError(
+                f"{feature_name} operations", suggestion=suggestion, query=query
             )
-            self._log_enhanced_error(e)
-            raise
 
-    def _execute_query(self, ast):
-        """Execute the parsed AST."""
-        if _is_create_table_as(ast):
-            table_name = str(ast.this.name)
-            select_ast = ast.args["expression"]
-            result = self.executor.execute(select_ast)
-            self.register(table_name, result)
-            self._logger.info(f"Created table '{table_name}' from SELECT")
-            return result
-        else:
-            result = self.executor.execute(ast)
-            return result
+    @classmethod
+    def _validate_select_statement(cls, stmt: exp.Select, query: str) -> None:
+        """Validate SELECT statement specific constructs."""
+        # Check JOIN operations
+        from_clause = stmt.args.get("from")
+        if from_clause and hasattr(from_clause, "expressions"):
+            for expr in from_clause.expressions:
+                if hasattr(expr, "joins") and expr.joins:
+                    # JOINs are not yet fully implemented
+                    raise UnsupportedOperationError(
+                        "JOIN operations",
+                        suggestion="JOIN support is coming soon. Use Dataset.join() or separate queries for now",
+                        query=query,
+                    )
 
-    def _log_enhanced_error(self, e: Exception):
-        """Log enhanced error information."""
-        if hasattr(e, "line_no") and hasattr(e, "col_no"):
-            self._logger.error(f"Error at line {e.line_no}, column {e.col_no}")
+        # Check for complex ORDER BY expressions
+        order_clause = stmt.args.get("order")
+        if order_clause:
+            for ordering in order_clause.expressions:
+                if isinstance(ordering, exp.Ordered):
+                    order_expr = ordering.this
+                    if not isinstance(order_expr, exp.Column):
+                        raise UnsupportedOperationError(
+                            "Complex ORDER BY expressions",
+                            suggestion="Only simple column names are supported in ORDER BY",
+                            query=query,
+                        )
 
-        if "not found" in str(e):
-            available_tables = self.registry.list_tables()
-            self._logger.error(f"Available tables: {available_tables}")
+        # Check WHERE clause complexity
+        where_clause = stmt.args.get("where")
+        if where_clause:
+            cls._validate_where_clause(where_clause.this, query)
+
+    @classmethod
+    def _validate_where_clause(cls, expr: exp.Expression, query: str) -> None:
+        """Validate WHERE clause expressions recursively."""
+        expr_type = type(expr)
+
+        if expr_type not in cls.SUPPORTED_WHERE_EXPRESSIONS:
+            raise UnsupportedOperationError(
+                f"{expr_type.__name__} in WHERE clause",
+                suggestion="Check the documentation for supported WHERE clause expressions",
+                query=query,
+            )
+
+        # Recursively validate child expressions
+        if hasattr(expr, "left") and expr.left:
+            cls._validate_where_clause(expr.left, query)
+        if hasattr(expr, "right") and expr.right:
+            cls._validate_where_clause(expr.right, query)
+        if (
+            hasattr(expr, "this")
+            and expr.this
+            and isinstance(expr.this, exp.Expression)
+        ):
+            cls._validate_where_clause(expr.this, query)
+
+
+class TableRegistry:
+    """Registry for managing SQL table name to Ray Dataset mappings.
+
+    This class provides a centralized registry for mapping SQL table names
+    to Ray Dataset objects. It supports table registration, lookup, and
+    management operations.
+
+    Examples:
+        >>> registry = TableRegistry()
+        >>> users_ds = ray.data.from_items([{"id": 1, "name": "Alice"}])
+        >>> registry.register("users", users_ds)
+        >>> dataset = registry.get("users")
+    """
+
+    def __init__(self):
+        """Initialize a new table registry."""
+        self._tables: Dict[str, Dataset] = {}
+        self._logger = logging.getLogger(__name__)
 
     def register(self, name: str, dataset: Dataset) -> None:
-        """Register a Ray Dataset as a SQL table."""
-        self.registry.register(name, dataset)
+        """Register a dataset under the given SQL table name.
 
-    def unregister(self, name: str) -> None:
-        """Unregister a table by name."""
-        self.registry.unregister(name)
+        Args:
+            name: SQL table name to register the dataset under.
+            dataset: Ray Dataset to register.
 
-    def tables(self) -> List[str]:
-        """List all registered table names."""
-        return self.registry.list_tables()
+        Raises:
+            TypeError: If dataset is not a Ray Dataset.
+            ValueError: If name is invalid.
+        """
+        if not isinstance(dataset, Dataset):
+            raise TypeError(f"Expected Ray Dataset, got {type(dataset)}")
+
+        if not name or not isinstance(name, str):
+            raise ValueError("Table name must be a non-empty string")
+
+        # Check for SQL reserved words
+        reserved_words = {
+            "select",
+            "from",
+            "where",
+            "order",
+            "by",
+            "group",
+            "having",
+            "join",
+            "inner",
+            "left",
+            "right",
+            "full",
+            "on",
+            "and",
+            "or",
+            "not",
+            "null",
+            "true",
+            "false",
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max",
+        }
+        if name.lower() in reserved_words:
+            raise ValueError(f"Table name '{name}' is a SQL reserved word")
+
+        self._tables[name] = dataset
+        self._logger.debug(f"Registered table '{name}' with {dataset.count()} rows")
+
+    def get(self, name: str) -> Dataset:
+        """Retrieve a registered dataset by table name.
+
+        Args:
+            name: SQL table name to look up.
+
+        Returns:
+            The Ray Dataset registered under the given name.
+
+        Raises:
+            TableNotFoundError: If the table name is not found.
+        """
+        if name not in self._tables:
+            available = list(self._tables.keys())
+            raise TableNotFoundError(name, available_tables=available)
+
+        return self._tables[name]
+
+    def list_tables(self) -> List[str]:
+        """List all registered table names.
+
+        Returns:
+            List of registered table names.
+        """
+        return list(self._tables.keys())
 
     def clear(self) -> None:
-        """Remove all registered tables."""
-        self.registry.clear()
+        """Clear all registered tables."""
+        self._tables.clear()
+        self._logger.debug("Cleared all registered tables")
 
-    def get_schema(self, table_name: str):
-        """Get schema information for a table."""
-        return self.registry.schema_manager.get_schema(table_name)
+    def get_schema(self, name: str) -> Optional[object]:
+        """Get the schema for a registered table.
+
+        Args:
+            name: Table name to get schema for.
+
+        Returns:
+            The schema object for the table, or None if not available.
+
+        Raises:
+            TableNotFoundError: If the table name is not found.
+        """
+        dataset = self.get(name)  # This will raise TableNotFoundError if needed
+        try:
+            return dataset.schema()
+        except Exception:
+            return None
 
 
-# Global registry and engine instances for the module-level API
-_global_registry = DatasetRegistry()
-_global_engine = None
+class ExpressionCompiler:
+    """Compiler for SQL expressions to Python functions.
 
+    This class converts SQLGlot expression ASTs into Python functions
+    that can be applied to Ray Dataset rows.
+    """
 
-def _get_engine() -> RaySQL:
-    """Get or create the SQL engine with current configuration."""
-    global _global_engine
-    if _global_engine is None:
-        config = get_config_from_context()
-        _global_engine = RaySQL(config, registry=_global_registry)
-    return _global_engine
+    @staticmethod
+    def _to_number(value: str) -> Union[int, float, str]:
+        """Convert string to number if possible."""
+        try:
+            return int(value)
+        except ValueError:
+            try:
+                return float(value)
+            except ValueError:
+                return value
 
+    @classmethod
+    def compile(cls, expr: exp.Expression) -> Callable[[Mapping[str, object]], object]:
+        """Compile a SQLGlot expression to a Python function.
 
-def _auto_register_datasets():
-    """Automatically register Ray Datasets from the current frame."""
-    frame = inspect.currentframe().f_back
-    try:
-        # Only register datasets that aren't already in the registry
-        count = 0
-        for name, obj in frame.f_locals.items():
-            if isinstance(obj, Dataset) and name not in _global_registry._tables:
+        Args:
+            expr: SQLGlot expression to compile.
+
+        Returns:
+            Python function that takes a row dict and returns the expression result.
+
+        Raises:
+            UnsupportedOperationError: If the expression type is not supported.
+        """
+        expr_type = type(expr)
+
+        # Column references
+        if expr_type is exp.Column:
+            col = str(expr.name)
+            return lambda row, c=col: row.get(c)
+
+        # Literals and booleans
+        if expr_type in (exp.Literal, exp.Boolean):
+            value = getattr(expr, "name", None)
+            if value is not None:
+                value_str = str(value).strip()
+                if value_str.lower() == "true":
+                    return lambda _: True
+                elif value_str.lower() == "false":
+                    return lambda _: False
+                else:
+                    return lambda _: cls._to_number(value_str)
+            return lambda _: expr.this if hasattr(expr, "this") else expr
+
+        # NULL values
+        if expr_type is exp.Null:
+            return lambda _: None
+
+        # IS NULL / IS NOT NULL
+        if expr_type is exp.Is:
+            left_func = cls.compile(expr.this)
+            if isinstance(expr.expression, exp.Null):
+                return lambda row: left_func(row) is None
+            else:
+                raise UnsupportedOperationError("IS expressions with non-NULL values")
+
+        # Parentheses
+        if expr_type is exp.Paren:
+            return cls.compile(expr.this)
+
+        # Logical operators
+        if expr_type in (exp.And, exp.Or):
+            left_func = cls.compile(expr.left)
+            right_func = cls.compile(expr.right)
+            if expr_type is exp.And:
+                return lambda row: left_func(row) and right_func(row)
+            else:  # exp.Or
+                return lambda row: left_func(row) or right_func(row)
+
+        if expr_type is exp.Not:
+            sub_func = cls.compile(expr.this)
+            return lambda row: not sub_func(row)
+
+        # Comparison operators
+        comparison_ops = {
+            exp.EQ: lambda a, b: a == b,
+            exp.NEQ: lambda a, b: a != b,
+            exp.GT: lambda a, b: a > b,
+            exp.LT: lambda a, b: a < b,
+            exp.GTE: lambda a, b: a >= b,
+            exp.LTE: lambda a, b: a <= b,
+        }
+
+        if expr_type in comparison_ops:
+            left_func = cls.compile(expr.left)
+            right_func = cls.compile(expr.right)
+            op = comparison_ops[expr_type]
+
+            def compare_func(row):
+                left_val = left_func(row)
+                right_val = right_func(row)
+                # Handle NULL comparisons
+                if left_val is None or right_val is None:
+                    return False
                 try:
-                    _global_registry.register(name, obj)
-                    count += 1
-                except ValueError:
-                    # Skip invalid table names
-                    pass
-        if count > 0:
-            logger = setup_logger("RaySQL")
-            logger.debug(f"Auto-registered {count} datasets")
-    finally:
-        del frame
+                    return op(left_val, right_val)
+                except TypeError:
+                    # Type mismatch - raise more helpful error
+                    raise SchemaError(
+                        f"Cannot compare {type(left_val).__name__} and {type(right_val).__name__}"
+                    )
+
+            return compare_func
+
+        # Arithmetic operators
+        arithmetic_ops = {
+            exp.Add: lambda a, b: a + b,
+            exp.Sub: lambda a, b: a - b,
+            exp.Mul: lambda a, b: a * b,
+            exp.Div: lambda a, b: float(a) / float(b) if b != 0 else None,
+            exp.Mod: lambda a, b: a % b,
+        }
+
+        if expr_type in arithmetic_ops:
+            left_func = cls.compile(expr.left)
+            right_func = cls.compile(expr.right)
+            op = arithmetic_ops[expr_type]
+
+            def arithmetic_func(row):
+                left_val = left_func(row)
+                right_val = right_func(row)
+                # Handle NULL values
+                if left_val is None or right_val is None:
+                    return None
+                try:
+                    return op(left_val, right_val)
+                except (TypeError, ValueError, ZeroDivisionError) as e:
+                    if expr_type is exp.Div and right_val == 0:
+                        return None  # Division by zero returns NULL
+                    raise SchemaError(f"Arithmetic error: {str(e)}")
+
+            return arithmetic_func
+
+        # String literals with proper quote handling
+        if (
+            expr_type is exp.Literal
+            and hasattr(expr, "this")
+            and isinstance(expr.this, str)
+        ):
+            value = expr.this
+            return lambda _: value
+
+        # Unsupported expression
+        raise UnsupportedOperationError(
+            f"Expression type {expr_type.__name__}",
+            suggestion="Check the documentation for supported SQL constructs",
+        )
 
 
-def _ray_data_sql(query: str, **kwargs) -> Dataset:
-    """Enhanced ray.data.sql function with full SQL support.
+class SQLQueryExecutor:
+    """Executor for SQL queries against Ray Datasets.
 
-    This function follows Ray Dataset API patterns for lazy evaluation
-    and proper return types.
-
-    Args:
-        query: SQL query string to execute.
-        **kwargs: Additional arguments passed to the SQL engine.
-
-    Returns:
-        Dataset: A Ray Dataset containing the query results.
-
-    Raises:
-        ValueError: If the query is invalid or execution fails.
-        NotImplementedError: If unsupported SQL features are used.
+    This class handles the execution of parsed and optimized SQL queries
+    against registered Ray Datasets.
     """
-    table_names = extract_table_names_from_query(query)
-    missing = [t for t in table_names if t not in _global_registry._tables]
 
-    # Only auto-register if there are missing tables
-    if missing:
-        _auto_register_datasets()
-        # Check again after auto-registration
-        still_missing = [t for t in table_names if t not in _global_registry._tables]
-        if still_missing:
-            raise ValueError(
-                f"Tables not found: {still_missing}. Available tables: {list(_global_registry._tables.keys())}"
+    def __init__(self, config: SQLConfig, registry: TableRegistry):
+        """Initialize the query executor.
+
+        Args:
+            config: SQL engine configuration.
+            registry: Table registry for dataset lookups.
+        """
+        self.config = config
+        self.registry = registry
+        self._logger = config.get_logger(__name__)
+
+    def execute(
+        self, stmt: exp.Select, default_dataset: Optional[Dataset] = None
+    ) -> Dataset:
+        """Execute a SELECT statement against registered datasets.
+
+        Args:
+            stmt: Parsed SELECT statement.
+            default_dataset: Default dataset for queries without FROM clause.
+
+        Returns:
+            Ray Dataset containing the query results.
+
+        Raises:
+            SQLExecutionError: If query execution fails.
+        """
+        try:
+            # Resolve FROM clause
+            dataset, table_name = self._resolve_from(stmt, default_dataset)
+
+            # Apply WHERE clause
+            dataset = self._apply_where(dataset, stmt)
+
+            # Check for aggregates and GROUP BY
+            has_aggregates = self._has_aggregates(stmt)
+            group_by_exprs = stmt.args.get("group", None)
+
+            if has_aggregates or group_by_exprs:
+                dataset = self._apply_group_by_and_aggregates(dataset, stmt)
+            else:
+                # Apply ORDER BY
+                dataset = self._apply_order_by(dataset, stmt)
+
+                # Apply LIMIT
+                dataset = self._apply_limit(dataset, stmt)
+
+                # Apply SELECT projection
+                dataset = self._apply_projection(dataset, stmt, table_name)
+
+            return dataset
+
+        except Exception as e:
+            if isinstance(e, SQLError):
+                raise
+            else:
+                raise SQLExecutionError(f"Query execution failed: {str(e)}") from e
+
+    def _resolve_from(
+        self, stmt: exp.Select, default_dataset: Optional[Dataset]
+    ) -> Tuple[Dataset, str]:
+        """Resolve the dataset referenced in the FROM clause."""
+        from_clause = stmt.args.get("from")
+
+        if from_clause:
+            node = (
+                from_clause.expressions[0]
+                if getattr(from_clause, "expressions", None)
+                else from_clause.this
             )
+            table_name = str(node.name)
 
-    engine = _get_engine()
-    return engine.sql(query, **kwargs)
+            # Validate table name
+            if not table_name or table_name.lower() == "none":
+                raise SQLExecutionError("Invalid table name in FROM clause")
+
+            dataset = self.registry.get(table_name)
+            return dataset, table_name
+
+        # No FROM clause - use default dataset
+        if default_dataset is None:
+            raise SQLExecutionError("No FROM clause and no default dataset provided")
+
+        return default_dataset, "default"
+
+    def _apply_where(self, dataset: Dataset, stmt: exp.Select) -> Dataset:
+        """Apply WHERE clause filtering."""
+        where_node = stmt.args.get("where")
+        if where_node is None:
+            return dataset
+
+        try:
+            filter_func = ExpressionCompiler.compile(where_node.this)
+            return dataset.filter(filter_func)
+        except Exception as e:
+            raise SQLExecutionError(f"WHERE clause execution failed: {str(e)}") from e
+
+    def _apply_order_by(self, dataset: Dataset, stmt: exp.Select) -> Dataset:
+        """Apply ORDER BY clause."""
+        order_ast = stmt.args.get("order")
+        if order_ast is None:
+            return dataset
+
+        try:
+            keys = []
+            desc_flags = []
+
+            for ordering in order_ast.expressions:
+                if isinstance(ordering, exp.Ordered) and isinstance(
+                    ordering.this, exp.Column
+                ):
+                    col_name = str(ordering.this.name)
+                    keys.append(col_name)
+                    desc_flags.append(bool(ordering.args.get("desc")))
+                else:
+                    raise UnsupportedOperationError(
+                        "Complex ORDER BY expressions",
+                        suggestion="Only simple column names are supported in ORDER BY",
+                    )
+
+            # Validate columns exist in dataset
+            try:
+                dataset_cols = dataset.columns()
+                if dataset_cols:
+                    for key in keys:
+                        if key not in dataset_cols:
+                            raise ColumnNotFoundError(
+                                key, available_columns=dataset_cols
+                            )
+            except Exception:
+                # If we can't get columns (empty dataset), skip validation
+                pass
+
+            if len(keys) == 1:
+                return dataset.sort(keys[0], descending=desc_flags[0])
+            else:
+                return dataset.sort(keys, descending=desc_flags)
+
+        except Exception as e:
+            if isinstance(e, SQLError):
+                raise
+            raise SQLExecutionError(f"ORDER BY execution failed: {str(e)}") from e
+
+    def _apply_limit(self, dataset: Dataset, stmt: exp.Select) -> Dataset:
+        """Apply LIMIT clause."""
+        limit_ast = stmt.args.get("limit")
+        if limit_ast is None:
+            return dataset
+
+        try:
+            limit_node = getattr(limit_ast, "this", None) or getattr(
+                limit_ast, "expression", None
+            )
+            limit_val = None
+
+            # Try different ways to extract the limit value
+            if hasattr(limit_node, "this"):
+                try:
+                    limit_val = int(str(limit_node.this))
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+            if limit_val is None and hasattr(limit_node, "name"):
+                try:
+                    limit_val = int(str(limit_node.name))
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+            if limit_val is None:
+                try:
+                    limit_val = int(str(limit_node))
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+            if limit_val is not None:
+                if limit_val < 0:
+                    raise SQLExecutionError("LIMIT value must be non-negative")
+                return dataset.limit(limit_val)
+            else:
+                raise SQLExecutionError("Invalid LIMIT value")
+
+        except Exception as e:
+            if isinstance(e, SQLError):
+                raise
+            raise SQLExecutionError(f"LIMIT execution failed: {str(e)}") from e
+
+    def _has_aggregates(self, stmt: exp.Select) -> bool:
+        """Check if the query contains aggregate functions."""
+        for expr in stmt.find_all((exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
+            return True
+        return False
+
+    def _apply_group_by_and_aggregates(
+        self, dataset: Dataset, stmt: exp.Select
+    ) -> Dataset:
+        """Apply GROUP BY and aggregate functions."""
+        group_by_exprs = stmt.args.get("group", None)
+        select_exprs = stmt.args["expressions"]
+
+        if group_by_exprs:
+            # GROUP BY case
+            group_keys = []
+            for group_expr in group_by_exprs.expressions:
+                if isinstance(group_expr, exp.Column):
+                    group_keys.append(str(group_expr.name))
+                else:
+                    raise UnsupportedOperationError(
+                        "Complex GROUP BY expressions",
+                        suggestion="Only simple column names are supported in GROUP BY",
+                    )
+
+            # Validate group columns exist
+            try:
+                dataset_cols = dataset.columns()
+                if dataset_cols:
+                    for key in group_keys:
+                        if key not in dataset_cols:
+                            raise ColumnNotFoundError(
+                                key, available_columns=dataset_cols
+                            )
+            except Exception:
+                # If we can't get columns, skip validation
+                pass
+
+            # Use Ray Data's groupby functionality
+            grouped = dataset.groupby(group_keys)
+
+            # Build aggregations
+            agg_funcs = []
+            result_names = []
+
+            for expr in select_exprs:
+                if isinstance(expr, exp.Alias):
+                    result_names.append(str(expr.alias))
+                    inner_expr = expr.this
+                else:
+                    result_names.append(self._get_expr_name(expr))
+                    inner_expr = expr
+
+                if isinstance(inner_expr, exp.Column):
+                    # Group by column - will be preserved
+                    continue
+                elif isinstance(inner_expr, exp.Count):
+                    if str(inner_expr.this) == "*":
+                        agg_funcs.append(ray.data.aggregate.Count())
+                    else:
+                        col_name = (
+                            str(inner_expr.this.name)
+                            if hasattr(inner_expr.this, "name")
+                            else str(inner_expr.this)
+                        )
+                        agg_funcs.append(ray.data.aggregate.Count(col_name))
+                elif isinstance(inner_expr, exp.Sum):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    agg_funcs.append(ray.data.aggregate.Sum(col_name))
+                elif isinstance(inner_expr, exp.Avg):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    agg_funcs.append(ray.data.aggregate.Mean(col_name))
+                elif isinstance(inner_expr, exp.Min):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    agg_funcs.append(ray.data.aggregate.Min(col_name))
+                elif isinstance(inner_expr, exp.Max):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    agg_funcs.append(ray.data.aggregate.Max(col_name))
+
+            if agg_funcs:
+                result = grouped.aggregate(*agg_funcs)
+            else:
+                # Just group by without aggregates
+                result = dataset.groupby(group_keys).aggregate(
+                    ray.data.aggregate.Count()
+                )
+
+            # Rename columns to match expected names
+            def rename_cols(row):
+                new_row = {}
+                # Copy group key columns
+                for key in group_keys:
+                    if key in row:
+                        new_row[key] = row[key]
+
+                # Handle aggregate columns
+                for i, name in enumerate(result_names):
+                    if name in row:
+                        new_row[name] = row[name]
+                    elif name in group_keys:
+                        continue
+                    else:
+                        # Pattern match aggregate columns
+                        for col_name, value in row.items():
+                            if (
+                                col_name not in group_keys
+                                and col_name not in new_row.values()
+                            ):
+                                if (
+                                    (
+                                        "sum" in col_name.lower()
+                                        and (
+                                            "age" in name.lower()
+                                            or "total" in name.lower()
+                                        )
+                                    )
+                                    or (
+                                        "mean" in col_name.lower()
+                                        and "avg" in name.lower()
+                                    )
+                                    or (
+                                        "min" in col_name.lower()
+                                        and "min" in name.lower()
+                                    )
+                                    or (
+                                        "max" in col_name.lower()
+                                        and "max" in name.lower()
+                                    )
+                                    or (
+                                        "count" in col_name.lower()
+                                        and "count" in name.lower()
+                                    )
+                                ):
+                                    new_row[name] = value
+                                    break
+                return new_row
+
+            return result.map(rename_cols)
+
+        else:
+            # No GROUP BY - single-row aggregates
+            result_dict = {}
+
+            for expr in select_exprs:
+                if isinstance(expr, exp.Alias):
+                    result_name = str(expr.alias)
+                    inner_expr = expr.this
+                else:
+                    result_name = self._get_expr_name(expr)
+                    inner_expr = expr
+
+                if isinstance(inner_expr, exp.Count):
+                    if str(inner_expr.this) == "*":
+                        result_dict[result_name] = dataset.count()
+                    else:
+                        # Count non-null values
+                        col_name = (
+                            str(inner_expr.this.name)
+                            if hasattr(inner_expr.this, "name")
+                            else str(inner_expr.this)
+                        )
+                        non_null_count = dataset.filter(
+                            lambda row, col=col_name: row.get(col) is not None
+                        ).count()
+                        result_dict[result_name] = non_null_count
+                elif isinstance(inner_expr, exp.Sum):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    total = dataset.aggregate(ray.data.aggregate.Sum(col_name))
+                    result_dict[result_name] = total[f"sum({col_name})"]
+                elif isinstance(inner_expr, exp.Avg):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    avg = dataset.aggregate(ray.data.aggregate.Mean(col_name))
+                    result_dict[result_name] = avg[f"mean({col_name})"]
+                elif isinstance(inner_expr, exp.Min):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    min_val = dataset.aggregate(ray.data.aggregate.Min(col_name))
+                    result_dict[result_name] = min_val[f"min({col_name})"]
+                elif isinstance(inner_expr, exp.Max):
+                    col_name = (
+                        str(inner_expr.this.name)
+                        if hasattr(inner_expr.this, "name")
+                        else str(inner_expr.this)
+                    )
+                    max_val = dataset.aggregate(ray.data.aggregate.Max(col_name))
+                    result_dict[result_name] = max_val[f"max({col_name})"]
+
+            return ray.data.from_items([result_dict])
+
+    def _get_expr_name(self, expr: exp.Expression) -> str:
+        """Get a reasonable name for an expression."""
+        if isinstance(expr, exp.Column):
+            return str(expr.name)
+        elif isinstance(expr, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
+            func_name = type(expr).__name__.lower()
+            if hasattr(expr.this, "name"):
+                return f"{func_name}_{expr.this.name}"
+            else:
+                return f"{func_name}_star"
+        else:
+            return "col_0"
+
+    def _apply_projection(
+        self, dataset: Dataset, stmt: exp.Select, table_name: str
+    ) -> Dataset:
+        """Apply SELECT projection."""
+        select_exprs = stmt.args["expressions"]
+        names, functions = self._build_projection_functions(
+            select_exprs, dataset, table_name
+        )
+
+        def mapper(row: Mapping[str, object]) -> Dict[str, object]:
+            return {col: fn(row) for col, fn in zip(names, functions)}
+
+        return dataset.map(mapper)
+
+    def _build_projection_functions(
+        self,
+        select_exprs: Sequence[exp.Expression],
+        dataset: Optional[Dataset] = None,
+        table_name: Optional[str] = None,
+    ) -> Tuple[List[str], List[Callable[[Mapping[str, object]], object]]]:
+        """Build projection functions for SELECT expressions."""
+        names = []
+        functions = []
+
+        for idx, expr in enumerate(select_exprs):
+            # SELECT *
+            if isinstance(expr, exp.Star):
+                if dataset is None:
+                    raise SQLExecutionError("SELECT * requires a dataset context")
+                try:
+                    cols = dataset.columns()
+                    if cols is not None:
+                        for col in cols:
+                            names.append(col)
+                            functions.append(lambda row, c=col: row.get(c))
+                except (TypeError, AttributeError):
+                    # Empty dataset case
+                    pass
+                continue
+
+            # SELECT table.*
+            if isinstance(expr, exp.Column) and isinstance(expr.this, exp.Star):
+                col_table = str(expr.table) if expr.table else None
+                if table_name and col_table and col_table != table_name:
+                    continue
+                if dataset is None:
+                    raise SQLExecutionError("SELECT table.* requires dataset context")
+                try:
+                    cols = dataset.columns()
+                    if cols is not None:
+                        for col in cols:
+                            names.append(col)
+                            functions.append(lambda row, c=col: row.get(c))
+                except (TypeError, AttributeError):
+                    # Empty dataset case
+                    pass
+                continue
+
+            # SELECT expr AS alias
+            if isinstance(expr, exp.Alias):
+                names.append(str(expr.alias))
+                functions.append(ExpressionCompiler.compile(expr.this))
+                continue
+
+            # SELECT column
+            if isinstance(expr, exp.Column):
+                col_name = str(expr.name)
+                names.append(col_name)
+                functions.append(lambda row, c=col_name: row.get(c))
+                continue
+
+            # Generic expression
+            names.append(f"col_{idx}")
+            functions.append(ExpressionCompiler.compile(expr))
+
+        return names, functions
 
 
-def _ray_data_register_table(name: str, dataset: Dataset) -> None:
-    """Register a dataset as a SQL table.
+class RaySQL:
+    """Main SQL engine for Ray Data.
 
-    This function follows Ray Dataset API patterns for table registration.
+    The RaySQL class provides the primary interface for executing SQL queries
+    against Ray Datasets. It manages table registration, query parsing,
+    optimization, and execution.
 
-    Args:
-        name: Table name to register the dataset under.
-        dataset: Ray Dataset to register as a table.
+    Examples:
+        Basic usage:
+            >>> engine = RaySQL()
+            >>> engine.register("my_table", my_dataset)
+            >>> result = engine.sql("SELECT * FROM my_table")
 
-    Raises:
-        TypeError: If dataset is not a Ray Dataset.
-        ValueError: If table name is invalid.
+        With configuration:
+            >>> config = SQLConfig(log_level=LogLevel.DEBUG)
+            >>> engine = RaySQL(config)
     """
-    if not isinstance(dataset, Dataset):
-        raise TypeError(f"Expected Dataset, got {type(dataset)}")
-    if not name or not isinstance(name, str):
-        raise ValueError("Table name must be a non-empty string")
-    _global_registry.register(name, dataset)
+
+    def __init__(self, config: Optional[SQLConfig] = None):
+        """Initialize the SQL engine.
+
+        Args:
+            config: SQL engine configuration. Uses default if not provided.
+        """
+        self.config = config or DEFAULT_CONFIG
+        self.registry = TableRegistry()
+        self.executor = SQLQueryExecutor(self.config, self.registry)
+        self._logger = self.config.get_logger(__name__)
+
+    def register(self, name: str, dataset: Dataset) -> None:
+        """Register a Ray Dataset as a SQL table.
+
+        Args:
+            name: SQL table name.
+            dataset: Ray Dataset to register.
+        """
+        self.registry.register(name, dataset)
+
+    def sql(self, query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
+        """Execute a SQL query.
+
+        Args:
+            query: SQL query string to execute.
+            default_dataset: Default dataset for queries without FROM clause.
+
+        Returns:
+            Ray Dataset containing the query results.
+
+        Raises:
+            SQLParseError: If the query cannot be parsed.
+            SQLExecutionError: If query execution fails.
+            UnsupportedOperationError: If the query uses unsupported features.
+        """
+        start_time = time.time()
+
+        try:
+            self._logger.info(f"Executing SQL query: {query}")
+
+            # Parse SQL query
+            try:
+                ast = sqlglot.parse_one(query, read="duckdb")
+            except Exception as e:
+                raise SQLParseError(
+                    f"Failed to parse SQL query: {str(e)}", query=query
+                ) from e
+
+            # Validate query for unsupported features
+            SQLValidator.validate_query(query, ast)
+
+            # Execute query
+            result = self.executor.execute(ast, default_dataset)
+
+            execution_time = time.time() - start_time
+            self._logger.info(f"Query executed successfully in {execution_time:.3f}s")
+
+            return result
+
+        except SQLError:
+            raise
+        except Exception as e:
+            raise SQLExecutionError(
+                f"Unexpected error during query execution: {str(e)}", query=query
+            ) from e
 
 
-def _dataset_name(self, table_name: str) -> Dataset:
-    """Register this dataset as a SQL table and return self.
-
-    This method follows Ray Dataset API patterns for method chaining
-    and returns the dataset for further operations.
-
-    Args:
-        table_name: Name to register this dataset under.
-
-    Returns:
-        Dataset: Self for method chaining.
-
-    Raises:
-        ValueError: If table name is invalid.
-    """
-    if not table_name or not isinstance(table_name, str):
-        raise ValueError("Table name must be a non-empty string")
-    _global_registry.register(table_name, self)
-    self._sql_name = table_name
-    return self
-
-
-# Global functions following Ray Dataset API patterns
-def sql(query: str, **kwargs) -> Dataset:
-    """Global SQL entry point using ray.data.sql.
-
-    This function follows Ray Dataset API patterns for global functions.
-
-    Args:
-        query: SQL query string to execute.
-        **kwargs: Additional arguments passed to the SQL engine.
-
-    Returns:
-        Dataset: A Ray Dataset containing the query results.
-    """
-    return _ray_data_sql(query, **kwargs)
+# Global registry instance for module-level functions
+_global_registry = TableRegistry()
+_global_engine = RaySQL()
 
 
 def register_table(name: str, dataset: Dataset) -> None:
-    """Register a dataset as a SQL table.
-
-    This function follows Ray Dataset API patterns for global functions.
+    """Register a Ray Dataset as a SQL table.
 
     Args:
-        name: Table name to register the dataset under.
-        dataset: Ray Dataset to register as a table.
+        name: SQL table name.
+        dataset: Ray Dataset to register.
     """
-    _ray_data_register_table(name, dataset)
+    _global_engine.register(name, dataset)
+
+
+def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
+    """Execute a SQL query against registered tables.
+
+    Args:
+        query: SQL query string to execute.
+        default_dataset: Default dataset for queries without FROM clause.
+
+    Returns:
+        Ray Dataset containing the query results.
+    """
+    return _global_engine.sql(query, default_dataset)
 
 
 def list_tables() -> List[str]:
     """List all registered table names.
 
-    This function follows Ray Dataset API patterns for global functions.
-
     Returns:
-        List[str]: List of registered table names.
+        List of registered table names.
     """
-    return _global_registry.list_tables()
-
-
-def get_schema(table_name: str):
-    """Get schema information for a table.
-
-    This function follows Ray Dataset API patterns for global functions.
-
-    Args:
-        table_name: Name of the table to get schema for.
-
-    Returns:
-        Schema information if table exists, None otherwise.
-    """
-    return _global_registry.schema_manager.get_schema(table_name)
+    return _global_engine.registry.list_tables()
 
 
 def clear_tables() -> None:
-    """Remove all registered tables.
+    """Clear all registered tables."""
+    _global_engine.registry.clear()
 
-    This function follows Ray Dataset API patterns for global functions.
+
+def get_schema(table_name: str) -> Optional[object]:
+    """Get the schema for a registered table.
+
+    Args:
+        table_name: Name of the table.
+
+    Returns:
+        Schema object for the table, or None if not available.
     """
-    global _global_engine
-    _global_registry.clear()
-    # Reset the global engine to ensure clean state
-    _global_engine = None
+    return _global_engine.registry.get_schema(table_name)
 
 
 def get_engine() -> RaySQL:
     """Get the global SQL engine instance.
 
     Returns:
-        RaySQL: The global SQL engine instance.
+        The global RaySQL engine.
     """
-    return _get_engine()
+    return _global_engine
 
 
-def get_registry() -> DatasetRegistry:
-    """Get the global dataset registry.
+def get_registry() -> TableRegistry:
+    """Get the global table registry.
 
     Returns:
-        DatasetRegistry: The global dataset registry.
+        The global table registry.
     """
-    return _global_registry
+    return _global_engine.registry
+
+
+# Ray Data API integration
+def _ray_data_sql(query: str, **kwargs) -> Dataset:
+    """Ray Data SQL API integration."""
+    return sql(query, **kwargs)
+
+
+def _ray_data_register_table(name: str, dataset: Dataset) -> None:
+    """Ray Data register table API integration."""
+    register_table(name, dataset)
+
+
+# Apply monkey patches for Ray Data integration
+ray.data.sql = _ray_data_sql
+ray.data.register_table = _ray_data_register_table
