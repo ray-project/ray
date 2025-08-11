@@ -28,7 +28,7 @@ from ci.raydepsets.testing_utils import (
     save_file_as,
     save_packages_to_file,
 )
-from ci.raydepsets.workspace import Workspace, _substitute_build_args, BuildArgSet
+from ci.raydepsets.workspace import BuildArgSet, Workspace, _substitute_build_args
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
