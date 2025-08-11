@@ -127,7 +127,8 @@ class HCCLRootInfoStore:
 class HCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an HCCL collective group."""
-        import torch_npu  # Ensure HCCL backend is registered with torch.distributed
+        # Ensure HCCL backend is registered with torch.distributed
+        import torch_npu  # noqa: F401
 
         metadata_key = get_master_address_metadata_key(group_name)
         try:
