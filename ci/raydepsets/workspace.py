@@ -65,20 +65,14 @@ class Config:
     @staticmethod
     def from_dict(data: dict) -> "Config":
         build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
+        build_arg_sets_map = {b.name: b for b in build_arg_sets}
         raw_depsets = data.get("depsets", [])
         depsets = []
         for depset in raw_depsets:
             build_arg_set_matrix = depset.get("build_arg_sets", [])
             if build_arg_set_matrix:
                 for build_arg_set_name in build_arg_set_matrix:
-                    build_arg_set = next(
-                        (
-                            build_arg_set
-                            for build_arg_set in build_arg_sets
-                            if build_arg_set.name == build_arg_set_name
-                        ),
-                        None,
-                    )
+                    build_arg_set = build_arg_sets_map.get(build_arg_set_name)
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_name} not found")
                     depset_yaml = _substitute_build_args(depset, build_arg_set)
