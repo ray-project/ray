@@ -14,6 +14,9 @@
 
 #include "ray/common/event_stats.h"
 
+#include <memory>
+#include <utility>
+
 #include "gtest/gtest.h"
 
 TEST(EventStatsTest, TestRecordEnd) {
