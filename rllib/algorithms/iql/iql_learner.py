@@ -17,6 +17,9 @@ class IQLLearner(DQNLearner):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(DQNLearner)
     def build(self) -> None:
+        # Build the `DQNLearner` (builds the target network).
+        super().build()
+
         # Define the expectile parameter(s).
         self.expectile: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
@@ -26,7 +29,7 @@ class IQLLearner(DQNLearner):
             )
         )
 
-        # Define the temperature for the acotr advantage loss.
+        # Define the temperature for the actor advantage loss.
         self.temperature: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 # Note, we want to train with a certain expectile.
@@ -40,12 +43,42 @@ class IQLLearner(DQNLearner):
         # Keys=(module_id, optimizer_name), values=loss tensors (in-graph).
         self._temp_losses = {}
 
-        # Build the `DQNLearner` (builds the target network).
-        super().build()
-
     @override(DQNLearner)
     def remove_module(self, module_id: ModuleID) -> None:
-        """Removes the expectile."""
+        """Removes the expectile and temperature for removed modules."""
+        # First call `super`'s `remove_module` method.
         super().remove_module(module_id)
         # Remove the expectile from the mapping.
         self.expectile.pop(module_id, None)
+        # Remove the temperature from the mapping.
+        self.temperature.pop(module_id, None)
+
+    @override(DQNLearner)
+    def add_module(
+        self,
+        *,
+        module_id,
+        module_spec,
+        config_overrides=None,
+        new_should_module_be_updated=None
+    ):
+        """Adds the expectile and temperature for new modules."""
+        # First call `super`'s `add_module` method.
+        super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
+        # Add the expectile to the mapping.
+        self.expectile[module_id] = self._get_tensor_variable(
+            # Note, we want to train with a certain expectile.
+            [self.config.get_config_for_module(module_id).beta],
+            trainable=False,
+        )
+        # Add the temperature to the mapping.
+        self.temperature[module_id] = self._get_tensor_variable(
+            # Note, we want to train with a certain expectile.
+            [self.config.get_config_for_module(module_id).beta],
+            trainable=False,
+        )

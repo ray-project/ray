@@ -8,6 +8,7 @@ from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
@@ -64,7 +65,7 @@ class DefaultIQLTorchRLModule(DefaultSACTorchRLModule, DefaultIQLRLModule):
 
         return output
 
-    @override(DefaultIQLRLModule)
+    @override(ValueFunctionAPI)
     def compute_values(
         self,
         batch: Dict[str, Any],

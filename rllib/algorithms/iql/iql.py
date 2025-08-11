@@ -86,7 +86,7 @@ class IQLConfig(MARWILConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(AlgorithmConfig)
+    @override(MARWILConfig)
     def training(
         self,
         *,
@@ -118,7 +118,7 @@ class IQLConfig(MARWILConfig):
 
         return self
 
-    @override(AlgorithmConfig)
+    @override(MARWILConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.iql.torch.iql_torch_learner import IQLTorchLearner
@@ -130,7 +130,7 @@ class IQLConfig(MARWILConfig):
                 "Use `'torch'` instead."
             )
 
-    @override(AlgorithmConfig)
+    @override(MARWILConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.iql.torch.default_iql_torch_rl_module import (
@@ -144,7 +144,7 @@ class IQLConfig(MARWILConfig):
                 "Use `torch` instead."
             )
 
-    @override(AlgorithmConfig)
+    @override(MARWILConfig)
     def build_learner_connector(
         self,
         input_observation_space,
@@ -176,7 +176,7 @@ class IQLConfig(MARWILConfig):
         super().validate()
 
         # Ensure hyperparameters are meaningful.
-        if self.beta == 0.0:
+        if self.beta > 0.0:
             self._value_error(
                 "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
             )
