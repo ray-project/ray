@@ -85,10 +85,10 @@ try:
     # disabled it's deserialization by default. To ensure that users can load data
     # written with earlier version of Ray Data, we enable auto-loading of serialized
     # tensor extensions.
+    #
+    # NOTE: `PyExtensionType` is deleted from Arrow >= 21.0
     pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is None:
-        # PyArrow is mocked in documentation builds. In this case, we don't need to do
-        # anything.
+    if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
         pass
     else:
         from ray._private.ray_constants import env_bool
