@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from string import Template
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -9,7 +9,7 @@ import yaml
 @dataclass
 class BuildArgSet:
     name: str
-    build_args: dict
+    build_args: Dict[str, str]
 
 
 @dataclass
