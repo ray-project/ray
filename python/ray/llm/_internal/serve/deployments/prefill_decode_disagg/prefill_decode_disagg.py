@@ -4,10 +4,11 @@ import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from vllm.config import KVTransferConfig
 
 from ray import serve
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
-class PDServingArgs(BaseModel):
+class PDServingArgs(BaseModelExtended):
     """Schema for P/D serving args."""
 
     prefill_config: Union[str, LLMConfig]
