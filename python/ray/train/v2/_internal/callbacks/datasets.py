@@ -74,14 +74,14 @@ class DatasetManager:
         # since we only configured one dataset.
         return [iterators_per_rank[i][dataset_name] for i in range(self._world_size)]
 
-    async def _get_unsharded_dataset_iterator(
+    def _get_unsharded_dataset_iterator(
         self, dataset_info: DatasetShardMetadata
     ) -> DataIterator:
         """Returns the dataset iterator for a dataset that is excluded
         from `DataConfig.datasets_to_split`.
 
         Note that this method is NOT a barrier across workers and can be called
-        by any subset of workers.
+        by any subset of workers and will return immediately.
         """
         dataset_name = dataset_info.dataset_name
         world_rank = dataset_info.world_rank
@@ -99,7 +99,8 @@ class DatasetManager:
         """Returns the dataset iterator for a dataset that is included
         in `DataConfig.datasets_to_split`.
 
-        Note that this method is a barrier across workers.
+        Note that this method is a barrier across workers,
+        and all workers must call this method before training.
         """
         dataset_name = dataset_info.dataset_name
         world_rank = dataset_info.world_rank
@@ -153,7 +154,7 @@ class DatasetManager:
         if dataset_name in self._datasets_to_split:
             return await self._get_sharded_dataset_iterator(dataset_info)
         else:
-            return await self._get_unsharded_dataset_iterator(dataset_info)
+            return self._get_unsharded_dataset_iterator(dataset_info)
 
 
 class DatasetsSetupCallback(WorkerGroupCallback):
