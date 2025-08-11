@@ -2584,7 +2584,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,

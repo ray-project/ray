@@ -299,7 +299,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.install_failure_signal_handler = false;
   options.node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.node_manager_port = static_cast<int>(nodeManagerPort);
-  options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.driver_name = JavaStringToNativeString(env, driverName);
   options.task_execution_callback = task_execution_callback;
   options.gc_collect = gc_collect;
