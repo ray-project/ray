@@ -11,7 +11,7 @@ What's Ray Core?
     User Guides <user-guide>
     Examples <examples/overview>
     api/index
-    Internals <internals/index>
+    Internals <internals>
 
 
 Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications.
