@@ -236,6 +236,8 @@ class IPPRStatus:
     resized_at: Optional[int] = None
     resized_status: Optional[str] = None
     resized_message: Optional[str] = None
+    suggested_cpu: Optional[float] = None
+    suggested_memory: Optional[float] = None
     raylet_id: Optional[str] = None
 
 

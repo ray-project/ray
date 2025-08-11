@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -812,6 +813,30 @@ class KubeRayProvider(ICloudInstanceProvider):
                 ):
                     ippr_status.resized_message = condition.get("message", None)
                     ippr_status.resized_status = condition.get("reason", "").lower()
+                    if (
+                        ippr_status.resized_status == "deferred"
+                        and ippr_status.resized_message is not None
+                    ):
+                        match = re.search(
+                            r"Node didn't have enough resource: (cpu|memory), requested: (\d+), used: (\d+), capacity: (\d+)",
+                            ippr_status.resized_message,
+                        )
+                        if match:
+                            # used doesn't include the part used by the current pod
+                            used = int(match.group(3))
+                            capacity = int(match.group(4))
+                            # the remaining resource that can be used
+                            remaining = float(capacity - used)
+                            if match.group(1) == "cpu":
+                                diff = spec_cpu - (remaining / 1000)
+                                ippr_status.suggested_cpu = (
+                                    ippr_status.desired_cpu - diff
+                                )
+                            else:
+                                diff = spec_memory - remaining
+                                ippr_status.suggested_memory = (
+                                    ippr_status.desired_memory - diff
+                                )
                     break
                 elif (
                     condition["type"] == "PodResizeInProgress"

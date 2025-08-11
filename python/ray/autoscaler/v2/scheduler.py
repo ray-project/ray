@@ -1484,11 +1484,34 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for node in existing_nodes:
             if node.ippr_status is not None:
+                if node.ippr_status.resized_status == "deferred" and (
+                    node.ippr_status.suggested_cpu is not None
+                    or node.ippr_status.suggested_memory is not None
+                ):
+                    if node.ippr_status.suggested_cpu is not None:
+                        logger.info(
+                            f"Downsizing cpu IPPR for {node.ippr_status.cloud_instance_id} to: {node.ippr_status.desired_cpu}"
+                        )
+                        node.ippr_status.desired_cpu = node.ippr_status.suggested_cpu
+                    else:
+                        logger.info(
+                            f"Downsizing memory IPPR for {node.ippr_status.cloud_instance_id} to: {node.ippr_status.desired_memory}"
+                        )
+                        node.ippr_status.desired_memory = (
+                            node.ippr_status.suggested_memory
+                        )
+                    node.ippr_status.raylet_id = node.ray_node_id
+                    node.ippr_status.resized_at = None
+                    node.ippr_status.resized_status = "new"
+                    node.ippr_status.resized_message = None
                 if (  # Revert failed or stuck IPPR
                     node.ippr_status.resized_status == "error"
                     or node.ippr_status.resized_status == "infeasible"
                     or (
-                        node.ippr_status.resized_status == "inprogress"
+                        (
+                            node.ippr_status.resized_status == "inprogress"
+                            or node.ippr_status.resized_status == "deferred"
+                        )
                         and node.ippr_status.resized_at is not None
                         and node.ippr_status.resize_timeout
                         + node.ippr_status.resized_at
