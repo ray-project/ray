@@ -1,3 +1,13 @@
+build_arg_sets:
+  - name: py311_cpu
+    build_args:
+      CUDA_VERSION: cpu
+      PYTHON_VERSION: py311
+  - name: py311_cuda128
+    build_args:
+      CUDA_VERSION: 128
+      PYTHON_VERSION: py311
+
 depsets:
   - name: ray_base_test_depset
     operation: compile

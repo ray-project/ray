@@ -28,7 +28,6 @@
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/flatbuffers/node_manager_generated.h"
 
 namespace ray {
 
