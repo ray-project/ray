@@ -1,10 +1,9 @@
-import yaml
-from dataclasses import dataclass, field
-from typing import List, Optional
 import os
+from dataclasses import dataclass, field
 from string import Template
+from typing import Any, List, Optional
 
-from typing import Any
+import yaml
 
 
 @dataclass

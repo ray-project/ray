@@ -230,6 +230,7 @@ import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
+from ray._common.network_utils import build_address, parse_address
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
 
@@ -1088,7 +1089,8 @@ cdef store_task_errors(
         proctitle,
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error):
+        c_string* application_error,
+        CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -1134,7 +1136,9 @@ cdef store_task_errors(
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
         caller_address,
-        returns)
+        returns,
+        None,  # ref_generator_id
+        c_tensor_transport)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -2121,7 +2125,7 @@ cdef void execute_task(
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error)
+                    task_type, title, caller_address, returns, application_error, c_tensor_transport)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -2802,7 +2806,7 @@ cdef class _GcsSubscriber:
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        gcs_address, gcs_port = address.split(":")
+        gcs_address, gcs_port = parse_address(address)
         self.inner.reset(new CPythonGcsSubscriber(
             gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
 
