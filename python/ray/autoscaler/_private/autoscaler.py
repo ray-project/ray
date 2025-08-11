@@ -635,10 +635,10 @@ class StandardAutoscaler:
         # For type checking, assert that this object has been instantitiated.
         assert self.provider
 
-        # The GCS expects Raylet ids in the request, rather than NodeProvider
-        # ids. To get the Raylet ids of the nodes to we're draining, we make
+        # The GCS expects Node ids in the request, rather than NodeProvider
+        # ids. To get the Node ids of the nodes to we're draining, we make
         # the following translations of identifiers:
-        # node provider node id -> ip -> raylet id
+        # node provider node id -> ip -> node id
 
         # Convert node provider node ids to ips.
         node_ips = set()
@@ -662,7 +662,7 @@ class StandardAutoscaler:
         # LoadMetrics.
         connected_node_ips = node_ips & self.load_metrics.node_id_by_ip.keys()
 
-        # Convert ips to Raylet ids.
+        # Convert ips to Node ids.
         # (The assignment ip->node_id is well-defined under current
         # assumptions. See "use_node_id_as_ip" in monitor.py)
         node_ids_to_drain = {

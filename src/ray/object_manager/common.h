@@ -216,7 +216,7 @@ struct ObjectInfo {
   bool is_mutable = false;
   int64_t data_size = 0;
   int64_t metadata_size = 0;
-  /// Owner's raylet ID.
+  /// Owner's node ID.
   NodeID owner_node_id;
   /// Owner's IP address.
   std::string owner_ip_address;

@@ -142,12 +142,12 @@ class MockGcsClient:
 
 
 def mock_node_id() -> bytes:
-    """Random raylet id to pass to load_metrics.update."""
+    """Random node id to pass to load_metrics.update."""
     return os.urandom(10)
 
 
 def fill_in_node_ids(provider, load_metrics) -> None:
-    """Raylet ids for each ip are usually obtained by polling the GCS
+    """Node ids for each ip are usually obtained by polling the GCS
     in monitor.py. For test purposes, we sometimes need to manually fill
     these fields with mocks.
     """
