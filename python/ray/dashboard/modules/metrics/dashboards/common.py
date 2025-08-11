@@ -414,18 +414,6 @@ class Row:
 
 
 @dataclass
-class PanelIdGenerator:
-    """Generates monotonically increasing PanelIds.
-    This should be instantiated at the top of each panel file."""
-
-    _counter: int = field(default=0)
-
-    def next(self):
-        self._counter += 1
-        return self._counter
-
-
-@dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars
     # to check for customization
