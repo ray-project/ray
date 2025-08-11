@@ -91,19 +91,17 @@ class WorkerGroupPollStatus:
         errors = []
         for normalized_error, ranks in normalized_error_to_ranks.items():
             # Show the original error if there were no duplicates
-            error = (
-                normalized_error
-                if len(ranks) > 1
-                else normalized_error_to_original[normalized_error]
-            )
+            orig_error = normalized_error_to_original[normalized_error]
 
             # Convert rank list to comma-separated strings
             ranks_str = ", ".join(ranks)
 
             if normalized_error in show_full_error:
-                errors.append(f"[Rank {ranks_str}]:\n{error}")
+                errors.append(f"[Rank {ranks_str}]:\n{orig_error}")
             else:
-                errors.append(f"[Rank {ranks_str}]:\n{_truncate_error_string(error)}")
+                errors.append(
+                    f"[Rank {ranks_str}]:\n{_truncate_error_string(orig_error)}"
+                )
 
         error_str = "\n".join(errors)
 
