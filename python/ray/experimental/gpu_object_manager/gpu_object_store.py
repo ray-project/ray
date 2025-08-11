@@ -26,7 +26,7 @@ COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
 }
 
 try:
-    import torch_npu
+    import torch_npu  # noqa: F401
 
     COLLECTIVE_BACKEND_TO_TORCH_DEVICE[Backend.HCCL] = torch.device("npu")
 except ImportError:
