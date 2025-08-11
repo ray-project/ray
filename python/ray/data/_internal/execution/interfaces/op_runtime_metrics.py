@@ -330,7 +330,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     num_external_inqueue_bytes: int = metric_field(
         default=0,
-        description="Byte size of blocks in the output queue",
+        description="Byte size of blocks in the external inqueue",
         metrics_group=MetricsGroup.OUTPUTS,
     )
 
