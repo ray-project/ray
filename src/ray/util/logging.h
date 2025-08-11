@@ -96,6 +96,7 @@ inline constexpr std::string_view kLogKeyMessage = "message";
 inline constexpr std::string_view kLogKeyFilename = "filename";
 inline constexpr std::string_view kLogKeyLineno = "lineno";
 inline constexpr std::string_view kLogKeyComponent = "component";
+inline constexpr std::string_view kLogKeyClusterID = "cluster_id";
 inline constexpr std::string_view kLogKeyJobID = "job_id";
 inline constexpr std::string_view kLogKeyWorkerID = "worker_id";
 inline constexpr std::string_view kLogKeyNodeID = "node_id";
@@ -138,11 +139,14 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK_WITH_DISPLAY(condition, display)                                 \
-  RAY_PREDICT_TRUE((condition))                                                    \
-  ? RAY_IGNORE_EXPR(0)                                                             \
-  : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                        << " Check failed: " display " ")
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                      \
+  RAY_PREDICT_TRUE((condition))                                                         \
+  ? RAY_IGNORE_EXPR(0)                                                                  \
+  : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL)      \
+                        << " An unexpected system state has occurred. You have likely " \
+                           "discovered a bug in Ray. Please report this issue at "      \
+                           "https://github.com/ray-project/ray/issues and we'll work "  \
+                           "with you to fix it. Check failed: " display " ")
 
 #define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
