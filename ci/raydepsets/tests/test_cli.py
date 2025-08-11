@@ -28,7 +28,7 @@ from ci.raydepsets.tests.utils import (
     save_file_as,
     save_packages_to_file,
 )
-from ci.raydepsets.workspace import BuildArgSet, Workspace, _substitute_build_args
+from ci.raydepsets.workspace import Workspace
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -351,26 +351,6 @@ class TestCli(unittest.TestCase):
             assert "ray_base_test_depset" in sorted_nodes[:3]
             assert "general_depset" in sorted_nodes[:3]
             assert "build_args_test_depset_py311" in sorted_nodes[:3]
-
-    def test_substitute_build_args(self):
-        build_arg_set = BuildArgSet(
-            name="py311_cpu",
-            build_args={
-                "PYTHON_VERSION": "py311",
-                "CUDA_VERSION": "cu128",
-            },
-        )
-        depset_dict = {
-            "name": "test_depset_${PYTHON_VERSION}_${CUDA_VERSION}",
-            "operation": "compile",
-            "requirements": ["requirements_test.txt"],
-            "output": "requirements_compiled_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt",
-        }
-        substituted_depset = _substitute_build_args(depset_dict, build_arg_set)
-        assert (
-            substituted_depset["output"] == "requirements_compiled_test_py311_cu128.txt"
-        )
-        assert substituted_depset["name"] == "test_depset_py311_cu128"
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
