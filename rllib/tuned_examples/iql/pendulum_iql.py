@@ -59,16 +59,19 @@ config = (
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration. For single-learner mode, 1 is the only option.
+        # iteration.
         dataset_num_iters_per_learner=5,
     )
     .training(
         # To increase learning speed with multiple learners,
-        # increase the learning rate correspondingly.
-        actor_lr=3e-5 * (args.num_learners or 1) ** 0.5,
-        critic_lr=3e-4 * (args.num_learners or 1) ** 0.5,
-        value_lr=1e-4 * (args.num_learners or 1) ** 0.5,
-        tau=0.0006,
+        # increase the learning rates correspondingly.
+        actor_lr=2.85e-4 * (args.num_learners or 1) ** 0.5,
+        critic_lr=4e-5 * (args.num_learners or 1) ** 0.5,
+        value_lr=5.7e-5 * (args.num_learners or 1) ** 0.5,
+        # Smooth Polyak-averaging for the target network.
+        tau=1.8e-3,
+        # Update the target network each training iteration.
+        target_network_update_freq=1,
         train_batch_size_per_learner=1024,
     )
     .rl_module(
