@@ -14,6 +14,10 @@
 
 #include "ray/common/task/task_spec.h"
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 
@@ -202,7 +206,7 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
         /*is_asyncio=*/false,
         /*concurrency_groups=*/{},
         /*extension_data=*/"",
-        /*execute_out_of_order=*/false,
+        /*allow_out_of_order_execution=*/false,
         /*root_detached_actor_id=*/ActorID::Nil());
     ASSERT_TRUE(
         std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId().IsNil());
@@ -223,7 +227,7 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
                                                 /*is_asyncio=*/false,
                                                 /*concurrency_groups=*/{},
                                                 /*extension_data=*/"",
-                                                /*execute_out_of_order=*/false,
+                                                /*allow_out_of_order_execution=*/false,
                                                 /*root_detached_actor_id=*/actor_id);
     ASSERT_EQ(std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
               actor_id);

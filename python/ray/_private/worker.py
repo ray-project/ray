@@ -101,7 +101,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
-    import torch
+    from ray.experimental.gpu_object_manager import GPUObject
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -870,7 +870,7 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        out_of_band_tensors: Dict[str, List["torch.Tensor"]] = {}
+        gpu_objects: Dict[str, GPUObject] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
@@ -881,9 +881,11 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            out_of_band_tensors[
-                object_id
-            ] = self.gpu_object_manager.get_out_of_band_tensors(object_id)
+            if object_id not in gpu_objects:
+                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                    object_id
+                )
+            gpu_objects[object_id].num_readers += 1
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -892,7 +894,7 @@ class Worker:
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(
-                serialized_objects, object_refs, out_of_band_tensors
+                serialized_objects, object_refs, gpu_objects
             )
 
     def get_objects(
@@ -1445,7 +1447,7 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Debugger instead.
+        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1761,7 +1763,7 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "For debugging consider using Ray debugger. ",
+            " For debugging consider using Ray Distributed Debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -3639,6 +3641,11 @@ def remote(
             the default value is 3, and a value of -1 indicates
             infinite retries.
             See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+        allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+            tasks out of order. If you're using multi-threaded (``max_concurrency > 1``)
+            or async actors, you can't set this to False. Defaults to True if you're
+            using multi-threaded or async actors, and False otherwise. Actor task
+            retries are always executed out of order.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
