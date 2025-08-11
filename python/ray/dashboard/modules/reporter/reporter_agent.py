@@ -30,6 +30,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
 )
+from ray._common.network_utils import parse_address
 from ray._private.utils import get_system_memory
 from ray.dashboard.modules.reporter.gpu_providers import (
     GpuMetricProvider,
@@ -417,7 +418,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -989,7 +990,9 @@ class ReporterAgent(
         if self._gcs_pid:
             gcs_proc = psutil.Process(self._gcs_pid)
             if gcs_proc:
-                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary = gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary["cpu_percent"] = gcs_proc.cpu_percent(interval=1)
+                return dictionary
         return {}
 
     def _get_raylet(self):
@@ -1319,10 +1322,12 @@ class ReporterAgent(
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
-        is_head_node = str(self._is_head_node).lower()
+        ray_node_type = "head" if self._is_head_node else "worker"
+        is_head_node = "true" if self._is_head_node else "false"
 
         # Common tags for node-level metrics
-        node_tags = {"ip": ip, "IsHeadNode": is_head_node}
+        # We use RayNodeType to mark head/worker node, IsHeadNode is retained for backward compatibility
+        node_tags = {"ip": ip, "RayNodeType": ray_node_type, "IsHeadNode": is_head_node}
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node

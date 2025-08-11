@@ -45,9 +45,10 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
-#include "ray/core_worker/transport/task_receiver.h"
+#include "ray/core_worker/task_execution/task_receiver.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/raylet_ipc_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -175,23 +176,24 @@ class CoreWorker {
              std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-             std::shared_ptr<PeriodicalRunner> periodical_runner,
+             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<raylet::RayletClient> local_raylet_client,
+             std::shared_ptr<ray::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-             std::shared_ptr<experimental::MutableObjectProvider>
+             std::shared_ptr<experimental::MutableObjectProviderInterface>
                  experimental_mutable_object_provider,
              std::unique_ptr<FutureResolver> future_resolver,
              std::shared_ptr<TaskManager> task_manager,
              std::shared_ptr<ActorCreatorInterface> actor_creator,
              std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
-             std::unique_ptr<pubsub::Publisher> object_info_publisher,
-             std::unique_ptr<pubsub::Subscriber> object_info_subscriber,
+             std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+             std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
              std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
              std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
              std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
@@ -232,7 +234,6 @@ class CoreWorker {
   /// \param exit_detail The detailed reason for a given exit.
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
-  /// \return Void.
   void Disconnect(const rpc::WorkerExitType &exit_type,
                   const std::string &exit_detail,
                   const std::shared_ptr<LocalMemoryBuffer>
@@ -243,11 +244,9 @@ class CoreWorker {
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
-  /// \return void.
   void Shutdown();
 
   /// Start receiving and executing tasks.
-  /// \return void.
   void RunTaskExecutionLoop();
 
   const WorkerID &GetWorkerID() const;
@@ -1022,14 +1021,6 @@ class CoreWorker {
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
 
-  int64_t GetNumTasksSubmitted() const {
-    return normal_task_submitter_->GetNumTasksSubmitted();
-  }
-
-  int64_t GetNumLeasesRequested() const {
-    return normal_task_submitter_->GetNumLeasesRequested();
-  }
-
  public:
   friend class CoreWorkerProcessImpl;
 
@@ -1299,7 +1290,6 @@ class CoreWorker {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_user_callback The user-provided Python callback object that
   /// will be called inside of `success_callback`.
-  /// \return void
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
                 void *python_user_callback);
@@ -1735,7 +1725,7 @@ class CoreWorker {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1749,11 +1739,11 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  // Client to the raylet shared by core worker interfaces. This needs to be a
-  // shared_ptr for direct calls because we can lease multiple workers through
-  // one client, and we need to keep the connection alive until we return all
-  // of the workers.
-  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
+  // Client to the local Raylet that goes over a local socket.
+  std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client_;
+
+  // Client to the local Raylet that goes over a gRPC connection.
+  std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
@@ -1772,7 +1762,7 @@ class CoreWorker {
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// Manages mutable objects that must be transferred across nodes.
-  std::shared_ptr<experimental::MutableObjectProvider>
+  std::shared_ptr<experimental::MutableObjectProviderInterface>
       experimental_mutable_object_provider_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
@@ -1791,10 +1781,10 @@ class CoreWorker {
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
+  std::unique_ptr<pubsub::PublisherInterface> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
+  std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber_;
 
   // Rate limit the concurrent pending lease requests for submitting
   // tasks.
@@ -1937,18 +1927,5 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
-};
-
-// Lease request rate-limiter based on cluster node size.
-// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
-class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
- public:
-  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
-  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeInfo &data);
-
- private:
-  const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
 };
 }  // namespace ray::core

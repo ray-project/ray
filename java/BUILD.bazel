@@ -195,6 +195,17 @@ java_library(
     ],
 )
 
+# This is a local java test rule. It needs generated files to be copied into
+# the source tree before running. To build and generate ray core (gcs and
+# raylet), run `bazelisk run //:gen_ray_pkg` first.
+#
+# This rule used to depend on local genrules, which are deprecated. Reason
+# being that local genrules are build rules and do not capture changes in
+# source tree, and hence cannot be cached by bazel remote cache. Using local
+# genrule forces bazel to effectively disable caching globally to have a
+# correct build.
+#
+# TODO(ray-ci): covert java tests to non-local, hermetic tests.
 java_test(
     name = "all_tests",
     testonly = True,
@@ -202,7 +213,7 @@ java_test(
     data = [
         "testng.xml",
         ":ray_java_pkg",
-        "//:ray_pkg",
+        "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
     resources = [
@@ -216,15 +227,16 @@ java_test(
 )
 
 # 0. `cp testng_custom_template.xml testng_custom.xml`
-# 1. Specify test class/method in `testng_custom.xml`
-# 2. `bazel test //java:custom_test --test_output=streamed`
+# 1. `bazel run //:gen_ray_pkg`
+# 2. Specify test class/method in `testng_custom.xml`
+# 3. `bazel test //java:custom_test --test_output=streamed`
 java_test(
     name = "custom_test",
     args = ["java/testng_custom.xml"],
     data = [
         "testng_custom.xml",
         ":ray_java_pkg",
-        "//:ray_pkg",
+        "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
     tags = ["local"],
@@ -280,7 +292,7 @@ filegroup(
 pkg_files(
     name = "api_pom_files",
     srcs = ["io_ray_ray_api_pom"],
-    prefix = "java/api/",
+    prefix = "api/",
     renames = {
         "io_ray_ray_api_pom.xml": "pom.xml",
     },
@@ -290,7 +302,7 @@ pkg_files(
 pkg_files(
     name = "runtime_pom_files",
     srcs = ["io_ray_ray_runtime_pom"],
-    prefix = "java/runtime/",
+    prefix = "runtime/",
     renames = {
         "io_ray_ray_runtime_pom.xml": "pom.xml",
     },
@@ -300,7 +312,7 @@ pkg_files(
 pkg_files(
     name = "test_pom_files",
     srcs = ["io_ray_ray_test_pom"],
-    prefix = "java/test/",
+    prefix = "test/",
     renames = {
         "io_ray_ray_test_pom.xml": "pom.xml",
     },
@@ -310,7 +322,7 @@ pkg_files(
 pkg_files(
     name = "performance_test_pom_files",
     srcs = ["io_ray_ray_performance_test_pom"],
-    prefix = "java/performance_test/",
+    prefix = "performance_test/",
     renames = {
         "io_ray_ray_performance_test_pom.xml": "pom.xml",
     },
@@ -320,7 +332,7 @@ pkg_files(
 pkg_files(
     name = "serve_pom_files",
     srcs = ["io_ray_ray_serve_pom"],
-    prefix = "java/serve/",
+    prefix = "serve/",
     renames = {
         "io_ray_ray_serve_pom.xml": "pom.xml",
     },
@@ -339,29 +351,22 @@ pkg_zip(
     visibility = ["//visibility:private"],
 )
 
-genrule(
-    name = "copy_pom_files",
-    srcs = [
-        ":pom_files.zip",
-    ],
-    outs = ["copy_pom_files.sum"],
-    cmd = """
-        unzip -q -o $(location :pom_files.zip) -d "$$(pwd)" &&
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
-    """,
-    local = 1,
-    tags = ["no-cache"],
+py_binary(
+    name = "gen_pom_files",
+    srcs = ["gen_pom_files.py"],
+    data = [":pom_files.zip"],
     visibility = ["//visibility:private"],
+    deps = ["//bazel:gen_extract"],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
-    name = "cp_java_generated_zip",
+    name = "proto_files",
     srcs = [
         ":all_java_proto",
         ":serve_java_proto",
     ],
-    outs = ["cp_java_generated.zip"],
+    outs = ["proto_files.zip"],
     cmd = """
         set -euo pipefail
 
@@ -377,40 +382,28 @@ genrule(
             unzip -q "$$f" -x META-INF/MANIFEST.MF -d "$$tmpdir/java/serve/src/main/java"
         done
 
-        (cd "$$tmpdir"; zip -0 -q -r out.zip "java")
-        mv "$$tmpdir/out.zip" $@
+        (cd "$$tmpdir/java"; zip -0 -q -r out.zip runtime serve)
+        mv "$$tmpdir/java/out.zip" $@
 
         rm -rf "$$tmpdir"
     """,
     visibility = ["//visibility:private"],
 )
 
-genrule(
-    name = "cp_java_generated",
-    srcs = [
-        ":cp_java_generated_zip",
-    ],
-    outs = ["cp_java_generated.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)"
-
-        rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
-        rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
-
-        unzip -q -o $(location :cp_java_generated_zip) -d "$$WORK_DIR"
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
-    """,
-    local = 1,
-    tags = ["no-cache"],
+py_binary(
+    name = "gen_proto_files",
+    srcs = ["gen_proto_files.py"],
+    data = [":proto_files.zip"],
     visibility = ["//visibility:private"],
+    deps = ["//bazel:gen_extract"],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":copy_pom_files",
-        ":cp_java_generated",
+        ":pom_files.zip",
+        ":proto_files.zip",
         ":java_native_deps",
     ],
     outs = ["gen_maven_deps.out"],
