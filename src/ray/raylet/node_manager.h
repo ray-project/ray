@@ -287,7 +287,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
   // resources well.
   void ReleaseWorker(const LeaseID &lease_id) {
-    if (leased_workers_[lease_id]) {
+    if (leased_workers_.contains(lease_id)) {
       leased_workers_[lease_id]->AssignLeaseId(LeaseID::Nil());
     }
     leased_workers_.erase(lease_id);
