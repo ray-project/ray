@@ -1,14 +1,9 @@
 from typing import List, Optional, Sequence
 
-from python.ray.llm._internal.serve.deployments.data_parallel.dp_server import DPServer
-
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LLMServingArgs,
-)
-from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
-    DPRankAssigner,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.deployments.routers.router import (
@@ -27,10 +22,6 @@ def build_llm_deployment(
     name_prefix: Optional[str] = None,
     deployment_kwargs: Optional[dict] = None,
 ) -> Application:
-    dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
-    if dp_size > 1:
-        return build_dp_deployment(llm_config, name_prefix=name_prefix)
-
     name_prefix = name_prefix or "LLMDeployment:"
     deployment_kwargs = deployment_kwargs or {}
 
@@ -39,39 +30,6 @@ def build_llm_deployment(
     )
     return LLMDeployment.options(**deployment_options).bind(
         llm_config=llm_config, **deployment_kwargs
-    )
-
-
-def build_dp_deployment(
-    llm_config: LLMConfig,
-    *,
-    name_prefix: Optional[str] = None,
-) -> Application:
-    """Build a data parallel LLM deployment."""
-
-    dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
-    dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
-    name_prefix = name_prefix or "DPLLMDeployment:"
-    name = name_prefix + llm_config._get_deployment_name()
-    if "num_replicas" in llm_config.deployment_config:
-        raise ValueError(
-            "num_replicas should not be specified for DP deployment, "
-            "use engine_kwargs.data_parallel_size instead."
-        )
-    if "autoscaling_config" in llm_config.deployment_config:
-        raise ValueError(
-            "autoscaling_config is not supported for DP deployment, "
-            "use engine_kwargs.data_parallel_size to set a fixed number "
-            "of replicas instead."
-        )
-    # TODO(rui): support data_parallel_backend=ray and unify
-    # deployment_options handling with LLMDeployment.
-    deployment_options = {
-        "name": name,
-        "num_replicas": dp_size,
-    }
-    return DPServer.as_deployment(deployment_options).bind(
-        llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
     )
 
 
