@@ -6,6 +6,7 @@ import argparse
 import uuid
 import time
 from typing import Dict, List
+from numpy import ndarray
 
 import ray
 import torch
@@ -37,22 +38,22 @@ def parse_args():
         "--read-concurrency",
         type=int,
         default=None,
-        help="Number of concurrent readers for binary files",
+        help="Number of concurrent readers for input files",
     )
     parser.add_argument(
         "--num-blocks",
         type=int,
         default=None,
-        help="Number of blocks to override for binary read",
+        help="Number of blocks to override for input file reading",
     )
     parser.add_argument(
-        "--process-concurrency",
+        "--chunk-concurrency",
         type=int,
-        default=None,
-        help="Concurrency for process_file stage",
+        default=20,
+        help="Concurrency for Chunker stage",
     )
     parser.add_argument(
-        "--process-cpus", type=int, default=None, help="CPUs for process_file stage"
+        "--chunk-cpus", type=int, default=None, help="Number of CPUs per Chunker"
     )
     parser.add_argument(
         "--chunk-method",
@@ -88,7 +89,7 @@ def parse_args():
         "--model-name",
         type=str,
         default="Salesforce/SFR-Embedding-Mistral",
-        help="SentenceTransformer model name",
+        help="Embedding model name",
     )
     parser.add_argument(
         "--smoke-test",
@@ -133,17 +134,11 @@ class Embedder:
             model_name, device="cuda" if torch.cuda.is_available() else "cpu"
         )
 
-    def __call__(self, batch: Dict) -> Dict:
-        embeddings = self.model.encode(
+    def __call__(self, batch: Dict[str, ndarray]) -> Dict[str, ndarray]:
+        batch["embeddings"] = self.model.encode(
             batch["text"], convert_to_numpy=True, batch_size=len(batch["text"])
         )
-        return {
-            "embeddings": embeddings,
-            "text": batch["text"],
-            "source": batch["source"],
-            "doc_id": batch["doc_id"],
-            "chunk_id": batch["chunk_id"],
-        }
+        return batch
 
 
 def main(args):
@@ -163,8 +158,8 @@ def main(args):
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap,
         ),
-        concurrency=args.process_concurrency,
-        num_cpus=args.process_cpus,
+        concurrency=args.chunk_concurrency,
+        num_cpus=args.chunk_cpus,
     )
     ds = ds.map_batches(
         Embedder,
