@@ -990,7 +990,9 @@ class ReporterAgent(
         if self._gcs_pid:
             gcs_proc = psutil.Process(self._gcs_pid)
             if gcs_proc:
-                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary = gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary["cpu_percent"] = gcs_proc.cpu_percent(interval=1)
+                return dictionary
         return {}
 
     def _get_raylet(self):
