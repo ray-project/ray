@@ -93,8 +93,9 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        from vllm.engine.arg_utils import AsyncEngineArgs
-
+        # TODO(lk-chen): Remove the logic once we require vllm>=0.10.1
+        # vLLM 0.10.1 replaces `disable_log_requests` with
+        # `enable_log_requests`. Here we are trying to be compatible with both.
         both_log_flags_set = (
             "disable_log_requests" in engine_kwargs
             and "enable_log_requests" in engine_kwargs
