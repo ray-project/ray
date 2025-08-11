@@ -81,6 +81,12 @@ configure_logging()
 try:
     import pyarrow as pa
 
+    # Import these arrow extension types to ensure that they are registered.
+    from ray.air.util.tensor_extensions.arrow import (  # noqa
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+    )
+
     # https://github.com/apache/arrow/pull/38608 deprecated `PyExtensionType`, and
     # disabled it's deserialization by default. To ensure that users can load data
     # written with earlier version of Ray Data, we enable auto-loading of serialized
@@ -102,11 +108,7 @@ try:
             and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
         ):
             pa.PyExtensionType.set_auto_load(True)
-        # Import these arrow extension types to ensure that they are registered.
-        from ray.air.util.tensor_extensions.arrow import (  # noqa
-            ArrowTensorType,
-            ArrowVariableShapedTensorType,
-        )
+
 except ModuleNotFoundError:
     pass
 
