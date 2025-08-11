@@ -91,17 +91,19 @@ message AutoscalingConfig {
   optional AutoscalingPolicyConfig custom_policy = 17;
 
   // Custom Prometheus metrics for autoscaling.
-  repeated PrometheusMetric prometheus_custom_metrics = 18;
+  // Wrapped in a message to preserve presence (None vs empty list) to match
+  // Python type Optional[List[Tuple[str, str]]].
+  optional PrometheusCustomMetrics prometheus_custom_metrics = 18;
 }
 
 // Configuration for custom autoscaling policies.
 message AutoscalingPolicyConfig {
   // Name or import path of the policy function.
   string name = 1;
-  
+
   // Timeout for policy execution in seconds.
   double timeout_s = 2;
-  
+
   // Whether to run in dry-run mode.
   bool dry_run = 3;
 }
@@ -110,9 +112,15 @@ message AutoscalingPolicyConfig {
 message PrometheusMetric {
   // Metric name.
   string metric_name = 1;
-  
+
   // Metric query/promql expression.
   string query = 2;
+}
+
+// Wrapper for a list of Prometheus metrics to enable presence semantics
+// (field set vs unset) in proto3.
+message PrometheusCustomMetrics {
+  repeated PrometheusMetric metrics = 1;
 }
 
 //[Begin] LOGGING CONFIG
