@@ -109,4 +109,4 @@
 
 /.github/workflows/ @ray-project/ray-ci
 
-.gemini/ @edoakes @aslonnie
+/.gemini/ @edoakes @aslonnie
