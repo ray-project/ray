@@ -33,6 +33,7 @@ DEFAULT_INSTALL_COMMANDS = [
     "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
 ]
 
+
 @click.command()
 @click.option(
     "--test-collection-file",
@@ -120,10 +121,14 @@ def main(
         )
         logger.info(f"To be built: {custom_byod_image_build[0]}")
         custom_byod_images.add(custom_byod_image_build)
-    create_custom_build_yaml(".buildkite/release/custom_byod_build.rayci.yml", list(custom_byod_images))
+    create_custom_build_yaml(
+        ".buildkite/release/custom_byod_build.rayci.yml", list(custom_byod_images)
+    )
 
 
-def create_custom_build_yaml(destination_file: str, custom_byod_images: List[Tuple[str, str, str]]) -> None:
+def create_custom_build_yaml(
+    destination_file: str, custom_byod_images: List[Tuple[str, str, str]]
+) -> None:
     """Create a yaml file for building custom BYOD images."""
     if not custom_byod_images:
         return
@@ -136,7 +141,10 @@ def create_custom_build_yaml(destination_file: str, custom_byod_images: List[Tup
         step = {
             "label": f":tapioca: build custom: {image}",
             "key": "custom_build_"
-            + image.replace("/", "_").replace(":", "_").replace(".", "_").replace("-", "_")[-40:],
+            + image.replace("/", "_")
+            .replace(":", "_")
+            .replace(".", "_")
+            .replace("-", "_")[-40:],
             "instance_type": "release-medium",
             "commands": [
                 *DEFAULT_INSTALL_COMMANDS,
