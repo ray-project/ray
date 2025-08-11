@@ -230,9 +230,14 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
-    policy: Optional[AutoscalingPolicyConfig] = Field(
+    # Custom autoscaling config. This policy is deployment scoped. Defaults to the request-based autoscaler.
+    _policy: Optional[AutoscalingPolicyConfig] = Field(
         default_factory=AutoscalingPolicyConfig
-    )  # Custom autoscaling config. This policy is deployment scoped. Defaults to the request-based autoscaler.
+    )
+
+    # This is to make `_policy` a normal field until its GA ready.
+    class Config:
+        underscore_attrs_are_private = True
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -296,8 +301,7 @@ class AutoscalingConfig(BaseModel):
         if not self._serialized_policy_def:
             self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
 
-        if self.policy is not None:
-            self.policy.name = policy_name
+        self._policy = AutoscalingPolicyConfig(name=policy_name)
 
     @classmethod
     def default(cls):

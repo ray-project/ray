@@ -69,7 +69,7 @@ message AutoscalingConfig {
 
   // The import path of the policy if user passed a string. Will be the concatenation
   // of the policy module and the policy name if user passed a callable.
-  AutoscalingPolicyConfig policy = 12;
+  AutoscalingPolicyConfig _policy = 12;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas

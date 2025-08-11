@@ -91,10 +91,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "policy": {"name": policy},
+        "_policy": {"name": policy},
     }
     if policy is None:
-        autoscaling_config.pop("policy")
+        autoscaling_config.pop("_policy")
 
     policy_name = DEFAULT_AUTOSCALING_POLICY
     if isinstance(policy, types.FunctionType):
@@ -184,7 +184,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
-                                    "policy": {"name": policy_name},
+                                    "_policy": {"name": policy_name},
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
