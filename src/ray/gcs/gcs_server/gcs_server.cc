@@ -391,8 +391,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
           // GetOrConnectionByID will not connect to the raylet is it hasn't been
           // connected.
-          if (auto conn_opt = raylet_client_pool_.GetByID(alive_node.first)) {
-            raylet_client = conn_opt;
+          if (auto raylet_client_opt = raylet_client_pool_.GetByID(alive_node.first)) {
+            raylet_client = raylet_client_opt;
           } else {
             // When not connect, use GetOrConnectByAddress
             auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(

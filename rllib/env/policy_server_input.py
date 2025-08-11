@@ -20,6 +20,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sampler import SamplerInput
 from ray.rllib.utils.typing import SampleBatchType
+from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
@@ -175,14 +176,15 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             time.sleep(1)
             HTTPServer.__init__(self, (address, port), handler)
         except OSError:
-            print(f"Creating a PolicyServer on {address}:{port} failed!")
+            print(f"Creating a PolicyServer on {build_address(address, port)} failed!")
             import time
 
             time.sleep(1)
             raise
 
         logger.info(
-            "Starting connector server at " f"{self.server_name}:{self.server_port}"
+            "Starting connector server at "
+            f"{build_address(self.server_name, self.server_port)}"
         )
 
         # Start the serving thread, listening on socket and handling commands.
