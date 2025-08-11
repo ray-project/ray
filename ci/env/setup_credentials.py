@@ -7,9 +7,10 @@ then be sourced to run bazel test with.
 export WANDB_API_KEY=abcd
 export COMET_API_KEY=efgh
 """
-import boto3
 import json
 import sys
+
+import boto3
 
 AWS_AIR_SECRETS_ARN = (
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
@@ -25,6 +26,12 @@ def get_ray_air_secrets(client):
 SERVICES = {
     "wandb_key": "WANDB_API_KEY",
     "comet_ml_token": "COMET_API_KEY",
+    "snowflake_schema": "SNOWFLAKE_SCHEMA",
+    "snowflake_database": "SNOWFLAKE_DATABASE",
+    "snowflake_user": "SNOWFLAKE_USER",
+    "snowflake_account": "SNOWFLAKE_ACCOUNT",
+    "snowflake_warehouse": "SNOWFLAKE_WAREHOUSE",
+    "snowflake_private_key": "SNOWFLAKE_PRIVATE_KEY",
 }
 
 

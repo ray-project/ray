@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "ray/common/constants.h"

@@ -22,12 +22,13 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -113,7 +114,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
 Raylet::~Raylet() {}
 
 void Raylet::Start() {
-  RAY_CHECK_OK(RegisterGcs());
+  RegisterGcs();
 
   // Start listening for clients.
   DoAccept();
@@ -129,21 +130,22 @@ void Raylet::Stop() {
   acceptor_.close();
 }
 
-ray::Status Raylet::RegisterGcs() {
+void Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
                   << " started. Raylet consists of node_manager and object_manager."
-                  << " node_manager address: " << self_node_info_.node_manager_address()
-                  << ":" << self_node_info_.node_manager_port()
-                  << " object_manager address: " << self_node_info_.node_manager_address()
-                  << ":" << self_node_info_.object_manager_port()
+                  << " node_manager address: "
+                  << BuildAddress(self_node_info_.node_manager_address(),
+                                  self_node_info_.node_manager_port())
+                  << " object_manager address: "
+                  << BuildAddress(self_node_info_.node_manager_address(),
+                                  self_node_info_.object_manager_port())
                   << " hostname: " << self_node_info_.node_manager_hostname();
-    RAY_CHECK_OK(node_manager_.RegisterGcs());
+    node_manager_.RegisterGcs();
   };
 
-  RAY_RETURN_NOT_OK(gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback));
-  return Status::OK();
+  RAY_CHECK_OK(gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback));
 }
 
 void Raylet::DoAccept() {

@@ -2,17 +2,17 @@ import json
 import os
 import platform
 import sys
-import pytest
 import tempfile
-from unittest import mock
 from typing import List, Optional
+from unittest import mock
 
+import pytest
+from ray_release.configs.global_config import get_global_config
+
+from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import RUN_PER_FLAKY_TEST
 from ci.ray_ci.utils import chunk_into_n, ci_init
-from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
-from ray_release.configs.global_config import get_global_config
-
 
 ci_init()
 
