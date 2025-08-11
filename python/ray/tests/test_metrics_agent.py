@@ -38,6 +38,7 @@ from ray._private.test_utils import (
     raw_metrics,
     find_free_port,
 )
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
@@ -258,11 +259,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     for node_info in node_info_list:
         metrics_export_port = node_info["MetricsExportPort"]
         addr = node_info["NodeManagerAddress"]
-        prom_addresses.append(f"{addr}:{metrics_export_port}")
-    autoscaler_export_addr = "{}:{}".format(
+        prom_addresses.append(build_address(addr, metrics_export_port))
+    autoscaler_export_addr = build_address(
         cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
     )
-    dashboard_export_addr = "{}:{}".format(
+    dashboard_export_addr = build_address(
         cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
     )
     yield prom_addresses, autoscaler_export_addr, dashboard_export_addr
@@ -420,7 +421,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
     addr = ray.init()
-    dashboard_export_addr = "{}:{}".format(
+    dashboard_export_addr = build_address(
         addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
     )
 
@@ -494,7 +495,7 @@ def test_metrics_export_event_aggregator_agent(
 
     metrics_export_port = cluster.head_node.metrics_export_port
     addr = cluster.head_node.raylet_ip_address
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+    prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
@@ -559,8 +560,7 @@ def test_metrics_export_event_aggregator_agent(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
@@ -949,14 +949,14 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
     def get_metrics_export_address_from_node(nodes):
         node_export_addrs = [
-            "{}:{}".format(node.node_ip_address, node.metrics_export_port)
+            build_address(node.node_ip_address, node.metrics_export_port)
             for node in nodes
         ]
         # monitor should be run on head node for `ray_start_cluster` fixture
-        autoscaler_export_addr = "{}:{}".format(
+        autoscaler_export_addr = build_address(
             cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
         )
-        dashboard_export_addr = "{}:{}".format(
+        dashboard_export_addr = build_address(
             cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]

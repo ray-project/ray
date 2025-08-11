@@ -22,6 +22,7 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+from ray._common.network_utils import build_address, parse_address
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
@@ -109,7 +110,6 @@ class Node:
             # instance provided.
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
-            [primary_redis_ip, port] = external_redis[0].rsplit(":", 1)
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -196,8 +196,8 @@ class Node:
                 assert not self._default_worker
                 self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
             else:
-                self._webui_url = (
-                    f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
+                self._webui_url = build_address(
+                    ray_params.dashboard_host, ray_params.dashboard_port
                 )
 
         # It creates a session_dir.
@@ -349,27 +349,41 @@ class Node:
 
         if not connect_only:
             self.start_ray_processes()
-            # we should update the address info after the node has been started
-            try:
-                ray._private.services.wait_for_node(
-                    self.gcs_address,
-                    self._plasma_store_socket_name,
-                )
-            except TimeoutError as te:
-                raise Exception(
-                    "The current node timed out during startup. This "
-                    "could happen because some of the Ray processes "
-                    "failed to startup."
-                ) from te
+            # Wait for the node info to be available in the GCS so that
+            # we know it's started up.
 
-        # Fetch node info to update port or get labels.
-        node_info = ray._private.services.get_node(
-            self.gcs_address,
-            self._node_id,
-        )
-        if not connect_only and self._ray_params.node_manager_port == 0:
-            self._ray_params.node_manager_port = node_info["node_manager_port"]
-        elif connect_only:
+            # Grace period to let the Raylet register with the GCS.
+            # We retry in a loop in case it takes longer than expected.
+            time.sleep(0.1)
+            start_time = time.monotonic()
+            raylet_start_wait_time_s = 30
+            node_info = None
+            while True:
+                try:
+                    # Will raise a RuntimeError if the node info is not available.
+                    node_info = ray._private.services.get_node(
+                        self.gcs_address,
+                        self._node_id,
+                    )
+                    break
+                except RuntimeError as e:
+                    logger.info(f"Failed to get node info {e}")
+                if time.monotonic() - start_time > raylet_start_wait_time_s:
+                    raise Exception(
+                        "The current node timed out during startup. This "
+                        "could happen because some of the raylet failed to "
+                        "startup or the GCS has become overloaded."
+                    )
+            # Use node info to update port
+            if self._ray_params.node_manager_port == 0:
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
+
+        if connect_only:
+            # Fetch node info to get labels.
+            node_info = ray._private.services.get_node(
+                self.gcs_address,
+                self._node_id,
+            )
             # Set node labels from GCS if provided at node init.
             self._node_labels = node_info.get("labels", {})
 
@@ -407,14 +421,14 @@ class Node:
     @staticmethod
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
-        _, _, port = ip_port.rpartition(":")
-        if port == ip_port:
+        parts = parse_address(ip_port)
+        if parts is None:
             raise ValueError(f"Port is not specified for address {ip_port}")
         try:
-            _ = int(port)
+            _ = int(parts[1])
         except ValueError:
             raise ValueError(
-                f"Unable to parse port number from {port} (full address = {ip_port})"
+                f"Unable to parse port number from {parts[1]} (full address = {ip_port})"
             )
 
     def check_version_info(self):
@@ -539,7 +553,7 @@ class Node:
 
     @property
     def session_name(self):
-        """Get the session name (cluster ID)."""
+        """Get the current Ray session name."""
         return self._session_name
 
     @property
@@ -619,7 +633,7 @@ class Node:
     @property
     def runtime_env_agent_address(self):
         """Get the address that exposes runtime env agent as http"""
-        return f"http://{self._raylet_ip_address}:{self._runtime_env_agent_port}"
+        return f"http://{build_address(self._raylet_ip_address, self._runtime_env_agent_port)}"
 
     @property
     def dashboard_agent_listen_port(self):
@@ -927,7 +941,9 @@ class Node:
         result = socket_path
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}:{self._get_unused_port()}"
+                result = (
+                    f"tcp://{build_address(self._localhost, self._get_unused_port())}"
+                )
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -1147,7 +1163,7 @@ class Node:
         # e.g. https://github.com/ray-project/ray/issues/15780
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
-        self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
+        self._gcs_address = build_address(self._node_ip_address, gcs_server_port)
 
     def start_raylet(
         self,

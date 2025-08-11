@@ -80,8 +80,7 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
 
   std::vector<ObjectID> object_ids{object_id};
   std::vector<plasma::ObjectBuffer> object_buffers(1);
-  RAY_CHECK_OK(
-      store_client_->Get(object_ids, 0, &object_buffers, /*is_from_worker=*/false));
+  RAY_CHECK_OK(store_client_->Get(object_ids, 0, &object_buffers));
   if (object_buffers[0].data == nullptr) {
     RAY_LOG(INFO)
         << "Failed to get a chunk of the object: " << object_id
