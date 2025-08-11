@@ -46,6 +46,15 @@ def parquet_dataset_single_column_gt_2gb():
 
 
 @pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "object_store_memory": 2 * GiB,
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
     "op",
     [
         "map",
