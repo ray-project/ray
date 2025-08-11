@@ -65,7 +65,7 @@ def test_get_error_string_long_error():
     expected_error_str = (
         "[Rank 0,1 Error Snippet]:\n"
         + long_error_str[: ERR_CHAR_LIMIT // 2]
-        + "\n... (Output truncated. See individual worker logs for full details) ...\n"
+        + "...\n... (Output truncated. See individual worker logs for full details) ...\n"
         + long_error_str[len(long_error_str) - ERR_CHAR_LIMIT // 2 :]
     )
     assert error_str == expected_error_str

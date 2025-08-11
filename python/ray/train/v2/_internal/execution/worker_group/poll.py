@@ -26,7 +26,7 @@ def _truncate_error_string(error_str: str) -> str:
     if len(error_str) >= ERR_CHAR_LIMIT:
         return (
             error_str[: ERR_CHAR_LIMIT // 2]
-            + "...\n ... (Output truncated. See individual worker logs for full details) ...\n"
+            + "...\n... (Output truncated. See individual worker logs for full details) ...\n"
             + error_str[len(error_str) - ERR_CHAR_LIMIT // 2 :]
         )
     return error_str
