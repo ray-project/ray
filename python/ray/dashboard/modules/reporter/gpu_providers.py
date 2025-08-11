@@ -317,9 +317,6 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu_handle, ts_ms
                 )
 
-                if len(nv_processes) == 0:
-                    return None
-
                 for nv_process in nv_processes:
                     processes_pids[int(nv_process.pid)] = ProcessGPUInfo(
                         pid=int(nv_process.pid),
@@ -456,11 +453,7 @@ class HuaweiNpuProvider(GpuProvider):
 
     def is_available(self) -> bool:
         """Check if NPUs are available"""
-        try:
-            return self._initialize()
-        except Exception as e:
-            logger.debug(f"NPU not available: {e}")
-            return False
+        return self._initialize()
 
     def _initialize(self) -> bool:
         """Initialize the NPU provider."""
@@ -471,7 +464,7 @@ class HuaweiNpuProvider(GpuProvider):
             import ray._private.thirdparty.pynpudcmi as pynpudcmi
 
             self._pynpudcmi = pynpudcmi
-            pynpudcmi.dcmi_init()
+            self._pynpudcmi.dcmi_init()
             self._initialized = True
             return True
         except Exception as e:

@@ -125,6 +125,17 @@ def _dcmiCheckReturn(ret: int):
         raise DCMIError(ret)
     return ret
 
+def _check_driver_location():
+    if sys.platform[:3] == "win":
+        # Doesn't support on windows
+        raise OSError("NPU is not supported on Windows")
+    else:
+        import os
+        dcmi_path = os.environ.get("DCMI_PATH", "/usr/local/Ascend/driver/lib64/driver/libdcmi.so")
+        if not os.path.exists(dcmi_path):
+            raise OSError("DCMI library not found")
+        return dcmi_path
+
 def dcmi_init():
     global dcmi_handle
 
@@ -133,13 +144,10 @@ def dcmi_init():
     
         try:
             if dcmi_handle is None:
-                if sys.platform[:3] == "win":
-                    # Doesn't support on windows
-                    raise OSError("NPU is not supported on Windows")
-            
-                else:
-                    dcmi_handle = cdll.LoadLibrary("/usr/local/Ascend/driver/lib64/driver/libdcmi.so")
-                    _dcmiCheckReturn(dcmi_handle.dcmi_init())
+                dcmi_path = _check_driver_location()
+                dcmi_handle = cdll.LoadLibrary(dcmi_path)
+                _dcmiCheckReturn(dcmi_handle.dcmi_init())
+        
         finally:
             libLoadLock.release()
 

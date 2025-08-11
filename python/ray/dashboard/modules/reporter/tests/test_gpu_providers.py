@@ -481,21 +481,17 @@ class TestHuaweiNpuProvider(unittest.TestCase):
         """Test provider name."""
         self.assertEqual(self.provider.get_provider_name(), GpuProviderType.HUAWEI)
 
-    @patch("ray._private.thirdparty.pynpudcmi", create=True)
-    def test_is_available_success(self, mock_pynpudcmi):
+    def test_is_available_success(self):
         """Test is_available when NPU is available."""
-        mock_pynpudcmi.dcmi_init.return_value = 0
-        self.assertTrue(self.provider.is_available())
+        # Mock the pynpudcmi module in sys.modules
+        mock_pynpudcmi = Mock()
+        mock_pynpudcmi.dcmi_init.return_value = None
 
-        mock_pynpudcmi.dcmi_init.assert_called_once()
-
-    @patch("ray._private.thirdparty.pynpudcmi", create=True)
-    def test_initialize_success(self, mock_pynpudcmi):
-        """Test successful initialization."""
-        mock_pynpudcmi.dcmi_init.return_value = 0
-
-        self.assertTrue(self.provider._initialize())
-        self.assertTrue(self.provider._initialized)
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pynpudcmi": mock_pynpudcmi}
+        ):
+            self.assertTrue(self.provider.is_available())
+            mock_pynpudcmi.dcmi_init.assert_called_once()
 
     @patch("ray._private.thirdparty.pynpudcmi", create=True)
     def test_get_gpu_utilization_success(self, mock_pynpudcmi):
