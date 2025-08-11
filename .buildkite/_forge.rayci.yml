@@ -46,6 +46,21 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
 
+ - name: raycpuextrabase
+    label: "wanda: ray.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray.cpu.base.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      RAY_IMAGE_EXTRA: "1"
+
   - name: ray-llmbase
     label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base"
     tags:

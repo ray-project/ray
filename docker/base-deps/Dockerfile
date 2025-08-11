@@ -7,6 +7,7 @@ ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
+ARG RAY_IMAGE_EXTRA=0
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
@@ -122,7 +123,7 @@ uv pip uninstall --system dask
 sudo apt-get autoremove -y cmake zlib1g-dev
 
 # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then
+if [[ ! -d /usr/local/cuda ]]; then
     sudo apt-get autoremove -y g++
 fi
 
