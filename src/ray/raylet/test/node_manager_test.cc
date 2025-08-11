@@ -675,7 +675,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
   const auto owner_node_id = NodeID::FromRandom();
   rpc::Address owner_address;
-  owner_address.set_raylet_id(owner_node_id.Binary());
+  owner_address.set_node_id(owner_node_id.Binary());
   const auto actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
   const auto task_spec_builder =

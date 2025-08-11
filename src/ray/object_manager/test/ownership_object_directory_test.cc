@@ -155,7 +155,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     ray::ObjectInfo info;
     info.object_id = id;
     info.data_size = 12;
-    info.owner_raylet_id = NodeID::FromRandom();
+    info.owner_node_id = NodeID::FromRandom();
     info.owner_ip_address = "124.2.3.4";
     info.owner_port = 6739;
     info.owner_worker_id = worker_id;

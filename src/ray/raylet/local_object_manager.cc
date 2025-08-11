@@ -72,7 +72,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       wait_request->set_generator_id(generator_id.Binary());
     }
     rpc::Address subscriber_address;
-    subscriber_address.set_raylet_id(self_node_id_.Binary());
+    subscriber_address.set_node_id(self_node_id_.Binary());
     subscriber_address.set_ip_address(self_node_address_);
     subscriber_address.set_port(self_node_port_);
     wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);

@@ -213,7 +213,7 @@ class DataOrganizer:
 
         # TODO(fyrestone): remove this, give a link from actor
         # info to worker info in front-end.
-        node_id = actor["address"]["rayletId"]
+        node_id = actor["address"]["nodeId"]
         pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None

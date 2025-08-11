@@ -128,7 +128,7 @@ table PlasmaCreateRequest {
   // ID of the object to be created.
   object_id: string;
   // Owner raylet ID of this object.
-  owner_raylet_id: string;
+  owner_node_id: string;
   // Owner IP address of this object.
   owner_ip_address: string;
   // Owner port address of this object.

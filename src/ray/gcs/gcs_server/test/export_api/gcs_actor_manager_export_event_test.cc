@@ -212,7 +212,7 @@ class GcsActorManagerTest : public ::testing::Test {
     rpc::Address address;
     auto node_id = NodeID::FromRandom();
     auto worker_id = WorkerID::FromRandom();
-    address.set_raylet_id(node_id.Binary());
+    address.set_node_id(node_id.Binary());
     address.set_worker_id(worker_id.Binary());
     return address;
   }

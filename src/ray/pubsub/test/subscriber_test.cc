@@ -165,7 +165,7 @@ class SubscriberTest : public ::testing::Test {
       const std::string address = "abc",
       const int port = 1234) {
     rpc::Address addr;
-    addr.set_raylet_id(node_id);
+    addr.set_node_id(node_id);
     addr.set_ip_address(address);
     addr.set_port(port);
     addr.set_worker_id(worker_id);
