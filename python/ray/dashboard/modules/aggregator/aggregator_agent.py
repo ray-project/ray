@@ -202,6 +202,7 @@ class AggregatorAgent(
             try:
                 self._event_buffer.put_nowait(event)
             except queue.Full:
+                # Remove the oldest event to make room for the new event.
                 self._event_buffer.get_nowait()
                 self._event_buffer.put_nowait(event)
                 with self._lock:

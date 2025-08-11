@@ -165,7 +165,9 @@ parser.add_argument(
     action="store_true",
     help="True if Ray debugger is made available externally.",
 )
-parser.add_argument("--session-name", required=False, help="The current session name")
+parser.add_argument(
+    "--session-name", required=False, help="The current Ray session name"
+)
 parser.add_argument(
     "--webui",
     required=False,

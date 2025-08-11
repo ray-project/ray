@@ -150,6 +150,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       bool is_actor_task_event,
+      std::string session_name,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
       std::optional<const TaskStateUpdate> state_update = std::nullopt);
 
@@ -175,17 +176,13 @@ class TaskStatusEvent : public TaskEvent {
  private:
   // Helper functions to populate the task definition event of rpc::events::RayEvent
   // This function assumes task_spec_ is not null.
-  // This function also checks T must be one of rpc::events::ActorTaskDefinitionEvent or
-  // rpc::events::TaskDefinitionEvent
   template <typename T>
   void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
 
   // Helper functions to populate the task execution event of rpc::events::RayEvent
-  // This function checks T must be one of rpc::events::ActorTaskExecutionEvent or
-  // rpc::events::TaskExecutionEvent
-  template <typename T>
-  void PopulateRpcRayTaskExecutionEvent(T &execution_event_data,
-                                        google::protobuf::Timestamp timestamp);
+  void PopulateRpcRayTaskExecutionEvent(
+      rpc::events::TaskExecutionEvent &execution_event_data,
+      google::protobuf::Timestamp timestamp);
 
   // Helper functions to populate the base fields of rpc::events::RayEvent
   void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
@@ -198,6 +195,8 @@ class TaskStatusEvent : public TaskEvent {
   int64_t timestamp_ = -1;
   /// Whether the task is an actor task.
   bool is_actor_task_event_ = false;
+  /// The current Ray session name.
+  std::string session_name_;
   /// Pointer to the task spec.
   std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Optional task state update
@@ -300,14 +299,15 @@ class TaskEventBuffer {
   /// \param status the changed status.
   /// \param state_update optional task state updates.
   /// \return true if the event is recorded, false otherwise.
-  bool RecordTaskStatusEventIfNeeded(
+  virtual bool RecordTaskStatusEventIfNeeded(
       const TaskID &task_id,
       const JobID &job_id,
       int32_t attempt_number,
       const TaskSpecification &spec,
       rpc::TaskStatus status,
       bool include_task_info = false,
-      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = absl::nullopt);
+      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt) = 0;
 
   /// Add a task event to be reported.
   ///
@@ -367,12 +367,22 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param event_aggregator_client Event aggregator client
   explicit TaskEventBufferImpl(
       std::unique_ptr<gcs::GcsClient> gcs_client,
-      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client);
+      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
+      std::string session_name);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
 
   ~TaskEventBufferImpl() override;
+
+  bool RecordTaskStatusEventIfNeeded(const TaskID &task_id,
+                                     const JobID &job_id,
+                                     int32_t attempt_number,
+                                     const TaskSpecification &spec,
+                                     rpc::TaskStatus status,
+                                     bool include_task_info = false,
+                                     std::optional<const TaskStatusEvent::TaskStateUpdate>
+                                         state_update = absl::nullopt) override;
 
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
@@ -565,6 +575,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// If true, ray events from the event buffer are sent to the event aggregator
   bool send_ray_events_to_aggregator_enabled_ = false;
+
+  /// The current Ray session name. Passed in from the core worker
+  std::string session_name_ = "";
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);

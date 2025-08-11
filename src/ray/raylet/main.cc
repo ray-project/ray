@@ -90,7 +90,7 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
-DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
 // TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
 // CPU and memory resource reservation in the followup PR.
