@@ -273,6 +273,30 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
+# Test all doc/source/llm/doc_code/serve code included in rst/md files.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "serve_llm_examples",
+    srcs = glob(["source/llm/doc_code/serve/**/*.py"]),
+    visibility = ["//doc:__subpackages__"],
+)
+
+# GPU Tests
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm",
+    ],
+)
+
+# --------------------------------------------------------------------
 # Test all doc/source/tune/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
