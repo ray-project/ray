@@ -38,8 +38,8 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/actor_task_submitter.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
@@ -142,7 +142,8 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
-        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager));
+        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
+        "test_session");
 
     auto task_manager = std::make_shared<TaskManager>(
         *memory_store_,
