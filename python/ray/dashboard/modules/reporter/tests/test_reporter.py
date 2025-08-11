@@ -24,7 +24,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
-from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider, MB
 from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
