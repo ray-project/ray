@@ -200,8 +200,7 @@ void GcsServer::GetOrGenerateClusterId(
          if (!provided_cluster_id.has_value()) {
            instrumented_io_context &io_context = continuation.io_context();
            ClusterID cluster_id = ClusterID::FromRandom();
-           RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
-                         << cluster_id.Hex();
+           RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
            kv_manager_->GetInstance().Put(
                kClusterIdNamespace,
                kClusterIdKey,
@@ -209,7 +208,7 @@ void GcsServer::GetOrGenerateClusterId(
                false,
                {[cluster_id,
                  continuation = std::move(continuation)](bool added_entry) mutable {
-                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
+                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID.";
                   std::move(continuation)
                       .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
                                 cluster_id);
@@ -217,7 +216,8 @@ void GcsServer::GetOrGenerateClusterId(
                 io_context});
          } else {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
-           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
+           RAY_LOG(INFO).WithField(cluster_id)
+               << "Using existing cluster ID from external storage.";
            std::move(continuation)
                .Dispatch("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
          }
@@ -391,8 +391,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
           // GetOrConnectionByID will not connect to the raylet is it hasn't been
           // connected.
-          if (auto conn_opt = raylet_client_pool_.GetByID(alive_node.first)) {
-            raylet_client = conn_opt;
+          if (auto raylet_client_opt = raylet_client_pool_.GetByID(alive_node.first)) {
+            raylet_client = raylet_client_opt;
           } else {
             // When not connect, use GetOrConnectByAddress
             auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
