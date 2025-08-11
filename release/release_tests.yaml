@@ -4579,7 +4579,7 @@
     # - Batch size is always fixed, so kill schedule is deterministic.
     prepare: >
       python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
-      --batch-size-to-kill 5 --max-to-kill 15 --kill-delay 30 --kill-interval 120
+      --batch-size-to-kill 5 --max-to-kill 15 --kill-delay 30 --kill-interval 100
     script: >
       python dataset/text_embeddings_benchmark.py --chaos-test --embed-concurrency 15
 
