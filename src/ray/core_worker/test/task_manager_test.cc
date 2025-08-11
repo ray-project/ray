@@ -120,6 +120,18 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
   MOCK_METHOD(std::string, DebugString, (), (override));
+
+  MOCK_METHOD(
+      bool,
+      RecordTaskStatusEventIfNeeded,
+      (const TaskID &task_id,
+       const JobID &job_id,
+       int32_t attempt_number,
+       const TaskSpecification &spec,
+       rpc::TaskStatus status,
+       bool include_task_info,
+       std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update),
+      (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
