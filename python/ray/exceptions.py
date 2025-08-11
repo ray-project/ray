@@ -51,6 +51,9 @@ class RayError(Exception):
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
                 # Include a fallback string/stacktrace to aid debugging.
+                #  formatted_exception_string is set in to_bytes() above by calling
+                # traceback.format_exception() on the original exception. It contains
+                # the string representation and stack trace of the original error.
                 formatted = getattr(
                     ray_exception,
                     "formatted_exception_string",
