@@ -295,6 +295,14 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 def test_unpickleable_stacktrace(shutdown_only):
     expected_output = """System error: Failed to unpickle serialized exception
+Original exception (string repr):
+ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
+  File "FILE", line ZZ, in f
+    return g(c)
+  File "FILE", line ZZ, in g
+    raise NoPickleError("FILE")
+test_traceback.NoPickleError
+
 traceback: Traceback (most recent call last):
   File "FILE", line ZZ, in from_ray_exception
     return pickle.loads(ray_exception.serialized_exception)
@@ -311,7 +319,14 @@ Traceback (most recent call last):
     return RayError.from_ray_exception(ray_exception)
   File "FILE", line ZZ, in from_ray_exception
     raise RuntimeError(msg) from e
-RuntimeError: Failed to unpickle serialized exception"""
+RuntimeError: Failed to unpickle serialized exception
+Original exception (string repr):
+ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
+  File "FILE", line ZZ, in f
+    return g(c)
+  File "FILE", line ZZ, in g
+    raise NoPickleError("FILE")
+test_traceback.NoPickleError"""
 
     class NoPickleError(OSError):
         def __init__(self, arg):
@@ -331,9 +346,10 @@ RuntimeError: Failed to unpickle serialized exception"""
         ray.get(f.remote())
     except Exception as ex:
         python310_extra_exc_msg = "test_unpickleable_stacktrace.<locals>.NoPickleError."
-        assert clean_noqa(expected_output) == scrub_traceback(str(ex)).replace(
+        cleaned = scrub_traceback(str(ex)).replace(
             f"TypeError: {python310_extra_exc_msg}", "TypeError: "
         )
+        assert clean_noqa(expected_output) == cleaned
 
 
 def test_serialization_error_message(shutdown_only):
