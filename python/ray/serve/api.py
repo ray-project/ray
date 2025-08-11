@@ -172,7 +172,7 @@ def get_replica_context() -> ReplicaContext:
     return internal_replica_context
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def get_replica_rank() -> Optional[int]:
     """Get the rank of the current replica within its deployment.
 
@@ -191,7 +191,7 @@ def get_replica_rank() -> Optional[int]:
     return replica_context.rank
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def get_world_size() -> int:
     """Get the total number of replicas in the current deployment.
 

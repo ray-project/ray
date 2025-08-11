@@ -16,7 +16,6 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     NodeId,
-    ReplicaID,
     RequestProtocol,
     RequestRoutingInfo,
     RunningReplicaInfo,
@@ -1107,20 +1106,6 @@ class ServeController:
                 multiplex model ids, and routing stats.
         """
         self.deployment_state_manager.record_request_routing_info(info)
-
-    def get_replica_rank(self, replica_id: ReplicaID) -> Optional[int]:
-        """Get the current rank of a replica.
-
-        This can be called by replicas to check if their rank has changed
-        due to autoscaling operations.
-
-        Args:
-            replica_id: The ReplicaID of the replica.
-
-        Returns:
-            The current rank of the replica, or None if not assigned.
-        """
-        return self.deployment_state_manager.get_replica_rank(replica_id)
 
     def get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
         """Get the current rank mapping for all replicas in a deployment.

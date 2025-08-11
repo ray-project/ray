@@ -99,6 +99,7 @@ class MockReplicaActorWrapper:
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path = None
+        self._rank = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -190,8 +191,9 @@ class MockReplicaActorWrapper:
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status
 
-    def set_ready(self, version: DeploymentVersion = None):
+    def set_ready(self, version: DeploymentVersion = None, rank: Optional[int] = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        self._rank = rank
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
@@ -217,8 +219,9 @@ class MockReplicaActorWrapper:
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
-    def start(self, deployment_info: DeploymentInfo):
+    def start(self, deployment_info: DeploymentInfo, rank: Optional[int] = None):
         self.started = True
+        self._rank = rank
 
         def _on_scheduled_stub(*args, **kwargs):
             pass
@@ -234,6 +237,10 @@ class MockReplicaActorWrapper:
             ),
             on_scheduled=_on_scheduled_stub,
         )
+
+    @property
+    def rank(self) -> Optional[int]:
+        return self._rank
 
     def reconfigure(
         self,

@@ -402,9 +402,6 @@ class ReplicaBase(ABC):
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
         self._user_callable_asgi_app: Optional[ASGIApp] = None
 
-        # Rank is passed to replica context dynamically, not stored as instance variable
-        # World size is calculated from deployment config, not stored
-
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None, rank=rank)
@@ -800,7 +797,7 @@ class ReplicaBase(ABC):
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config and rank/world_size.
+            # deployment_config and rank.
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable, rank=rank
             )
