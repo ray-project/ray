@@ -493,24 +493,26 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  // For actors, perform cleanup before shutdown starts.
-  // This ensures cleanup happens even if shutdown is called multiple times.
-  {
-    absl::MutexLock lock(&mutex_);
-    if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil() &&
-        actor_shutdown_callback_) {
-      RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
-      actor_shutdown_callback_();
-      // Clear callback to prevent multiple calls
-      actor_shutdown_callback_ = nullptr;
-    }
-  }
-
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
     RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
     return;
+  }
+
+  // For actors, perform cleanup before shutdown proceeds.
+  // Extract the callback under the lock, then invoke outside the lock.
+  std::function<void()> cb;
+  {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil()) {
+      cb = std::move(actor_shutdown_callback_);
+      actor_shutdown_callback_ = nullptr;
+    }
+  }
+  if (cb) {
+    RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
+    cb();
   }
   RAY_LOG(INFO) << "Shutting down.";
 
