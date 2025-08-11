@@ -32,7 +32,6 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"

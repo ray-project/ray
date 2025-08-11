@@ -4,6 +4,7 @@ import torch
 import torch.distributed as dist
 
 import ray.experimental.internal_kv as internal_kv
+from ray._common.network_utils import parse_address
 from ray.util.collective.collective_group.base_collective_group import (
     BaseGroup,
     get_master_address_metadata_key,
@@ -51,7 +52,7 @@ class TorchGLOOGroup(BaseGroup):
             )
 
         metadata = metadata.decode()
-        master_addr, master_port = metadata.split(":")
+        master_addr, master_port = parse_address(metadata)
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
 
