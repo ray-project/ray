@@ -1,7 +1,14 @@
-import yaml
+import os
 from dataclasses import dataclass, field
 from typing import List, Optional
-import os
+
+import yaml
+
+
+@dataclass
+class BuildArgSet:
+    name: str
+    build_args: List[str]
 
 
 @dataclass
@@ -20,6 +27,7 @@ class Depset:
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
+    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
@@ -39,7 +47,18 @@ class Config:
             for values in raw_depsets
         ]
 
-        return Config(depsets=depsets)
+        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
+        return Config(depsets=depsets, build_arg_sets=build_arg_sets)
+
+    @staticmethod
+    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List[BuildArgSet]:
+        return [
+            BuildArgSet(
+                name=build_arg_set.get("name", None),
+                build_args=build_arg_set.get("build_args", []),
+            )
+            for build_arg_set in build_arg_sets
+        ]
 
 
 class Workspace:

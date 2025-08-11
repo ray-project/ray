@@ -140,6 +140,9 @@ def test_metrics_folder_with_dashboard_override(
             for variable in contents["templating"]["list"]:
                 if variable["name"] == "datasource":
                     continue
+                if variable["name"] == "RayNodeType":
+                    # RayNodeType uses hardcoded values instead of a query
+                    continue
                 assert global_filters in variable["definition"]
                 assert global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
