@@ -19,12 +19,15 @@ def _normalize_error_string(error_str: str) -> str:
 
 
 def _truncate_error_string(error_str: str) -> str:
-    """Truncates error strings to a maximum length of ERR_CHAR_LIMIT."""
-    if len(error_str) > ERR_CHAR_LIMIT:
+    """
+    Truncates error strings to include the first ERR_CHAR_LIMIT // 2
+    characters and the last ERR_CHAR_LIMIT // 2 characters.
+    """
+    if len(error_str) >= ERR_CHAR_LIMIT:
         return (
-            error_str[:ERR_CHAR_LIMIT]
-            + "..."
-            + "\nView individual worker logs for more details."
+            error_str[: ERR_CHAR_LIMIT // 2]
+            + "\n... (Output truncated. See individual worker logs for full details) ...\n"
+            + error_str[len(error_str) - ERR_CHAR_LIMIT // 2 :]
         )
     return error_str
 
@@ -94,13 +97,13 @@ class WorkerGroupPollStatus:
             orig_error = normalized_error_to_original[normalized_error]
 
             # Convert rank list to comma-separated strings
-            ranks_str = ", ".join(ranks)
+            ranks_str = ",".join(ranks)
 
             if normalized_error in show_full_error:
-                errors.append(f"[Rank {ranks_str}]:\n{orig_error}")
+                errors.append(f"[Rank {ranks_str} Error Snippet]:\n{orig_error}")
             else:
                 errors.append(
-                    f"[Rank {ranks_str}]:\n{_truncate_error_string(orig_error)}"
+                    f"[Rank {ranks_str} Error Snippet]:\n{_truncate_error_string(orig_error)}"
                 )
 
         error_str = "\n".join(errors)

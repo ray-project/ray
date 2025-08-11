@@ -23,7 +23,9 @@ def test_get_error_string_basic():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    expected_error_str = "[Rank 0, 3]:\nAn error\n[Rank 2]:\nDifferent error"
+    expected_error_str = (
+        "[Rank 0,3 Error Snippet]:\nAn error\n[Rank 2 Error Snippet]:\nDifferent error"
+    )
     assert error_str == expected_error_str
 
 
@@ -43,7 +45,9 @@ def test_get_error_string_with_numbers():
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
 
-    assert error_str == "[Rank 0, 1]:\nError parsing object at <NUM>x<NUM>f<NUM>b<NUM>"
+    assert (
+        error_str == "[Rank 0,1 Error Snippet]:\nError parsing object at 0x7f8b12345678"
+    )
 
 
 def test_get_error_string_long_error():
@@ -59,24 +63,12 @@ def test_get_error_string_long_error():
     error_str = poll_status.get_error_string()
 
     expected_error_str = (
-        "[Rank 0, 1]:\n"
-        + long_error_str[:ERR_CHAR_LIMIT]
-        + "...\nView individual worker logs for more details."
+        "[Rank 0,1 Error Snippet]:\n"
+        + long_error_str[: ERR_CHAR_LIMIT // 2]
+        + "\n... (Output truncated. See individual worker logs for full details) ...\n"
+        + long_error_str[len(long_error_str) - ERR_CHAR_LIMIT // 2 :]
     )
     assert error_str == expected_error_str
-
-
-def test_show_original_error():
-    """
-    Simulate a worker with an error that contains a number and has no duplicates.
-    The original error should be shown.
-    """
-    statuses = {
-        0: WorkerStatus(running=False, error="Error on line 42"),
-    }
-    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
-    error_str = poll_status.get_error_string()
-    assert error_str == "[Rank 0]:\nError on line 42"
 
 
 def test_normalize_error_string():
