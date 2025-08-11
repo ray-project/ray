@@ -90,7 +90,7 @@ class WorkerGroupPollStatus:
 
         errors = []
         for normalized_error, ranks in normalized_error_to_ranks.items():
-            # Show the original error if there were no duplicates
+            # Show the original error
             orig_error = normalized_error_to_original[normalized_error]
 
             # Convert rank list to comma-separated strings
