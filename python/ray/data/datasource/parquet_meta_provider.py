@@ -151,7 +151,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
                 )
             )
 
-            return _dedupe_fragment_metadata(raw_metadata)
+            return _dedupe_schemas(raw_metadata)
 
         else:
             raw_metadata = _fetch_metadata(fragments)
@@ -229,27 +229,19 @@ def _dedupe_metadata(
     memory usage by only keeping unique schema objects across all
     file fragments. This method deduplicates the schemas and returns
     a list of `_ParquetFileFragmentMetaData` objects."""
-    schema_to_id = {}  # schema_ser -> schema_id
-    id_to_schema = {}  # schema_id -> schema_ser
-    stripped_metadatas = []
+    # Convert raw metadata to _ParquetFileFragmentMetaData objects
+    fragment_metadatas = []
     for fragment_metadata in raw_metadatas:
         stripped_md = _ParquetFileFragmentMetaData(fragment_metadata)
-
         schema_ser = cloudpickle.dumps(fragment_metadata.schema.to_arrow_schema())
-        if schema_ser not in schema_to_id:
-            schema_id = len(schema_to_id)
-            schema_to_id[schema_ser] = schema_id
-            id_to_schema[schema_id] = schema_ser
-            stripped_md.set_schema_pickled(schema_ser)
-        else:
-            schema_id = schema_to_id[schema_ser]  # Direct access instead of .get()
-            existing_schema_ser = id_to_schema[schema_id]
-            stripped_md.set_schema_pickled(existing_schema_ser)
-        stripped_metadatas.append(stripped_md)
-    return stripped_metadatas
+        stripped_md.set_schema_pickled(schema_ser)
+        fragment_metadatas.append(stripped_md)
+
+    # Deduplicate schemas across all fragment metadata objects
+    return _dedupe_schemas(fragment_metadatas)
 
 
-def _dedupe_fragment_metadata(
+def _dedupe_schemas(
     metadatas: List[_ParquetFileFragmentMetaData],
 ) -> List[_ParquetFileFragmentMetaData]:
     """Deduplicates schema objects across existing _ParquetFileFragmentMetaData objects.
