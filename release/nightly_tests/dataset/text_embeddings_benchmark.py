@@ -107,41 +107,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def process_file(record: dict) -> Iterator[Dict[str, Any]]:
-    file_path = Path(record["path"])
-    supported_extensions = {".pdf", ".docx", ".pptx", ".ppt", ".html", ".txt"}
-
-    if file_path.suffix.lower() not in supported_extensions:
-        print(
-            f"Skipping file {file_path} with unsupported extension {file_path.suffix}"
-        )
-        return
-
-    try:
-        with io.BytesIO(record["bytes"]) as stream:
-            elements = partition(file=stream, strategy="fast", skip_ocr=True)
-            doc_id = str(uuid.uuid4())
-
-            # Group text by page
-            page_texts = {}
-            for el in elements:
-                page_number = getattr(el.metadata, "page_number", 1) or 1
-                page_texts.setdefault(page_number, []).append(str(el))
-
-            # Combine texts for each page
-            for page_number, texts in page_texts.items():
-                yield {
-                    "text": " ".join(texts).strip(),
-                    "source": str(file_path),
-                    "page_number": page_number,
-                    "doc_id": doc_id,
-                }
-    except Exception as e:
-        # Log and skip files that cannot be processed
-        print(f"WARNING: Failed to process file {record.get('path', 'N/A')}: {e}")
-        return
-
-
 class Chunker:
     def __init__(self, method: str, chunk_size: int, chunk_overlap: int):
         if method == "fixed":
@@ -158,9 +123,8 @@ class Chunker:
             {
                 "text": text,
                 "source": page["source"],
-                "page_number": page.get("page_number", 1),
-                "chunk_id": str(uuid.uuid4()),
-                "doc_id": page["doc_id"],
+                "chunk_id": f"{page['id']}_{str(uuid.uuid4())}",
+                "doc_id": page["id"],
             }
             for text in self.splitter.split_text(page["text"])
         ]
@@ -181,13 +145,12 @@ class Embedder:
             "text": batch["text"],
             "source": batch["source"],
             "doc_id": batch["doc_id"],
-            "page_number": batch["page_number"],
             "chunk_id": batch["chunk_id"],
         }
 
 
 def main(args):
-    ds = ray.data.read_binary_files(
+    ds = ray.data.read_parquet(
         args.source_directory,
         include_paths=True,
         concurrency=args.read_concurrency,
@@ -197,9 +160,6 @@ def main(args):
     start_time_without_metadata_fetching = time.time()
     if args.smoke_test:
         ds = ds.limit(100)
-    ds = ds.flat_map(
-        process_file, concurrency=args.process_concurrency, num_cpus=args.process_cpus
-    )
     ds = ds.flat_map(
         Chunker(
             method=args.chunk_method,
