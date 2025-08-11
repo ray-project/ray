@@ -69,6 +69,9 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.external.env_runner_server_for_external_inference import (
     EnvRunnerServerForExternalInference,
 )
+from ray.rllib.examples.envs.classes.utils.dummy_external_client import (
+    dummy_external_client,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -101,51 +104,25 @@ if __name__ == "__main__":
 
     # Start the dummy CartPole "simulation".
     if args.use_dummy_client:
-        TODO:(
-            rllib_gateway) = (
-            address="localhost",
-            # Connect to the first remote EnvRunner, of - if there is no remote one -
-            # to the local EnvRunner.
-            port=(
+        threading.Thread(
+            target=dummy_external_client,
+            args=(
+                # Connect to the first remote EnvRunner, of - if there is no remote one -
+                # to the local EnvRunner.
                 args.port
-                + (args.num_env_runners if args.num_env_runners is not None else 1)
+                + (args.num_env_runners if args.num_env_runners is not None else 1),
             ),
-        )
-
-        def _run_simulation():
-            # Create env and reset it.
-            env = gym.make("CartPole-v1")
-            obs, infos = env.reset()
-            episode_return = 0.0
-            reward = 0.0
-            eps = 0
-
-            while True:
-                action = rllib_gateway.get_action(reward, obs)
-                obs, reward, terminated, truncated, infos = env.step(action)
-                episode_return += reward
-
-                # Send last observation and reward (with dummy-action request) to
-                # `get_action`.
-                if terminated or truncated:
-                    print(f"Episode {eps} return: {episode_return}")
-                    # Log terminated/truncated (episode end) and reset.
-                    rllib_gateway.episode_done(reward, obs, truncated)
-                    episode_return = 0.0
-                    reward = 0.0
-                    eps += 1
-                    env.reset()
-
-        simulation_thread = threading.Thread(target=_run_simulation)
-        simulation_thread.start()
+        ).start()
 
     # Define the RLlib (server) config.
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
-            observation_space=gym.spaces.Box(float("-inf"), float("-inf"), (6,), np.float32),
-            action_space=gym.spaces.Discrete(9),
+            observation_space=gym.spaces.Box(
+                float("-inf"), float("-inf"), (4,), np.float32
+            ),
+            action_space=gym.spaces.Discrete(2),
             # EnvRunners listen on `port` + their worker index.
             env_config={"port": args.port},
         )
@@ -154,8 +131,6 @@ if __name__ == "__main__":
             env_runner_cls=EnvRunnerServerForExternalInference,
         )
         .training(
-            train_batch_size_per_learner=500,
-            minibatch_size=128,
             num_epochs=10,
             vf_loss_coeff=0.01,
         )
