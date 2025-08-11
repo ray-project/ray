@@ -479,6 +479,16 @@ depsets:
             assert depset.name == "ray_base_test_depset"
             assert depset.build_arg_set is None
 
+    def test_get_depset_with_build_arg_set_and_no_build_arg_set_provided(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset("build_args_test_depset_py311")
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
