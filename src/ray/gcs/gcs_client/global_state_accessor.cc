@@ -408,16 +408,15 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
 
   std::vector<rpc::GcsNodeInfo> node_infos;
   while (true) {
-    rpc::GetAllNodeInfoRequest_Filters filters;
-    filters.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
-    filters.set_node_id(node_id_binary);
+    rpc::GetAllNodeInfoRequest::NodeSelector selector;
+    selector.set_node_id(node_id_binary);
     {
       absl::ReaderMutexLock lock(&mutex_);
       auto timeout_ms =
           std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
-      RAY_ASSIGN_OR_RETURN(
-          node_infos,
-          gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, std::move(filters)));
+      RAY_ASSIGN_OR_RETURN(node_infos,
+                           gcs_client_->Nodes().GetAllNoCache(
+                               timeout_ms, rpc::GcsNodeInfo::ALIVE, std::move(selector)));
     }
     if (!node_infos.empty()) {
       *node_info = node_infos[0].SerializeAsString();
@@ -430,7 +429,7 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
           ". The node registration may not be complete yet before the timeout." +
           " Try increase the RAY_raylet_start_wait_time_s config.");
     }
-    RAY_LOG(WARNING) << "Retrying to get node with node ID " << node_id_hex_str;
+    RAY_LOG(INFO) << "Retrying to get node with node ID " << node_id_hex_str;
     // Some of the information may not be in GCS yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
@@ -442,16 +441,16 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       current_time_ms() + RayConfig::instance().raylet_start_wait_time_s() * 1000;
 
   std::vector<rpc::GcsNodeInfo> node_infos;
-  rpc::GetAllNodeInfoRequest_Filters filters;
-  filters.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
-  filters.set_node_ip_address(node_ip_address);
+  rpc::GetAllNodeInfoRequest::NodeSelector selector;
+  selector.set_node_ip_address(node_ip_address);
   while (true) {
     {
       absl::ReaderMutexLock lock(&mutex_);
       auto timeout_ms =
           std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
-      RAY_ASSIGN_OR_RETURN(
-          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
+      RAY_ASSIGN_OR_RETURN(node_infos,
+                           gcs_client_->Nodes().GetAllNoCache(
+                               timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
     }
     if (!node_infos.empty()) {
       *node_to_connect = node_infos[0].SerializeAsString();
@@ -464,22 +463,23 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       auto [address, _] = gcs_client_->GetGcsServerAddress();
       gcs_address = std::move(address);
     }
-    filters.set_node_ip_address(gcs_address);
+    selector.set_node_ip_address(gcs_address);
     {
       absl::ReaderMutexLock lock(&mutex_);
       auto timeout_ms = end_time_point - current_time_ms();
-      RAY_ASSIGN_OR_RETURN(
-          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
+      RAY_ASSIGN_OR_RETURN(node_infos,
+                           gcs_client_->Nodes().GetAllNoCache(
+                               timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
     }
     if (node_infos.empty() && node_ip_address == gcs_address) {
-      filters.set_node_ip_address("127.0.0.1");
+      selector.set_node_ip_address("127.0.0.1");
       {
         absl::ReaderMutexLock lock(&mutex_);
         auto timeout_ms =
             std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
-        RAY_ASSIGN_OR_RETURN(
-            node_infos,
-            gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
+        RAY_ASSIGN_OR_RETURN(node_infos,
+                             gcs_client_->Nodes().GetAllNoCache(
+                                 timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
       }
     }
     if (!node_infos.empty()) {

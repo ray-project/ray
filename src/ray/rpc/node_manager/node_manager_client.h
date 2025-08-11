@@ -16,12 +16,15 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -48,11 +51,27 @@ class NodeManagerClient {
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  NodeManagerClient(const std::string &address,
-                    const int port,
-                    ClientCallManager &client_call_manager)
-      : grpc_client_{std::make_unique<GrpcClient<NodeManagerService>>(
-            address, port, client_call_manager)} {}
+  /// \param[in] raylet_unavailable_timeout_callback The callback function that is used
+  /// by the retryable grpc to remove unresponsive raylet connections from the pool once
+  /// its been unavailable for more than server_unavailable_timeout_seconds.
+  NodeManagerClient(const rpc::Address &address,
+                    ClientCallManager &client_call_manager,
+                    std::function<void()> raylet_unavailable_timeout_callback)
+      : grpc_client_(std::make_shared<GrpcClient<NodeManagerService>>(
+            address.ip_address(), address.port(), client_call_manager)),
+        retryable_grpc_client_(RetryableGrpcClient::Create(
+            grpc_client_->Channel(),
+            client_call_manager.GetMainService(),
+            /*max_pending_requests_bytes=*/
+            std::numeric_limits<uint64_t>::max(),
+            /*check_channel_status_interval_milliseconds=*/
+            ::RayConfig::instance()
+                .grpc_client_check_connection_status_interval_milliseconds(),
+            /*server_unavailable_timeout_seconds=*/
+            ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
+            /*server_unavailable_timeout_callback=*/
+            std::move(raylet_unavailable_timeout_callback),
+            /*server_name=*/"Raylet " + address.ip_address())) {}
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
 
@@ -177,7 +196,9 @@ class NodeManagerClient {
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
+  std::shared_ptr<GrpcClient<NodeManagerService>> grpc_client_;
+
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 };
 
 }  // namespace rpc

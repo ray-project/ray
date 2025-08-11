@@ -405,7 +405,7 @@ struct GcsServerMocker {
 
     void AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
                      int64_t timeout_ms,
-                     std::optional<NodeID> node_id = std::nullopt) override {
+                     const std::vector<NodeID> &node_ids = {}) override {
       if (callback) {
         callback(Status::OK(), {});
       }
@@ -427,7 +427,7 @@ struct GcsServerMocker {
       return node_info_list;
     }
 
-    bool IsRemoved(const NodeID &node_id) const override { return false; }
+    bool IsNodeDead(const NodeID &node_id) const override { return false; }
 
     void AsyncResubscribe() override {}
   };

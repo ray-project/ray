@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -22,6 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 
@@ -32,13 +34,19 @@ using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class RayletClientPool {
  public:
-  /// Return an existing RayletClient if exists or connect to one if it does
-  /// not. The returned pointer is borrowed, and expected to be used briefly.
-  std::optional<std::shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(
-      ray::NodeID id);
+  /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
+  /// raylet.
+  static std::function<void()> GetDefaultUnavailableTimeoutCallback(
+      gcs::GcsClient *gcs_client,
+      rpc::RayletClientPool *raylet_client_pool,
+      const rpc::Address &addr);
+
+  /// Return an existing RayletClient if exists or nullptr if it does not.
+  /// The returned pointer is expected to be used briefly.
+  std::shared_ptr<ray::RayletClientInterface> GetByID(ray::NodeID id);
 
   /// Return an existing RayletClient if exists or connect to one if it does
-  /// not. The returned pointer is borrowed, and expected to be used briefly.
+  /// not. The returned pointer is expected to be used briefly.
   /// The function is guaranteed to return the non-nullptr.
   std::shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(
       const rpc::Address &address);
@@ -48,27 +56,14 @@ class RayletClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::NodeID id);
 
-  explicit RayletClientPool(rpc::ClientCallManager &client_call_manager)
-      : client_factory_(DefaultClientFactory(client_call_manager)){};
-
-  // For testing.
   explicit RayletClientPool(RayletClientFactoryFn client_factory)
       : client_factory_(std::move(client_factory)){};
 
- private:
-  /// Provides the default client factory function. Providing this function to the
-  /// construtor aids migration but is ultimately a thing that should be
-  /// deprecated and brought internal to the pool, so this is our bridge.
-  RayletClientFactoryFn DefaultClientFactory(
-      rpc::ClientCallManager &client_call_manager) const {
-    return [&](const rpc::Address &addr) {
-      std::shared_ptr<ray::RayletClientInterface> raylet_client =
-          std::make_shared<ray::raylet::RayletClient>(
-              addr.ip_address(), addr.port(), client_call_manager);
-      return raylet_client;
-    };
-  };
+  static rpc::Address GenerateRayletAddress(const NodeID &node_id,
+                                            const std::string &ip_address,
+                                            int port);
 
+ private:
   absl::Mutex mu_;
 
   /// This factory function makes the connection to the NodeManagerService, and is

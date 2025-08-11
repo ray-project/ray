@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
+GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 
@@ -26,6 +28,7 @@ GCE_TPU_ACCELERATOR_ENDPOINT = (
 )
 GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
 GCE_TPU_ACCELERATOR_KEY = "accelerator-type"
+GCE_TPU_ENV_KEY = "tpu-env"
 GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
@@ -234,7 +237,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
 
     @staticmethod
-    def _get_current_node_tpu_pod_type() -> Optional[str]:
+    def get_current_node_tpu_pod_type() -> Optional[str]:
         """Get the TPU pod type of the current node if applicable.
 
         Individual TPU VMs within a TPU pod must know what type
@@ -293,7 +296,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
 
     @staticmethod
-    def _get_current_node_tpu_worker_id() -> Optional[int]:
+    def get_current_node_tpu_worker_id() -> Optional[int]:
         """Return the worker index of the TPU pod."""
         try:
             # Start with GKE-based check
@@ -312,7 +315,7 @@ class TPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
-        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
         chips_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
         cores_per_chip = get_tpu_cores_per_chip(tpu_pod_type)  # Hard-coded map.
         cores_per_host = chips_per_host * cores_per_chip
@@ -325,6 +328,22 @@ class TPUAcceleratorManager(AcceleratorManager):
             return num_workers
         else:
             logging.debug("Could not get num workers in TPU pod.")
+            return None
+
+    @staticmethod
+    def get_current_node_tpu_topology() -> Optional[str]:
+        try:
+            # Attempt GKE based lookup first
+            if topology := os.environ.get(GKE_TPU_TOPOLOGY_ENV_VAR):
+                return topology
+            # GCE-based VM check using TPU env string.
+            tpu_env = _get_tpu_metadata(key=GCE_TPU_ENV_KEY)
+            if tpu_env:
+                topology = re.search(r"TOPOLOGY:\s*'([^']+)'", tpu_env)
+                if topology:
+                    return topology.group(1)
+        except ValueError as e:
+            logging.debug("Could not get TPU topology: %s", e)
             return None
 
     @staticmethod
@@ -356,7 +375,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return "TPU-" + str(tpu_pod_type.split("-")[0].upper())
 
         ray_accelerator_type = None
-        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
 
         if tpu_pod_type is not None:
             ray_accelerator_type = tpu_pod_type_to_ray_accelerator_type(
@@ -373,6 +392,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         return ray_accelerator_type
 
+    @staticmethod
     def get_current_node_additional_resources() -> Optional[Dict[str, float]]:
         """Get additional resources required for TPU nodes.
 
@@ -416,8 +436,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         """
         resources = {}
         tpu_name = TPUAcceleratorManager.get_current_node_tpu_name()
-        worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
-        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+        tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
 
         if tpu_name and worker_id is not None and tpu_pod_type:
             pod_head_resource_name = f"TPU-{tpu_pod_type}-head"
@@ -437,3 +457,36 @@ class TPUAcceleratorManager(AcceleratorManager):
         if resources:
             return resources
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Dict[str, str]:
+        """Get default TPU-specific Ray node labels for the current node.
+
+        For TPUs, these labels include:
+        - ray.io/tpu-slice-name: the name of the TPU Pod or slice
+        - ray.io/tpu-worker-id: the integer worker ID within the slice
+        - ray.io/tpu-topology: the TPU topology (e.g. 4x4)
+        - ray.io/tpu-pod-type: the TPU pod type (e.g. v4-8)
+
+        Returns:
+            A dictionary of TPU label keys and resolved values.
+        """
+        tpu_labels = {}
+
+        tpu_name = TPUAcceleratorManager.get_current_node_tpu_name()
+        if tpu_name:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] = tpu_name
+
+        worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+        if worker_id is not None:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] = str(worker_id)
+
+        tpu_topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+        if tpu_topology:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY] = tpu_topology
+
+        pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
+        if pod_type:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
+
+        return tpu_labels
