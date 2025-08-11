@@ -241,12 +241,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
-  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
-      local_raylet_id, options.node_ip_address, options.node_manager_port);
-  auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_address),
-      *client_call_manager,
-      /*raylet_unavailable_timeout_callback=*/[] {});
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
@@ -279,17 +273,23 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      local_raylet_id, options.node_ip_address, options.node_manager_port);
+
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
         return std::make_shared<ray::raylet::RayletClient>(
             addr,
             *core_worker->client_call_manager_,
-            rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
-                core_worker->gcs_client_.get(),
-                core_worker->raylet_client_pool_.get(),
-                addr));
+            addr.raylet_id() == local_raylet_id.Binary()
+                ? []() {}
+                : rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                      core_worker->gcs_client_.get(),
+                      core_worker->raylet_client_pool_.get(),
+                      addr));
       });
+  raylet_client_pool->GetOrConnectByAddress(raylet_address);
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
       std::make_shared<rpc::CoreWorkerClientPool>([this](const rpc::Address &addr) {
@@ -503,7 +503,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
       rpc_address,
-      local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
       std::move(lease_policy),
@@ -633,7 +632,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(rpc_address),
                                    std::move(gcs_client),
                                    std::move(raylet_ipc_client),
-                                   std::move(local_raylet_rpc_client),
                                    io_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
