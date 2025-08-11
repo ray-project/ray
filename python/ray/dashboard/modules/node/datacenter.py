@@ -198,11 +198,11 @@ class DataOrganizer:
         }
 
     @staticmethod
-    async def _get_actor_info(actor):
+    async def _get_actor_info(actor: Optional[dict]) -> Optional[dict]:
         if actor is None:
             return None
 
-        actor = dict(actor)
+        actor = actor.copy()
         worker_id = actor["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
         actor_constructor = core_worker_stats.get(
