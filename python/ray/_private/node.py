@@ -257,6 +257,7 @@ class Node:
                 # from Redis or GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
                     self.gcs_address,
+                    self._node_ip_address,
                 )
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
