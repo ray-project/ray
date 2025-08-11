@@ -20,32 +20,35 @@
 #include "absl/container/btree_map.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/transport/actor_submit_queue.h"
+#include "ray/core_worker/task_submission/actor_submit_queue.h"
 
 namespace ray {
 namespace core {
 
 /**
- * SequentialActorSumitQueue extends IActorSubmitQueue and ensures tasks are send
- * in the sequential order defined by the sequence no.
+ * OutofOrderActorSubmitQueue sends request as soon as the dependencies are resolved.
+ *
+ * Under the hood, it keeps requests in two queues: pending queue and sending queue.
+ * Emplaced request is inserted into pending queue; once the request's dependency
+ * is resolved it's moved from pending queue into sending queue.
  */
-class SequentialActorSubmitQueue : public IActorSubmitQueue {
+class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
-  explicit SequentialActorSubmitQueue(ActorID actor_id);
+  explicit OutofOrderActorSubmitQueue(ActorID actor_id);
   /// Add a task into the queue.
-  void Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) override;
+  void Emplace(uint64_t position, const TaskSpecification &spec) override;
   /// If a task exists.
-  bool Contains(uint64_t sequence_no) const override;
+  bool Contains(uint64_t position) const override;
   /// If the task's dependencies were resolved.
-  bool DependenciesResolved(uint64_t sequence_no) const override;
+  bool DependenciesResolved(uint64_t position) const override;
   /// Mark a task's dependency resolution failed thus remove from the queue.
-  void MarkDependencyFailed(uint64_t sequence_no) override;
+  void MarkDependencyFailed(uint64_t position) override;
   /// Make a task's dependency is resolved thus ready to send.
-  void MarkDependencyResolved(uint64_t sequence_no) override;
+  void MarkDependencyResolved(uint64_t position) override;
   // Mark a task has been canceled.
   // If a task hasn't been sent yet, this API will guarantee a task won't be
   // popped via PopNextTaskToSend.
-  void MarkTaskCanceled(uint64_t sequence_no) override;
+  void MarkTaskCanceled(uint64_t position) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
   /// Find next task to send.
@@ -57,20 +60,9 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   bool Empty() override;
 
  private:
-  /// The ID of the actor.
-  ActorID actor_id;
-
-  /// The actor's pending requests, ordered by the sequence number in the request.
-  /// The bool indicates whether the dependencies for that task have been resolved yet.
-  /// A task will be sent after its dependencies are resolved.
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> requests;
-
-  /// Map of task retries. The bool indicates whether the dependencies for that task have
-  /// been resolved yet. A task will be sent after its dependencies are resolved. This is
-  /// a separate unordered map becuase the order in which retries are executed is
-  /// purposefully not guaranteed.
-  absl::flat_hash_map<uint64_t, std::pair<TaskSpecification, bool>> retry_requests;
+  ActorID kActorId;
+  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> pending_queue_;
+  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> sending_queue_;
 };
-
 }  // namespace core
 }  // namespace ray

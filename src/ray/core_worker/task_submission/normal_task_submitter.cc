@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <string>
@@ -829,6 +830,30 @@ bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spe
   }
   generators_to_resubmit_.insert(spec.TaskId());
   return true;
+}
+
+ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
+    size_t min_concurrent_lease_limit)
+    : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}
+
+size_t ClusterSizeBasedLeaseRequestRateLimiter::
+    GetMaxPendingLeaseRequestsPerSchedulingCategory() {
+  return std::max<size_t>(min_concurrent_lease_cap_, num_alive_nodes_.load());
+}
+
+void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
+    const rpc::GcsNodeInfo &data) {
+  if (data.state() == rpc::GcsNodeInfo::DEAD) {
+    if (num_alive_nodes_ != 0) {
+      num_alive_nodes_--;
+    } else {
+      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
+                       << " change state to DEAD but num_alive_node is 0.";
+    }
+  } else {
+    num_alive_nodes_++;
+  }
+  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
 }  // namespace core

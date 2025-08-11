@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/core_worker/task_submission/dependency_resolver.h"
 
 #include <memory>
 #include <utility>

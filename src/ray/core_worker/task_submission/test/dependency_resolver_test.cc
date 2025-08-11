@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/core_worker/task_submission/dependency_resolver.h"
 
 #include <list>
 #include <memory>
@@ -27,9 +27,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 namespace core {
