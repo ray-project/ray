@@ -108,3 +108,5 @@
 /.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci
+
+/.gemini/ @edoakes @aslonnie
