@@ -14,6 +14,8 @@
 
 #include "ray/common/scheduling/label_selector.h"
 
+#include <string>
+
 #include "gtest/gtest.h"
 
 namespace ray {

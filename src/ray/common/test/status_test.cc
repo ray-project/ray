@@ -14,6 +14,8 @@
 
 #include "ray/common/status.h"
 
+#include <utility>
+
 #include "gtest/gtest.h"
 #include "ray/common/grpc_util.h"
 
