@@ -35,13 +35,13 @@ def cli():
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
 @click.option("--uv-cache-dir", default=None)
-def load(
+def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
 ):
-    """Load a dependency sets from a config file."""
+    """Builds dependency sets from a config file."""
     manager = DependencySetManager(
         config_path=config_path,
         workspace_dir=workspace_dir,
@@ -156,12 +156,12 @@ class DependencySetManager:
             args = _append_uv_flags(append_flags, args)
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", self.get_path(constraint)])
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.extend([self.get_path(requirement)])
+                args.extend([requirement])
         if output:
-            args.extend(["-o", self.get_path(output)])
+            args.extend(["-o", output])
         self.exec_uv_cmd("compile", args)
 
     def subset(

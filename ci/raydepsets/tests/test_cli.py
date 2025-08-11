@@ -19,7 +19,7 @@ from ci.raydepsets.cli import (
     _flatten_flags,
     _override_uv_flags,
     _uv_binary,
-    load,
+    build,
 )
 from ci.raydepsets.tests.utils import (
     append_to_file,
@@ -49,7 +49,7 @@ def _create_test_manager(
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
-            load,
+            build,
             [
                 "fake_path/test.depsets.yaml",
                 "--workspace-dir",
@@ -154,7 +154,7 @@ class TestCli(unittest.TestCase):
             uv_cache_dir = Path(tmpdir) / "uv_cache"
 
             result = CliRunner().invoke(
-                load,
+                build,
                 [
                     "test.depsets.yaml",
                     "--workspace-dir",
