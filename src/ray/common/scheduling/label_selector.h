@@ -62,8 +62,16 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  explicit LabelSelector(
-      const google::protobuf::Map<std::string, std::string> &label_selector);
+  // Constructor for parsing user-input label selector string maps to LabelSelector class.
+  template <typename MapType>
+  explicit LabelSelector(const MapType &label_selector) {
+    // Label selector keys and values are validated before construction in
+    // `prepare_label_selector`.
+    // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
+    for (const auto &[key, value] : label_selector) {
+      AddConstraint(key, value);
+    }
+  }
 
   rpc::LabelSelector ToProto() const;
 
