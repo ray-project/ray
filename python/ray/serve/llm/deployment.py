@@ -1,6 +1,3 @@
-from ray.llm._internal.serve.deployments.data_parallel.dp_llm_server import (
-    DPLLMServer as InternalDPLLMServer,
-)
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as InternalLLMServer,
 )
@@ -82,8 +79,4 @@ class PDServer(PDProxyServer):
         decode_server: The decode server deployment handle.
     """
 
-    pass
-
-
-class DPLLMServer(InternalDPLLMServer):
     pass
