@@ -56,15 +56,8 @@ class RayletClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::NodeID id);
 
-  explicit RayletClientPool(
-      RayletClientFactoryFn client_factory,
-      const std::shared_ptr<ray::RayletClientInterface> &local_raylet_client = nullptr,
-      const NodeID &local_raylet_id = NodeID::Nil())
-      : client_factory_(std::move(client_factory)) {
-    if (local_raylet_client) {
-      client_map_[local_raylet_id] = local_raylet_client;
-    }
-  };
+  explicit RayletClientPool(RayletClientFactoryFn client_factory)
+      : client_factory_(std::move(client_factory)) {};
 
   static rpc::Address GenerateRayletAddress(const NodeID &node_id,
                                             const std::string &ip_address,
