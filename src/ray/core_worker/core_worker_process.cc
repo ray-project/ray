@@ -425,20 +425,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
 
-        // Check if the core worker is shutting down before attempting plasma operations.
-        // During shutdown, the plasma store connection may already be broken, so we
-        // should avoid plasma operations entirely.
-        if (core_worker->IsShuttingDown()) {
-          RAY_LOG(INFO) << "Skipping plasma store operation for error object "
-                        << object_id << " because core worker is shutting down.";
-          return;
-        }
-
         auto status =
             core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
         if (!status.ok()) {
           // During shutdown, plasma store connections can be closed causing IOError.
-          // We only tolerate IOError during shutdown to avoid masking real errors.
+          // Tolerate only IOError during shutdown to avoid masking real errors.
           if (status.IsIOError() && core_worker->IsShuttingDown()) {
             // Double-check shutdown state - this handles the race where shutdown
             // began after our first check but before the plasma operation.
