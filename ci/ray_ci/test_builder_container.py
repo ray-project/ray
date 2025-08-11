@@ -1,8 +1,7 @@
 import sys
-from typing import List
-from unittest import mock
-
 import pytest
+from unittest import mock
+from typing import List
 
 from ci.ray_ci.builder_container import BuilderContainer
 

@@ -16,8 +16,6 @@
 
 #include <gtest/gtest.h>
 
-#include <utility>
-
 namespace ray {
 
 TEST(PostableTest, TestPostable) {

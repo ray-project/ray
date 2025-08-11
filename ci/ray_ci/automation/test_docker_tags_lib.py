@@ -1,37 +1,36 @@
-import platform
-import random
-import shutil
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-from datetime import datetime, timezone
 from unittest import mock
-
+import sys
+from datetime import datetime, timezone
 import pytest
 import requests
+import subprocess
+import tempfile
 import runfiles
+import platform
+import time
+import threading
+import shutil
+import random
 
 from ci.ray_ci.automation.docker_tags_lib import (
-    AuthTokenException,
-    DockerHubRateLimitException,
-    RetrieveImageConfigException,
     _get_docker_auth_token,
     _get_docker_hub_auth_token,
     _get_image_creation_time,
-    _is_release_tag,
-    _list_recent_commit_short_shas,
     backup_release_tags,
-    call_crane_copy,
-    check_image_ray_commit,
     copy_tag_to_aws_ecr,
     delete_tag,
-    generate_index,
-    get_ray_commit,
-    list_image_tags,
+    _list_recent_commit_short_shas,
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
+    _is_release_tag,
+    list_image_tags,
+    get_ray_commit,
+    check_image_ray_commit,
+    generate_index,
+    AuthTokenException,
+    RetrieveImageConfigException,
+    DockerHubRateLimitException,
+    call_crane_copy,
 )
 
 

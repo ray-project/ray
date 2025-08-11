@@ -32,7 +32,8 @@ def test_serve_llm_import_does_not_error():
             LLMConfig,  # noqa: F401
         )
     with pytest.raises(ImportError):
-        from ray.serve.llm.deployment import (
+        from ray.serve.llm import (
+            LLMRouter,  # noqa: F401
             LLMServer,  # noqa: F401
         )
     with pytest.raises(ImportError):

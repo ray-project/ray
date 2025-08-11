@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 import threading
 
 import ray.util.collective as collective
@@ -41,11 +40,11 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     from ray._private.worker import global_worker
 
-    gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_object(obj_id).data
+    tensors = gpu_object_store.get_object(obj_id)
 
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
@@ -91,8 +90,8 @@ def __ray_get_tensor_meta__(self, obj_id: str):
     # NOTE: We do not specify a timeout here because the user task that returns
     # it could take arbitrarily long and we don't want to trigger a spurious
     # timeout.
-    gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-    return [(t.shape, t.dtype) for t in gpu_object.data]
+    tensors = gpu_object_store.wait_and_get_object(obj_id)
+    return [(t.shape, t.dtype) for t in tensors]
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -103,22 +102,8 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    gpu_object = gpu_object_store.get_object(obj_id)
-    return gpu_object.data
-
-
-@dataclass
-class GPUObject:
-    # A list of tensors representing the GPU object.
-    data: List["torch.Tensor"]
-    # Whether the GPU object is the primary copy.
-    is_primary: bool
-    # The number of reads allowed to the GPU object before it will be GCed from this actor.
-    # This is used to implement garbage collection for receiver actors,
-    # handling cases where the same GPU object reference is passed to the
-    # same actor task multiple times. For sender actors, we still rely on
-    # the object store's reference counting mechanism.
-    num_readers: int = 0
+    tensors = gpu_object_store.get_object(obj_id)
+    return tensors
 
 
 class GPUObjectStore:
@@ -136,18 +121,20 @@ class GPUObjectStore:
     def __init__(self):
         # A dictionary that maps from an object ID to a list of tensors.
         #
-        # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
-        self._gpu_object_store: Dict[str, GPUObject] = {}
+        # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
+        self._gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
         self._object_present_cv = threading.Condition(self._lock)
+        # A set of object IDs that are the primary copy.
+        self._primary_gpu_object_ids: Set[str] = set()
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
             return obj_id in self._gpu_object_store
 
-    def get_object(self, obj_id: str) -> Optional[GPUObject]:
+    def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
             return self._gpu_object_store[obj_id]
 
@@ -166,22 +153,18 @@ class GPUObjectStore:
             is_primary: Whether the GPU object is the primary copy.
         """
         with self._object_present_cv:
-            self._gpu_object_store[obj_id] = GPUObject(
-                gpu_object,
-                is_primary,
-            )
+            if is_primary:
+                self._primary_gpu_object_ids.add(obj_id)
+            self._gpu_object_store[obj_id] = gpu_object
             self._object_present_cv.notify_all()
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
-            return (
-                obj_id in self._gpu_object_store
-                and self._gpu_object_store[obj_id].is_primary
-            )
+            return obj_id in self._primary_gpu_object_ids
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> GPUObject:
+    ) -> List["torch.Tensor"]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then gets it. If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -200,7 +183,7 @@ class GPUObjectStore:
 
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> GPUObject:
+    ) -> List["torch.Tensor"]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then pops it.  If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -212,7 +195,7 @@ class GPUObjectStore:
                 indefinitely.
 
         Returns:
-            The GPU object.
+            The tensors in the GPU object.
         """
         with self._lock:
             self._wait_object(obj_id, timeout)
@@ -238,12 +221,15 @@ class GPUObjectStore:
                     f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-    def pop_object(self, obj_id: str) -> GPUObject:
+    def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
             assert (
                 obj_id in self._gpu_object_store
             ), f"obj_id={obj_id} not found in GPU object store"
-            return self._gpu_object_store.pop(obj_id)
+            tensors = self._gpu_object_store.pop(obj_id)
+            if obj_id in self._primary_gpu_object_ids:
+                self._primary_gpu_object_ids.remove(obj_id)
+            return tensors
 
     def get_num_objects(self) -> int:
         """

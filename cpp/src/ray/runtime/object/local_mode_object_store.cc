@@ -41,8 +41,11 @@ void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                   const ObjectID &object_id) {
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
-  memory_store_->Put(
+  auto status = memory_store_->Put(
       ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), object_id);
+  if (!status) {
+    throw RayException("Put object error");
+  }
 }
 
 std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &object_id,

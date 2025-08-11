@@ -22,7 +22,6 @@
 #include "absl/flags/parse.h"
 #include "counter.h"
 #include "plus.h"
-#include "ray/util/network_util.h"
 
 int cmd_argc = 0;
 char **cmd_argv = nullptr;
@@ -74,7 +73,7 @@ TEST(RayClusterModeTest, FullTest) {
     std::string local_ip = ray::internal::GetNodeIpAddress();
     ray::internal::ProcessHelper::GetInstance().StartRayNode(
         local_ip, port, username, password);
-    config.address = ray::BuildAddress(local_ip, port);
+    config.address = local_ip + ":" + std::to_string(port);
     config.redis_username_ = username;
     config.redis_password_ = password;
   }

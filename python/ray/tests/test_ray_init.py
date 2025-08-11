@@ -7,7 +7,6 @@ import signal
 import subprocess
 import tempfile
 from pathlib import Path
-from ray._common.network_utils import parse_address, build_address
 
 import grpc
 import pytest
@@ -39,7 +38,7 @@ def test_ray_address(input, call_ray_start):
         assert res.address_info["gcs_address"] == address
         ray.shutdown()
 
-    addr = f"localhost:{parse_address(address)[-1]}"
+    addr = "localhost:{}".format(address.split(":")[-1])
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.init(input)
         # Ensure this is not a client.connect()
@@ -195,7 +194,7 @@ def test_auto_init_non_client(call_ray_start):
         assert not isinstance(res, ClientObjectRef)
         ray.shutdown()
 
-    addr = f"localhost:{parse_address(address)[-1]}"
+    addr = "localhost:{}".format(address.split(":")[-1])
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.put(300)
         # Ensure this is not a client.connect()
@@ -211,10 +210,9 @@ def test_auto_init_non_client(call_ray_start):
     "function", [lambda: ray.put(300), lambda: ray.remote(ray.nodes).remote()]
 )
 def test_auto_init_client(call_ray_start, function):
-    address = parse_address(call_ray_start)[0]
-
+    address = call_ray_start.split(":")[0]
     with unittest.mock.patch.dict(
-        os.environ, {"RAY_ADDRESS": f"ray://{build_address(address, 25036)}"}
+        os.environ, {"RAY_ADDRESS": f"ray://{address}:25036"}
     ):
         res = function()
         # Ensure this is a client connection.

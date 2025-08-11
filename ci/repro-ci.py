@@ -37,7 +37,7 @@ import subprocess
 import threading
 import time
 from numbers import Number
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 import boto3
 import click

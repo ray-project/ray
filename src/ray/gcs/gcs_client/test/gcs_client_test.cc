@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
-#include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/util.h"
 
@@ -160,7 +159,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
     while (true) {
       auto channel =
-          grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
+          grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
@@ -436,7 +435,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
@@ -933,7 +932,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
-  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   grpc::ClientContext context;

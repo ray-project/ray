@@ -1,13 +1,12 @@
 import sys
-
 import pytest
 
 from ci.ray_ci.doc.api import (
-    _SPHINX_AUTOCLASS_HEADER,
-    _SPHINX_AUTOSUMMARY_HEADER,
     API,
     AnnotationType,
     CodeType,
+    _SPHINX_AUTOCLASS_HEADER,
+    _SPHINX_AUTOSUMMARY_HEADER,
 )
 from ci.ray_ci.doc.mock.mock_module import mock_function
 

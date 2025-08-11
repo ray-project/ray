@@ -19,9 +19,3 @@ ray.rllib.env.external.rllink.RLlink
 
    ~get_rllink_message
    ~send_rllink_message
-
-
-ray.rllib.env.external.rllib_gateway.RLlibGateway
--------------------------------------------------
-
-.. autoclass:: ray.rllib.env.external.rllib_gateway.RLlibGateway

@@ -11,7 +11,6 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR
-from ray._common.network_utils import parse_address
 from ray._private.test_utils import (
     get_error_message,
     get_log_batch,
@@ -362,8 +361,7 @@ def test_list_named_actors_timeout(monkeypatch, shutdown_only):
 
 def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
     cluster = ray_start_cluster_head
-    _, redis_port = parse_address(cluster.address)
-    redis_port = int(redis_port)
+    redis_port = int(cluster.address.split(":")[1])
     # Reuse redis port to make node manager grpc server fail to start.
     with pytest.raises(Exception):
         cluster.add_node(wait=False, node_manager_port=redis_port)

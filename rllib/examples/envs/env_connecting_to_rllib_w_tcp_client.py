@@ -70,7 +70,7 @@ from ray.rllib.env.external.env_runner_server_for_external_inference import (
     EnvRunnerServerForExternalInference,
 )
 from ray.rllib.examples.envs.classes.utils.dummy_external_client import (
-    dummy_external_client,
+    _dummy_external_client,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     # Start the dummy CartPole "simulation".
     if args.use_dummy_client:
         threading.Thread(
-            target=dummy_external_client,
+            target=_dummy_external_client,
             args=(
                 # Connect to the first remote EnvRunner, of - if there is no remote one -
                 # to the local EnvRunner.

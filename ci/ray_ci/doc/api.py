@@ -1,9 +1,11 @@
+import re
 import importlib
 import inspect
-import re
-from dataclasses import dataclass
+
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass
+from typing import Optional, List, Tuple, Set, Dict
+
 
 _SPHINX_AUTOSUMMARY_HEADER = ".. autosummary::"
 _SPHINX_AUTOCLASS_HEADER = ".. autoclass::"

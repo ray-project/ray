@@ -12,7 +12,6 @@ from ray._private import ray_constants
 from ray.util.collective.collective_group import gloo_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.const import get_store_name
-from ray._common.network_utils import parse_address
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,
@@ -46,7 +45,7 @@ class Rendezvous:
         self._context = context
         redis_address = ray._private.worker._global_node.redis_address
         (self._redis_ip_address, self._redis_port) = (
-            parse_address(redis_address) if store_type == "redis" else (None, None)
+            redis_address.split(":") if store_type == "redis" else (None, None)
         )
         self._process_ip_address = ray.util.get_node_ip_address()
         logger.debug(

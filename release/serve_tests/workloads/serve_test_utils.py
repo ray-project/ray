@@ -13,7 +13,6 @@ from ray.serve.schema import ProxyStatus
 from serve_test_cluster_utils import NUM_CPU_PER_NODE
 from subprocess import PIPE
 from typing import Dict, List, Optional, Union
-from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__file__)
 
@@ -221,7 +220,7 @@ def run_one_wrk_trial(
             "-d",
             trial_length,
             "--latency",
-            f"http://{build_address(http_host, http_port)}/{endpoint}",
+            f"http://{http_host}:{http_port}/{endpoint}",
         ],
         stdout=PIPE,
         stderr=PIPE,

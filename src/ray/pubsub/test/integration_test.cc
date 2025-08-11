@@ -28,7 +28,6 @@
 #include "ray/common/grpc_util.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/util/network_util.h"
 #include "src/ray/protobuf/pubsub.grpc.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -195,7 +194,7 @@ class IntegrationTest : public ::testing::Test {
         /*get_client=*/
         [](const rpc::Address &address) {
           return std::make_shared<CallbackSubscriberClient>(
-              BuildAddress(address.ip_address(), address.port()));
+              absl::StrCat(address.ip_address(), ":", address.port()));
         },
         io_service_.Get());
   }

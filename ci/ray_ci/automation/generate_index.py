@@ -1,11 +1,11 @@
 import click
 
-from ci.ray_ci.automation.docker_tags_lib import generate_index, list_image_tags
+from ci.ray_ci.automation.docker_tags_lib import list_image_tags, generate_index
 from ci.ray_ci.docker_container import (
-    ARCHITECTURES_RAY,
+    RayType,
     PLATFORMS_RAY,
     PYTHON_VERSIONS_RAY,
-    RayType,
+    ARCHITECTURES_RAY,
 )
 
 

@@ -20,8 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
@@ -116,6 +114,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
+  /// \return Void.
   void StartOrUpdateWaitRequest(
       const WorkerID &worker_id,
       const std::vector<rpc::ObjectReference> &required_objects);
@@ -126,6 +125,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker whose `ray.wait` request we should
   /// cancel.
+  /// \return Void.
   void CancelWaitRequest(const WorkerID &worker_id);
 
   /// Start or update a worker's `ray.get` request. This will attempt to make
@@ -137,6 +137,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
+  /// \return Void.
   void StartOrUpdateGetRequest(const WorkerID &worker_id,
                                const std::vector<rpc::ObjectReference> &required_objects);
 
@@ -146,6 +147,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker whose `ray.get` request we should
   /// cancel.
+  /// \return Void.
   void CancelGetRequest(const WorkerID &worker_id);
 
   /// Request dependencies for a queued task. This will attempt to make any
@@ -156,6 +158,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param task_id The task that requires the objects.
   /// \param required_objects The objects required by the task.
+  /// \return Void.
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects,
                                const TaskMetricsKey &task_key);
@@ -167,6 +170,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param task_id The task that requires the objects.
   /// \param required_objects The objects required by the task.
+  /// \return Void.
   void RemoveTaskDependencies(const TaskID &task_id);
 
   /// Handle an object becoming locally available.

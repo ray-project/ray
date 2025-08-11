@@ -1,8 +1,8 @@
 import os
-import sys
-from pathlib import Path
-
 import pytest
+import sys
+
+from pathlib import Path
 
 # In privileged containers, we expect the following
 # cgroupv1 is disabled

@@ -13,7 +13,6 @@ from typing import Any, Dict, Optional
 import yaml
 
 import ray
-from ray._common.network_utils import build_address
 from ray._private.dict import deep_update
 from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_CLIENT_PORT,
@@ -103,10 +102,10 @@ class DockerCluster:
 
         if client:
             port = self.client_port
-            address = f"ray://{build_address(host, port)}"
+            address = f"ray://{host}:{port}"
         else:
             port = self.gcs_port
-            address = build_address(host, port)
+            address = f"{host}:{port}"
 
         timeout_at = time.monotonic() + timeout
         while time.monotonic() < timeout_at:

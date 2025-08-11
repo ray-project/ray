@@ -21,8 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/util/network_util.h"
-
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
@@ -1057,8 +1055,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
       RAY_LOG(DEBUG)
               .WithField(WorkerID::FromBinary(worker_addr.worker_id()))
               .WithField(object_id)
-          << "Adding borrower "
-          << BuildAddress(worker_addr.ip_address(), worker_addr.port()) << " to object";
+          << "Adding borrower " << worker_addr.ip_address() << ":" << worker_addr.port()
+          << " to object";
       new_borrowers.push_back(worker_addr);
     }
   }
@@ -1070,9 +1068,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
       RAY_LOG(DEBUG)
               .WithField(WorkerID::FromBinary(nested_borrower.worker_id()))
               .WithField(object_id)
-          << "Adding borrower "
-          << BuildAddress(nested_borrower.ip_address(), nested_borrower.port())
-          << " to object";
+          << "Adding borrower " << nested_borrower.ip_address() << ":"
+          << nested_borrower.port() << " to object";
       new_borrowers.push_back(nested_borrower);
     }
   }
@@ -1224,9 +1221,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
     // from a task, and the task's caller executed in a remote process.
     for (const auto &inner_id : inner_ids) {
       RAY_LOG(DEBUG).WithField(inner_id)
-          << "Adding borrower "
-          << BuildAddress(owner_address.ip_address(), owner_address.port())
-          << " to object, borrower owns outer ID " << object_id;
+          << "Adding borrower " << owner_address.ip_address() << ":"
+          << owner_address.port() << " to object, borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it == object_id_refs_.end()) {
         inner_it = object_id_refs_.emplace(inner_id, Reference()).first;

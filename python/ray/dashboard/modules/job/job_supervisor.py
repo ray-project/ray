@@ -25,7 +25,6 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
-from ray._common.network_utils import build_address
 
 import psutil
 
@@ -337,7 +336,9 @@ class JobSupervisor:
             await _start_signal_actor.wait.remote()
 
         node = ray._private.worker.global_worker.node
-        driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
+        driver_agent_http_address = (
+            f"http://{node.node_ip_address}:{node.dashboard_agent_listen_port}"
+        )
         driver_node_id = ray.get_runtime_context().get_node_id()
 
         await self._job_info_client.put_status(

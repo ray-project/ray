@@ -48,7 +48,6 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 import ray._private.utils as utils
 from ray.util.check_open_ports import check_open_ports
-from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.util.state import list_nodes
@@ -1035,7 +1034,7 @@ def start_open_port_check_server():
 
     yield (
         OpenPortCheckServer,
-        f"http://{build_address(server.server_address[0], server.server_address[1])}",
+        f"http://{server.server_address[0]}:{server.server_address[1]}",
     )
 
     server.shutdown()
@@ -1058,7 +1057,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     )
     assert result.exit_code == 0
     assert (
-        int(parse_address(context.address_info["gcs_address"])[1])
+        int(context.address_info["gcs_address"].split(":")[1])
         in open_port_check_server.request_ports
     )
     assert "[🟢] No open ports detected" in result.output

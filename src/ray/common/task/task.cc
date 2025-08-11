@@ -14,10 +14,6 @@
 
 #include "ray/common/task/task.h"
 
-#include <string>
-#include <utility>
-#include <vector>
-
 #include "absl/strings/str_format.h"
 
 namespace ray {

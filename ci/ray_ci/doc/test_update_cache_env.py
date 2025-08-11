@@ -1,13 +1,11 @@
+import sys
 import os
 import pickle
-import sys
-import tempfile
-
 import pytest
 from sphinx.project import Project
-
-from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
+import tempfile
 from ci.ray_ci.doc.cmd_update_cache_env import update_environment_pickle
+from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
 
 
 class FakeBuildEnv:

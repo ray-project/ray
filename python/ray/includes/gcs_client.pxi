@@ -23,14 +23,12 @@ from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
+    CStatusCode,
+    CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
     CGetClusterStatusReply,
-    CStatusOr,
-    CGcsNodeState,
-    CNodeSelector,
-    CGcsNodeInfo,
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
@@ -76,7 +74,7 @@ cdef class InnerGcsClient:
         cdef c_pair[c_string, int] pair = self.inner.get().GetGcsServerAddress()
         host = pair.first.decode("utf-8")
         port = pair.second
-        return build_address(host, port)
+        return f"{host}:{port}"
 
     @property
     def cluster_id(self) -> ray.ClusterID:
@@ -325,23 +323,13 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
-        self, timeout: Optional[int | float] = None,
-        state_filter: Optional[int] = None,
+        self, timeout: Optional[int | float] = None
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[CGcsNodeInfo] reply
-            CRayStatus status
-            optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
-            optional[CGcsNodeState] c_state_filter = nullopt
-            optional[CNodeSelector] c_node_selector = nullopt
-        if state_filter is not None:
-            c_state_filter.emplace(<CGcsNodeState>state_filter)
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef c_vector[CGcsNodeInfo] reply
+        cdef CRayStatus status
         with nogil:
-            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
-        status = status_or.value().status()
-        if status_or.value().ok():
-            reply = move(status_or.value().value())
+            status = self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(

@@ -10,7 +10,6 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     run_string_as_driver_nonblocking,
 )
-from ray._common.network_utils import build_address
 
 
 METRIC_CONFIG = {
@@ -21,7 +20,7 @@ METRIC_CONFIG = {
 
 
 def raw_metrics(info):
-    metrics_page = build_address("localhost", info["metrics_export_port"])
+    metrics_page = "localhost:{}".format(info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     res = fetch_prometheus_metrics([metrics_page])
     return res

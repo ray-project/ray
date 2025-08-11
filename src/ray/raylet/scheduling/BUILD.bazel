@@ -278,26 +278,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":cluster_resource_scheduler",
         "//:ray_mock",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
+        "//:raylet_lib",
         "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "cluster_resource_scheduler_2_test",
-    size = "small",
-    srcs = [
-        "cluster_resource_scheduler_2_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":cluster_resource_scheduler",
-        ":scheduling_context",
-        ":scheduling_options",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -310,7 +293,21 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":local_resource_manager",
+        "//:ray_mock",
+        "//:raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "cluster_resource_scheduler_2_test",
+    size = "small",
+    srcs = [
+        "cluster_resource_scheduler_2_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -323,7 +320,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":composite_scheduling_policy",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -336,10 +333,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":composite_scheduling_policy",
-        ":hybrid_scheduling_policy",
+        ":scheduler",
         "@com_google_absl//absl/random:mock_distributions",
-        "@com_google_absl//absl/random:mocking_bit_gen",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -352,14 +347,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":cluster_resource_scheduler",
-        ":cluster_task_manager",
         "//:ray_mock",
-        "//src/ray/common:id",
-        "//src/ray/common:task_common",
+        "//:raylet_lib",
         "//src/ray/common:test_util",
-        "//src/ray/raylet:local_task_manager",
-        "//src/ray/raylet/test:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -372,7 +362,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":cluster_resource_manager",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

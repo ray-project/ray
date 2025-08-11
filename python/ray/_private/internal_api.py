@@ -6,7 +6,6 @@ import ray._private.profiling as profiling
 import ray._private.services as services
 import ray._private.utils as utils
 import ray._private.worker
-from ray._common.network_utils import build_address
 from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
 from ray.core.generated import common_pb2
@@ -69,11 +68,11 @@ def get_memory_info_reply(state, node_manager_address=None, node_manager_port=No
                 raylet = node
                 break
         assert raylet is not None, "Every raylet is dead"
-        raylet_address = build_address(
+        raylet_address = "{}:{}".format(
             raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
         )
     else:
-        raylet_address = build_address(node_manager_address, node_manager_port)
+        raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
 
     channel = utils.init_grpc_channel(
         raylet_address,
@@ -100,7 +99,7 @@ def node_stats(
 
     # We can ask any Raylet for the global memory info.
     assert node_manager_address is not None and node_manager_port is not None
-    raylet_address = build_address(node_manager_address, node_manager_port)
+    raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
     channel = utils.init_grpc_channel(
         raylet_address,
         options=[
@@ -168,6 +167,10 @@ def store_stats_summary(reply):
                     / reply.store_stats.restore_time_total_s
                 ),
             )
+        )
+    if reply.store_stats.consumed_bytes > 0:
+        store_summary += "Objects consumed by Ray tasks: {} MiB.\n".format(
+            int(reply.store_stats.consumed_bytes / (1024 * 1024))
         )
     if reply.store_stats.object_pulls_queued:
         store_summary += "Object fetches queued, waiting for available memory."

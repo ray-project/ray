@@ -62,6 +62,7 @@ class ActorCreatorInterface {
   ///
   /// \param actor_id The actor id to wait
   /// \param callback The callback that will be called after actor registered
+  /// \return void
   virtual void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
                                                gcs::StatusCallback callback) = 0;
 

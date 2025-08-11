@@ -15,9 +15,6 @@
 
 #include "ray/common/bundle_location_index.h"
 
-#include <memory>
-#include <utility>
-
 #include "gtest/gtest.h"
 
 namespace ray {

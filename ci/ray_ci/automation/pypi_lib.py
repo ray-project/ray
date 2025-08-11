@@ -1,7 +1,7 @@
-import os
 import subprocess
-import sys
+import os
 from typing import List
+import sys
 
 from ray_release.aws import get_secret_token
 

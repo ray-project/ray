@@ -1,5 +1,4 @@
 import sys
-
 import pytest
 
 from ci.ray_ci.linux_container import LinuxContainer

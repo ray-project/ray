@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     find_free_port,
     generate_system_config_map,
 )
-from ray._common.network_utils import parse_address
 import ray._private.ray_constants as ray_constants
 
 # Import asyncio timeout depends on python version
@@ -302,7 +301,7 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None)
     ray.shutdown()
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
-    host, port = parse_address(redis_addr)
+    host, port = redis_addr.split(":")
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
         cli = redis.RedisCluster(host, int(port))
     else:

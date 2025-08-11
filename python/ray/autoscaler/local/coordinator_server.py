@@ -11,7 +11,6 @@ import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
-from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -77,7 +76,7 @@ class OnPremCoordinatorServer(threading.Thread):
         """Initialize HTTPServer and serve forever by invoking self.run()."""
 
         logger.info(
-            "Running on prem coordinator server on address " + build_address(host, port)
+            "Running on prem coordinator server on address " + host + ":" + str(port)
         )
         threading.Thread.__init__(self)
         self._port = port

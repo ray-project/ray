@@ -26,7 +26,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
-#include "ray/util/network_util.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -62,8 +61,8 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address =
-      BuildAddress((listen_to_localhost_only_ ? "127.0.0.1" : "0.0.0.0"), port_);
+  std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
+                             std::to_string(port_));
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and

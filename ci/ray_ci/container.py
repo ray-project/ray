@@ -1,9 +1,11 @@
 import abc
 import os
-import re
 import subprocess
 import sys
-from typing import List, Optional, Tuple
+import re
+
+from typing import List, Tuple, Optional
+
 
 # Regex pattern to match CUDA copyright header with any version
 _CUDA_COPYRIGHT_PATTERN = r"""==========

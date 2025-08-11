@@ -1,10 +1,9 @@
+import sys
 import os
 import pickle
-import sys
+import pytest
 import tempfile
 from unittest import mock
-
-import pytest
 
 from ci.ray_ci.doc.build_cache import BuildCache
 

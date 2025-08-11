@@ -17,7 +17,6 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <cstddef>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>

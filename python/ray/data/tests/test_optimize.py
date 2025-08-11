@@ -213,23 +213,13 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
-def test_optimize_randomize_block_order(ray_start_regular_shared):
-    """Test that randomize_block_order is not fused with other operators."""
-    ds = (
-        ray.data.range(10)
-        .map_batches(dummy_map)
-        .randomize_block_order()
-        .map_batches(dummy_map)
-        .materialize()
-    )
+def test_optimize_reorder(ray_start_regular_shared):
+    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
+    print("Stats", ds.stats())
     expect_stages(
         ds,
         2,
-        [
-            "ReadRange->MapBatches(dummy_map)",
-            "RandomizeBlockOrder",
-            "MapBatches(dummy_map)",
-        ],
+        ["ReadRange->MapBatches(dummy_map)", "RandomizeBlockOrder"],
     )
 
     ds2 = (
@@ -264,6 +254,19 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     assert "ReadRange->MapBatches(<lambda>)" in stats, stats
     assert "RandomShuffle" in stats, stats
     assert "MapBatches(<lambda>)->Write" in stats, stats
+
+
+def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).randomize_block_order().map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+
+    # The randomize_block_order will switch order with the following map_batches,
+    # but not the tailing write operator.
+    assert "ReadRange->MapBatches(<lambda>)" in stats, stats
+    assert "RandomizeBlockOrder" in stats, stats
+    assert "Write" in stats, stats
 
 
 @pytest.mark.skip(reason="reusing base data not enabled")

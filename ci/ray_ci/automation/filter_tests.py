@@ -1,8 +1,7 @@
 import sys
-
 import click
 
-from ci.ray_ci.utils import ci_init, filter_tests
+from ci.ray_ci.utils import filter_tests, ci_init
 
 
 @click.command()

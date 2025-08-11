@@ -14,9 +14,6 @@
 
 #include "ray/common/scheduling/scheduling_ids.h"
 
-#include <string>
-#include <vector>
-
 namespace ray {
 
 int64_t StringIdMap::Get(const std::string &string_id) const {

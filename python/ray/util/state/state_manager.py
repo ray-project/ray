@@ -54,7 +54,6 @@ from ray.util.state.common import (
     SupportedFilterType,
 )
 from ray.util.state.exception import DataSourceUnavailable
-from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +146,7 @@ class StateDataSourceClient:
     def get_raylet_stub(self, ip: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
-            build_address(ip, port), options, asynchronous=True
+            f"{ip}:{port}", options, asynchronous=True
         )
         return NodeManagerServiceStub(channel)
 
@@ -163,7 +162,7 @@ class StateDataSourceClient:
         ip, http_port, grpc_port = json.loads(agent_addr)
         options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
-            build_address(ip, grpc_port), options=options, asynchronous=True
+            f"{ip}:{grpc_port}", options=options, asynchronous=True
         )
         return LogServiceStub(channel)
 
@@ -430,7 +429,7 @@ class StateDataSourceClient:
                 f"Expected non empty node ip and runtime env agent port, got {node_ip} and {runtime_env_agent_port}."
             )
         timeout = aiohttp.ClientTimeout(total=timeout)
-        url = f"http://{build_address(node_ip, runtime_env_agent_port)}/get_runtime_envs_info"
+        url = f"http://{node_ip}:{runtime_env_agent_port}/get_runtime_envs_info"
         request = GetRuntimeEnvsInfoRequest(limit=limit)
         data = request.SerializeToString()
         async with self._client_session.post(url, data=data, timeout=timeout) as resp:

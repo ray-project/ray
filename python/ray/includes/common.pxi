@@ -63,8 +63,8 @@ cdef class GcsClientOptions:
             c_cluster_id = CClusterID.FromHex(cluster_id_hex)
         self = GcsClientOptions()
         try:
-            ip, port_str = parse_address(gcs_address)
-            port = int(port_str)
+            ip, port = gcs_address.split(":", 2)
+            port = int(port)
             self.inner.reset(
                 new CGcsClientOptions(
                     ip, port, c_cluster_id, allow_cluster_id_nil, allow_cluster_id_nil))

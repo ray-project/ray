@@ -14,9 +14,6 @@
 
 #include "ray/common/ray_config.h"
 
-#include <string>
-#include <vector>
-
 #include "gtest/gtest.h"
 #include "ray/common/grpc_util.h"
 

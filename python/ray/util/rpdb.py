@@ -3,7 +3,6 @@
 # (BSD 2-Clause "Simplified" License)
 
 import errno
-from ray._common.network_utils import build_address
 import inspect
 import json
 import logging
@@ -111,9 +110,9 @@ class _RemotePdb(Pdb):
     def listen(self):
         if not self._quiet:
             _cry(
-                "RemotePdb session open at %s, "
+                "RemotePdb session open at %s:%s, "
                 "use 'ray debug' to connect..."
-                % build_address(self._ip_address, self._listen_socket.getsockname()[1])
+                % (self._ip_address, self._listen_socket.getsockname()[1])
             )
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()

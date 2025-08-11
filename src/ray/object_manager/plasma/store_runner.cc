@@ -158,6 +158,8 @@ bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return store_->IsObjectSpillable(object_id);
 }
 
+int64_t PlasmaStoreRunner::GetConsumedBytes() { return store_->GetConsumedBytes(); }
+
 int64_t PlasmaStoreRunner::GetFallbackAllocated() const {
   absl::MutexLock lock(&store_runner_mutex_);
   return allocator_ ? allocator_->FallbackAllocated() : 0;

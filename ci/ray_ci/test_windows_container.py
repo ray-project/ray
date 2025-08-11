@@ -1,11 +1,10 @@
 import sys
-from typing import List
-from unittest import mock
-
 import pytest
+from unittest import mock
+from typing import List
 
-from ci.ray_ci.container import _DOCKER_ENV
 from ci.ray_ci.windows_container import WindowsContainer
+from ci.ray_ci.container import _DOCKER_ENV
 
 
 def test_install_ray() -> None:

@@ -1,15 +1,14 @@
-import os
-import subprocess
-import sys
-import tempfile
-from unittest import mock
-
 import pytest
+from unittest import mock
+import tempfile
+import os
+import sys
+import subprocess
 
 from ci.ray_ci.automation.pypi_lib import (
-    _get_pypi_token,
-    _get_pypi_url,
     upload_wheels_to_pypi,
+    _get_pypi_url,
+    _get_pypi_token,
 )
 
 

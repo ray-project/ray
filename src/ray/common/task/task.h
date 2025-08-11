@@ -16,9 +16,6 @@
 
 #include <inttypes.h>
 
-#include <string>
-#include <vector>
-
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
 

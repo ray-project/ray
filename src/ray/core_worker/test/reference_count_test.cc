@@ -244,15 +244,15 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
-                            const std::optional<std::string> &key_id_binary) override {
+                            const std::optional<std::string> &key_id_binary) {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) override {}
+                      const std::string &key_id_binary) {}
 
-  void Publish(rpc::PubMessage pub_message) override {
+  void Publish(rpc::PubMessage pub_message) {
     if (pub_message.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
       // TODO(swang): Test object locations pubsub too.
       return;
@@ -273,13 +273,9 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const pubsub::SubscriberID &subscriber_id,
-                              const std::optional<std::string> &key_id_binary) override {
+                              const std::optional<std::string> &key_id_binary) {
     return true;
   }
-
-  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
-                           rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override {}
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
@@ -838,12 +834,12 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
   // Tests putting an object with no references is ignored.
-  store.Put(buffer, id2);
+  RAY_CHECK(store.Put(buffer, id2));
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
   rc->AddLocalReference(id1, "");
-  store.Put(buffer, id1);
+  RAY_CHECK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());

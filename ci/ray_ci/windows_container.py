@@ -1,9 +1,10 @@
 import os
 import subprocess
 import sys
-from typing import List, Optional, Tuple
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.container import Container
+
 
 WORKDIR = "C:\\rayci"
 

@@ -3,10 +3,11 @@ import re
 from typing import List, Set
 
 from ci.ray_ci.doc.api import (
-    _SPHINX_AUTOCLASS_HEADER,
-    _SPHINX_AUTOSUMMARY_HEADER,
     API,
+    _SPHINX_AUTOSUMMARY_HEADER,
+    _SPHINX_AUTOCLASS_HEADER,
 )
+
 
 _SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 _SPHINX_TOCTREE_HEADER = ".. toctree::"
