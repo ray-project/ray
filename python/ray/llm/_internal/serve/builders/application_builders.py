@@ -53,15 +53,17 @@ def build_dp_deployment(
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
     name_prefix = name_prefix or "DPLLMDeployment:"
     name = name_prefix + llm_config._get_deployment_name()
-    assert "num_replicas" not in llm_config.deployment_config, (
-        "num_replicas should not be specified for DP deployment, "
-        "use engine_kwargs.data_parallel_size instead."
-    )
-    assert "autoscaling_config" not in llm_config.deployment_config, (
-        "autoscaling_config is not supported for DP deployment, "
-        "use engine_kwargs.data_parallel_size to set a fixed number "
-        "of replicas instead."
-    )
+    if "num_replicas" in llm_config.deployment_config:
+        raise ValueError(
+            "num_replicas should not be specified for DP deployment, "
+            "use engine_kwargs.data_parallel_size instead."
+        )
+    if "autoscaling_config" in llm_config.deployment_config:
+        raise ValueError(
+            "autoscaling_config is not supported for DP deployment, "
+            "use engine_kwargs.data_parallel_size to set a fixed number "
+            "of replicas instead."
+        )
     # TODO(rui): support data_parallel_backend=ray and unify
     # deployment_options handling with LLMDeployment.
     deployment_options = {
