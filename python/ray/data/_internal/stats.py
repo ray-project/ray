@@ -672,10 +672,6 @@ class _StatsManager:
                     while True:
                         if self._last_iteration_stats or self._last_execution_stats:
                             try:
-                                # Do not create _StatsActor if it doesn't exist because
-                                # this thread can be running even after the cluster is
-                                # shutdown. Creating an actor will automatically start
-                                # a new cluster.
                                 stats_actor = self._get_or_create_stats_actor()
                                 if stats_actor is None:
                                     continue
