@@ -28,7 +28,7 @@ steps:
     instance_type: large
     commands:
       - export DUMMY_WHEEL=1
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
     matrix:
       - "3.9"
       - "3.10"
