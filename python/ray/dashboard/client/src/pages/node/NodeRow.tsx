@@ -227,7 +227,6 @@ type WorkerRowProps = {
  */
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const {
-    ip,
     mem,
     raylet: { nodeId },
   } = node;
