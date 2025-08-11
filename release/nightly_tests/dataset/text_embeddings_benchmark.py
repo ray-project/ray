@@ -3,11 +3,9 @@ Benchmark a text embeddings job
 """
 
 import argparse
-import io
 import uuid
-from pathlib import Path
 import time
-from typing import Any, Dict, Iterator, List
+from typing import Dict, List
 
 import ray
 import torch
@@ -16,7 +14,6 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     CharacterTextSplitter,
 )
-from unstructured.partition.auto import partition
 
 from benchmark import Benchmark, BenchmarkMetric
 
