@@ -28,6 +28,7 @@ def build_llm_deployment(
     deployment_options = llm_config.get_serve_options(
         name_prefix=name_prefix,
     )
+
     return LLMDeployment.options(**deployment_options).bind(
         llm_config=llm_config, **deployment_kwargs
     )
