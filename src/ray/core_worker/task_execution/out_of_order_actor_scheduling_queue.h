@@ -14,40 +14,40 @@
 
 #pragma once
 
-#include <list>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/fiber.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/concurrency_group_manager.h"
-#include "ray/core_worker/transport/scheduling_queue.h"
-#include "ray/core_worker/transport/scheduling_util.h"
-#include "ray/core_worker/transport/thread_pool.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/core_worker/task_execution/concurrency_group_manager.h"
+#include "ray/core_worker/task_execution/fiber.h"
+#include "ray/core_worker/task_execution/scheduling_queue.h"
+#include "ray/core_worker/task_execution/scheduling_util.h"
+#include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
 
-/// Used to ensure serial order of task execution per actor handle.
-/// See core_worker.proto for a description of the ordering protocol.
-class ActorSchedulingQueue : public SchedulingQueue {
+/// This queue schedule the actor tasks as soon as the dependency is resolved,
+/// and ignores the ordering (sequence_no) by the submitting client.
+class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
  public:
-  ActorSchedulingQueue(
+  OutOfOrderActorSchedulingQueue(
       instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-      int64_t reorder_wait_seconds);
+      std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
+      bool is_asyncio,
+      int fiber_max_concurrency,
+      const std::vector<ConcurrencyGroup> &concurrency_groups);
 
   void Stop() override;
 
@@ -76,26 +76,15 @@ class ActorSchedulingQueue : public SchedulingQueue {
   void ScheduleRequests() override;
 
  private:
+  void RunRequest(InboundRequest request);
+
+  void RunRequestWithResolvedDependencies(InboundRequest &request);
+
   /// Accept the given InboundRequest or reject it if a task id is canceled via
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
 
-  void ExecuteRequest(InboundRequest &&request);
-
-  /// Max time in seconds to wait for dependencies to show up.
-  const int64_t reorder_wait_seconds_;
-  /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  absl::btree_map<int64_t, InboundRequest> pending_actor_tasks_;
-  /// List of task retry requests. This is a separate from the map because retries don't
-  /// need to be ordered.
-  std::list<InboundRequest> pending_retry_actor_tasks_;
-  /// Set of sequence numbers that can be skipped because they were retry seq no's.
-  absl::flat_hash_set<int64_t> seq_no_to_skip_;
-  /// The next sequence number we are waiting for to arrive.
-  int64_t next_seq_no_ = 0;
-  /// Timer for waiting on dependencies. Note that this is set on the task main
-  /// io service, which is fine since it only ever fires if no tasks are running.
-  boost::asio::deadline_timer wait_timer_;
+  instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
@@ -103,13 +92,27 @@ class ActorSchedulingQueue : public SchedulingQueue {
   worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
+  /// Manage the running fiber states of actors in this worker. It works with
+  /// python asyncio if this is an asyncio actor.
+  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
+  /// Whether we should enqueue requests into asyncio pool. Setting this to true
+  /// will instantiate all tasks as fibers that can be yielded.
+  bool is_asyncio_ = false;
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
-  /// A map of actor task IDs -> is_canceled
-  /// Pending means tasks are queued or running.
+  /// This stores all the tasks that have previous attempts that are pending.
+  /// They are queued and will be executed after the previous attempt finishes.
+  /// This can happen if transient network error happens after an actor
+  /// task is submitted and received by the actor and the caller retries
+  /// the same task.
+  absl::flat_hash_map<TaskID, InboundRequest> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
+  /// A map of actor task IDs -> is_canceled.
+  // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
 
-  friend class SchedulingQueueTest;
+  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts);
+  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest,
+              TestSameTaskMultipleAttemptsCancellation);
 };
 
 }  // namespace core
