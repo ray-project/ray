@@ -16,7 +16,7 @@ from ray.rllib.env.policy_client import (
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sampler import SamplerInput
 from ray.rllib.utils.typing import SampleBatchType
@@ -25,58 +25,8 @@ from ray._common.network_utils import build_address
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@OldAPIStack
 class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
-    """REST policy server that acts as an offline data source.
-
-    This launches a multi-threaded server that listens on the specified host
-    and port to serve policy requests and forward experiences to RLlib. For
-    high performance experience collection, it implements InputReader.
-
-    For an example, run `examples/envs/external_envs/cartpole_server.py` along
-    with `examples/envs/external_envs/cartpole_client.py --inference-mode=local|remote`.
-
-    WARNING: This class is not meant to be publicly exposed. Anyone that can
-    communicate with this server can execute arbitary code on the machine. Use
-    this with caution, in isolated environments, and at your own risk.
-
-    .. testcode::
-        :skipif: True
-
-        import gymnasium as gym
-        from ray.rllib.algorithms.ppo import PPOConfig
-        from ray.rllib.env.policy_client import PolicyClient
-        from ray.rllib.env.policy_server_input import PolicyServerInput
-        addr, port = ...
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=False,
-                enable_env_runner_and_connector_v2=False,
-            )
-            .environment("CartPole-v1")
-            .offline_data(
-                input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
-            )
-            # Run just 1 server (in the Algorithm's EnvRunnerGroup).
-            .env_runners(num_env_runners=0)
-        )
-        algo = config.build()
-        while True:
-            algo.train()
-        client = PolicyClient(
-            "localhost:9900", inference_mode="local")
-        eps_id = client.start_episode()
-        env = gym.make("CartPole-v1")
-        obs, info = env.reset()
-        action = client.get_action(eps_id, obs)
-        _, reward, _, _, _ = env.step(action)
-        client.log_returns(eps_id, reward)
-        client.log_returns(eps_id, reward)
-        algo.stop()
-    """
-
-    @PublicAPI
     def __init__(
         self,
         ioctx: IOContext,
@@ -85,29 +35,6 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         idle_timeout: float = 3.0,
         max_sample_queue_size: int = 20,
     ):
-        """Create a PolicyServerInput.
-
-        This class implements rllib.offline.InputReader, and can be used with
-        any Algorithm by configuring
-
-        [AlgorithmConfig object]
-        .env_runners(num_env_runners=0)
-        .offline_data(input_=lambda ioctx: PolicyServerInput(ioctx, addr, port))
-
-        Note that by setting num_env_runners: 0, the algorithm will only create one
-        rollout worker / PolicyServerInput. Clients can connect to the launched
-        server using rllib.env.PolicyClient. You can increase the number of available
-        connections (ports) by setting num_env_runners to a larger number. The ports
-        used will then be `port` + the worker's index.
-
-        Args:
-            ioctx: IOContext provided by RLlib.
-            address: Server addr (e.g., "localhost").
-            port: Server port (e.g., 9900).
-            max_queue_size: The maximum size for the sample queue. Once full, will
-                purge (throw away) 50% of all samples, oldest first, and continue.
-        """
-
         self.rollout_worker = ioctx.worker
         # Protect ourselves from having a bottleneck on the server (learning) side.
         # Once the queue (deque) is full, we throw away 50% (oldest
