@@ -254,9 +254,9 @@ class AutoscalingConfig(BaseModel):
         if v != DEFAULT_METRICS_INTERVAL_S:
             warnings.warn(
                 "The `metrics_interval_s` field in AutoscalingConfig is deprecated and "
-                "will be replaced by the environment variables "
+                "has been replaced by the environment variables "
                 "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
-                "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
+                "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`.",
                 DeprecationWarning,
             )
         return v
