@@ -344,10 +344,9 @@ LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id) {
   return LeaseID::FromBinary(data);
 }
 
-WorkerID LeaseID::GetWorkerID(const LeaseID &lease_id) {
-  return WorkerID::FromBinary(
-      std::string(reinterpret_cast<const char *>(lease_id.Data() + kUniqueBytesLength),
-                  kUniqueIDSize));
+WorkerID LeaseID::WorkerId() const {
+  return WorkerID::FromBinary(std::string(
+      reinterpret_cast<const char *>(id_ + kUniqueBytesLength), kUniqueIDSize));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \

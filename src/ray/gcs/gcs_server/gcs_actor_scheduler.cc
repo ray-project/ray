@@ -323,10 +323,10 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   }
 
   rpc::Address remote_address;
-  remote_address.set_worker_id(actor->GetWorkerID().Binary());
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
+  actor->GetMutableTaskSpec()->set_lease_id(LeaseID::FromRandom().Binary());
   auto raylet_client = GetOrConnectRayletClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.

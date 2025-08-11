@@ -406,7 +406,7 @@ class LeaseID : public BaseID<LeaseID> {
   /// Get the worker id to which this lease belongs.
   ///
   /// \return The worker id to which this lease belongs.
-  static WorkerID GetWorkerID(const LeaseID &lease_id);
+  WorkerID WorkerId() const;
 
   MSGPACK_DEFINE(id_);
 

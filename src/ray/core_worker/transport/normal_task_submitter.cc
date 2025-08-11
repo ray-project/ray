@@ -127,14 +127,8 @@ void NormalTaskSubmitter::ReturnWorker(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status = lease_entry.lease_client->ReturnWorker(
+  auto status = lease_entry.raylet_client->ReturnWorker(
       addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
-  auto status =
-      lease_entry.raylet_client->ReturnWorker(addr.port(),
-                                              WorkerID::FromBinary(addr.worker_id()),
-                                              was_error,
-                                              error_detail,
-                                              worker_exiting);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }
@@ -207,10 +201,10 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
   for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
     auto raylet_client = GetOrConnectRayletClient(&pending_lease_request.second);
-    auto &task_id = pending_lease_request.first;
-    RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
+    auto &lease_id = pending_lease_request.first;
+    RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
     raylet_client->CancelWorkerLease(
-        task_id,
+        lease_id,
         [this, scheduling_key](const Status &status,
                                const rpc::CancelWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
@@ -614,9 +608,9 @@ void NormalTaskSubmitter::PushNormalTask(
                   failed_tasks_pending_failure_cause_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
-            RAY_CHECK(cur_lease_entry.lease_client);
+            RAY_CHECK(cur_lease_entry.raylet_client);
             cur_lease_entry.raylet_client->GetTaskFailureCause(cur_lease_entry.lease_id,
-                                                              callback);
+                                                               callback);
           }
           OnWorkerIdle(addr,
                        scheduling_key,
