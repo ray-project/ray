@@ -177,6 +177,10 @@ def train_fn(config):
         print("Loaded back state from checkpoint:", state)
         start = state["iter"] + 1
 
+    assert len(ray.train.get_all_reported_checkpoints()) == min(
+        start, config.get("num_to_keep", float("inf"))
+    )
+
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(config.get("time_per_iter", 0.25))
 
@@ -228,6 +232,9 @@ def train_fn(config):
         )
 
         if i in config.get("fail_iters", []):
+            assert len(ray.train.get_all_reported_checkpoints()) == min(
+                i + 1, config.get("num_to_keep", float("inf"))
+            )
             raise RuntimeError(f"Failing on iter={i}!!")
 
 
@@ -318,6 +325,10 @@ def test_trainer(
 
     exp_name = f"trainer_persistence_test-{uuid.uuid4().hex}"
     no_checkpoint_ranks = [0]
+    if checkpoint_config.num_to_keep:
+        num_to_keep = checkpoint_config.num_to_keep
+    else:
+        num_to_keep = float("inf")
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
@@ -338,6 +349,7 @@ def test_trainer(
                 # Test that global rank 0 is not required to checkpoint.
                 "no_checkpoint_ranks": no_checkpoint_ranks,
                 "time_per_iter": time_between_reports,
+                "num_to_keep": num_to_keep,
             },
             scaling_config=ScalingConfig(num_workers=TestConstants.NUM_WORKERS),
             run_config=run_config,
@@ -354,6 +366,7 @@ def test_trainer(
                 # Test that global rank 0 is not required to checkpoint.
                 "no_checkpoint_ranks": no_checkpoint_ranks,
                 "time_per_iter": time_between_reports,
+                "num_to_keep": num_to_keep,
             },
             scaling_config=ScalingConfig(num_workers=TestConstants.NUM_WORKERS),
             run_config=run_config,

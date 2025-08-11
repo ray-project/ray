@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 from typing import List, Optional
-from unittest.mock import create_autospec
+from unittest.mock import create_autospec, patch
 
 import pytest
 
@@ -89,7 +89,7 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         ),
     ],
 )
-def test_save_load_state_equivalence(
+async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
     # Mock the delete function as we don't want report checkpoints to be deleted.
@@ -113,8 +113,9 @@ def test_save_load_state_equivalence(
     )
 
     # Register the training results into checkpoint manager
-    for tr in training_results:
+    for i, tr in enumerate(training_results):
         checkpoint_manager.register_checkpoint(tr)
+        assert checkpoint_manager._num_reported_checkpoints == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
             checkpoint_config=checkpoint_config,
@@ -145,7 +146,15 @@ def test_load_state_error(tmp_path, json_state):
         checkpoint_manager._load_state(json_state)
 
 
-def test_before_init_train_context(tmp_path):
+@patch.object(ray, "get_runtime_context", autospec=True)
+async def test_before_init_train_context(mock_get_runtime_context, tmp_path):
+    mock_runtime_context = create_autospec(
+        ray.runtime_context.RuntimeContext, instance=True
+    )
+    mock_actor = create_autospec(ray.actor.ActorHandle, instance=True)
+    mock_runtime_context.current_actor = mock_actor
+    mock_get_runtime_context.return_value = mock_runtime_context
+
     storage_context = StorageContext(
         storage_path=tmp_path,
         experiment_dir_name="my_experiment_name",
@@ -158,14 +167,16 @@ def test_before_init_train_context(tmp_path):
 
     # Assert without a checkpoint.
     assert checkpoint_manager.before_init_train_context(workers) == {
-        "checkpoint": [None] * 4
+        "checkpoint": [None] * 4,
+        "controller_actor": [mock_actor] * 4,
     }
 
     # Assert with a checkpoint
     latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
-    checkpoint_manager._latest_checkpoint_result = latest_checkpoint_result
+    checkpoint_manager.register_checkpoint(latest_checkpoint_result)
     assert checkpoint_manager.before_init_train_context(workers) == {
-        "checkpoint": [latest_checkpoint_result.checkpoint] * 4
+        "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
+        "controller_actor": [mock_actor] * 4,
     }
 
 
