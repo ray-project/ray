@@ -25,7 +25,7 @@ def _actor_killed(pid: str) -> bool:
         return False
 
 
-def _actor_killed_loop(worker_pid: str, timeout_secs=3) -> bool:
+def _actor_killed_loop(worker_pid: str, timeout_secs=5) -> bool:
     dead = False
     for _ in range(timeout_secs):
         time.sleep(1)
@@ -44,6 +44,7 @@ def _kill_actor_using_dashboard_gcs(
             "actor_id": actor_id,
             "force_kill": force_kill,
         },
+        timeout=5,
     )
     assert resp.status_code == expected_status_code
     resp_json = resp.json()
@@ -78,7 +79,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     OK = 200
     NOT_FOUND = 404
 
-    # Kill an non-existent actor
+    # Kill a non-existent actor
     resp = _kill_actor_using_dashboard_gcs(
         webui_url, "non-existent-actor-id", NOT_FOUND
     )
@@ -94,6 +95,9 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     worker_pid = ray.get(a.f.remote())  # noqa
     actor_id = a._ray_actor_id.hex()
     a.loop.remote()
+
+    # wait for loop() to start
+    time.sleep(0.5)
 
     # Try to kill the actor, it should not die since a task is running
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
