@@ -229,6 +229,6 @@ class TorchTrainer(DataParallelTrainer):
 
     def fit(self) -> Result:
         if self.running_without_ray_train:
-            self.backend_without_ray_train.fit(self._get_train_func())
+            return self.backend_without_ray_train.fit(self._get_train_func())
         else:
             return super(TorchTrainer, self).fit()

@@ -49,9 +49,10 @@ def get_devices() -> List[torch.device]:
     if get_train_fn_utils().is_running_with_ray_train():
         return get_devices_v1()
     else:
-        train_loop_utils = get_train_fn_utils()
-        assert isinstance(train_loop_utils, TorchWithoutRayTrainTrainFnUtils)
-        return train_loop_utils.get_devices()
+        if torch.cuda.is_available():
+            return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+        else:
+            return [torch.device("cpu")]
 
 
 def prepare_model(

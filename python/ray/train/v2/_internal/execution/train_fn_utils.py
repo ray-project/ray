@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from ray.data import DataIterator
 from ray.train import Checkpoint
+from ray.train.v2.api.context import TrainContextWithRayTrain
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
@@ -88,7 +89,7 @@ class RayTrainTrainFnUtils:
         return get_internal_train_context().get_dataset_shard(dataset_name)
 
     def get_context(self) -> ExternalTrainContext:
-        return ExternalTrainContext()
+        return TrainContextWithRayTrain()
 
     def is_running_with_ray_train(self) -> bool:
         return True
