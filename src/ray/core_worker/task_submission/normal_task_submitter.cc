@@ -232,14 +232,14 @@ std::shared_ptr<RayletClientInterface> NormalTaskSubmitter::GetOrConnectRayletCl
     const rpc::Address *raylet_address) {
   std::shared_ptr<RayletClientInterface> raylet_client;
   RAY_CHECK(raylet_address != nullptr);
-  if (NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+  if (NodeID::FromBinary(raylet_address->node_id()) != local_node_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
-    NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
-    auto it = remote_raylet_clients_.find(raylet_id);
+    NodeID node_id = NodeID::FromBinary(raylet_address->node_id());
+    auto it = remote_raylet_clients_.find(node_id);
     if (it == remote_raylet_clients_.end()) {
-      RAY_LOG(INFO) << "Connecting to raylet " << raylet_id;
+      RAY_LOG(INFO) << "Connecting to raylet " << node_id;
       it = remote_raylet_clients_
-               .emplace(raylet_id,
+               .emplace(node_id,
                         raylet_client_pool_->GetOrConnectByAddress(*raylet_address))
                .first;
     }
