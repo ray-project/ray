@@ -51,12 +51,12 @@ class RayError(Exception):
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
                 # Include a fallback string/stacktrace to aid debugging.
-                try:
-                    formatted = ray_exception.formatted_exception_string
-                except Exception:
-                    formatted = "No formatted exception string available."
-                if formatted:
-                    msg += f"\nOriginal exception (string repr):\n{formatted}"
+                formatted = getattr(
+                    ray_exception,
+                    "formatted_exception_string",
+                    "No formatted exception string available.",
+                )
+                msg += f"\nOriginal exception (string repr):\n{formatted}"
                 raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)
