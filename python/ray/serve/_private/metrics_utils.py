@@ -3,6 +3,7 @@ import bisect
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
+from statistics import fmean
 from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
 
 from ray.serve._private.constants import (
@@ -187,10 +188,10 @@ class InMemoryMetricsStore:
         if do_compact:
             self.data[key] = points_after_idx
 
-        num_points_after_idx = len(points_after_idx)
-        if num_points_after_idx == 0:
+        if not points_after_idx:
             return None
-        return sum(point.value for point in points_after_idx) / num_points_after_idx
+
+        return fmean(point.value for point in points_after_idx)
 
     def max(
         self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True

@@ -212,7 +212,7 @@ class AutoscalingState:
         received an update for too long.
         """
 
-        timeout_s = 2 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        timeout_s = 2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
