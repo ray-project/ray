@@ -462,14 +462,7 @@ def test_metrics_export_node_metrics(shutdown_only):
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
 _EVENT_AGGREGATOR_AGENT_TARGET_ADDR = (
-<<<<<<< HEAD
     f"http://{_EVENT_AGGREGATOR_AGENT_TARGET_IP}:{_EVENT_AGGREGATOR_AGENT_TARGET_PORT}"
-=======
-    "http://"
-    + _EVENT_AGGREGATOR_AGENT_TARGET_IP
-    + ":"
-    + str(_EVENT_AGGREGATOR_AGENT_TARGET_PORT)
->>>>>>> dc35f14f79 (fix merge issue)
 )
 
 
