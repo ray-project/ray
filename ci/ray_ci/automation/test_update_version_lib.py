@@ -1,13 +1,13 @@
-from unittest import mock
+import os
 import sys
 import tempfile
-import os
+from unittest import mock
 
 import pytest
 
 from ci.ray_ci.automation.update_version_lib import (
-    list_java_files,
     get_current_version,
+    list_java_files,
     update_file_version,
 )
 
