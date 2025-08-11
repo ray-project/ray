@@ -73,8 +73,8 @@ OBJECT_STORE_MEMORY_PANEL = Panel(
 
 CPU_USAGE_PANEL = Panel(
     id=5,
-    title="CPUs (logical slots)",
-    description="Logical CPUs allocated to dataset operators.",
+    title="Logical Slots Being Used (CPU)",
+    description="Logical CPUs currently being used by dataset operators.",
     unit="cores",
     targets=[
         Target(
@@ -88,8 +88,8 @@ CPU_USAGE_PANEL = Panel(
 
 GPU_USAGE_PANEL = Panel(
     id=6,
-    title="GPUs (logical slots)",
-    description="Logical GPUs allocated to dataset operators.",
+    title="Logical Slots Being Used (GPU)",
+    description="Logical GPUs currently being used by dataset operators.",
     unit="cores",
     targets=[
         Target(
