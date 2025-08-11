@@ -4,6 +4,7 @@ from typing import Tuple, List
 from pathlib import Path
 import sys
 
+import yaml
 import click
 
 from ray_release.buildkite.filter import filter_tests
@@ -24,6 +25,13 @@ RELEASE_BYOD_DIR = (
     else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 )
 
+DEFAULT_INSTALL_COMMANDS = [
+    "pip3 install --user -U pip",
+    "pip3 install --user -r release/requirements_buildkite.txt",
+    "pip3 install --user --no-deps -e release/",
+    "pip3 install --user awscli",
+    "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
+]
 
 @click.command()
 @click.option(
@@ -112,30 +120,26 @@ def main(
         )
         logger.info(f"To be built: {custom_byod_image_build[0]}")
         custom_byod_images.add(custom_byod_image_build)
-    create_custom_build_yaml(list(custom_byod_images))
+    create_custom_build_yaml(".buildkite/release/custom_byod_build.rayci.yml", list(custom_byod_images))
 
 
-def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> None:
+def create_custom_build_yaml(destination_file: str, custom_byod_images: List[Tuple[str, str, str]]) -> None:
     """Create a yaml file for building custom BYOD images."""
-    import yaml
-
     if not custom_byod_images:
         return
 
     build_config = {"group": "Custom images build", "steps": []}
 
     for image, base_image, post_build_script in custom_byod_images:
+        if not post_build_script:
+            continue
         step = {
             "label": f":tapioca: build custom: {image}",
             "key": "custom_build_"
-            + image.replace("/", "_").replace(":", "_").replace(".", "_")[-40:],
+            + image.replace("/", "_").replace(":", "_").replace(".", "_").replace("-", "_")[-40:],
             "instance_type": "release-medium",
             "commands": [
-                "pip3 install --user -U pip",
-                "pip3 install --user -r release/requirements_buildkite.txt",
-                "pip3 install --user --no-deps -e release/",
-                "pip3 install --user awscli",
-                "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
+                *DEFAULT_INSTALL_COMMANDS,
                 f"python release/ray_release/scripts/custom_byod_build.py --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
         }
@@ -147,7 +151,7 @@ def create_custom_build_yaml(custom_byod_images: List[Tuple[str, str, str]]) -> 
             step["depends_on"] = "anyscalebuild"
         build_config["steps"].append(step)
 
-    with open(".buildkite/release/custom_byod_build.rayci.yml", "w") as f:
+    with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
