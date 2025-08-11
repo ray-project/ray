@@ -161,7 +161,8 @@ void LocalDependencyResolver::ResolveDependencies(
           }
 
           if (!inlined_dependency_ids.empty()) {
-            task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids,
+            task_manager_.OnTaskDependenciesInlined(task_id,
+                                                    inlined_dependency_ids,
                                                     contained_ids);
           }
           if (resolved_task_state) {
