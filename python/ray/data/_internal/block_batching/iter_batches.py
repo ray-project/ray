@@ -198,7 +198,7 @@ class BatchIterator:
         # Step 3: Batch and shuffle the resolved blocks.
         batch_iter = self._blocks_to_batches(block_iter)
 
-        # Step 4: Format the batches in a threadpool.
+        # Step 4: Format and collate the batches in a threadpool.
         batch_iter = self._format_batches(batch_iter)
 
         # Step 5: Finalize the batches (e.g., move to GPU).
