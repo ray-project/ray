@@ -96,49 +96,8 @@ class VLLMEngineConfig(BaseModelExtended):
         # TODO(lk-chen): Remove the logic once we require vllm>=0.10.1
         # vLLM 0.10.1 replaces `disable_log_requests` with
         # `enable_log_requests`. Here we are trying to be compatible with both.
-        both_log_flags_set = (
-            "disable_log_requests" in engine_kwargs
-            and "enable_log_requests" in engine_kwargs
-        )
-        neither_log_flags_set = (
-            "disable_log_requests" not in engine_kwargs
-            and "enable_log_requests" not in engine_kwargs
-        )
-
-        if hasattr(AsyncEngineArgs, "disable_log_requests"):
-            if both_log_flags_set:
-                raise ValueError(
-                    "Both disable_log_requests and enable_log_requests are set"
-                    " in engine_kwargs. Please set only disable_log_requests."
-                )
-            if neither_log_flags_set:
-                logger.info(
-                    "Disabling request logging by default. To enable, set "
-                    "disable_log_requests=False in engine_kwargs."
-                )
-                engine_kwargs["disable_log_requests"] = True
-            elif "enable_log_requests" in engine_kwargs:
-                logger.warning(
-                    "enable_log_requests is set in engine_kwargs, but vLLM "
-                    "does not support it. Converting to disable_log_requests."
-                )
-                engine_kwargs["disable_log_requests"] = not engine_kwargs.pop(
-                    "enable_log_requests"
-                )
-        else:
-            assert hasattr(AsyncEngineArgs, "enable_log_requests")
-            if both_log_flags_set:
-                raise ValueError(
-                    "Both disable_log_requests and enable_log_requests are set"
-                    " in engine_kwargs. Please set only enable_log_requests."
-                )
-            if neither_log_flags_set:
-                logger.info(
-                    "Disabling request logging by default. To enable, set "
-                    "enable_log_requests=True in engine_kwargs."
-                )
-                engine_kwargs["enable_log_requests"] = False
-            elif "disable_log_requests" in engine_kwargs:
+        if hasattr(AsyncEngineArgs, "enable_log_requests"):
+            if "disable_log_requests" in engine_kwargs:
                 logger.warning(
                     "disable_log_requests is set in engine_kwargs, but vLLM "
                     "does not support it. Converting to enable_log_requests."
