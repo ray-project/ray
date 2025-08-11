@@ -3,12 +3,10 @@ from ray.rllib.env.external.rllink import (
     send_rllink_message,
     RLlink,
 )
-from ray.rllib.env.external.rllib_gateway import RLlibGateway
 
 
 __all__ = [
     "get_rllink_message",
-    "RLlibGateway",
     "RLlink",
     "send_rllink_message",
 ]

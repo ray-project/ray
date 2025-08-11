@@ -66,7 +66,6 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.external.rllib_gateway import RLlibGateway
 from ray.rllib.env.external.env_runner_server_for_external_inference import (
     EnvRunnerServerForExternalInference,
 )
@@ -90,21 +89,20 @@ parser.add_argument(
     "You need to specify the same port inside your UE5 `RLlibClient` plugin.",
 )
 parser.add_argument(
-    "--use-dummy-gateway",
+    "--use-dummy-client",
     action="store_true",
-    help="If set, the script runs with its own RLlibGateway acting as a dummy external "
-    "simulator. Otherwise connect on your own from your C++ application using "
-    "an RLlibGateway instance.",
+    help="If set, the script runs with its own external client acting as a "
+    "simulator. Otherwise connect on your own from your C++ application.",
 )
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Start the dummy CartPole "simulation", which uses a (python) RLlibGateway
-    # instance.
-    if args.use_dummy_gateway:
-        rllib_gateway = RLlibGateway(
+    # Start the dummy CartPole "simulation".
+    if args.use_dummy_client:
+        TODO:(
+            rllib_gateway) = (
             address="localhost",
             # Connect to the first remote EnvRunner, of - if there is no remote one -
             # to the local EnvRunner.
@@ -146,8 +144,8 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
-            observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
-            action_space=gym.spaces.Discrete(2),
+            observation_space=gym.spaces.Box(float("-inf"), float("-inf"), (6,), np.float32),
+            action_space=gym.spaces.Discrete(9),
             # EnvRunners listen on `port` + their worker index.
             env_config={"port": args.port},
         )
@@ -156,6 +154,8 @@ if __name__ == "__main__":
             env_runner_cls=EnvRunnerServerForExternalInference,
         )
         .training(
+            train_batch_size_per_learner=500,
+            minibatch_size=128,
             num_epochs=10,
             vf_loss_coeff=0.01,
         )
