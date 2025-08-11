@@ -1699,6 +1699,8 @@ class CoreWorker {
                       ObjectID object_id,
                       void *py_future);
 
+  std::shared_ptr<RayletClientInterface> GetLocalRayletClient() const;
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.

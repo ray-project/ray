@@ -478,7 +478,7 @@ TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
 class NormalTaskSubmitterTest : public testing::Test {
  public:
   NormalTaskSubmitterTest()
-      : local_node_id_(NodeID::FromRandom()),
+      : local_node_id(NodeID::FromRandom()),
         raylet_client_pool(std::make_shared<rpc::RayletClientPool>(
             [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
         raylet_client(std::make_shared<MockRayletClient>()),
@@ -490,8 +490,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         actor_creator(std::make_shared<MockActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
         lease_policy_ptr(lease_policy.get()) {
-    address.set_raylet_id(local_node_id_.Binary());
-    lease_policy_ptr->SetNodeID(local_node_id_);
+    address.set_raylet_id(local_node_id.Binary());
+    lease_policy_ptr->SetNodeID(local_node_id);
   }
 
   NormalTaskSubmitter CreateNormalTaskSubmitter(
@@ -508,15 +508,14 @@ class NormalTaskSubmitterTest : public testing::Test {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
           [this](const rpc::Address &) { return this->raylet_client; });
     } else {
-      // Hybrid approach: local raylet goes to member client, remote raylets go to factory
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
-          [this, raylet_client_factory](const rpc::Address &addr) {
+          [this, raylet_client_factory](
+              const rpc::Address &addr) -> std::shared_ptr<RayletClientInterface> {
             NodeID addr_node_id = NodeID::FromBinary(addr.raylet_id());
-            if (addr_node_id == local_node_id_) {
-              return std::static_pointer_cast<ray::RayletClientInterface>(
-                  this->raylet_client);  // Local raylet
+            if (addr_node_id == local_node_id) {
+              return this->raylet_client;
             } else {
-              return raylet_client_factory(addr);  // Remote raylet
+              return raylet_client_factory(addr);
             }
           });
     }
@@ -527,7 +526,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         std::move(lease_policy),
         store,
         *task_manager,
-        local_node_id_,
+        local_node_id,
         worker_type,
         lease_timeout_ms,
         actor_creator,
@@ -537,7 +536,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         boost::asio::steady_timer(io_context));
   }
 
-  NodeID local_node_id_;
+  NodeID local_node_id;
   rpc::Address address;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::shared_ptr<MockRayletClient> raylet_client;
@@ -1390,7 +1389,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  lease_policy_ptr->SetNodeID(local_node_id_);
+  lease_policy_ptr->SetNodeID(local_node_id);
   auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
@@ -1419,7 +1418,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger a rejection back to the local node.
   ASSERT_TRUE(remote_raylet_clients[7777]->GrantWorkerLease(
-      "local", 1234, local_node_id_, false, "", /*reject=*/true));
+      "local", 1234, local_node_id, false, "", /*reject=*/true));
   // We should not have created another lease client to the local raylet.
   ASSERT_EQ(remote_raylet_clients.size(), 1);
   // There should be no more callbacks on the remote node.
