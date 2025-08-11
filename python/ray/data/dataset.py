@@ -81,6 +81,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Zip,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
@@ -1861,7 +1862,18 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        return StreamSplitDataIterator.create(self, n, equal, locality_hints)
+        plan = self._plan.copy()
+        op = StreamingSplit(
+            self._logical_plan.dag,
+            num_splits=n,
+            equal=equal,
+            locality_hints=locality_hints,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        split_dataset = Dataset(plan, logical_plan)
+        split_dataset._set_uuid(self._uuid)
+
+        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2465,7 +2477,8 @@ class Dataset:
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
-                "left_outer", "right_outer", "full_outer")
+                "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
+                "left_anti", "right_anti").
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
@@ -2510,6 +2523,7 @@ class Dataset:
                 lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
             )
 
+            # Inner join example
             joined_ds = doubles_ds.join(
                 squares_ds,
                 join_type="inner",
@@ -2527,6 +2541,55 @@ class Dataset:
                 {'id': 1, 'double': 2, 'square': 1},
                 {'id': 2, 'double': 4, 'square': 4},
                 {'id': 3, 'double': 6, 'square': 9}
+            ]
+
+        .. testcode::
+            :skipif: True
+
+            # Left anti-join example: find rows in doubles_ds that don't match squares_ds
+            partial_squares_ds = ray.data.range(2).map(
+                lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
+            )
+
+            anti_joined_ds = doubles_ds.join(
+                partial_squares_ds,
+                join_type="left_anti",
+                num_partitions=2,
+                on=("id",),
+            )
+
+            print(sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            [
+                {'id': 0, 'double': 0},
+                {'id': 1, 'double': 2}
+            ]
+
+        .. testcode::
+            :skipif: True
+
+            # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
+            # (only returns columns from left dataset)
+            semi_joined_ds = doubles_ds.join(
+                squares_ds,
+                join_type="left_semi",
+                num_partitions=2,
+                on=("id",),
+            )
+
+            print(sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            [
+                {'id': 0, 'double': 0},
+                {'id': 1, 'double': 2},
+                {'id': 2, 'double': 4},
+                {'id': 3, 'double': 6}
             ]
         """
 

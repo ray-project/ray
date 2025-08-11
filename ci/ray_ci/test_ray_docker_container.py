@@ -1,9 +1,11 @@
 import os
 import sys
+from datetime import datetime
 from typing import List
 from unittest import mock
-from datetime import datetime
+
 import pytest
+from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
@@ -11,7 +13,6 @@ from ci.ray_ci.docker_container import GPU_PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
-from ray_release.configs.global_config import get_global_config
 
 
 class TestRayDockerContainer(RayCITestBase):
@@ -398,6 +399,9 @@ class TestRayDockerContainer(RayCITestBase):
 
         container = RayDockerContainer(v, "cu12.5.1-cudnn", "ray")
         assert container.get_platform_tag() == "-cu125"
+
+        container = RayDockerContainer(v, "cu12.6.3-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu126"
 
         container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray")
         assert container.get_platform_tag() == "-cu128"

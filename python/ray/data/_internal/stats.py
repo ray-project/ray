@@ -633,24 +633,45 @@ class _StatsManager:
         self._update_thread: Optional[threading.Thread] = None
         self._update_thread_lock: threading.Lock = threading.Lock()
 
-    def _stats_actor(self, create_if_not_exists=True) -> Optional[ActorHandle]:
+    def _get_stats_actor(self, skip_cache: bool = False) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
-            raise RuntimeError("Global node is not initialized.")
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
+
         current_cluster_id = ray._private.worker._global_node.cluster_id
+
         if (
             self._stats_actor_handle is None
             or self._stats_actor_cluster_id != current_cluster_id
+            or skip_cache
         ):
-            if create_if_not_exists:
-                self._stats_actor_handle = _get_or_create_stats_actor()
-            else:
-                try:
-                    self._stats_actor_handle = ray.get_actor(
-                        name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
-                    )
-                except ValueError:
-                    return None
+            try:
+                self._stats_actor_handle = ray.get_actor(
+                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
+                )
+            except ValueError:
+                return None
             self._stats_actor_cluster_id = current_cluster_id
+
+        return self._stats_actor_handle
+
+    def _get_or_create_stats_actor(self) -> Optional[ActorHandle]:
+        if ray._private.worker._global_node is None:
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
+
+        # NOTE: In some cases (for ex, when registering dataset) actor might be gone
+        #       (for ex, when prior driver disconnects) and therefore to avoid using
+        #       stale handle we force looking up the actor with Ray to determine if
+        #       we should create a new one.
+        actor = self._get_stats_actor(skip_cache=True)
+
+        if actor is None:
+            self._stats_actor_handle = _get_or_create_stats_actor()
+            self._stats_actor_cluster_id = ray._private.worker._global_node.cluster_id
+
         return self._stats_actor_handle
 
     def _start_thread_if_not_running(self):
@@ -667,9 +688,7 @@ class _StatsManager:
                                 # this thread can be running even after the cluster is
                                 # shutdown. Creating an actor will automatically start
                                 # a new cluster.
-                                stats_actor = self._stats_actor(
-                                    create_if_not_exists=False
-                                )
+                                stats_actor = self._get_stats_actor()
                                 if stats_actor is None:
                                     continue
                                 stats_actor.update_metrics.remote(
@@ -740,7 +759,7 @@ class _StatsManager:
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
-            self._stats_actor().update_execution_metrics.remote(*args)
+            self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
             with self._stats_lock:
                 self._last_execution_stats[dataset_tag] = args
@@ -787,7 +806,7 @@ class _StatsManager:
             topology: Optional Topology representing the DAG structure to export
             data_context: The DataContext attached to the dataset
         """
-        self._stats_actor().register_dataset.remote(
+        self._get_or_create_stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
@@ -797,7 +816,7 @@ class _StatsManager:
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:
-            return ray.get(self._stats_actor().get_dataset_id.remote())
+            return ray.get(self._get_or_create_stats_actor().get_dataset_id.remote())
         except Exception:
             # Getting dataset id from _StatsActor may fail, in this case
             # fall back to uuid4

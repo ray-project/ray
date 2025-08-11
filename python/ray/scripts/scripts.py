@@ -35,6 +35,7 @@ from ray._private.utils import (
     get_ray_client_dependency_error,
     parse_resources_json,
 )
+from ray._common.network_utils import parse_address, build_address
 from ray._private.internal_api import memory_summary
 from ray._common.usage import usage_lib
 import ray._common.usage.usage_constants as usage_constant
@@ -196,7 +197,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = parse_address(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -337,7 +338,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = parse_address(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -920,7 +921,7 @@ def start(
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{ray_params.node_ip_address}:{port}"
+            default_address = build_address(ray_params.node_ip_address, port)
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if (
                 default_address == bootstrap_address
