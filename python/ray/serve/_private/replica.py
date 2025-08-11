@@ -21,6 +21,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
@@ -179,10 +180,13 @@ class ReplicaMetricsManager:
 
         # Autoscaling metrics and fetching intervals
         self._autoscaling_metrics: Dict[str, Any] = {}
-        self._record_autoscaling_metrics_ref: Optional[ObjectRef] = None
         self._last_record_autoscaling_metrics_time: float = 0.0
-        self._autoscaling_metrics_period_s: float = RAY_SERVE_METRICS_FETCH_INTERVAL_MS
-        self._autoscaling_metrics_timeout_s: float = RAY_SERVE_METRICS_FETCH_TIMEOUT_MS
+        self._autoscaling_metrics_period_s: float = (
+            RAY_SERVE_METRICS_FETCH_INTERVAL_MS / 1000
+        )
+        self._autoscaling_metrics_timeout_s: float = (
+            RAY_SERVE_METRICS_FETCH_TIMEOUT_MS / 1000
+        )
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -228,6 +232,13 @@ class ReplicaMetricsManager:
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
+        )
+
+        self._record_autoscaling_metrics_thread = None
+
+        logger.info(
+            f"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE {RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE}",
+            extra={"log_to_stderr": False},
         )
 
         self.set_autoscaling_config(autoscaling_config)
@@ -288,6 +299,10 @@ class ReplicaMetricsManager:
         # self.
 
         if self.should_collect_metrics():
+            logger.info(
+                f"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE3 {RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE} {RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S}",
+                extra={"log_to_stderr": False},
+            )
             self._metrics_pusher.start()
 
             # Push autoscaling metrics to the controller periodically.
@@ -296,10 +311,11 @@ class ReplicaMetricsManager:
                 self._push_autoscaling_metrics,
                 self._autoscaling_config.metrics_interval_s,
             )
+
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
-                self._add_autoscaling_metrics_point,
+                self._add_autoscaling_metrics_point_sync,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                     self._autoscaling_config.metrics_interval_s,
@@ -355,11 +371,11 @@ class ReplicaMetricsManager:
             2) It has been more than autoscaling_metrics_period_s since
                the previous record autoscaling metrics was *started*.
 
-        This assumes that self._record_autoscaling_metrics_ref is reset to `None`
+        This assumes that self._record_autoscaling_metrics_thread is reset to `None`
         when an active record autoscaling metrics succeeds or fails (due to
         returning or timeout).
         """
-        if self._record_autoscaling_metrics_ref is not None:
+        if self._record_autoscaling_metrics_thread is not None:
             # There's already an active record autoscaling metrics.
             return False
 
@@ -373,23 +389,25 @@ class ReplicaMetricsManager:
         )
         return time_since_last > randomized_period
 
-    def get_autoscaling_metrics(self) -> Dict[str, Any]:
+    async def get_autoscaling_metrics(
+        self, prometheus_metrics: Optional[List[Tuple[str, str]]]
+    ) -> Dict[str, Any]:
         """Get the autoscaling metrics for the replica."""
-        if self._record_autoscaling_metrics_ref is None:
+        if self._record_autoscaling_metrics_thread is None:
             # There's no active record autoscaling metrics.
             pass
-        elif check_obj_ref_ready_nowait(self._record_autoscaling_metrics_ref):
+        elif check_obj_ref_ready_nowait(self._record_autoscaling_metrics_thread):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 self._autoscaling_metrics = ray.get(
-                    self._record_autoscaling_metrics_ref
+                    self._record_autoscaling_metrics_thread
                 )
             except Exception:
                 logger.exception(
                     "Exception when trying to get autoscaling metrics:\n"
                     + traceback.format_exc()
                 )
-            self._record_autoscaling_metrics_ref = None
+            self._record_autoscaling_metrics_thread = None
         elif (
             time.time() - self._last_record_autoscaling_metrics_time
             > self._autoscaling_metrics_timeout_s
@@ -400,59 +418,137 @@ class ReplicaMetricsManager:
                 f"{self._replica_id} after "
                 f"{self._autoscaling_metrics_timeout_s}s, retrying."
             )
-            self._record_autoscaling_metrics_ref = None
+            self._record_autoscaling_metrics_thread = None
 
         if self._should_record_autoscaling_metrics():
             self._last_record_autoscaling_metrics_time = time.time()
-            # Call the remote method on the replica actor
-            self._record_autoscaling_metrics_ref = (
-                self._actor_handle.record_autoscaling_metrics.remote()
-            )
+
+            if prometheus_metrics:
+                # Use anyio.to_thread to query prometheus endpoint at localhost:9090
+                # This returns the actual result, not an ObjectRef
+                prometheus_result = await to_thread.run_sync(
+                    self._query_prometheus_metrics, prometheus_metrics
+                )
+                # Merge the prometheus results with existing metrics
+                self._autoscaling_metrics.update(prometheus_result)
+            else:
+                # If no prometheus metrics, we could potentially start a remote task here
+                # For now, we'll just use the existing metrics
+                pass
 
         return self._autoscaling_metrics
 
-    def pull_autoscaling_metrics(self) -> Optional[Dict[str, Any]]:
+    def _query_prometheus_metrics(
+        self, prometheus_metrics: List[Tuple[str, str]]
+    ) -> Dict[str, Any]:
+        """Query the local prometheus endpoint for metrics.
+
+        This method runs in a separate thread using anyio.to_thread to avoid blocking
+        the event loop during HTTP requests.
+        """
+        import json
+        import urllib.parse
+        import urllib.request
+
+        metrics_result = {}
+
+        logger.info(
+            f"Querying prometheus metrics {prometheus_metrics}",
+            extra={"log_to_stderr": False},
+        )
+
+        for metric_name, promql_expression in prometheus_metrics:
+            try:
+                # Construct the query URL for the prometheus endpoint
+                query_params = urllib.parse.urlencode({"query": promql_expression})
+                url = f"http://localhost:9090/api/v1/query?{query_params}"
+
+                # Make the HTTP request
+                with urllib.request.urlopen(url, timeout=5) as response:
+                    if response.status == 200:
+                        data = json.loads(response.read().decode("utf-8"))
+
+                        # Extract the metric value from the response
+                        if data.get("status") == "success" and data.get("data", {}).get(
+                            "result"
+                        ):
+                            # Get the first result value
+                            result = data["data"]["result"][0]
+                            if "value" in result and len(result["value"]) >= 2:
+                                # Prometheus returns [timestamp, value]
+                                metric_value = float(result["value"][1])
+                                metrics_result[metric_name] = metric_value
+                            else:
+                                metrics_result[metric_name] = 0.0
+                        else:
+                            metrics_result[metric_name] = 0.0
+                    else:
+                        logger.warning(
+                            f"Failed to query prometheus for metric {metric_name}: "
+                            f"HTTP {response.status}"
+                        )
+                        metrics_result[metric_name] = 0.0
+
+            except Exception as e:
+                logger.warning(
+                    f"Error querying prometheus for metric {metric_name}: {e}"
+                )
+                metrics_result[metric_name] = 0.0
+
+        return metrics_result
+
+    async def pull_autoscaling_metrics(
+        self, prometheus_custom_metrics
+    ) -> Optional[Dict[str, Any]]:
         """Get the latest response from the autoscaling metrics on the replica.
 
         Returns None if the replica is still calculating the metrics.
         """
-        return self.get_autoscaling_metrics()
+        return await self.get_autoscaling_metrics(prometheus_custom_metrics)
 
-    def _add_autoscaling_metrics_point(
-        self, metrics_sources: Dict[str, Union[str, Callable]]
-    ) -> None:
+    async def _add_autoscaling_metrics_point(self) -> None:
         """Add autoscaling metrics point using periodic fetching mechanism."""
-        # Get the autoscaling metrics from prometheus using the periodic fetching mechanism
-        autoscaling_metrics = self.get_autoscaling_metrics()
 
-        # Use the metrics threads to fetch the updated metrics
-        from concurrent.futures import ThreadPoolExecutor
+        prometheus_metrics = self._autoscaling_config.prometheus_custom_metrics
+        # TODO: external_metrics = self._autoscaling_config.external_metrics
 
-        # Execute each callable in metrics_sources in a thread pool
-        with ThreadPoolExecutor() as executor:
-            future_to_key = {
-                executor.submit(func): key for key, func in metrics_sources.items()
-            }
-            results = {}
-            for future in future_to_key:
-                key = future_to_key[future]
-                try:
-                    results[key] = future.result()
-                except Exception:
-                    # Optionally log or handle the exception
-                    results[key] = None
+        # Get the prometheus metrics from using the periodic fetching mechanism
+        if prometheus_metrics:
+            # The get_autoscaling_metrics method now handles prometheus metrics directly
+            # and updates self._autoscaling_metrics, so we can use that
+            autoscaling_metrics = await self.pull_autoscaling_metrics(
+                prometheus_metrics
+            )
+        else:
+            autoscaling_metrics = {}
 
-        # Merge the fetched autoscaling metrics with the thread pool results
-        all_metrics = {**autoscaling_metrics, **results}
+        # Merge the ongoing_requests metrics with the results fetched using anyio
+        all_metrics = {
+            **{self._replica_id: self._num_ongoing_requests},
+            **autoscaling_metrics,
+            # TODO: **external_metrics
+        }
+
+        logger.info(
+            f"Adding metrics point, {self._autoscaling_config} prometheus custom metrics: {self._autoscaling_config.prometheus_custom_metrics}",
+            extra={"log_to_stderr": False},
+        )
+        logger.info(
+            f"all_metrics: {all_metrics}",
+            extra={"log_to_stderr": False},
+        )
 
         # Add the collected metrics to the metrics store
         self._metrics_store.add_metrics_point(all_metrics, time.time())
 
-        # Also add the ongoing requests metric
-        self._metrics_store.add_metrics_point(
-            {self._replica_id: self._num_ongoing_requests},
-            time.time(),
-        )
+    def _add_autoscaling_metrics_point_sync(self):
+        """Synchronous wrapper for _add_autoscaling_metrics_point.
+
+        This method is used by the MetricsPusher which expects a synchronous callable.
+        It creates a task to run the async method in the event loop.
+        """
+        # Create a task to run the async method in the event loop
+        asyncio.create_task(self._add_autoscaling_metrics_point())
 
 
 StatusCodeCallback = Callable[[str], None]

@@ -429,7 +429,7 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = get_env_int(
 # Interval at which metrics will be fetched by each replica, to later be reported to the serve controller.
 # Set to `0` to disable metrics fetching.
 RAY_SERVE_METRICS_FETCH_INTERVAL_MS = int(
-    os.environ.get("RAY_SERVE_METRICS_FETCH_INTERVAL_MS", "1000")
+    os.environ.get("RAY_SERVE_METRICS_FETCH_INTERVAL_MS", "10000")
 )
 
 # Limit for all metrics_sources before timout error is thrown

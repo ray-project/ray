@@ -86,6 +86,12 @@ def stop_vllm_container(container_name: str):
         "target_num_ongoing_requests_per_replica": 2,
         "upscale_delay_s": 2,
         "downscale_delay_s": 10,
+        "prometheus_custom_metrics": [
+            (
+                "ray_node_cpu_utilization",
+                "sum(ray_resources{Name='CPU',State='USED'}) by (instance)",
+            ),
+        ],
     },
 )
 class VLLMService1:
@@ -158,6 +164,12 @@ class VLLMService1:
         "target_num_ongoing_requests_per_replica": 2,
         "upscale_delay_s": 2,
         "downscale_delay_s": 10,
+        "prometheus_custom_metrics": [
+            (
+                "ray_node_cpu_utilization",
+                "sum(ray_resources{Name='CPU',State='USED'}) by (instance)",
+            ),
+        ],
     },
 )
 class VLLMService2:
