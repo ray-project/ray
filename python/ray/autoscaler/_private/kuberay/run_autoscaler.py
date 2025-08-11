@@ -5,8 +5,13 @@ import time
 
 import ray
 from ray._private import ray_constants
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
+from ray._common.network_utils import build_address
 from ray._common.utils import try_to_create_directory
 from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -30,7 +35,7 @@ def _get_log_dir() -> str:
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
     """Wait until the Ray head container is ready. Then start the autoscaler."""
     head_ip = get_node_ip_address()
-    ray_address = f"{head_ip}:6379"
+    ray_address = build_address(head_ip, 6379)
     while True:
         try:
             # Autoscaler Ray version might not exactly match GCS version, so skip the
@@ -102,8 +107,8 @@ def _setup_logging() -> None:
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=log_dir,
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
-        max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        max_bytes=LOGGING_ROTATE_BYTES,
+        backup_count=LOGGING_ROTATE_BACKUP_COUNT,
     )
 
     # For the autoscaler, the root logger _also_ needs to write to stderr, not just

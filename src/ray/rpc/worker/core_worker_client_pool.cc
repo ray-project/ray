@@ -19,28 +19,28 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/network_util.h"
+
 namespace ray {
 namespace rpc {
 
 std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
     gcs::GcsClient *gcs_client,
     rpc::CoreWorkerClientPool *worker_client_pool,
-    std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
-        raylet_client_factory,
+    rpc::RayletClientPool *raylet_client_pool,
     const rpc::Address &addr) {
-  return [addr,
-          gcs_client,
-          worker_client_pool,
-          raylet_client_factory = std::move(raylet_client_factory)]() {
+  return [addr, gcs_client, worker_client_pool, raylet_client_pool]() {
     const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
 
-    auto check_worker_alive = [raylet_client_factory,
+    auto check_worker_alive = [raylet_client_pool,
                                worker_client_pool,
                                worker_id,
                                node_id](const rpc::GcsNodeInfo &node_info) {
-      auto raylet_client = raylet_client_factory(node_info.node_manager_address(),
-                                                 node_info.node_manager_port());
+      auto raylet_addr = RayletClientPool::GenerateRayletAddress(
+          node_id, node_info.node_manager_address(), node_info.node_manager_port());
+      auto raylet_client =
+          raylet_client_pool->GetOrConnectByAddress(std::move(raylet_addr));
       raylet_client->IsLocalWorkerDead(
           worker_id,
           [worker_client_pool, worker_id, node_id](const Status &status,
@@ -88,7 +88,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                 check_worker_alive(nodes[0]);
               },
               -1,
-              node_id);
+              {node_id});
         };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
@@ -137,7 +137,7 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   node_clients_map_[node_id][worker_id] = client_list_.begin();
 
   RAY_LOG(DEBUG) << "Connected to worker " << worker_id << " with address "
-                 << addr_proto.ip_address() << ":" << addr_proto.port();
+                 << BuildAddress(addr_proto.ip_address(), addr_proto.port());
   return entry.core_worker_client;
 }
 

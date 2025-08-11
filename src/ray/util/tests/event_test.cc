@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/random.h"
 #include "ray/util/string_utils.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -593,8 +594,12 @@ TEST_F(EventTest, TestRayCheckAbort) {
                    "FATAL",
                    "RAY_FATAL_CHECK_FAILED",
                    "NULL");
-  EXPECT_THAT(ele_1.message(),
-              testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
+  EXPECT_THAT(
+      ele_1.message(),
+      testing::HasSubstr(
+          "An unexpected system state has occurred. You have likely discovered a bug in "
+          "Ray. Please report this issue at https://github.com/ray-project/ray/issues "
+          "and we'll work with you to fix it. Check failed: 1 < 0 incorrect test case"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
 }
@@ -684,7 +689,7 @@ TEST_F(EventTest, TestLogEvent) {
   ray::RayEvent::SetEmitToLogFile(true);
   // Initialize log level to error
   const std::string app_name = "event_test";
-  const std::string log_filepath = RayLog::GetLogFilepathFromDirectory(log_dir, app_name);
+  const std::string log_filepath = GetLogFilepathFromDirectory(log_dir, app_name);
   ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::ERROR, log_filepath);
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RayEventContext::Instance().SetEventContext(
@@ -774,7 +779,7 @@ int main(int argc, char **argv) {
   // Use ERROR type logger by default to avoid printing large scale logs in current test.
   const std::string app_name = "event_test";
   const std::string log_filepath =
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", app_name);
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", app_name);
   ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::INFO, log_filepath);
   return RUN_ALL_TESTS();
 }

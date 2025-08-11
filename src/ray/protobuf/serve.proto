@@ -31,7 +31,10 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // The frequency of how long does each replica sending metrics to autoscaler.
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this will be replaced by the environment variables
+  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
+  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
   double metrics_interval_s = 3;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.

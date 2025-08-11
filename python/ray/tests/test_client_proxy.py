@@ -13,6 +13,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+from ray._common.network_utils import parse_address
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
 from ray._private.test_utils import run_string_as_driver
@@ -90,7 +91,7 @@ def test_proxy_manager_bad_startup(shutdown_only):
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
     ctx = ray.init(ignore_reinit_error=True)
-    port_to_conflict = ctx.dashboard_url.split(":")[1]
+    _, port_to_conflict = parse_address(ctx.dashboard_url)
 
     pm.create_specific_server(client)
     # Intentionally bind to the wrong port so that the
@@ -182,7 +183,8 @@ def test_delay_in_rewriting_environment(shutdown_only):
     """
     ray_instance = ray.init()
     server = proxier.serve_proxier(
-        "localhost:25010",
+        "localhost",
+        25010,
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
     )
@@ -220,7 +222,8 @@ def test_startup_error_yields_clean_result(shutdown_only):
     """
     ray_instance = ray.init()
     server = proxier.serve_proxier(
-        "localhost:25030",
+        "localhost",
+        25030,
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
     )

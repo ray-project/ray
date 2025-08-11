@@ -90,6 +90,7 @@ doctest(
             "algorithms/r2d2/r2d2.py",
             "algorithms/sac/rnnsac.py",
             "algorithms/simple_q/simple_q.py",
+            "core/distribution/torch/torch_distribution.py",
             "core/models/base.py",
             "core/models/specs/specs_base.py",
             "core/models/specs/specs_dict.py",
@@ -104,9 +105,7 @@ doctest(
             "models/catalog.py",
             "models/preprocessors.py",
             "models/repeated_values.py",
-            "models/tf/tf_distributions.py",
             "models/torch/model.py",
-            "models/torch/torch_distributions.py",
             "policy/rnn_sequencing.py",
             "utils/actor_manager.py",
             "utils/filter.py",
@@ -838,6 +837,30 @@ py_test(
         "torch_only",
     ],
 )
+
+# DreamerV3
+# takes too long (up to 20-30min to learn -200 on 1 GPU)
+# # Pendulum
+# py_test(
+#    name = "learning_tests_pendulum_dreamerv3_gpu",
+#    size = "large",
+#    srcs = ["tuned_examples/dreamerv3/pendulum_dreamerv3.py"],
+#    args = [
+#        "--as-test",
+#        "--num-gpus-per-learner=1",
+#        "--num-learners=1",
+#    ],
+#    main = "tuned_examples/marwil/cartpole_marwil.py",
+#    tags = [
+#        "exclusive",
+#        "gpu",
+#        "learning_tests",
+#        "learning_tests_continuous",
+#        "learning_tests_pytorch_use_all_core",
+#        "team:rllib",
+#        "torch_only",
+#    ],
+# )
 
 # IMPALA
 # CartPole
@@ -2042,12 +2065,15 @@ py_test(
 )
 
 # DreamerV3
-# py_test(
-#    name = "test_dreamerv3",
-#    tags = ["team:rllib", "algorithms_dir"],
-#    size = "large",
-#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
-# )
+py_test(
+    name = "test_dreamerv3",
+    size = "large",
+    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
 
 # IMPALA
 py_test(
@@ -2470,16 +2496,6 @@ py_test(
 #    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
 #    args = ["TestRLModuleGPU"],
 # )
-
-py_test(
-    name = "test_tf_rl_module",
-    size = "medium",
-    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"],
-    tags = [
-        "core",
-        "team:rllib",
-    ],
-)
 
 py_test(
     name = "test_multi_rl_module",
@@ -4694,7 +4710,7 @@ py_test(
 
 py_test(
     name = "examples/metrics/custom_metrics_in_algorithm_training_step",
-    size = "small",
+    size = "medium",
     srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
     main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
     tags = [
