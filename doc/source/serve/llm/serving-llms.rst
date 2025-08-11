@@ -68,7 +68,7 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
     .. tab-item:: Builder Pattern
         :sync: builder
 
-        .. literalinclude:: ../../llm/examples/serve/qwen_example.py
+        .. literalinclude:: ../../llm/doc_code/serve/qwen/qwen_example.py
             :language: python
             :start-after: __qwen_example_start__
             :end-before: __qwen_example_end__
@@ -238,7 +238,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
     .. tab-item:: Inline Config
         :sync: inline
 
-        .. literalinclude:: ../../llm/examples/serve/llm_config_example.yaml
+        .. literalinclude:: ../../llm/doc_code/serve/qwen/llm_config_example.yaml
             :language: yaml
 
 
