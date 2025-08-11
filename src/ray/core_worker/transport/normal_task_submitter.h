@@ -31,7 +31,6 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -44,16 +43,11 @@ namespace core {
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
 // and ensure fairness between different tasks, as well as plasma task dependencies as
 // a performance optimization because the raylet will fetch plasma dependencies to the
-// scheduled worker. It's also keyed on actor ID to ensure the actor creation task
-// would always request a new worker lease. We need this to let raylet know about
-// direct actor creation task, and reconstruct the actor if it dies. Otherwise if
-// the actor creation task just reuses an existing worker, then raylet will not
-// be aware of the actor and is not able to manage it.  It is also keyed on
-// RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
-// matches the RuntimeEnvHash required by the task spec.
+// scheduled worker. It is also keyed on RuntimeEnvHash, because a worker can only run a
+// task if the worker's RuntimeEnvHash matches the RuntimeEnvHash required by the task
+// spec.
 using RuntimeEnvHash = int;
-using SchedulingKey =
-    std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
+using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, RuntimeEnvHash>;
 
 // Interface that controls the max concurrent pending lease requests
 // per scheduling category.
@@ -78,7 +72,7 @@ class NormalTaskSubmitter {
  public:
   explicit NormalTaskSubmitter(
       rpc::Address rpc_address,
-      std::shared_ptr<RayletClientInterface> lease_client,
+      std::shared_ptr<RayletClientInterface> local_raylet_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
@@ -93,7 +87,7 @@ class NormalTaskSubmitter {
       const TensorTransportGetter &tensor_transport_getter,
       boost::asio::steady_timer cancel_timer)
       : rpc_address_(std::move(rpc_address)),
-        local_lease_client_(std::move(lease_client)),
+        local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
@@ -138,15 +132,6 @@ class NormalTaskSubmitter {
     return scheduling_key_entries_.empty();
   }
 
-  int64_t GetNumTasksSubmitted() const {
-    return num_tasks_submitted_.load(std::memory_order_relaxed);
-  }
-
-  int64_t GetNumLeasesRequested() {
-    absl::MutexLock lock(&mu_);
-    return num_leases_requested_;
-  }
-
   /// Report worker backlog information to the local raylet.
   /// Since each worker only reports to its local rayet
   /// we avoid double counting backlogs in autoscaler.
@@ -176,7 +161,7 @@ class NormalTaskSubmitter {
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
   /// local raylet.
-  std::shared_ptr<RayletClientInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address *raylet_address) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Report worker backlog information to the local raylet
@@ -205,7 +190,7 @@ class NormalTaskSubmitter {
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(
       const rpc::Address &addr,
-      std::shared_ptr<RayletClientInterface> lease_client,
+      std::shared_ptr<RayletClientInterface> raylet_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
       const TaskID &task_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -249,11 +234,11 @@ class NormalTaskSubmitter {
   rpc::Address rpc_address_;
 
   // Client that can be used to lease and return workers from the local raylet.
-  std::shared_ptr<RayletClientInterface> local_lease_client_;
+  std::shared_ptr<RayletClientInterface> local_raylet_client_;
 
   /// Cache of gRPC clients to remote raylets.
   absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>
-      remote_lease_clients_ ABSL_GUARDED_BY(mu_);
+      remote_raylet_clients_ ABSL_GUARDED_BY(mu_);
 
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
@@ -295,7 +280,7 @@ class NormalTaskSubmitter {
   /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
   /// (7) The task id used to obtain the worker lease.
   struct LeaseEntry {
-    std::shared_ptr<RayletClientInterface> lease_client;
+    std::shared_ptr<RayletClientInterface> raylet_client;
     int64_t lease_expiration_time;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
@@ -374,9 +359,6 @@ class NormalTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
-
-  std::atomic<int64_t> num_tasks_submitted_ = 0;
-  int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace core

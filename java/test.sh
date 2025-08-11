@@ -8,14 +8,6 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
-pushd "$ROOT_DIR"
-  echo "Check java code format."
-  # check google java style
-  mvn -T16 spotless:check
-  # check naming and others
-  mvn -T16 checkstyle:check
-popd
-
 run_testng() {
     local pid
     local exit_code
@@ -72,12 +64,24 @@ if [[ ! -d ".git" ]]; then
 fi
 
 echo "Build java maven deps."
-bazel build //java:copy_pom_files
-bazel build //java:cp_java_generated
+bazel run //java:gen_pom_files
+bazel run //java:gen_proto_files
 bazel build //java:gen_maven_deps
+
+echo "Build ray core."
+bazel run //:gen_ray_pkg
 
 echo "Build test jar."
 bazel build //java:all_tests_shaded.jar
+
+(
+  cd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+)
 
 java/generate_jni_header_files.sh
 

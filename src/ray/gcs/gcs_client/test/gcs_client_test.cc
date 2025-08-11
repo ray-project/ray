@@ -25,7 +25,9 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/util/network_util.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/util.h"
 
 using namespace std::chrono_literals;  // NOLINT
@@ -158,7 +160,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
     while (true) {
       auto channel =
-          grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+          grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
@@ -434,7 +436,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
@@ -931,7 +933,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
-  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   grpc::ClientContext context;
@@ -1032,8 +1034,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       /*app_name=*/argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
