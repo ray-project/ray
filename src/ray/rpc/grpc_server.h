@@ -102,7 +102,7 @@ class GrpcServer {
       : name_(std::move(name)),
         port_(port),
         ip_address_(ip_address),
-        cluster_id_(ClusterID::Nil()),
+        cluster_id_(cluster_id),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {

@@ -106,7 +106,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     auto worker_context = std::make_unique<WorkerContext>(
         WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
     auto core_worker_server =
-        std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type), 0, true);
+        std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type), 0, "127.0.0.1");
     core_worker_server->RegisterService(
         std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler),
         false /* token_auth */);
