@@ -127,7 +127,12 @@ def main(
     build_anyscale_base_byod_images(tests)
     logger.info("Build anyscale custom BYOD images")
     for test in tests:
-        build_anyscale_custom_byod_image(test)
+        if test.require_custom_byod_image():
+            build_anyscale_custom_byod_image(
+                test.get_anyscale_byod_image(),
+                test.get_anyscale_base_byod_image(),
+                test.get_byod_post_build_script(),
+            )
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
