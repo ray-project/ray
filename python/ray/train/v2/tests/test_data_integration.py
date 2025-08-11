@@ -191,20 +191,26 @@ async def test_get_multiple_datasets_serially(ray_start_4_cpus):
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "sharded_1", NUM_TRAIN_WORKERS
     )
-    assert len(shards) == NUM_TRAIN_WORKERS
     assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+    assert [shard._base_dataset.name for shard in shards] == [
+        "sharded_1"
+    ] * NUM_TRAIN_WORKERS
 
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "sharded_2", NUM_TRAIN_WORKERS
     )
-    assert len(shards) == NUM_TRAIN_WORKERS
     assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+    assert [shard._base_dataset.name for shard in shards] == [
+        "sharded_2"
+    ] * NUM_TRAIN_WORKERS
 
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "unsharded", NUM_TRAIN_WORKERS
     )
-    assert len(shards) == NUM_TRAIN_WORKERS
     assert not any(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+    assert [shard._base_dataset.name for shard in shards] == [
+        "unsharded"
+    ] * NUM_TRAIN_WORKERS
 
 
 @pytest.mark.asyncio
@@ -241,7 +247,14 @@ async def test_get_multiple_datasets_interleaved(ray_start_4_cpus):
         get_dataset_shard_for_worker(dataset_manager, "train", NUM_TRAIN_WORKERS, 1),
         get_dataset_shard_for_worker(dataset_manager, "valid", NUM_TRAIN_WORKERS, 0),
     ]
-    await asyncio.gather(*tasks)
+    iterators = await asyncio.gather(*tasks)
+    assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
+    assert [iterator._base_dataset.name for iterator in iterators] == [
+        "train",
+        "valid",
+        "train",
+        "valid",
+    ]
 
 
 @pytest.mark.asyncio
@@ -274,14 +287,30 @@ async def test_get_multiple_datasets_rank_specific(ray_start_4_cpus):
     )
 
     # ray.train.get_dataset_shard("train")
-    await get_dataset_shard_for_all_workers(dataset_manager, "train", NUM_TRAIN_WORKERS)
+    iterators = await get_dataset_shard_for_all_workers(
+        dataset_manager, "train", NUM_TRAIN_WORKERS
+    )
+    assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
+    assert [iterator._base_dataset.name for iterator in iterators] == [
+        "train"
+    ] * NUM_TRAIN_WORKERS
 
     # if world_rank == 0:
     #     ray.train.get_dataset_shard("valid")
-    await get_dataset_shard_for_worker(dataset_manager, "valid", NUM_TRAIN_WORKERS, 0)
+    iterator = await get_dataset_shard_for_worker(
+        dataset_manager, "valid", NUM_TRAIN_WORKERS, 0
+    )
+    assert not isinstance(iterator, StreamSplitDataIterator)
+    assert iterator._base_dataset.name == "valid"
 
     # ray.train.get_dataset_shard("train")
-    await get_dataset_shard_for_all_workers(dataset_manager, "train", NUM_TRAIN_WORKERS)
+    iterators = await get_dataset_shard_for_all_workers(
+        dataset_manager, "train", NUM_TRAIN_WORKERS
+    )
+    assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
+    assert [iterator._base_dataset.name for iterator in iterators] == [
+        "train"
+    ] * NUM_TRAIN_WORKERS
 
 
 if __name__ == "__main__":
