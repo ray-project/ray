@@ -39,6 +39,9 @@ The accelerators natively supported by Ray Core are:
    * - Rebellions RBLN
      - RBLN
      - Experimental, supported by the community
+   * - METAX GPU
+     - GPU
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -128,6 +131,15 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``RBLN_DEVICES`` environment variable before starting a Ray node
             to limit the Rebellions RBLNs that are visible to Ray.
             For example, ``RBLN_DEVICES=1,3 ray start --head --resources='{"RBLN": 2}'``
+            lets Ray only see devices 1 and 3.
+    .. tab-item:: METAX GPU
+        :sync: METAX GPU
+
+        .. tip::
+
+            You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the METAX GPUs that are visible to Ray.
+            For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
 
 .. note::
@@ -457,6 +469,44 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (rbln_task pid=51830) RBLN IDs: [1]
             (rbln_task pid=51830) RBLN_DEVICES: 1
 
+    .. tab-item:: METAX GPU
+        :sync: METAX GPU
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(num_gpus=2)
+
+            @ray.remote(num_gpus=1)
+            class GPUActor:
+                def ping(self):
+                    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+                    print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+            @ray.remote(num_gpus=1)
+            def gpu_task():
+                print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+                print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+            gpu_actor = GPUActor.remote()
+            ray.get(gpu_actor.ping.remote())
+            # The actor uses the first GPU so the task uses the second one.
+            ray.get(gpu_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (GPUActor pid=52420) GPU IDs: [0]
+            (GPUActor pid=52420) CUDA_VISIBLE_DEVICES: 0
+            (gpu_task pid=51830) GPU IDs: [1]
+            (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
@@ -606,6 +656,27 @@ so multiple tasks and actors can share the same accelerator.
 
         Rebellions RBLN doesn't support fractional resources.
 
+    .. tab-item:: METAX GPU
+        :sync: METAX GPU
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            ray.init(num_cpus=4, num_gpus=1)
+
+            @ray.remote(num_gpus=0.25)
+            def f():
+                import time
+
+                time.sleep(1)
+
+            # The four tasks created here can execute concurrently
+            # and share the same GPU.
+            ray.get([f.remote() for _ in range(4)])
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
