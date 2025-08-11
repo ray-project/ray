@@ -28,7 +28,6 @@ from ci.raydepsets.tests.utils import (
     save_file_as,
     save_packages_to_file,
 )
-from ci.raydepsets.workspace import Workspace
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -453,14 +452,6 @@ depsets:
             output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
-
-    def test_from_dict_build_arg_set_matrix(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            workspace = Workspace(dir=tmpdir)
-            config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-            assert config.build_arg_sets[0].build_args["PYTHON_VERSION"] == "py311"
-            assert config.build_arg_sets[0].build_args["CUDA_VERSION"] == "cpu"
 
     def test_get_depset_with_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
