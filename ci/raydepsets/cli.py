@@ -238,18 +238,16 @@ class DependencySetManager:
 def _get_depset(
     depsets: List[Depset], name: str, build_arg_set: Optional[str] = None
 ) -> Depset:
-    if build_arg_set:
-        for depset in depsets:
-            if (
-                depset.name == name
-                and depset.build_arg_set
-                and depset.build_arg_set.name == build_arg_set
-            ):
+    for depset in depsets:
+        if depset.name != name:
+            continue
+
+        if build_arg_set:
+            if depset.build_arg_set and depset.build_arg_set.name == build_arg_set:
                 return depset
-    else:
-        for depset in depsets:
-            if depset.name == name and depset.build_arg_set is None:
-                return depset
+        else:
+            return depset
+
     raise KeyError(
         f"Dependency set {name} with build_arg_set {build_arg_set} not found"
     )
