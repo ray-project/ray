@@ -37,7 +37,6 @@ namespace core {
  * to know the actual sequence_no to send over the network.
  *
  * This class is not thread safe.
- * TODO(scv119): the protocol could be improved.
  */
 class IActorSubmitQueue {
  public:

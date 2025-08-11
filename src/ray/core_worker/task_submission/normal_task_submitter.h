@@ -30,7 +30,7 @@
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
-#include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -65,6 +65,19 @@ class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
 
  private:
   const size_t kLimit;
+};
+
+// Lease request rate-limiter based on cluster node size.
+// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
+class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
+ public:
+  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
+  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+
+ private:
+  const size_t min_concurrent_lease_cap_;
+  std::atomic<size_t> num_alive_nodes_;
 };
 
 // This class is thread-safe.
