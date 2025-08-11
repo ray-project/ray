@@ -138,7 +138,7 @@ class IQLTorchLearner(TorchLearner, IQLLearner):
             torch.exp(
                 temperature * (fwd_out[QF_TARGET_PREDS] - fwd_out[Columns.VF_PREDS])
             ),
-            torch.Tensor([100.0]),
+            torch.Tensor([100.0]).to(self.device),
         )
         # Note, we are using here the actions from the data sample.
         action_logps = action_train_dist.logp(batch[Columns.ACTIONS])

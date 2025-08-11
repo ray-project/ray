@@ -60,7 +60,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=1 if not args.num_learners else None,
+        dataset_num_iters_per_learner=5,
     )
     .training(
         # To increase learning speed with multiple learners,
@@ -68,11 +68,12 @@ config = (
         actor_lr=3e-5 * (args.num_learners or 1) ** 0.5,
         critic_lr=3e-4 * (args.num_learners or 1) ** 0.5,
         value_lr=1e-4 * (args.num_learners or 1) ** 0.5,
+        tau=0.0006,
         train_batch_size_per_learner=1024,
     )
     .rl_module(
         model_config=DefaultModelConfig(
-            fcnet_hiddens=[256, 256],
+            fcnet_activation="relu",
         ),
     )
 )
