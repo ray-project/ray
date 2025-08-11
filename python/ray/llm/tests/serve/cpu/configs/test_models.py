@@ -71,9 +71,7 @@ class TestModelConfig:
     def test_model_loading_config_forbids_extra_fields(self):
         """Test that ModelLoadingConfig rejects extra fields."""
 
-        with pytest.raises(
-            pydantic.ValidationError, match="Extra inputs are not permitted"
-        ):
+        with pytest.raises(pydantic.ValidationError, match="engine_kwargs"):
             ModelLoadingConfig(
                 model_id="test_model",
                 model_source="test_source",
@@ -84,6 +82,7 @@ class TestModelConfig:
             model_id="test_model", model_source="test_source"
         )
         assert valid_config.model_id == "test_model"
+        assert valid_config.model_source == "test_source"
 
     def test_invalid_generation_config(self, disable_placement_bundles):
         """Test that passing an invalid generation_config raises an error."""
