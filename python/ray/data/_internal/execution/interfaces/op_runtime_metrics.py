@@ -361,6 +361,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent in task submission backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
+    task_output_backpressure_time: float = metric_field(
+        default=0,
+        description="Time spent in task output backpressure.",
+        metrics_group=MetricsGroup.TASKS,
+    )
     histogram_buckets_s = [
         0.1,
         0.25,
@@ -382,11 +387,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         2500.0,
         5000.0,
     ]
-    task_output_backpressure_time: float = metric_field(
-        default=0,
-        description="Time spent in task output backpressure.",
-        metrics_group=MetricsGroup.TASKS,
-    )
     task_completion_time: float = metric_field(
         default=0,
         description="Time spent running tasks to completion.",
