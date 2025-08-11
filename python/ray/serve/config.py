@@ -286,7 +286,7 @@ class AutoscalingConfig(BaseModel):
         the policy and set `serialized_policy_def` if it's empty.
         """
         values = self.dict()
-        policy = values.get("policy")
+        policy = values.get("_policy")
 
         policy_name = None
         if isinstance(policy, dict):
