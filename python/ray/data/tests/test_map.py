@@ -29,7 +29,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import _MapWorker
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
@@ -39,7 +38,7 @@ from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
-from ray.data.tests.util import column_udf, column_udf_class, extract_values
+from ray.data.tests.util import column_udf, extract_values
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
@@ -58,73 +57,21 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
         ), caplog.text
 
 
-def test_basic_actors(shutdown_only, target_max_block_size_infinite_or_default):
-    ray.init(num_cpus=6)
-    n = 5
-    ds = ray.data.range(n)
-    assert sorted(
-        extract_values(
-            "id",
-            ds.map(
-                column_udf_class("id", lambda x: x + 1),
-                concurrency=1,
-            ).take(),
-        )
-    ) == list(range(1, n + 1))
-
-    # Should still work even if num actors > num cpus.
-    ds = ray.data.range(n)
-    assert sorted(
-        extract_values(
-            "id",
-            ds.map(
-                column_udf_class("id", lambda x: x + 1),
-                concurrency=4,
-            ).take(),
-        )
-    ) == list(range(1, n + 1))
-
-    # Test setting custom max inflight tasks.
-    ds = ray.data.range(10, override_num_blocks=5)
-    assert sorted(
-        extract_values(
-            "id",
-            ds.map(
-                column_udf_class("id", lambda x: x + 1),
-                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
-            ).take(),
-        )
-    ) == list(range(1, 11))
-
-    # Test invalid max tasks inflight arg.
+def test_invalid_max_tasks_in_flight_raises_error():
     with pytest.raises(ValueError):
-        ray.data.range(10).map(
-            column_udf_class("id", lambda x: x),
-            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0),
-        )
+        ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0)
 
-    # Test min no more than max check.
+
+@pytest.mark.parametrize("concurrency", [(2, 1), -1])
+def test_invalid_concurrency_raises_error(shutdown_only, concurrency):
+    ray.init()
+
+    class UDF:
+        def __call__(self, row):
+            return row
+
     with pytest.raises(ValueError):
-        ray.data.range(10).map(
-            column_udf_class("id", lambda x: x),
-            concurrency=(8, 4),
-        )
-
-    # Make sure all actors are dead after dataset execution finishes.
-    def _all_actors_dead():
-        actor_table = ray.state.actors()
-        actors = {
-            _id: actor_info
-            for _id, actor_info in actor_table.items()
-            if actor_info["ActorClassName"] == _MapWorker.__name__
-        }
-        assert len(actors) > 0
-        return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
-
-    import gc
-
-    gc.collect()
-    wait_for_condition(_all_actors_dead)
+        ray.data.range(1).map(UDF, concurrency=concurrency)
 
 
 def test_callable_classes(shutdown_only, target_max_block_size_infinite_or_default):
@@ -2339,52 +2286,53 @@ def test_map_names(target_max_block_size_infinite_or_default):
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
+    reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
-    "exprs, expected_value",
+    "column_name, expr, expected_value",
     [
         # Arithmetic operations
-        ({"result": col("id") + 1}, 1),  # 0 + 1 = 1
-        ({"result": col("id") + 5}, 5),  # 0 + 5 = 5
-        ({"result": col("id") - 1}, -1),  # 0 - 1 = -1
-        ({"result": col("id") * 2}, 0),  # 0 * 2 = 0
-        ({"result": col("id") * 3}, 0),  # 0 * 3 = 0
-        ({"result": col("id") / 2}, 0.0),  # 0 / 2 = 0.0
+        ("result", col("id") + 1, 1),  # 0 + 1 = 1
+        ("result", col("id") + 5, 5),  # 0 + 5 = 5
+        ("result", col("id") - 1, -1),  # 0 - 1 = -1
+        ("result", col("id") * 2, 0),  # 0 * 2 = 0
+        ("result", col("id") * 3, 0),  # 0 * 3 = 0
+        ("result", col("id") / 2, 0.0),  # 0 / 2 = 0.0
         # More complex arithmetic
-        ({"result": (col("id") + 1) * 2}, 2),  # (0 + 1) * 2 = 2
-        ({"result": (col("id") * 2) + 3}, 3),  # 0 * 2 + 3 = 3
+        ("result", (col("id") + 1) * 2, 2),  # (0 + 1) * 2 = 2
+        ("result", (col("id") * 2) + 3, 3),  # 0 * 2 + 3 = 3
         # Comparison operations
-        ({"result": col("id") > 0}, False),  # 0 > 0 = False
-        ({"result": col("id") >= 0}, True),  # 0 >= 0 = True
-        ({"result": col("id") < 1}, True),  # 0 < 1 = True
-        ({"result": col("id") <= 0}, True),  # 0 <= 0 = True
-        ({"result": col("id") == 0}, True),  # 0 == 0 = True
+        ("result", col("id") > 0, False),  # 0 > 0 = False
+        ("result", col("id") >= 0, True),  # 0 >= 0 = True
+        ("result", col("id") < 1, True),  # 0 < 1 = True
+        ("result", col("id") <= 0, True),  # 0 <= 0 = True
+        ("result", col("id") == 0, True),  # 0 == 0 = True
         # Operations with literals
-        ({"result": col("id") + lit(10)}, 10),  # 0 + 10 = 10
-        ({"result": col("id") * lit(5)}, 0),  # 0 * 5 = 0
-        ({"result": lit(2) + col("id")}, 2),  # 2 + 0 = 2
-        ({"result": lit(10) / (col("id") + 1)}, 10.0),  # 10 / (0 + 1) = 10.0
+        ("result", col("id") + lit(10), 10),  # 0 + 10 = 10
+        ("result", col("id") * lit(5), 0),  # 0 * 5 = 0
+        ("result", lit(2) + col("id"), 2),  # 2 + 0 = 2
+        ("result", lit(10) / (col("id") + 1), 10.0),  # 10 / (0 + 1) = 10.0
     ],
 )
-def test_with_columns(
+def test_with_column(
     ray_start_regular_shared,
-    exprs,
+    column_name,
+    expr,
     expected_value,
     target_max_block_size_infinite_or_default,
 ):
-    """Verify that `with_columns` works with various operations."""
-    ds = ray.data.range(5).with_columns(exprs)
+    """Verify that `with_column` works with various operations."""
+    ds = ray.data.range(5).with_column(column_name, expr)
     result = ds.take(1)[0]
     assert result["id"] == 0
-    assert result["result"] == expected_value
+    assert result[column_name] == expected_value
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
+    reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_with_columns_nonexistent_column(
+def test_with_column_nonexistent_column(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
     """Verify that referencing a non-existent column with col() raises an exception."""
@@ -2393,26 +2341,22 @@ def test_with_columns_nonexistent_column(
 
     # Try to reference a non-existent column - this should raise an exception
     with pytest.raises(UserCodeException):
-        ds.with_columns({"result": col("nonexistent_column") + 1}).materialize()
+        ds.with_column("result", col("nonexistent_column") + 1).materialize()
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
+    reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_with_columns_multiple_expressions(
+def test_with_column_multiple_expressions(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
-    """Verify that `with_columns` correctly handles multiple expressions at once."""
+    """Verify that `with_column` correctly handles multiple expressions at once."""
     ds = ray.data.range(5)
 
-    exprs = {
-        "plus_one": col("id") + 1,
-        "times_two": col("id") * 2,
-        "ten_minus_id": 10 - col("id"),
-    }
-
-    ds = ds.with_columns(exprs)
+    ds = ds.with_column("plus_one", col("id") + 1)
+    ds = ds.with_column("times_two", col("id") * 2)
+    ds = ds.with_column("ten_minus_id", 10 - col("id"))
 
     first_row = ds.take(1)[0]
     assert first_row["id"] == 0

@@ -74,6 +74,7 @@ ray_cc_test(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
         "//src/ray/util:event",
+        "//src/ray/util:path_utils",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
     ],
@@ -98,6 +99,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:filesystem",
+        "//src/ray/util:path_utils",
         "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest_main",
     ],
@@ -120,6 +122,7 @@ ray_cc_test(
         "//src/ray/common:status",
         "//src/ray/util",
         "//src/ray/util:env",
+        "//src/ray/util:path_utils",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
@@ -156,7 +159,9 @@ ray_cc_test(
     srcs = ["signal_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:raylet_lib",
+        "//src/ray/util",
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -183,6 +188,17 @@ ray_cc_test(
         "//src/ray/util",
         "@boost//:asio",
         "@boost//:process",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "network_util_test",
+    size = "small",
+    srcs = ["network_util_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -386,6 +402,18 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:file_system_monitor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "string_utils_test",
+    size = "small",
+    srcs = ["string_utils_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:status_or",
+        "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )
