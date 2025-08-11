@@ -245,8 +245,12 @@ def _get_depset(
         if build_arg_set:
             if depset.build_arg_set and depset.build_arg_set.name == build_arg_set:
                 return depset
-        else:
+        elif build_arg_set is None and depset.build_arg_set is None:
             return depset
+        else:
+            raise KeyError(
+                f"Dependency set {name} has an existing build_arg_set: {depset.build_arg_set.name} but no build_arg_set was provided"
+            )
 
     raise KeyError(
         f"Dependency set {name} with build_arg_set {build_arg_set} not found"
