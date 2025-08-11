@@ -193,7 +193,7 @@ def main(args):
     # Report chaos testing node failures
     if args.chaos_test:
         dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
-        assert dead_nodes
+        assert dead_nodes, "No dead nodes during chaos test"
         print(f"Total chaos killed: {dead_nodes}")
 
     return {
