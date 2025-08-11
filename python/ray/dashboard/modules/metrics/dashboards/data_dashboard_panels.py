@@ -460,13 +460,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=38,
-        title="(p$pXX) Task Completion Time",
+        title="Task Completion Time",
         description="Time spent running tasks to completion w/ backpressure.",
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile($pXX, sum by (dataset, operator, le) (rate(ray_data_mean_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="($pXX) Completion Time: {{dataset}}, {{operator}}",
+                expr="increase(ray_data_task_completion_time{{{global_filters}}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+                legend="Task Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
         fill=0,
@@ -474,13 +474,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=39,
-        title="(p$pXX) Task Output Backpressure Time",
+        title="Task Output Backpressure Time",
         description="Time spent in output backpressure.",
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile($pXX, sum by (dataset, operator, le) (rate(ray_data_mean_task_output_backpressure_time_bucket{{{global_filters}}}[5m])))",
-                legend="($pXX) Output Backpressure Time: {{dataset}}, {{operator}}",
+                expr="increase(ray_data_task_output_backpressure_time{{{global_filters}}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+                legend="Task Output Backpressure Time: {{dataset}}, {{operator}}",
             ),
         ],
         fill=0,
@@ -488,13 +488,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=40,
-        title="(p$pXX) Task Completion Time Without Backpressure",
+        title="Task Completion Time Without Backpressure",
         description="Time spent running tasks to completion w/o backpressure.",
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile($pXX, sum by (dataset, operator, le) (rate(ray_data_mean_task_completion_time_without_backpressure_bucket{{{global_filters}}}[5m])))",
-                legend="($pXX) Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
+                expr="increase(ray_data_task_completion_time_without_backpressure{{{global_filters}}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+                legend="Task Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
             ),
         ],
         fill=0,

@@ -329,7 +329,7 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=37",
       },
       {
-        title: "(pXX) Task Completion Time",
+        title: "Task Completion Time",
         pathParams: "theme=light&panelId=38",
       }
     ],

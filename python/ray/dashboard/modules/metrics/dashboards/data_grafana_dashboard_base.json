@@ -131,52 +131,6 @@
             "tagsQuery": "",
             "type": "query",
             "useTags": false
-          },
-          {
-            "current": {
-              "text": "50",
-              "value": "0.50"
-            },
-            "name": "pXX",
-            "options": [
-              {
-                "selected": false,
-                "text": "00",
-                "value": "0"
-              },
-              {
-                "selected": false,
-                "text": "05",
-                "value": "0.05"
-              },
-              {
-                "selected": true,
-                "text": "50",
-                "value": "0.50"
-              },
-              {
-                "selected": false,
-                "text": "75",
-                "value": "0.75"
-              },
-              {
-                "selected": false,
-                "text": "90",
-                "value": "0.90"
-              },
-              {
-                "selected": false,
-                "text": "99",
-                "value": "0.99"
-              },
-              {
-                "selected": false,
-                "text": "100",
-                "value": "1.00"
-              }
-            ],
-            "query": "0, 0.05, 0.50, 0.75, 0.90, 0.99, 1.00",
-            "type": "custom"
           }
       ]
     },

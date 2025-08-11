@@ -382,26 +382,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         2500.0,
         5000.0,
     ]
-    mean_task_output_backpressure_time: float = metric_field(
+    task_output_backpressure_time: float = metric_field(
         default=0,
         description="Time spent in task output backpressure.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Histogram,
-        metrics_args={"boundaries": histogram_buckets_s},
     )
-    mean_task_completion_time: float = metric_field(
+    task_completion_time: float = metric_field(
         default=0,
         description="Time spent running tasks to completion.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Histogram,
-        metrics_args={"boundaries": histogram_buckets_s},
     )
-    mean_task_completion_time_without_backpressure: float = metric_field(
+    task_completion_time_without_backpressure: float = metric_field(
         default=0,
         description="Time spent running tasks to completion without backpressure.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Histogram,
-        metrics_args={"boundaries": histogram_buckets_s},
     )
 
     # === Actor-related metrics ===
@@ -467,8 +461,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
-        self._op_task_output_backpressure_stats = TaskDurationStats()
-        self._op_task_duration_without_backpressure_stats = TaskDurationStats()
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
@@ -733,7 +725,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         elif self._task_output_backpressure_start_time != -1:
             # backpressure stopping, stop timer
             delta = time.perf_counter() - self._task_output_backpressure_start_time
-            self._op_task_output_backpressure_stats.add_duration(delta)
+            self.task_output_backpressure_time += delta
             self._task_output_backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
@@ -814,18 +806,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
         task_time_delta = time.perf_counter() - task_info.start_time
-        self._op_task_duration_stats.add_duration(task_time_delta)
-        self.mean_task_completion_time = self._op_task_duration_stats.mean()
-        self.mean_task_output_backpressure_time = (
-            self._op_task_output_backpressure_stats.mean()
-        )
+        self.task_completion_time += task_time_delta
+
         assert task_info.cum_block_gen_time is not None
-        self._op_task_duration_without_backpressure_stats.add_duration(
-            task_info.cum_block_gen_time
-        )
-        self.mean_task_completion_time_without_backpressure = (
-            self._op_task_duration_without_backpressure_stats.mean()
-        )
+        self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
+        print(self.task_completion_time_without_backpressure)
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
