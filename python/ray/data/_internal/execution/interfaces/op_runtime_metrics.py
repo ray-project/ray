@@ -810,7 +810,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         assert task_info.cum_block_gen_time is not None
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
-        print(self.task_completion_time_without_backpressure)
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
