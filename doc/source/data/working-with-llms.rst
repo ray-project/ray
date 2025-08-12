@@ -350,14 +350,14 @@ Frequently Asked Questions (FAQs)
 
 .. _cross_node_parallelism:
 
-Can I config LLM stage to parallelize across multiple nodes?
+Can I configure LLM stage to parallelize across multiple nodes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 At the moment, Ray Data LLM does not support cross-node parallelism (either
 tensor parallelism or pipeline parallelism).
 
 The processing pipeline is designed to run on a single node. We calculate the
-number of GPUs to be multiplication of tensor parallel size and pipeline
+number of GPUs as the product of the tensor parallel size and the pipeline
 parallel size, and apply
 [`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
 to ensure that each replica of the LLM stage is executed on a single node.
