@@ -440,7 +440,7 @@ message WorkerTableData {
 
 // Fields to publish when worker fails.
 message WorkerDeltaData {
-  bytes raylet_id = 1;
+  bytes node_id = 1;
   bytes worker_id = 2;
 }
 
