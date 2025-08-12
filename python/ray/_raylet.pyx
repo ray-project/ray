@@ -2271,7 +2271,7 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = None
 
-        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
+        if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
             if visible_accelerator_env_vars_overriden:
                 # Reset the visible accelerator env vars for normal tasks, since they may be reused.
                 ray._private.utils.reset_visible_accelerator_env_vars(visible_accelerator_env_vars_overriden)
