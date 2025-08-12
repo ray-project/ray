@@ -94,9 +94,7 @@ class ScalingConfig(ScalingConfigV1):
 
 
         if self.use_gpu and self.use_tpu:
-            raise ValueError(
-                "Cannot specify both `use_gpu=True` and `use_tpu=True`."
-            )
+            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
 
         if not self.use_tpu and self.num_tpus_per_worker > 0:
             raise ValueError(

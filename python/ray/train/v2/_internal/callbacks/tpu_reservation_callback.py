@@ -29,7 +29,9 @@ class TPUReservationCallback(ControllerCallback):
         assert scaling_config.accelerator_type is not None
         assert scaling_config.topology is not None
 
-        if scaling_config.use_tpu and (num_workers > 1 or scaling_config.num_workers > 1):
+        if scaling_config.use_tpu and (
+            num_workers > 1 or scaling_config.num_workers > 1
+        ):
             slice_name = reserve_tpu_slice(
                 topology=scaling_config.topology,
                 accelerator_type=scaling_config.accelerator_type,
