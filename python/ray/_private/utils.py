@@ -273,11 +273,17 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     environment variables.
     """
     visible_accelerator_env_vars_overriden = {}
+    not_override_accelerator_ids_when_num_accelerators_is_zero = os.environ.get(
+        ray._private.accelerators.NOT_OVERRIDE_ACCELERATOR_IDS_WHEN_NUM_ACCELERATORS_IS_ZERO_ENV_VAR,
+    )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
     ):
         # If no accelerator ids are set, skip overriding the environment variable.
-        if len(accelerator_ids) == 0:
+        if (
+            not_override_accelerator_ids_when_num_accelerators_is_zero
+            and len(accelerator_ids) == 0
+        ):
             continue
         env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
