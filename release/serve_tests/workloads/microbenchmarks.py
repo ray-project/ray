@@ -26,6 +26,9 @@ from ray.serve._private.benchmarks.common import (
     do_single_http_batch,
     generate_payload,
     Noop,
+    ModelComp,
+    GrpcDeployment,
+    GrpcModelComp,
     IntermediateRouter,
     run_latency_benchmark,
     run_throughput_benchmark,
@@ -58,18 +61,6 @@ STREAMING_BATCH_SIZE = 150
 STREAMING_HTTP_BATCH_SIZE = 500
 STREAMING_TOKENS_PER_REQUEST = 1000
 STREAMING_NUM_TRIALS = 10
-
-
-@serve.deployment
-class GrpcDeployment:
-    def __init__(self):
-        logging.getLogger("ray.serve").setLevel(logging.WARNING)
-
-    async def grpc_call(self, user_message):
-        return serve_pb2.ModelOutput(output=9)
-
-    async def call_with_string(self, user_message):
-        return serve_pb2.ModelOutput(output=9)
 
 
 def convert_throughput_to_perf_metrics(
@@ -173,6 +164,25 @@ async def _main(
                     convert_throughput_to_perf_metrics(test_name, mean, std)
                 )
                 serve.shutdown()
+            
+                # Microbenchmark: HTTP throughput model composition
+                serve.run(
+                    ModelComp.options(max_ongoing_requests=max_ongoing_requests).bind(
+                        Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                    )
+                )
+                url = get_application_url(use_localhost=True)
+                mean, std, _ = await run_throughput_benchmark(
+                    fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
+                    multiplier=BATCH_SIZE,
+                    num_trials=NUM_TRIALS,
+                    trial_runtime=TRIAL_RUNTIME_S,
+                )
+                test_name = get_throughput_test_name("http_model_comp", max_ongoing_requests)
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
+                serve.shutdown() 
 
         if run_streaming:
             # Direct streaming between replica
@@ -303,6 +313,34 @@ async def _main(
                 )
                 serve.shutdown()
 
+                # Microbenchmark: GRPC throughput model composition
+                serve.start(grpc_options=serve_grpc_options)
+                serve.run(
+                    GrpcModelComp.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind(
+                        Noop.options(
+                            max_ongoing_requests=max_ongoing_requests
+                        ).bind()
+                    )
+                )
+                target = get_application_url(
+                    protocol=RequestProtocol.GRPC, use_localhost=True
+                )
+                mean, std, _ = await run_throughput_benchmark(
+                    fn=partial(
+                        do_single_grpc_batch, batch_size=BATCH_SIZE, target=target
+                    ),
+                    multiplier=BATCH_SIZE,
+                    num_trials=NUM_TRIALS,
+                    trial_runtime=TRIAL_RUNTIME_S,
+                )
+                test_name = get_throughput_test_name("grpc_model_comp", max_ongoing_requests)
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
+                serve.shutdown()
+
     # Handle
     if run_handle:
         if run_latency:
@@ -332,6 +370,24 @@ async def _main(
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
                 test_name = get_throughput_test_name("handle", max_ongoing_requests)
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
+                serve.shutdown()
+
+                h: DeploymentHandle = serve.run(
+                    Benchmarker.options(max_ongoing_requests=max_ongoing_requests).bind(
+                        ModelComp.options(max_ongoing_requests=max_ongoing_requests).bind(
+                            Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                        )
+                    )
+                )
+                mean, std, _ = await h.run_throughput_benchmark.remote(
+                    batch_size=BATCH_SIZE,
+                    num_trials=NUM_TRIALS,
+                    trial_runtime=TRIAL_RUNTIME_S,
+                )
+                test_name = get_throughput_test_name("handle_model_comp", max_ongoing_requests)
                 perf_metrics.extend(
                     convert_throughput_to_perf_metrics(test_name, mean, std)
                 )
