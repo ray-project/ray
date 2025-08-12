@@ -1012,8 +1012,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #
         # NOTE: If cluster configuration is not available fallback to `ray.cluster_resources()`
         total_cluster_resources = (
-            ray._private.state.state.get_max_resources_from_cluster_config() or
-            ray.cluster_resources()
+            ray._private.state.state.get_max_resources_from_cluster_config()
+            or ray.cluster_resources()
         )
 
         if total_cluster_resources and (total_cluster_resources.get("CPU") or 0) > 0:
