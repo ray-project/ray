@@ -8,4 +8,4 @@ This section provides a look into some of Ray Core internals. It's primarily int
 .. toctree::
     :maxdepth: 1
 
-    internals/task-lifecycle
+    internals/task-lifecycle.rst
