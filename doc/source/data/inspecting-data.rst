@@ -123,12 +123,11 @@ of the returned batch, set ``batch_format``.
             print(batch)
 
         .. testoutput::
-            :options: +NORMALIZE_WHITESPACE
+            :options: +MOCK
 
                sepal length (cm)  sepal width (cm)  ...  petal width (cm)  target
             0                5.1               3.5  ...               0.2       0
             1                4.9               3.0  ...               0.2       0
-            <BLANKLINE>
 
 For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and

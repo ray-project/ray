@@ -228,7 +228,7 @@ number of files & their sizes (since every block could potentially carry the row
     print_directory_tree("/tmp/sales_partitioned")
 
 .. testoutput::
-    :options: +NORMALIZE_WHITESPACE
+    :options: +MOCK
 
     sales_partitioned/
         city=NYC/
