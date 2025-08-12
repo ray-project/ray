@@ -28,12 +28,12 @@
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/local_task_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
@@ -174,13 +174,6 @@ class MockWorkerPool : public WorkerPoolInterface {
                         pid_t pid,
                         StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback) override {
-    RAY_CHECK(false) << "Not used.";
-    return Status::Invalid("Not used.");
-  }
-
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                        pid_t pid,
-                        StartupToken worker_startup_token) override {
     RAY_CHECK(false) << "Not used.";
     return Status::Invalid("Not used.");
   }

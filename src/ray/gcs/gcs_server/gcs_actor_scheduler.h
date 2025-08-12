@@ -32,7 +32,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -135,7 +135,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       ClusterTaskManager &cluster_task_manager_,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
-      rpc::NodeManagerClientPool &raylet_client_pool,
+      rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
@@ -340,7 +340,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Get an existing lease client or connect a new one.
-  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address &raylet_address);
 
   /// Kill the actor on a node
@@ -389,7 +389,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.
-  rpc::NodeManagerClientPool &raylet_client_pool_;
+  rpc::RayletClientPool &raylet_client_pool_;
   /// Core worker client pool shared by the GCS.
   rpc::CoreWorkerClientPool &worker_client_pool_;
 

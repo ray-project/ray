@@ -18,7 +18,7 @@ import click
 import yaml
 
 import ray
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger

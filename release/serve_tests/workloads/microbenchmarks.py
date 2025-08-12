@@ -32,6 +32,7 @@ from ray.serve._private.benchmarks.common import (
     Streamer,
 )
 from ray.serve._private.common import RequestProtocol
+from ray.serve._private.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
@@ -116,6 +117,13 @@ def convert_latencies_to_perf_metrics(name: str, latencies: pd.Series) -> List[D
     ]
 
 
+def get_throughput_test_name(test_type: str, max_ongoing_requests: int) -> str:
+    if max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS:
+        return test_type
+    else:
+        return f"{test_type}_{max_ongoing_requests:_}_max_ongoing_requests"
+
+
 async def _main(
     output_path: Optional[str],
     run_http: bool,
@@ -124,6 +132,7 @@ async def _main(
     run_latency: bool,
     run_throughput: bool,
     run_streaming: bool,
+    throughput_max_ongoing_requests: List[int],
 ):
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
@@ -148,32 +157,22 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: HTTP throughput
-            serve.run(Noop.bind())
-            url = get_application_url(use_localhost=True)
-            mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
-                multiplier=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(convert_throughput_to_perf_metrics("http", mean, std))
-            serve.shutdown()
-
-            # Microbenchmark: HTTP throughput at max_ongoing_requests=100
-            serve.run(Noop.options(max_ongoing_requests=100).bind())
-            url = get_application_url(use_localhost=True)
-            mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
-                multiplier=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(
-                convert_throughput_to_perf_metrics(
-                    "http_100_max_ongoing_requests", mean, std
+            for max_ongoing_requests in throughput_max_ongoing_requests:
+                serve.run(
+                    Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
                 )
-            )
-            serve.shutdown()
+                url = get_application_url(use_localhost=True)
+                mean, std, _ = await run_throughput_benchmark(
+                    fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
+                    multiplier=BATCH_SIZE,
+                    num_trials=NUM_TRIALS,
+                    trial_runtime=TRIAL_RUNTIME_S,
+                )
+                test_name = get_throughput_test_name("http", max_ongoing_requests)
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
+                serve.shutdown()
 
         if run_streaming:
             # Direct streaming between replica
@@ -280,38 +279,29 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
-            serve.start(grpc_options=serve_grpc_options)
-            serve.run(GrpcDeployment.bind())
-            target = get_application_url(
-                protocol=RequestProtocol.GRPC, use_localhost=True
-            )
-            mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE, target=target),
-                multiplier=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(convert_throughput_to_perf_metrics("grpc", mean, std))
-            serve.shutdown()
-
-            # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
-            serve.start(grpc_options=serve_grpc_options)
-            serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
-            target = get_application_url(
-                protocol=RequestProtocol.GRPC, use_localhost=True
-            )
-            mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE, target=target),
-                multiplier=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(
-                convert_throughput_to_perf_metrics(
-                    "grpc_100_max_ongoing_requests", mean, std
+            for max_ongoing_requests in throughput_max_ongoing_requests:
+                serve.start(grpc_options=serve_grpc_options)
+                serve.run(
+                    GrpcDeployment.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind()
                 )
-            )
-            serve.shutdown()
+                target = get_application_url(
+                    protocol=RequestProtocol.GRPC, use_localhost=True
+                )
+                mean, std, _ = await run_throughput_benchmark(
+                    fn=partial(
+                        do_single_grpc_batch, batch_size=BATCH_SIZE, target=target
+                    ),
+                    multiplier=BATCH_SIZE,
+                    num_trials=NUM_TRIALS,
+                    trial_runtime=TRIAL_RUNTIME_S,
+                )
+                test_name = get_throughput_test_name("grpc", max_ongoing_requests)
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
+                serve.shutdown()
 
     # Handle
     if run_handle:
@@ -330,32 +320,22 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: Handle throughput
-            h: DeploymentHandle = serve.run(Benchmarker.bind(Noop.bind()))
-            mean, std, _ = await h.run_throughput_benchmark.remote(
-                batch_size=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(convert_throughput_to_perf_metrics("handle", mean, std))
-            serve.shutdown()
-
-            # Microbenchmark: Handle throughput at max_ongoing_requests=100
-            h: DeploymentHandle = serve.run(
-                Benchmarker.options(max_ongoing_requests=100).bind(
-                    Noop.options(max_ongoing_requests=100).bind()
+            for max_ongoing_requests in throughput_max_ongoing_requests:
+                h: DeploymentHandle = serve.run(
+                    Benchmarker.options(max_ongoing_requests=max_ongoing_requests).bind(
+                        Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                    )
                 )
-            )
-            mean, std, _ = await h.run_throughput_benchmark.remote(
-                batch_size=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(
-                convert_throughput_to_perf_metrics(
-                    "handle_100_max_ongoing_requests", mean, std
+                mean, std, _ = await h.run_throughput_benchmark.remote(
+                    batch_size=BATCH_SIZE,
+                    num_trials=NUM_TRIALS,
+                    trial_runtime=TRIAL_RUNTIME_S,
                 )
-            )
-            serve.shutdown()
+                test_name = get_throughput_test_name("handle", max_ongoing_requests)
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
+                serve.shutdown()
 
         if run_streaming:
             h: DeploymentHandle = serve.run(
@@ -398,6 +378,14 @@ async def _main(
 @click.option("--run-latency", is_flag=True)
 @click.option("--run-throughput", is_flag=True)
 @click.option("--run-streaming", is_flag=True)
+@click.option(
+    "--throughput-max-ongoing-requests",
+    "-t",
+    multiple=True,
+    type=int,
+    default=[5, 100],
+    help="Max ongoing requests for throughput benchmarks. Default: [5, 100]",
+)
 def main(
     output_path: Optional[str],
     run_all: bool,
@@ -407,6 +395,7 @@ def main(
     run_latency: bool,
     run_throughput: bool,
     run_streaming: bool,
+    throughput_max_ongoing_requests: List[int],
 ):
     # If none of the flags are set, default to run all
     if not (
@@ -436,6 +425,7 @@ def main(
             run_latency,
             run_throughput,
             run_streaming,
+            throughput_max_ongoing_requests,
         )
     )
 

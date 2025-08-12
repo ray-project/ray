@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
-from ray._private import ray_constants
+from ray._common import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
@@ -1780,6 +1780,10 @@ class DeploymentState:
         )
 
         # Determine if the updated target state simply scales the current state.
+        # Although the else branch handles the CONFIG_UPDATE, we also take this branch
+        # for a config update whose only effect is changing `num_replicas`.
+        # Treating it as a scaling event keeps the user-visible deployment status more
+        # consistent for observability.
         if self._target_state.is_scaled_copy_of(old_target_state):
             old_num = old_target_state.target_num_replicas
             new_num = self._target_state.target_num_replicas

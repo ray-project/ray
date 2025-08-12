@@ -26,8 +26,8 @@ import numpy as np
 
 import ray
 import ray.cloudpickle as pickle
+from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
@@ -81,6 +81,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Zip,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
@@ -137,6 +138,9 @@ if TYPE_CHECKING:
 from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
+
+# Special column name for train/test split to avoid collision with user columns
+_TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
 
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
@@ -779,31 +783,31 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
-    def with_columns(self, exprs: Dict[str, Expr]) -> "Dataset":
+    def with_column(self, column_name: str, expr: Expr, **ray_remote_args) -> "Dataset":
         """
-        Add new columns to the dataset.
+        Add a new column to the dataset via an expression.
 
         Examples:
 
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.with_columns({"new_id": col("id") * 2, "new_id_2": col("id") * 3}).schema()
-            Column    Type
-            ------    ----
-            id        int64
-            new_id    int64
-            new_id_2  int64
+            >>> ds.with_column("id_2", (col("id") * 2)).schema()
+            Column  Type
+            ------  ----
+            id      int64
+            id_2    int64
 
         Args:
-            exprs: A dictionary mapping column names to expressions that define the new column values.
+            column_name: The name of the new column.
+            expr: An expression that defines the new column values.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
-            A new dataset with the added columns evaluated via expressions.
+            A new dataset with the added column evaluated via the expression.
         """
-        if not exprs:
-            raise ValueError("at least one expression is required")
-
         from ray.data._internal.logical.operators.map_operator import Project
 
         plan = self._plan.copy()
@@ -811,7 +815,8 @@ class Dataset:
             self._logical_plan.dag,
             cols=None,
             cols_rename=None,
-            exprs=exprs,
+            exprs={column_name: expr},
+            ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1858,7 +1863,18 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        return StreamSplitDataIterator.create(self, n, equal, locality_hints)
+        plan = self._plan.copy()
+        op = StreamingSplit(
+            self._logical_plan.dag,
+            num_splits=n,
+            equal=equal,
+            locality_hints=locality_hints,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        split_dataset = Dataset(plan, logical_plan)
+        split_dataset._set_uuid(self._uuid)
+
+        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2256,6 +2272,7 @@ class Dataset:
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
+        stratify: Optional[str] = None,
     ) -> Tuple["MaterializedDataset", "MaterializedDataset"]:
         """Materialize and split the dataset into train and test subsets.
 
@@ -2279,6 +2296,9 @@ class Dataset:
                 large dataset.
             seed: Fix the random seed to use for shuffle, otherwise one is chosen
                 based on system randomness. Ignored if ``shuffle=False``.
+            stratify: Optional column name to use for stratified sampling. If provided,
+                the splits will maintain the same proportions of each class in the
+                stratify column across both train and test sets.
 
         Returns:
             Train and test subsets as two ``MaterializedDatasets``.
@@ -2294,22 +2314,102 @@ class Dataset:
 
         if not isinstance(test_size, (int, float)):
             raise TypeError(f"`test_size` must be int or float got {type(test_size)}.")
+
+        # Validate that shuffle=True and stratify are not both specified
+        if shuffle and stratify is not None:
+            raise ValueError(
+                "Cannot specify both 'shuffle=True' and 'stratify' parameters. "
+                "Stratified splitting maintains class proportions and is incompatible with shuffling."
+            )
+
+        # Handle stratified splitting
+        if stratify is not None:
+            return self._stratified_train_test_split(ds, test_size, stratify)
+
+        # Handle non-stratified splitting (existing logic)
         if isinstance(test_size, float):
-            if test_size <= 0 or test_size >= 1:
-                raise ValueError(
-                    "If `test_size` is a float, it must be bigger than 0 and smaller "
-                    f"than 1. Got {test_size}."
-                )
+            self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
+            self._validate_test_size_int(test_size, ds)
             ds_length = ds.count()
-            if test_size <= 0 or test_size >= ds_length:
-                raise ValueError(
-                    "If `test_size` is an int, it must be bigger than 0 and smaller "
-                    f"than the size of the dataset ({ds_length}). "
-                    f"Got {test_size}."
-                )
             return ds.split_at_indices([ds_length - test_size])
+
+    def _stratified_train_test_split(
+        self, ds: "Dataset", test_size: Union[int, float], stratify: str
+    ) -> Tuple["MaterializedDataset", "MaterializedDataset"]:
+        """Perform stratified train-test split on the dataset.
+
+        Args:
+            ds: The dataset to split.
+            test_size: Test size as int or float.
+            stratify: Column name to use for stratified sampling.
+
+        Returns:
+            Train and test subsets as two MaterializedDatasets.
+        """
+        # Normalize test_size to float (only materialize if needed)
+        if isinstance(test_size, int):
+            ds_length = self._validate_test_size_int(test_size, ds)
+            test_size = test_size / ds_length
+        else:
+            self._validate_test_size_float(test_size)
+
+        def add_train_flag(group_batch):
+            n = len(group_batch)
+            test_count = int(n * test_size)
+            group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
+                [True] * (n - test_count) + [False] * test_count
+            )
+            return group_batch
+
+        split_ds = ds.groupby(stratify).map_groups(add_train_flag).materialize()
+
+        train_ds = split_ds.filter(
+            lambda row: row[_TRAIN_TEST_SPLIT_COLUMN]
+        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+        test_ds = split_ds.filter(
+            lambda row: not row[_TRAIN_TEST_SPLIT_COLUMN]
+        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+
+        return train_ds, test_ds
+
+    def _validate_test_size_float(self, test_size: float) -> None:
+        """Validate test_size when it's a float.
+
+        Args:
+            test_size: Test size as float between 0 and 1.
+
+        Raises:
+            ValueError: If test_size is not in valid range.
+        """
+        if test_size <= 0 or test_size >= 1:
+            raise ValueError(
+                "If `test_size` is a float, it must be bigger than 0 and smaller "
+                f"than 1. Got {test_size}."
+            )
+
+    def _validate_test_size_int(self, test_size: int, ds: "Dataset") -> int:
+        """Validate test_size when it's an int and return dataset length.
+
+        Args:
+            test_size: Test size as int.
+            ds: Dataset to validate against.
+
+        Returns:
+            Dataset length for reuse.
+
+        Raises:
+            ValueError: If test_size is not in valid range.
+        """
+        ds_length = ds.count()
+        if test_size <= 0 or test_size >= ds_length:
+            raise ValueError(
+                "If `test_size` is an int, it must be bigger than 0 and smaller "
+                f"than the size of the dataset ({ds_length}). "
+                f"Got {test_size}."
+            )
+        return ds_length
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
@@ -2378,7 +2478,8 @@ class Dataset:
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
-                "left_outer", "right_outer", "full_outer")
+                "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
+                "left_anti", "right_anti").
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
@@ -2423,6 +2524,7 @@ class Dataset:
                 lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
             )
 
+            # Inner join example
             joined_ds = doubles_ds.join(
                 squares_ds,
                 join_type="inner",
@@ -2440,6 +2542,55 @@ class Dataset:
                 {'id': 1, 'double': 2, 'square': 1},
                 {'id': 2, 'double': 4, 'square': 4},
                 {'id': 3, 'double': 6, 'square': 9}
+            ]
+
+        .. testcode::
+            :skipif: True
+
+            # Left anti-join example: find rows in doubles_ds that don't match squares_ds
+            partial_squares_ds = ray.data.range(2).map(
+                lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
+            )
+
+            anti_joined_ds = doubles_ds.join(
+                partial_squares_ds,
+                join_type="left_anti",
+                num_partitions=2,
+                on=("id",),
+            )
+
+            print(sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            [
+                {'id': 0, 'double': 0},
+                {'id': 1, 'double': 2}
+            ]
+
+        .. testcode::
+            :skipif: True
+
+            # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
+            # (only returns columns from left dataset)
+            semi_joined_ds = doubles_ds.join(
+                squares_ds,
+                join_type="left_semi",
+                num_partitions=2,
+                on=("id",),
+            )
+
+            print(sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            [
+                {'id': 0, 'double': 0},
+                {'id': 1, 'double': 2},
+                {'id': 2, 'double': 4},
+                {'id': 3, 'double': 6}
             ]
         """
 
@@ -4260,6 +4411,65 @@ class Dataset:
         datasink = SQLDatasink(sql=sql, connection_factory=connection_factory)
         self.write_datasink(
             datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    def write_snowflake(
+        self,
+        table: str,
+        connection_parameters: str,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ):
+        """Write this ``Dataset`` to a Snowflake table.
+
+        Examples:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                connection_parameters = dict(
+                    user=...,
+                    account="ABCDEFG-ABC12345",
+                    password=...,
+                    database="SNOWFLAKE_SAMPLE_DATA",
+                    schema="TPCDS_SF100TCL"
+                )
+                ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+                ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
+
+        Args:
+            table: The name of the table to write to.
+            connection_parameters: Keyword arguments to pass to
+                ``snowflake.connector.connect``. To view supported parameters, read
+                https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+            ray_remote_args: Keyword arguments passed to :func:`ray.remote` in the
+                write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """  # noqa: E501
+        import snowflake.connector
+
+        def snowflake_connection_factory():
+            return snowflake.connector.connect(**connection_parameters)
+
+        # Get column names from the dataset schema
+        column_names = self.schema().names
+
+        # Generate the SQL insert statement
+        columns_str = ", ".join(f'"{col}"' for col in column_names)
+        placeholders = ", ".join(["%s"] * len(column_names))
+        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders})"
+        self.write_sql(
+            sql,
+            connection_factory=snowflake_connection_factory,
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )

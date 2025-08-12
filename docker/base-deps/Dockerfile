@@ -5,10 +5,7 @@
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
-# FROM directive resets ARG
-ARG BASE_IMAGE
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
-ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
@@ -38,17 +35,15 @@ APT_PKGS=(
     cmake
     g++
     zlib1g-dev
+
+    # For autoscaler
+    tmux
+    screen
+    rsync
+    netbase
+    openssh-client
+    gnupg
 )
-if [[ "$AUTOSCALER" == "autoscaler" ]]; then
-    APT_PKGS+=(
-        tmux
-        screen
-        rsync
-        netbase
-        openssh-client
-        gnupg
-    )
-fi
 
 apt-get install -y "${APT_PKGS[@]}"
 
@@ -86,24 +81,23 @@ $HOME/anaconda3/bin/conda clean -y --all
 
 PIP_PKGS=(
     # Required a recent version of setuptools to be compatible with python 3.12+.
-    setuptools==71.1.0
+    setuptools==80.9.0
 
     flatbuffers
     cython
     numpy  # Necessary for Dataset to work properly.
     psutil
+
+    # For the ease to submit jobs on various cloud providers.
+    "smart_open[s3,gcs,azure,http]"
+
+    six
+    boto3
+    pyopenssl
+    cryptography
+    google-api-python-client
+    google-oauth
 )
-if [[ "$AUTOSCALER" == "autoscaler" ]]; then
-    PIP_PKGS+=(
-        redis
-        six
-        boto3
-        pyopenssl
-        cryptography
-        google-api-python-client
-        google-oauth
-    )
-fi
 
 # Install uv
 wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
@@ -126,7 +120,7 @@ uv pip uninstall --system dask
 sudo apt-get autoremove -y cmake zlib1g-dev
 
 # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then
+if [[ ! -d /usr/local/cuda ]]; then
     sudo apt-get autoremove -y g++
 fi
 

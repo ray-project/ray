@@ -33,7 +33,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ResourceManager,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
@@ -100,6 +102,11 @@ class OpBufferQueue:
             with self._lock:
                 return self._num_per_split[output_split_idx] > 0
 
+    def has_valid_next(self) -> bool:
+        """Whether next RefBundle is available and valid."""
+        with self._lock:
+            return self._queue.has_next()
+
     def append(self, ref: RefBundle):
         """Append a RefBundle to the queue."""
         with self._lock:
@@ -120,7 +127,7 @@ class OpBufferQueue:
         if output_split_idx is None:
             try:
                 with self._lock:
-                    ret = self._queue.pop()
+                    ret = self._queue.get_next()
             except IndexError:
                 pass
         else:
@@ -135,10 +142,10 @@ class OpBufferQueue:
                 # preserve the order of ref bundles with different output splits.
                 with self._lock:
                     while len(self._queue) > 0:
-                        ref = self._queue.pop()
+                        ref = self._queue.get_next()
                         self._outputs_by_split[ref.output_split_idx].add(ref)
             try:
-                ret = split_queue.pop()
+                ret = split_queue.get_next()
             except IndexError:
                 pass
         if ret is None:
@@ -269,6 +276,10 @@ class OpState:
         operator across (external) input queues"""
         return sum(len(q) for q in self.input_queues)
 
+    def has_valid_input_bundle(self) -> bool:
+        """Check if the operator has a valid bundle in its input queue."""
+        return any(queue.has_valid_next() for queue in self.input_queues)
+
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
@@ -292,6 +303,8 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        self.op.metrics.num_output_queue_blocks = self.output_queue.num_blocks
+        self.op.metrics.num_output_queue_bytes = self.output_queue.memory_usage
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -616,11 +629,11 @@ def get_eligible_operators(
         # Check whether operator could start executing immediately:
         #   - It's not completed
         #   - It can accept at least one input
-        #   - Its input queue is not empty
+        #   - Its input queue has a valid bundle
         if (
             not op.completed()
             and op.should_add_input()
-            and state._pending_dispatch_input_bundles_count() > 0
+            and state.has_valid_input_bundle()
         ):
             if not in_backpressure:
                 op_runnable = True
@@ -762,7 +775,10 @@ def dedupe_schemas_with_validation(
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
-    if not old_schema:
+
+    from ray.data.block import _is_empty_schema
+
+    if _is_empty_schema(old_schema):
         return bundle, diverged
 
     # This check is fast assuming pyarrow schemas

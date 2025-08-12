@@ -1,7 +1,9 @@
 import asyncio
 import sys
+import time
 from typing import List, Optional
 
+import numpy as np
 import pytest
 
 from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
@@ -35,6 +37,19 @@ async def fake_generator_slow_last_return_immediate():
         await asyncio.sleep(MODEL_RESPONSE_BATCH_TIMEOUT_MS / 1000)
         yield dict(num_generated_tokens=1, generated_text=TEXT_VALUE)
     yield dict(num_generated_tokens=1, generated_text=FINAL_TEXT_VALUE)
+
+
+async def count_interval_ms_from_stream(stream) -> list[float]:
+    output_intervals: list[float] = []
+    start = None
+    async for _ in stream:
+        if start is None:
+            start = time.perf_counter()
+        else:
+            end = time.perf_counter()
+            output_intervals.append((end - start) * 1e3)
+            start = end
+    return output_intervals
 
 
 class TestBatcher(Batcher):
@@ -180,6 +195,41 @@ class TestBatching:
         assert task.done(), "All tasks should be done"
 
         # Inner task is checked automatically with pytest.raises
+
+    @pytest.mark.asyncio
+    async def test_stable_streaming(self):
+        """Test that the batcher does not add jitter to the stream when interval_ms is 0"""
+
+        async def generator():
+            for i in range(100):
+                await asyncio.sleep(0.01)
+                yield i
+
+        concurrency = 10
+
+        output_intervals = await asyncio.gather(
+            *[
+                count_interval_ms_from_stream(
+                    Batcher(generator(), interval_ms=0).stream()
+                )
+                for _ in range(concurrency)
+            ]
+        )
+        mean_batcher_interval = np.mean(output_intervals)
+        std_batcher_interval = np.std(output_intervals)
+
+        generator_intervals = await asyncio.gather(
+            *[count_interval_ms_from_stream(generator()) for _ in range(concurrency)]
+        )
+        mean_generator_interval = np.mean(generator_intervals)
+        std_generator_interval = np.std(generator_intervals)
+
+        assert np.isclose(
+            mean_batcher_interval, mean_generator_interval, rtol=0.1
+        ), f"{mean_batcher_interval=}, {mean_generator_interval=}"
+        assert np.isclose(
+            std_batcher_interval, std_generator_interval, atol=0.1
+        ), f"{std_batcher_interval=}, {std_generator_interval=}"
 
 
 if __name__ == "__main__":

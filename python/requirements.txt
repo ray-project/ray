@@ -13,14 +13,17 @@ filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
 packaging
-protobuf!=3.19.5,>=3.15.3
+protobuf>=3.20.3
 pyyaml
 requests
 watchfiles
 
 # Python version-specific requirements
+grpcio >= 1.32.0; python_version < '3.10'
+grpcio >= 1.42.0; python_version >= '3.10'
+# Version used in mac CI; needs upgrade.
 grpcio == 1.54.2; sys_platform == "darwin"
-grpcio >= 1.54.2; sys_platform != "darwin"
+
 numpy>=1.20
 
 pyarrow >= 9.0.0
