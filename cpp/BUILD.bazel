@@ -471,5 +471,4 @@ py_test(
         "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
     },
     tags = ["team:core"],
-    deps = ["//:ray_lib"],
 )
