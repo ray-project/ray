@@ -180,11 +180,11 @@ bool is_uuid(const std::string &str) {
 }
 
 NodeID GcsActor::GetNodeID() const {
-  const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
-  if (raylet_id_binary.empty()) {
+  const auto &node_id_binary = actor_table_data_.address().node_id();
+  if (node_id_binary.empty()) {
     return NodeID::Nil();
   }
-  return NodeID::FromBinary(raylet_id_binary);
+  return NodeID::FromBinary(node_id_binary);
 }
 
 void GcsActor::UpdateAddress(const rpc::Address &address) {
@@ -206,7 +206,7 @@ WorkerID GcsActor::GetOwnerID() const {
 }
 
 NodeID GcsActor::GetOwnerNodeID() const {
-  return NodeID::FromBinary(GetOwnerAddress().raylet_id());
+  return NodeID::FromBinary(GetOwnerAddress().node_id());
 }
 
 const rpc::Address &GcsActor::GetOwnerAddress() const {
@@ -819,7 +819,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   function_manager_.AddJobReference(actor_id.JobId());
 
   const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
@@ -1447,7 +1447,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     remaining_restarts = -1;
   } else {
     // Restarts due to node preemption do not count towards max_restarts.
-    int64_t remaining = max_restarts - num_restarts + num_restarts_due_to_node_preemption;
+    const auto effective_restarts = num_restarts - num_restarts_due_to_node_preemption;
+    int64_t remaining = max_restarts - static_cast<int64_t>(effective_restarts);
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
 
@@ -1668,7 +1669,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
 
       if (actor_table_data.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
         const auto &owner = actor->GetOwnerAddress();
-        const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
+        const auto &owner_node = NodeID::FromBinary(owner.node_id());
         const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
         RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                       .emplace(actor->GetActorID())
@@ -1737,7 +1738,7 @@ const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
 
 void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor) {
   const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {

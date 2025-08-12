@@ -366,7 +366,6 @@ bool IsExportAPIEnabledSourceType(
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
-/// \return void.
 void RayEventInit(const std::vector<SourceTypeVariant> &source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,

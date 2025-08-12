@@ -972,10 +972,12 @@ class _ActorClassMethodMetadata(object):
 
         # Check whether any actor methods specify a non-default tensor transport.
         self.has_tensor_transport_methods = any(
-    getattr(method, "__ray_tensor_transport__", TensorTransportEnum.OBJECT_STORE)
-    != TensorTransportEnum.OBJECT_STORE
-    for _, method in actor_methods
-)
+            getattr(
+                method, "__ray_tensor_transport__", TensorTransportEnum.OBJECT_STORE
+            )
+            != TensorTransportEnum.OBJECT_STORE
+            for _, method in actor_methods
+        )
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first

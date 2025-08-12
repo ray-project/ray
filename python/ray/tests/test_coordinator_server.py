@@ -17,6 +17,7 @@ from ray.autoscaler._private.local.node_provider import (
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider,
 )
+from ray._common.network_utils import build_address
 from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     TAG_RAY_CLUSTER_NAME,
@@ -39,7 +40,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             host=self.host,
             port=self.port,
         )
-        self.coordinator_address = self.host + ":" + str(self.port)
+        self.coordinator_address = build_address(self.host, self.port)
 
     def tearDown(self):
         self.server.shutdown()

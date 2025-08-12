@@ -1,5 +1,5 @@
-from ci.ray_ci.docker_container import DockerContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _DOCKER_GCP_REGISTRY
+from ci.ray_ci.docker_container import DockerContainer
 
 
 class AnyscaleDockerContainer(DockerContainer):
