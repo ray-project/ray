@@ -16,7 +16,6 @@ DEFAULT_UV_FLAGS = """
     --emit-index-url
     --emit-find-links
     --unsafe-package ray
-    --unsafe-package grpcio-tools
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
