@@ -5,26 +5,7 @@ set -exuo pipefail
 
 BAZELISK_VERSION="v1.26.0"
 
-platform="unknown"
-
-case "${OSTYPE}" in
-  msys)
-    echo "Platform is Windows."
-    platform="windows"
-    # No installer for Windows
-    ;;
-  darwin*)
-    echo "Platform is Mac OS X."
-    platform="darwin"
-    ;;
-  linux*)
-    echo "Platform is Linux (or WSL)."
-    platform="linux"
-    ;;
-  *)
-    echo "Unrecognized platform."
-    exit 1
-esac
+platform="linux"
 
 echo "Architecture(HOSTTYPE) is ${HOSTTYPE}"
 
@@ -61,14 +42,14 @@ nvm use "$NODE_VERSION"
 mkdir -p "$HOME"/bin
 if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
   # architecture is "aarch64", but the bazel tag is "arm64"
-  url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
-elif [ "${HOSTTYPE}" = "x86_64" ]; then
-  url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
+elif [[ "${HOSTTYPE}" == "x86_64" ]]; then
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
 else
   echo "Could not found matching bazelisk URL for platform ${platform} and architecture ${HOSTTYPE}"
   exit 1
 fi
-curl -sSfL -o "$HOME"/bin/bazelisk ${url}
+curl -sSfL -o "$HOME"/bin/bazelisk "${BAZELISK_URL}"
 chmod +x "$HOME"/bin/bazelisk
 sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
 
