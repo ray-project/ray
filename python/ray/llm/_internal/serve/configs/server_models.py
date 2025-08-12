@@ -13,7 +13,6 @@ from typing import (
 import pydantic
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
     PositiveInt,
     PrivateAttr,
@@ -108,6 +107,7 @@ class LoraConfig(BaseModelExtended):
 
 
 class ModelLoadingConfig(BaseModelExtended):
+
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
@@ -134,11 +134,6 @@ EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 
 
 class LLMConfig(BaseModelExtended):
-    # model_config is a Pydantic setting. This setting merges with
-    # model_configs in parent classes.
-    model_config = ConfigDict(
-        extra="forbid",
-    )
 
     runtime_env: Optional[Dict[str, Any]] = Field(
         None,
@@ -537,7 +532,7 @@ def parse_args(
     return models
 
 
-class LLMServingArgs(BaseModel):
+class LLMServingArgs(BaseModelExtended):
     llm_configs: List[Union[str, LLMConfig]] = Field(
         description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
     )
