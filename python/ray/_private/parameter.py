@@ -112,7 +112,7 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars: Override environment variables for the raylet.
-        session_name: The name of the session of the ray cluster.
+        session_name: The current Ray session name.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
         resource_isolation_config: settings for cgroupv2 based isolation of ray

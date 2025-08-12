@@ -200,7 +200,7 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
-  /// Session name (Cluster ID) of the cluster.
+  /// The current Ray session name.
   std::string session_name;
   std::string entrypoint;
   int64_t worker_launch_time_ms;

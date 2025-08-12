@@ -538,7 +538,7 @@ class Node:
 
     @property
     def session_name(self):
-        """Get the session name (cluster ID)."""
+        """Get the current Ray session name."""
         return self._session_name
 
     @property
