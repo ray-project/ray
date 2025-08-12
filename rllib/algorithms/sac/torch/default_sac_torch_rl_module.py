@@ -55,7 +55,7 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
     @override(RLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
         # Call the `super`'s `forward_train`
-        super()._forward_train()
+        super()._forward_train(batch)
         if isinstance(self.action_space, gym.spaces.Discrete):
             return self._forward_train_discrete(batch)
         elif isinstance(self.action_space, gym.spaces.Box):
