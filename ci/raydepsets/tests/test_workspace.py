@@ -24,13 +24,13 @@ def test_parse_build_arg_sets():
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
         workspace.build_depset_map(path=Path(tmpdir) / "test.depsets.yaml")
-        assert workspace.build_arg_sets[0].name == "py311_cpu"
-        assert workspace.build_arg_sets[0].build_args == {
+        assert workspace.build_arg_sets["py311_cpu"].name == "py311_cpu"
+        assert workspace.build_arg_sets["py311_cpu"].build_args == {
             "CUDA_VERSION": "cpu",
             "PYTHON_VERSION": "py311",
         }
-        assert workspace.build_arg_sets[1].name == "py311_cuda128"
-        assert workspace.build_arg_sets[1].build_args == {
+        assert workspace.build_arg_sets["py311_cuda128"].name == "py311_cuda128"
+        assert workspace.build_arg_sets["py311_cuda128"].build_args == {
             "CUDA_VERSION": 128,
             "PYTHON_VERSION": "py311",
         }
@@ -63,16 +63,16 @@ def test_expand_depsets_per_build_arg_set():
         "output": "requirements_compiled_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt",
     }
     build_arg_set_matrix = ["py311_cpu", "py311_cuda128"]
-    build_arg_sets = [
-        BuildArgSet(
+    build_arg_sets = {
+        "py311_cpu": BuildArgSet(
             name="py311_cpu",
             build_args={"PYTHON_VERSION": "py311", "CUDA_VERSION": "cpu"},
         ),
-        BuildArgSet(
+        "py311_cuda128": BuildArgSet(
             name="py311_cuda128",
             build_args={"PYTHON_VERSION": "py311", "CUDA_VERSION": 128},
         ),
-    ]
+    }
     expanded_depsets = _expand_depsets_per_build_arg_set(
         depset, build_arg_set_matrix, build_arg_sets
     )
@@ -91,12 +91,13 @@ def test_expand_depsets_per_build_arg_set_bad_build_arg_set():
         "output": "requirements_compiled_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt",
     }
     build_arg_set_matrix = ["py311_cpu", "py311_cuda128"]
-    build_arg_sets = [
-        BuildArgSet(
+    build_arg_sets = {
+        "py311_cpu": BuildArgSet(
             name="py311_cpu",
             build_args={"PYTHON_VERSION": "py311", "CUDA_VERSION": "cpu"},
         ),
-    ]
+    }
+    print(f"type of build_arg_sets: {type(build_arg_sets)}")
     with pytest.raises(KeyError):
         _expand_depsets_per_build_arg_set(depset, build_arg_set_matrix, build_arg_sets)
 

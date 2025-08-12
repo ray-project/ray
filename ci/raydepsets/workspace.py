@@ -59,7 +59,7 @@ def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> D
 class Config:
     @staticmethod
     def to_depset_map(
-        data: dict, build_arg_sets: List[BuildArgSet]
+        data: Dict[str, Any], build_arg_sets: Dict[str, BuildArgSet]
     ) -> Dict[Tuple[str, str], Depset]:
         """
         Convert a config dict to a depset map.
@@ -86,32 +86,25 @@ class Config:
         return depset_map
 
     @staticmethod
-    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List[BuildArgSet]:
-        return [
-            BuildArgSet(
+    def parse_build_arg_sets(build_arg_sets: List[dict]) -> Dict[str, BuildArgSet]:
+        return {
+            build_arg_set.get("name", None): BuildArgSet(
                 name=build_arg_set.get("name", None),
                 build_args=build_arg_set.get("build_args", []),
             )
             for build_arg_set in build_arg_sets
-        ]
+        }
 
 
 def _expand_depsets_per_build_arg_set(
-    depset: dict,
+    depset: Dict[str, Any],
     build_arg_set_matrix: List[str],
     build_arg_sets: Dict[str, BuildArgSet],
 ) -> List[Depset]:
     """returns a list of depsets expanded per build arg set"""
     expanded_depsets = []
     for build_arg_set_name in build_arg_set_matrix:
-        build_arg_set = next(
-            (
-                build_arg_set
-                for build_arg_set in build_arg_sets
-                if build_arg_set.name == build_arg_set_name
-            ),
-            None,
-        )
+        build_arg_set = build_arg_sets.get(build_arg_set_name, None)
         if build_arg_set is None:
             raise KeyError(f"Build arg set {build_arg_set_name} not found")
         depset_yaml = _substitute_build_args(depset, build_arg_set)
@@ -120,7 +113,7 @@ def _expand_depsets_per_build_arg_set(
 
 
 class Workspace:
-    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
+    build_arg_sets: Dict[str, BuildArgSet] = field(default_factory=dict)
 
     def __init__(self, dir: str = None):
         self.dir = (
