@@ -634,7 +634,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             )
 
             # Update Shuffle progress bar
-            self.shuffle_bar.update(total=self.shuffle_metrics.num_row_inputs_received)
+            _, _, num_rows = estimate_total_num_of_blocks(
+                cur_shuffle_task_idx + 1,
+                self.upstream_op_num_outputs(),
+                self.shuffle_metrics,
+                total_num_tasks=None,
+            )
+            self.shuffle_bar.update(total=num_rows)
 
     def has_next(self) -> bool:
         self._try_finalize()
