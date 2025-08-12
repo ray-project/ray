@@ -4,7 +4,7 @@ Task Lifecycle
 ==============
 
 This doc talks about the lifecycle of a task in Ray Core, including how tasks are defined, scheduled and executed.
-We will use the following code as an example and the internals is based on Ray 2.48.
+We will use the following code as an example and the internals are based on Ray 2.48.
 
 
 .. testcode::
@@ -65,7 +65,7 @@ Once a leased worker is obtained, the task execution starts.
 2. The executor `receives <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3885>`__ the ``PushTask`` RPC and executes (`1 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3948>`__ -> `2 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/task_receiver.cc#L62>`__ -> `3 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L520>`__ -> `4 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3420>`__ -> `5 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L2318>`__) the task.
 3. First step of executing the task is `getting <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3789>`__ all the pass-by-reference arguments from the local plasma store.
 4. Then the executor `gets <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L2206>`__ the pickled function bytes from GCS key-value store and unpickles it.
-5. The next step is `unpickling <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L1871>`__ the arguemnts.
+5. The next step is `unpickling <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L1871>`__ the arguments.
 6. Finally, the user function is `called <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L1925>`__.
 
 Geting the return value
