@@ -3,7 +3,7 @@ from typing import Dict, Optional
 import ray
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.jax.tpu_utils import reserve_tpu_slice
+from ray._private.accelerators.tpu import reserve_tpu_slice
 
 
 class TPUReservationCallback(ControllerCallback):
