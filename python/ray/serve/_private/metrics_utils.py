@@ -196,7 +196,7 @@ class InMemoryMetricsStore:
         key: Hashable,
     ) -> Optional[float]:
         """Get the latest value for a given key."""
-        if key not in self.data or not self.data[key]:
+        if not self.data.get(key, None):
             return None
         return self.data[key][-1].value
 
