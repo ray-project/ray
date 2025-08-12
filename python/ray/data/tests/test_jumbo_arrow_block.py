@@ -89,9 +89,9 @@ def test_arrow_batch_gt_2gb(
         # numpy format
         ds = ds.map_batches(
             _id,
-            batch_format="numpy",
+            batch_format="pyarrow",
             batch_size=num_rows,
-            zero_copy_batch=False,
+            zero_copy_batch=True,
         )
 
     batch = ds.take_batch()
