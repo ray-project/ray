@@ -31,12 +31,12 @@ def retry(f):
 @retry
 def perform_auth():
     auth = BotoAWSRequestsAuth(
-        aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+        aws_host="f8raqm97ee.execute-api.us-west-2.amazonaws.com",
         aws_region="us-west-2",
         aws_service="execute-api",
     )
     resp = requests.get(
-        "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+        "https://f8raqm97ee.execute-api.us-west-2.amazonaws.com/endpoint/",
         auth=auth,
         params={"job_id": os.environ["BUILDKITE_JOB_ID"]},
     )
