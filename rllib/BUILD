@@ -3974,9 +3974,9 @@ py_test(
 )
 
 py_test(
-    name = "examples/curriculum/atari_pong_curriculum_learning",
+    name = "examples/curriculum/pong_curriculum_learning",
     size = "large",
-    srcs = ["examples/curriculum/atari_pong_curriculum_learning.py"],
+    srcs = ["examples/curriculum/pong_curriculum_learning.py"],
     args = [
         "--as-test",
         "--num-env-runners=10",
@@ -3985,7 +3985,7 @@ py_test(
         "--stop-iters=20",
         "--stop-reward=-21.0",
     ],
-    main = "examples/curriculum/atari_pong_curriculum_learning.py",
+    main = "examples/curriculum/pong_curriculum_learning.py",
     tags = [
         "examples",
         "exclusive",
