@@ -413,6 +413,10 @@ def main(
     throughput_max_ongoing_requests: List[int],
     concurrencies: List[int],
 ):
+    assert len(throughput_max_ongoing_requests) == len(
+        concurrencies
+    ), "Must have the same number of --throughput-max-ongoing-requests and --concurrencies"
+
     # If none of the flags are set, default to run all
     if not (
         run_http
