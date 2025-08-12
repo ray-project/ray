@@ -9,7 +9,6 @@ import logging
 import torch
 import torch.distributed as dist
 import ray
-from ray._private.accelerators import NPUAcceleratorManager as Accelerator
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import (
     BaseGroup,
@@ -128,14 +127,12 @@ class HCCLRootInfoStore:
 class HCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an HCCL collective group."""
-        devices = Accelerator.get_current_node_num_accelerators()
-        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(
-            str(i) for i in range(devices)
-        )
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
         # Ensure HCCL backend is registered with torch.distributed
         import torch_npu  # noqa: F401
 
         metadata_key = get_master_address_metadata_key(group_name)
+
         try:
             metadata = internal_kv._internal_kv_get(metadata_key)
         except ValueError:
@@ -149,8 +146,6 @@ class HCCLGroup(BaseGroup):
         master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
-        # Do not globally set device by rank; tensor-level device context is used.
-        # torch_npu.npu.set_device(rank)
         dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
