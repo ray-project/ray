@@ -120,7 +120,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsActor> NewGcsActor(
       const std::unordered_map<std::string, double> &required_placement_resources) {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
+    owner_address.set_node_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("127.0.0.1");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -578,7 +578,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id_1.Binary());
+  address.set_node_id(node_id_1.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
 
@@ -1129,7 +1129,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
   // 1.Actor is already tied to a leased worker.
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id_1.Binary());
+  address.set_node_id(node_id_1.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
 

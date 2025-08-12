@@ -32,7 +32,7 @@ namespace {
 flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
   return ray::protocol::CreateAddress(fbb,
-                                      fbb.CreateString(address.raylet_id()),
+                                      fbb.CreateString(address.node_id()),
                                       fbb.CreateString(address.ip_address()),
                                       address.port(),
                                       fbb.CreateString(address.worker_id()));
@@ -74,7 +74,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             const std::string &ip_address,
                                             const std::string &serialized_job_config,
                                             const StartupToken &startup_token,
-                                            NodeID *raylet_id,
+                                            NodeID *node_id,
                                             int *assigned_port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
@@ -101,7 +101,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
   }
 
-  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
+  *node_id = NodeID::FromBinary(reply_message->node_id()->str());
   *assigned_port = reply_message->port();
   return Status::OK();
 }

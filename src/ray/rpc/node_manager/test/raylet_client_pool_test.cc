@@ -44,7 +44,7 @@ namespace {
 rpc::Address CreateRandomAddress(const std::string &addr) {
   rpc::Address address;
   address.set_ip_address(addr);
-  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_node_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
   return address;
 }
@@ -123,8 +123,8 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
 
   auto raylet_client_1_address = CreateRandomAddress("1");
   auto raylet_client_2_address = CreateRandomAddress("2");
-  auto raylet_client_1_node_id = NodeID::FromBinary(raylet_client_1_address.raylet_id());
-  auto raylet_client_2_node_id = NodeID::FromBinary(raylet_client_2_address.raylet_id());
+  auto raylet_client_1_node_id = NodeID::FromBinary(raylet_client_1_address.node_id());
+  auto raylet_client_2_node_id = NodeID::FromBinary(raylet_client_2_address.node_id());
 
   auto raylet_client_1 = dynamic_cast<MockRayletClient *>(
       raylet_client_pool_->GetOrConnectByAddress(raylet_client_1_address).get());

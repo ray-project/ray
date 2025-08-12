@@ -42,7 +42,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
       {[this, reply, send_reply_callback, worker_id, request = std::move(request)](
            const std::optional<rpc::WorkerTableData> &result) {
          const auto &worker_address = request.worker_failure().worker_address();
-         const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+         const auto node_id = NodeID::FromBinary(worker_address.node_id());
          std::string message =
              absl::StrCat("Reporting worker exit, worker id = ",
                           worker_id.Hex(),
@@ -89,13 +89,12 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
                stats::UnintentionalWorkerFailures.Record(1);
              }
-             // Only publish worker_id and raylet_id in address as they are the only
+             // Only publish worker_id and node_id in address as they are the only
              // fields used by sub clients.
              rpc::WorkerDeltaData worker_failure;
              worker_failure.set_worker_id(
                  worker_failure_data->worker_address().worker_id());
-             worker_failure.set_raylet_id(
-                 worker_failure_data->worker_address().raylet_id());
+             worker_failure.set_node_id(worker_failure_data->worker_address().node_id());
              RAY_CHECK_OK(
                  gcs_publisher_.PublishWorkerFailure(worker_id, worker_failure, nullptr));
            }

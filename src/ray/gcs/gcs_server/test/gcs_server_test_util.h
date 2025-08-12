@@ -137,26 +137,25 @@ struct GcsServerMocker {
     bool GrantWorkerLease(const std::string &address,
                           int port,
                           const WorkerID &worker_id,
-                          const NodeID &raylet_id,
-                          const NodeID &retry_at_raylet_id,
+                          const NodeID &node_id,
+                          const NodeID &retry_at_node_id,
                           Status status = Status::OK(),
                           bool rejected = false) {
       rpc::RequestWorkerLeaseReply reply;
-      if (!retry_at_raylet_id.IsNil()) {
+      if (!retry_at_node_id.IsNil()) {
         reply.mutable_retry_at_raylet_address()->set_ip_address(address);
         reply.mutable_retry_at_raylet_address()->set_port(port);
-        reply.mutable_retry_at_raylet_address()->set_raylet_id(
-            retry_at_raylet_id.Binary());
+        reply.mutable_retry_at_raylet_address()->set_node_id(retry_at_node_id.Binary());
       } else {
         reply.mutable_worker_address()->set_ip_address(address);
         reply.mutable_worker_address()->set_port(port);
-        reply.mutable_worker_address()->set_raylet_id(raylet_id.Binary());
+        reply.mutable_worker_address()->set_node_id(node_id.Binary());
         reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
       }
       if (rejected) {
         reply.set_rejected(true);
         auto resources_data = reply.mutable_resources_data();
-        resources_data->set_node_id(raylet_id.Binary());
+        resources_data->set_node_id(node_id.Binary());
         resources_data->set_resources_normal_task_changed(true);
         auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
         normal_task_map[kMemory_ResourceLabel] =

@@ -292,7 +292,7 @@ std::shared_ptr<RayletClientInterface>
 GcsPlacementGroupScheduler::GetRayletClientFromNode(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_node_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   return GetOrConnectRayletClient(remote_address);
