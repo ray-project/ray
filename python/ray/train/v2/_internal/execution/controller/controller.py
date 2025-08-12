@@ -58,7 +58,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2._internal.logging.logging import configure_controller_logger
+from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
@@ -116,7 +116,7 @@ class TrainController:
             ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
             DEFAULT_ENABLE_CONTROLLER_LOGGING,
         ):
-            configure_controller_logger(self._train_run_context)
+            LoggingManager.configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy

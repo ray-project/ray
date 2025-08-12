@@ -1,11 +1,10 @@
 import os
-from typing import List
 from datetime import datetime
 from enum import Enum
+from typing import List
 
-from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
-
+from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
     "cpu",
@@ -15,6 +14,7 @@ PLATFORMS_RAY = [
     "cu12.3.2-cudnn9",
     "cu12.4.1-cudnn",
     "cu12.5.1-cudnn",
+    "cu12.6.3-cudnn",
     "cu12.8.1-cudnn",
 ]
 PLATFORMS_RAY_ML = [
