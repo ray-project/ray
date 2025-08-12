@@ -107,7 +107,7 @@ class PongEnvTaskCallback(RLlibCallback):
         **kwargs,
     ) -> None:
         # Set the initial task to 1, which corresponds to a frameskip of 1.
-        algorithm.metrics_logger.log_value("current_env_task", 1, reduce="sum")
+        algorithm.metrics.log_value("current_env_task", 1, reduce="sum")
 
     def on_train_result(
         self,
