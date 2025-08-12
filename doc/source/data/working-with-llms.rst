@@ -24,7 +24,7 @@ The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.v
 
 To run this example, install vLLM, which is a popular and optimized LLM inference engine.
 
-.. testcode::
+.. code-block:: bash
 
     # Later versions *should* work but are not tested yet.
     pip install -U vllm==0.7.2
@@ -37,7 +37,8 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
 
     import ray
     from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    
+    import numpy as np
+
     config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
