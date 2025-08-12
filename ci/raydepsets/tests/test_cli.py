@@ -465,7 +465,7 @@ depsets:
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
-    def test_get_depset_with_build_arg_set(self):
+    def test_get_depset_by_id_with_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
@@ -478,7 +478,7 @@ depsets:
             assert depset.name == "build_args_test_depset_py311"
             assert depset.build_arg_set_name == "py311_cpu"
 
-    def test_get_depset_without_build_arg_set(self):
+    def test_get_depset_by_id_without_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
@@ -488,6 +488,16 @@ depsets:
             depset = manager.get_depset_by_id(depset_id=("ray_base_test_depset", None))
             assert depset.name == "ray_base_test_depset"
             assert depset.build_arg_set_name is None
+
+    def test_get_depset_by_id_bad_depset_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset_by_id(depset_id=("fake_depset", "py311_cpu"))
 
 
 if __name__ == "__main__":
