@@ -6,6 +6,20 @@ steps:
   - name: manylinux
     wanda: ci/docker/manylinux.wanda.yaml
 
+  - name: raycpubase
+    label: "wanda: ray.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray.cpu.base.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+
   - name: raycudabase
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base"
     tags:
@@ -31,20 +45,6 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
-
-  - name: raycpubase
-    label: "wanda: ray.py{{matrix}}.cpu.base"
-    tags:
-      - python_dependencies
-      - docker
-    wanda: ci/docker/ray.cpu.base.wanda.yaml
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-      - "3.12"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
 
   - name: ray-llmbase
     label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base"
