@@ -509,7 +509,8 @@ def test_checkpoint_force_by_trial_callback(ray_start_4_cpus_2_gpus_extra, tmp_p
     """
 
     class CheckpointCallback(Callback):
-        num_checkpoints = 0
+        def __init__(self):
+            self.num_checkpoints = 0
 
         def on_trial_result(self, iteration, trials, trial: Trial, result, **info):
             # Checkpoint every two iterations
