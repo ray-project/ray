@@ -66,6 +66,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.count_operator import Count
+from ray.data._internal.logical.operators.dropna_operator import DropNa
+from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
@@ -780,6 +782,204 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def fillna(
+        self,
+        value: Union[Any, Dict[str, Any]] = None,
+        *,
+        subset: Optional[List[str]] = None,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Fill missing values (null/NaN) in the dataset.
+
+        This method fills missing values with the specified value, similar to
+        pandas.DataFrame.fillna() and PySpark DataFrame.na.fill().
+
+        Examples:
+            Fill all missing values with a scalar:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0},
+                    {"a": None, "b": np.nan},
+                    {"a": 3, "b": None}
+                ])
+                ds.fillna(0).show()
+
+            Fill missing values with column-specific values:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0},
+                    {"a": None, "b": np.nan},
+                    {"a": 3, "b": None}
+                ])
+                ds.fillna({"a": 0, "b": -1.0}).show()
+
+            Fill missing values in specific columns:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0, "c": "x"},
+                    {"a": None, "b": np.nan, "c": None},
+                    {"a": 3, "b": None, "c": "z"}
+                ])
+                ds.fillna(0, subset=["a"]).show()
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            value: Value to use to fill missing values. Can be a scalar value to fill all
+                missing values, or a dictionary mapping column names to fill values for
+                specific columns.
+            subset: List of column names to consider for filling. If None, all columns
+                are considered.
+            compute: This argument is deprecated. Use ``ray_remote_args`` to configure
+                distributed execution.
+            ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
+
+        Returns:
+            A new dataset with missing values filled.
+        """
+        plan = self._plan.copy()
+        fillna_op = FillNa(
+            self._logical_plan.dag,
+            value=value,
+            subset=subset,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(fillna_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def dropna(
+        self,
+        *,
+        how: str = "any",
+        subset: Optional[List[str]] = None,
+        thresh: Optional[int] = None,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Drop rows with missing values (null/NaN) from the dataset.
+
+        This method removes rows containing missing values, similar to
+        pandas.DataFrame.dropna() and PySpark DataFrame.na.drop().
+
+        Examples:
+            Drop rows with any missing values:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0},
+                    {"a": None, "b": 3.0},
+                    {"a": 2, "b": np.nan},
+                    {"a": 3, "b": 4.0}
+                ])
+                ds.dropna().show()
+
+            Drop rows where all values are missing:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0},
+                    {"a": None, "b": None},
+                    {"a": 2, "b": np.nan},
+                    {"a": 3, "b": 4.0}
+                ])
+                ds.dropna(how="all").show()
+
+            Drop rows with missing values in specific columns:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0, "c": "x"},
+                    {"a": None, "b": 3.0, "c": "y"},
+                    {"a": 2, "b": np.nan, "c": "z"},
+                    {"a": 3, "b": 4.0, "c": None}
+                ])
+                ds.dropna(subset=["a", "b"]).show()
+
+            Drop rows with less than a threshold of non-null values:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0, "c": "x"},
+                    {"a": None, "b": None, "c": "y"},
+                    {"a": 2, "b": np.nan, "c": None},
+                    {"a": 3, "b": 4.0, "c": None}
+                ])
+                ds.dropna(thresh=2).show()
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            how: Determines how to drop rows:
+                - "any": Drop rows where any value is missing (default)
+                - "all": Drop rows where all values are missing
+            subset: List of column names to consider for dropping. If None, all columns
+                are considered.
+            thresh: Minimum number of non-null values required to keep a row. If specified,
+                this overrides the 'how' parameter.
+            compute: This argument is deprecated. Use ``ray_remote_args`` to configure
+                distributed execution.
+            ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
+
+        Returns:
+            A new dataset with rows containing missing values removed.
+
+        Raises:
+            ValueError: If 'how' is not "any" or "all".
+        """
+        if how not in ["any", "all"]:
+            raise ValueError("'how' must be 'any' or 'all'")
+
+        plan = self._plan.copy()
+        dropna_op = DropNa(
+            self._logical_plan.dag,
+            how=how,
+            subset=subset,
+            thresh=thresh,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(dropna_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
