@@ -587,8 +587,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             def _on_partitioning_done(cur_shuffle_task_idx: int):
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
-                self._running_resource_usage -= ExecutionResources(
-                    cpu=task.get_requested_resource_bundle().cpu, gpu=0
+                self._running_resource_usage = self._running_resource_usage.subtract(
+                    ExecutionResources(
+                        cpu=task.get_requested_resource_bundle().cpu, gpu=0
+                    )
                 )
                 # Fetch input block and resulting partition shards block metadata and
                 # handle obtained metadata
@@ -631,8 +633,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     shuffle_task_resource_bundle
                 ),
             )
-            self._running_resource_usage += ExecutionResources(
-                cpu=task.get_requested_resource_bundle().cpu, gpu=0
+            self._running_resource_usage = self._running_resource_usage.add(
+                ExecutionResources(cpu=task.get_requested_resource_bundle().cpu, gpu=0)
             )
 
             #  Update Shuffle Metrics on task submission
