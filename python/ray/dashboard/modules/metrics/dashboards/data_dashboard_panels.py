@@ -566,7 +566,7 @@ DATA_GRAFANA_PANELS = [
         unit="blocks",
         targets=[
             Target(
-                expr="sum(ray_data_num_output_queue_blocks{{{global_filters}}}) by (dataset, operator)",
+                expr='sum(ray_data_num_output_queue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
                 legend="Number of Blocks: {{dataset}}, {{operator}}",
             )
         ],
@@ -580,7 +580,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_num_output_queue_bytes{{{global_filters}}}) by (dataset, operator)",
+                expr='sum(ray_data_num_output_queue_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
                 legend="Number of Bytes: {{dataset}}, {{operator}}",
             )
         ],
