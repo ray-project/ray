@@ -436,7 +436,7 @@ def test_duplicate_objectref_transfer(ray_start_regular):
     small_tensor = torch.randn((1,))
 
     # Store the original value for comparison
-    original_value = small_tensor.clone()
+    original_value = small_tensor
 
     ref = actor0.echo.remote(small_tensor)
 
