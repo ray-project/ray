@@ -465,7 +465,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="increase(ray_data_task_completion_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])",
+                expr='increase(ray_data_task_completion_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
                 legend="Task Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -479,7 +479,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="increase(ray_data_task_output_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])",
+                expr='increase(ray_data_task_output_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
                 legend="Task Output Backpressure Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -493,7 +493,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="increase(ray_data_task_completion_time_without_backpressure{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])",
+                expr='increase(ray_data_task_completion_time_without_backpressure{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
                 legend="Task Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
             ),
         ],
