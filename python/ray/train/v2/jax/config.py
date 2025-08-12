@@ -38,20 +38,22 @@ def _setup_jax_tpu_environment(
 
 class _JaxBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: JaxConfig):
+        if not backend_config.use_tpu:
+            return
+
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
         master_addr_with_port = f"{master_addr}:{master_port}"
 
-        if backend_config.use_tpu:
-            # Get setup tasks in order to throw errors on failure.
-            setup_futures = []
-            for i in range(len(worker_group)):
-                setup_futures.append(
-                    worker_group.execute_single_async(
-                        i,
-                        _setup_jax_tpu_environment,
-                        master_addr_with_port=master_addr_with_port,
-                        num_workers=len(worker_group),
-                        index=i,
-                    )
+        # Get setup tasks in order to throw errors on failure.
+        setup_futures = []
+        for i in range(len(worker_group)):
+            setup_futures.append(
+                worker_group.execute_single_async(
+                    i,
+                    _setup_jax_tpu_environment,
+                    master_addr_with_port=master_addr_with_port,
+                    num_workers=len(worker_group),
+                    index=i,
                 )
-            ray.get(setup_futures)
+            )
+        ray.get(setup_futures)
