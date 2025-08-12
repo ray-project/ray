@@ -164,11 +164,6 @@ static Gauge LocalTotalResource("local_total_resource",
                                 {kResourceNameKey});
 
 /// Object Manager.
-static Gauge ObjectStoreAvailableMemory(
-    "object_store_available_memory",
-    "Amount of memory currently available in the object store.",
-    "bytes");
-
 static Gauge ObjectStoreUsedMemory(
     "object_store_used_memory",
     "Amount of memory currently occupied in the object store.",

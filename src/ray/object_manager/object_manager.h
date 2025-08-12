@@ -32,6 +32,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/stats/metric.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -497,6 +498,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
+
+  /// Metrics
+  ray::stats::Gauge ray_metric_object_store_available_memory_{
+      /*name=*/"object_store_available_memory",
+      /*description=*/"Amount of memory currently available in the object store.",
+      /*unit=*/"bytes"};
 };
 
 }  // namespace ray
