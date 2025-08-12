@@ -19,26 +19,6 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: dummy wheel {{matrix}} (x86_64)"
-    key: dummy_wheels
-    tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-    instance_type: large
-    commands:
-      - export DUMMY_WHEEL=1
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
-    depends_on:
-      - manylinux
-      - forge
-
   - label: ":tapioca: build: debug wheel"
     tags:
       - linux_wheels

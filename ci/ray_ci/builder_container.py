@@ -56,8 +56,6 @@ class BuilderContainer(LinuxContainer):
             cmds += ["export RAY_DISABLE_EXTRA_CPP=1"]
         if os.environ.get("RAYCI_DISABLE_JAVA", "") == "true":
             cmds += ["export RAY_INSTALL_JAVA=0"]
-        if os.environ.get("DUMMY_WHEEL", "") == "1":
-            cmds += ["export DUMMY_WHEEL=1"]
 
         cmds += [
             "./ci/build/build-manylinux-ray.sh",
