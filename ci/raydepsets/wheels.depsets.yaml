@@ -16,18 +16,6 @@ build_arg_sets:
       PY_VER: 38
 
 depsets:
-  # - name: build_wheel_depset_${PY_VER}
-  #   operation: build_wheel
-  #   setup_path: python/
-  #   output: dist/
-  #   append_flags:
-  #     - --python
-  #     - ${PY_VER}
-  #   build_arg_sets:
-  #     - py312
-  #     - py311
-  #     - py310
-  #     - py39
   - name: dummy_wheel
     operation: build_wheel
     setup_path: dummy_wheel
