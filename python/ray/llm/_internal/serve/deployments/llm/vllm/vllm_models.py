@@ -105,6 +105,14 @@ class VLLMEngineConfig(BaseModelExtended):
                 engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
                     "disable_log_requests"
                 )
+            else:
+                engine_kwargs["enable_log_requests"] = False
+        elif "disable_log_requests" not in engine_kwargs:
+            logger.info(
+                "Disabling request logging by default. To enable, set to False"
+                " in engine_kwargs."
+            )
+            engine_kwargs["disable_log_requests"] = True
 
         return engine_kwargs
 
