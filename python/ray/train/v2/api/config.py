@@ -92,7 +92,6 @@ class ScalingConfig(ScalingConfigV1):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
-
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
 
