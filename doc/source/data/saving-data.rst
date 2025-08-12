@@ -169,7 +169,6 @@ number of output files, configure ``min_rows_per_file``.
     ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
 
-
 Writing into Partitioned Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
