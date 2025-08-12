@@ -68,13 +68,13 @@ If you are using a local Ray Cluster (``ray start --head``), connect directly at
 If you are using a Ray Cluster started on VMs or Kubernetes, follow the instructions there for setting up network access from a client. See :ref:`Using a Remote Cluster <jobs-remote-cluster>` for tips.
 
 
-To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray Dashboard address. Set the ``RAY_ADDRESS`` environment variable:
+To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray Dashboard address. Set the ``RAY_API_SERVER_ADDRESS`` environment variable:
 
 .. code-block:: bash
 
-    $ export RAY_ADDRESS="http://127.0.0.1:8265"
+    $ export RAY_API_SERVER_ADDRESS="http://127.0.0.1:8265"
 
-Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
+Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_API_SERVER_ADDRESS=http://127.0.0.1:8265``.
 
 Additionally, if you wish to pass headers per HTTP request to the Cluster, use the `RAY_JOB_HEADERS` environment variable. This environment variable must be in JSON form.
 
@@ -217,7 +217,7 @@ Run the following command on your local machine, where ``cluster.yaml`` is the c
     ray dashboard cluster.yaml
 
 Once this command is running, verify that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.
-Also, verify that you set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
+Also, verify that you set the environment variable ``RAY_API_SERVER_ADDRESS`` to ``"http://127.0.0.1:8265"``. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
 
 Using the CLI on Kubernetes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
