@@ -39,3 +39,4 @@ xarray
 xgboost
 zarr
 pyyaml
+orjson
