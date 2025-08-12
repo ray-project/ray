@@ -1,5 +1,3 @@
-import uuid
-
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.base import (
     BaseConnectorBackend,
 )
@@ -43,10 +41,13 @@ class LMCacheConnectorV1Backend(BaseConnectorBackend):
         kv_connector_extra_config = self.kv_transfer_config[
             LMCacheConnectorV1Backend.KV_CONNECTOR_EXTRA_CONFIG_FIELD_NAME
         ]
-        lmcache_rpc_port = kv_connector_extra_config.get(
-            LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME,
-            LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
-        ) + str(uuid.uuid4())
+        lmcache_rpc_port = (
+            kv_connector_extra_config.get(
+                LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME,
+                LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
+            )
+            + self._get_unique_suffix()
+        )
         if (
             LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME
             in kv_connector_extra_config

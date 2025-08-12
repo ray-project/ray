@@ -53,7 +53,7 @@ class TestLMCacheConnectorV1Backend:
         """Test setup with extra config but no lmcache_rpc_port."""
         lmcache_backend_with_extra.setup()
 
-        # Should add lmcache_rpc_port with default DEFAULT_LMCACHE_RPC_PORT_NAME + UUID
+        # Should add lmcache_rpc_port with default DEFAULT_LMCACHE_RPC_PORT_NAME + random string
         assert (
             "lmcache_rpc_port"
             in lmcache_backend_with_extra.kv_transfer_config[
@@ -68,7 +68,7 @@ class TestLMCacheConnectorV1Backend:
         )
         assert len(port_value) > len(
             LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME
-        )  # Should have UUID appended
+        )  # Should have random string appended
 
     def test_setup_with_existing_port(self, lmcache_backend_with_port):
         """Test setup with existing lmcache_rpc_port configuration."""
@@ -78,9 +78,9 @@ class TestLMCacheConnectorV1Backend:
 
         lmcache_backend_with_port.setup()
 
-        # Should modify the existing port by appending UUID
+        # Should modify the existing port by appending random string
         new_port = lmcache_backend_with_port.kv_transfer_config[
             "kv_connector_extra_config"
         ]["lmcache_rpc_port"]
         assert new_port.startswith(original_port)
-        assert len(new_port) > len(original_port)  # Should have UUID appended
+        assert len(new_port) > len(original_port)  # Should have random string appended

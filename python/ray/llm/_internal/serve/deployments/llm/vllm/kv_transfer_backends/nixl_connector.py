@@ -1,5 +1,4 @@
 import os
-import uuid
 
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.base import (
     BaseConnectorBackend,
@@ -40,7 +39,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
             os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
 
         # We need to overwrite the engine_id to make it unique across replicas.
-        engine_id = self.kv_transfer_config.get("engine_id", str(uuid.uuid4()))
+        engine_id = self.kv_transfer_config.get("engine_id", self._get_unique_suffix())
         host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
         port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
         self.kv_transfer_config["engine_id"] = "-".join([engine_id, host, str(port)])
