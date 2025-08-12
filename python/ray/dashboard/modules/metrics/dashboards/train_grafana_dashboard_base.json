@@ -227,8 +227,41 @@
           "text": ["All"],
           "value": ["$__all"]
         }
-      }
+      },
 
+      {
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "description": "Filter queries to specific Ray node types (head or worker).",
+        "includeAll": true,
+        "multi": true,
+        "name": "RayNodeType",
+        "options": [
+          {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "Head Node",
+            "value": "head"
+          },
+          {
+            "selected": false,
+            "text": "Worker Node",
+            "value": "worker"
+          }
+        ],
+        "query": "head, worker",
+        "type": "custom"
+      }
     ]
   }
 }
