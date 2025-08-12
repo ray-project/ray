@@ -28,6 +28,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
+from ray._common.network_utils import build_address
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -201,7 +202,7 @@ class ProxyManager:
                 port=port,
                 process_handle_future=futures.Future(),
                 channel=ray._private.utils.init_grpc_channel(
-                    f"127.0.0.1:{port}", options=GRPC_OPTIONS
+                    build_address("127.0.0.1", port), options=GRPC_OPTIONS
                 ),
             )
             self.servers[client_id] = server
@@ -825,8 +826,9 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(
-    connection_str: str,
-    address: Optional[str],
+    host: str,
+    port: int,
+    gcs_address: Optional[str],
     *,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -837,8 +839,8 @@ def serve_proxier(
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
-    if address is not None:
-        gcs_cli = GcsClient(address=address)
+    if gcs_address is not None:
+        gcs_cli = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
@@ -846,7 +848,7 @@ def serve_proxier(
         options=GRPC_OPTIONS,
     )
     proxy_manager = ProxyManager(
-        address,
+        gcs_address,
         session_dir=session_dir,
         redis_username=redis_username,
         redis_password=redis_password,
@@ -858,7 +860,9 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    add_port_to_grpc_server(server, connection_str)
+    if host != "127.0.0.1" and host != "localhost":
+        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
+    add_port_to_grpc_server(server, f"{host}:{port}")
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,

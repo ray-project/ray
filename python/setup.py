@@ -383,7 +383,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
@@ -630,7 +630,6 @@ def build(build_python, build_java, build_cpp):
         # And we put it here so that does not change behavior of
         # conda-forge build.
         bazel_flags.append("--incompatible_strict_action_env")
-        bazel_flags.append("--remote_download_minimal")
 
     bazel_targets = []
     bazel_targets += ["//:gen_ray_pkg"] if build_python else []
@@ -766,6 +765,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},

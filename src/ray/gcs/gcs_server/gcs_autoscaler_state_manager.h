@@ -23,7 +23,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -172,7 +172,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// TODO: Implement the function
   void CancelInfeasibleRequests() const;
 
-  // Ray cluster session name.
+  // The current Ray session name.
   const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
