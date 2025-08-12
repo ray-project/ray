@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray._private.utils import check_ray_client_dependencies_installed
+from ray._private.utils import get_ray_client_dependency_error
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars: Override environment variables for the raylet.
-        session_name: The name of the session of the ray cluster.
+        session_name: The current Ray session name.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
         resource_isolation_config: settings for cgroupv2 based isolation of ray
@@ -391,7 +391,7 @@ class RayParams:
                         "max_worker_port must be higher than min_worker_port."
                     )
         if self.ray_client_server_port is not None:
-            if not check_ray_client_dependencies_installed():
+            if get_ray_client_dependency_error() is not None:
                 raise ValueError(
                     "Ray Client requires pip package `ray[client]`. "
                     "If you installed the minimal Ray (e.g. `pip install ray`), "

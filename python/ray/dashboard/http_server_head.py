@@ -18,7 +18,9 @@ import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray._common.utils import get_or_create_event_loop
+from ray._common.network_utils import build_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.network_utils import parse_address
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
@@ -89,7 +91,7 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.head_node_ip = gcs_address.split(":")[0]
+        self.head_node_ip = parse_address(gcs_address)[0]
         self.metrics = metrics
         self._session_name = session_name
 
@@ -135,7 +137,7 @@ class HttpServerDashboardHead:
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
             )
         )
-        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Cache-Control"] = "no-store"
         return resp
 
     @routes.get("/favicon.ico")
@@ -288,7 +290,8 @@ class HttpServerDashboardHead:
             else self.http_host
         )
         logger.info(
-            "Dashboard head http address: %s:%s", self.http_host, self.http_port
+            "Dashboard head http address: %s",
+            build_address(self.http_host, self.http_port),
         )
         # Dump registered http routes.
         dump_routes = [r for r in app.router.routes() if r.method != hdrs.METH_HEAD]

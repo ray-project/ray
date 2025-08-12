@@ -230,6 +230,7 @@ import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
+from ray._common.network_utils import build_address, parse_address
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
 
@@ -788,9 +789,16 @@ cdef int prepare_label_selector(
 
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+            raise ValueError(f"Label selector key type must be string, but got {type(key)}")
         if not isinstance(value, str):
             raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        if key == "":
+            raise ValueError("Label selector key must be a non-empty string.")
+        if (value.startswith("in(") and value.endswith(")")) or \
+           (value.startswith("!in(") and value.endswith(")")):
+            inner = value[value.index("(")+1:-1].strip()
+            if not inner:
+                raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
         label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
@@ -1081,7 +1089,8 @@ cdef store_task_errors(
         proctitle,
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error):
+        c_string* application_error,
+        CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -1127,7 +1136,9 @@ cdef store_task_errors(
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
         caller_address,
-        returns)
+        returns,
+        None,  # ref_generator_id
+        c_tensor_transport)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -2114,7 +2125,7 @@ cdef void execute_task(
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error)
+                    task_type, title, caller_address, returns, application_error, c_tensor_transport)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -2291,7 +2302,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+        gpu_object_manager.gpu_object_store.pop_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2795,7 +2806,7 @@ cdef class _GcsSubscriber:
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        gcs_address, gcs_port = address.split(":")
+        gcs_address, gcs_port = parse_address(address)
         self.inner.reset(new CPythonGcsSubscriber(
             gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
 
@@ -3353,11 +3364,10 @@ cdef class CoreWorker:
             c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(
-                            c_writer_ref,
-                            c_remote_reader_nodes,
-                        ))
+            CCoreWorkerProcess.GetCoreWorker().ExperimentalRegisterMutableObjectWriter(
+                    c_writer_ref,
+                    c_remote_reader_nodes,
+            )
             check_status(
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(
@@ -3767,6 +3777,7 @@ cdef class CoreWorker:
                      c_bool enable_task_events,
                      labels,
                      label_selector,
+                     c_bool allow_out_of_order_execution,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3819,9 +3830,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute_out_of_order for
-                        # async or threaded actors.
-                        is_asyncio or max_concurrency > 1,
+                        allow_out_of_order_execution,
                         max_pending_calls,
                         enable_task_events,
                         c_labels,
@@ -4103,6 +4112,7 @@ cdef class CoreWorker:
             dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         max_task_retries = dereference(c_actor_handle).MaxTaskRetries()
         enable_task_events = dereference(c_actor_handle).EnableTaskEvents()
+        allow_out_of_order_execution = dereference(c_actor_handle).AllowOutOfOrderExecution()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4130,7 +4140,8 @@ cdef class CoreWorker:
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
-                                         weak_ref=weak_ref)
+                                         weak_ref=weak_ref,
+                                         allow_out_of_order_execution=allow_out_of_order_execution)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4148,6 +4159,7 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
                                          weak_ref=weak_ref,
+                                         allow_out_of_order_execution=allow_out_of_order_execution,
                                          )
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
@@ -4737,19 +4749,6 @@ cdef class CoreWorker:
             self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
-
-    def get_task_submission_stats(self):
-        cdef:
-            int64_t num_tasks_submitted
-            int64_t num_leases_requested
-
-        with nogil:
-            num_tasks_submitted = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
-            num_leases_requested = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
-
-        return (num_tasks_submitted, num_leases_requested)
 
     def get_local_memory_store_bytes_used(self):
         cdef:

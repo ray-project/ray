@@ -1636,6 +1636,91 @@ TEST_F(GcsActorManagerTest, TestDestroyWhileRegistering) {
   ASSERT_TRUE(gcs_actor_manager_->GetRegisteredActors().empty());
 }
 
+TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
+  // This test verifies that when an actor is preempted, calling OnWorkerDead
+  // does not increment the num_restarts counter and still restarts the actor.
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/1,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  Status status =
+      gcs_actor_manager_->CreateActor(create_actor_request,
+                                      [](const std::shared_ptr<gcs::GcsActor> &actor,
+                                         const rpc::PushTaskReply &reply,
+                                         const Status &status) {});
+  RAY_CHECK_OK(status);
+
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Make the actor alive on a specific node
+  auto address = RandomAddress();
+  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto worker_id = WorkerID::FromBinary(address.worker_id());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Initially num_restarts should be 0
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 0);
+  ASSERT_FALSE(actor->GetActorTableData().preempted());
+
+  // First restart: actor is NOT preempted, so num_restarts should increment
+  gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);  // Should increment
+  ASSERT_FALSE(actor->GetActorTableData().preempted());
+
+  // Make the actor alive on a specific node again.
+  auto new_address = RandomAddress();
+  auto new_node_id = NodeID::FromBinary(new_address.raylet_id());
+  auto new_worker_id = WorkerID::FromBinary(new_address.worker_id());
+  actor->UpdateAddress(new_address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 0);
+
+  // Now set the actor as preempted using SetPreemptedAndPublish
+  gcs_actor_manager_->SetPreemptedAndPublish(new_node_id);
+  io_service_.run_one();
+  ASSERT_TRUE(actor->GetActorTableData().preempted());
+
+  // Second restart: actor is preempted, so num_restarts and
+  // num_restarts_due_to_node_preemption should increment
+  gcs_actor_manager_->OnWorkerDead(new_node_id, new_worker_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);  // Should increment
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
+
+  // Make the actor alive on another node again
+  auto new_address_2 = RandomAddress();
+  auto new_node_id_2 = NodeID::FromBinary(new_address_2.raylet_id());
+  auto new_worker_id_2 = WorkerID::FromBinary(new_address_2.worker_id());
+  actor->UpdateAddress(new_address_2);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
+  ASSERT_FALSE(actor->GetActorTableData().preempted());  // Turn preempted back
+
+  // Third restart: actor reaches max_restarts, so num_restarts and
+  // num_restarts_due_to_node_preemption should not increment
+  gcs_actor_manager_->OnWorkerDead(new_node_id_2, new_worker_id_2);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
+  ASSERT_FALSE(actor->GetActorTableData().preempted());
+}
+
 }  // namespace gcs
 
 }  // namespace ray

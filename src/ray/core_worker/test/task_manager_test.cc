@@ -120,6 +120,18 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
   MOCK_METHOD(std::string, DebugString, (), (override));
+
+  MOCK_METHOD(
+      bool,
+      RecordTaskStatusEventIfNeeded,
+      (const TaskID &task_id,
+       const JobID &job_id,
+       int32_t attempt_number,
+       const TaskSpecification &spec,
+       rpc::TaskStatus status,
+       bool include_task_info,
+       std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update),
+      (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -131,11 +143,12 @@ class TaskManagerTest : public ::testing::Test {
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
+        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
         reference_counter_(std::make_shared<ReferenceCounter>(
             addr_,
             publisher_.get(),
             subscriber_.get(),
-            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
@@ -164,7 +177,8 @@ class TaskManagerTest : public ::testing::Test {
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
-            }) {}
+            },
+            mock_gcs_client_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -201,10 +215,11 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
+  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  bool all_nodes_alive_ = true;
+  bool node_died_ = false;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
@@ -308,7 +323,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   ASSERT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
-  all_nodes_alive_ = false;
+  node_died_ = true;
 
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
@@ -365,6 +380,25 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(TaskManagerTest, TestFailPendingTaskAfterCancellation) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "");
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  manager_.MarkTaskCanceled(spec.TaskId());
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Check that the error type is set to TASK_CANCELLED
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({spec.ReturnId(0)}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, rpc::ErrorType::TASK_CANCELLED);
 }
 
 TEST_F(TaskManagerTest, TestTaskReconstruction) {
@@ -2614,6 +2648,61 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   reference_counter_->RemoveLocalReference(gpu_obj_ref, &removed);
   ASSERT_EQ(removed[0], gpu_obj_ref);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+}
+
+TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(1);
+  int num_retries = 1;  // 1 normal retry allowed
+
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  NodeID node_id = NodeID::FromRandom();
+  WorkerID worker_id = WorkerID::FromRandom();
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // First, fail the task with WORKER_DIED to consume the normal retry
+  rpc::RayErrorInfo worker_died_error;
+  worker_died_error.set_error_type(rpc::ErrorType::WORKER_DIED);
+
+  ASSERT_EQ(num_retries_, 0);
+  bool will_retry = manager_.RetryTaskIfPossible(spec.TaskId(), worker_died_error);
+  ASSERT_TRUE(will_retry);     // Should retry (consuming the 1 retry)
+  ASSERT_EQ(num_retries_, 1);  // Verify retry was called
+
+  // Reset and mark the task as waiting for execution again for the retry
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Mock the GCS client to return the preempted node info
+  rpc::GcsNodeInfo node_info;
+  node_info.set_node_id(node_id.Binary());
+  node_info.mutable_death_info()->set_reason(
+      rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(node_id, false))
+      .WillOnce(::testing::Return(&node_info));
+
+  // Task should be retried because the node was preempted, even with 0 retries left
+  rpc::RayErrorInfo node_died_error;
+  node_died_error.set_error_type(rpc::ErrorType::NODE_DIED);
+  will_retry = manager_.RetryTaskIfPossible(spec.TaskId(), node_died_error);
+  ASSERT_TRUE(will_retry);     // Should retry despite 0 retries left due to preemption
+  ASSERT_EQ(num_retries_, 2);  // Verify retry was called again
+
+  // Reset the task state to test preemption scenario
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Now the task has 0 retries left. Test that normal failure would not retry
+  will_retry = manager_.RetryTaskIfPossible(spec.TaskId(), worker_died_error);
+  ASSERT_FALSE(will_retry);    // Should NOT retry (no retries left)
+  ASSERT_EQ(num_retries_, 2);  // No additional retry called
+
+  // Cleanup
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 }  // namespace core
 }  // namespace ray

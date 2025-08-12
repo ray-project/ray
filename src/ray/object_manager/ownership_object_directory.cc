@@ -44,7 +44,7 @@ namespace {
 void FilterRemovedNodes(gcs::GcsClient &gcs_client,
                         std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
-    if (gcs_client.Nodes().IsRemoved(*it)) {
+    if (gcs_client.Nodes().IsNodeDead(*it)) {
       it = node_ids->erase(it);
     } else {
       it++;
@@ -85,7 +85,7 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
     const auto new_spilled_node_id = NodeID::FromBinary(location_info.spilled_node_id());
     RAY_LOG(DEBUG).WithField(new_spilled_node_id)
         << "Received object spilled to " << new_spilled_url << " spilled on node";
-    if (gcs_client.Nodes().IsRemoved(new_spilled_node_id)) {
+    if (gcs_client.Nodes().IsNodeDead(new_spilled_node_id)) {
       *spilled_url = "";
       *spilled_node_id = NodeID::Nil();
     } else {
@@ -279,7 +279,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   for (auto const &node_id_binary : location_info.node_ids()) {
     const auto node_id = NodeID::FromBinary(node_id_binary);
     RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-        << "Object is on node alive? " << !gcs_client_.Nodes().IsRemoved(node_id);
+        << "Did node with object die? " << gcs_client_.Nodes().IsNodeDead(node_id);
   }
   auto location_updated = UpdateObjectLocations(location_info,
                                                 gcs_client_,

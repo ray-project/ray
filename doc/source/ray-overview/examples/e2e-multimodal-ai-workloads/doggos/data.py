@@ -1,6 +1,12 @@
 import json
 
-from doggos.embed import EmbeddingGenerator
+from doggos.embed import EmbedImages
+
+
+def convert_to_label(row, class_to_label):
+    if "class" in row:
+        row["label"] = class_to_label[row["class"]]
+    return row
 
 
 class Preprocessor:
@@ -16,23 +22,18 @@ class Preprocessor:
         self.label_to_class = {v: k for k, v in self.class_to_label.items()}
         return self
 
-    def convert_to_label(self, row, class_to_label):
-        if "class" in row:
-            row["label"] = class_to_label[row["class"]]
-        return row
-
-    def transform(self, ds, concurrency=4, batch_size=64, num_gpus=1):
+    def transform(self, ds):
         ds = ds.map(
-            self.convert_to_label,
+            convert_to_label,
             fn_kwargs={"class_to_label": self.class_to_label},
         )
         ds = ds.map_batches(
-            EmbeddingGenerator,
+            EmbedImages,
             fn_constructor_kwargs={"model_id": "openai/clip-vit-base-patch32"},
             fn_kwargs={"device": "cuda"},
-            concurrency=concurrency,
-            batch_size=batch_size,
-            num_gpus=num_gpus,
+            concurrency=4,
+            batch_size=64,
+            num_gpus=1,
             accelerator_type="L4",
         )
         ds = ds.drop_columns(["image"])

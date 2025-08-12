@@ -22,7 +22,7 @@ from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
-    AddEventRequest,
+    AddEventsRequest,
     RayEventsData,
     TaskEventsMetadata,
 )
@@ -36,7 +36,9 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     get_log_batch,
     raw_metrics,
+    find_free_port,
 )
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
@@ -139,7 +141,7 @@ _DASHBOARD_METRICS = [
 
 _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_received_total",
-    "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+    "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
     "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
     "ray_event_aggregator_agent_events_published_total",
 ]
@@ -257,11 +259,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     for node_info in node_info_list:
         metrics_export_port = node_info["MetricsExportPort"]
         addr = node_info["NodeManagerAddress"]
-        prom_addresses.append(f"{addr}:{metrics_export_port}")
-    autoscaler_export_addr = "{}:{}".format(
+        prom_addresses.append(build_address(addr, metrics_export_port))
+    autoscaler_export_addr = build_address(
         cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
     )
-    dashboard_export_addr = "{}:{}".format(
+    dashboard_export_addr = build_address(
         cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
     )
     yield prom_addresses, autoscaler_export_addr, dashboard_export_addr
@@ -419,7 +421,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
     addr = ray.init()
-    dashboard_export_addr = "{}:{}".format(
+    dashboard_export_addr = build_address(
         addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
     )
 
@@ -462,9 +464,12 @@ def test_metrics_export_node_metrics(shutdown_only):
     wait_for_condition(verify_dashboard_metrics)
 
 
-@pytest.fixture(scope="session")
+_EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+
+
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", 12345)
+    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
 @pytest.mark.parametrize(
@@ -473,6 +478,7 @@ def httpserver_listen_address():
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -489,14 +495,14 @@ def test_metrics_export_event_aggregator_agent(
 
     metrics_export_port = cluster.head_node.metrics_export_port
     addr = cluster.head_node.raylet_ip_address
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+    prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
             "ray_event_aggregator_agent_events_published_total",
         ]
@@ -506,7 +512,7 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 2.0,
-            "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 1.0,
+            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
         }
@@ -523,7 +529,7 @@ def test_metrics_export_event_aggregator_agent(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -554,9 +560,7 @@ def test_metrics_export_event_aggregator_agent(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply.status.code == 5
-    assert reply.status.message == "event 1 dropped because event buffer full"
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
@@ -945,14 +949,14 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
     def get_metrics_export_address_from_node(nodes):
         node_export_addrs = [
-            "{}:{}".format(node.node_ip_address, node.metrics_export_port)
+            build_address(node.node_ip_address, node.metrics_export_port)
             for node in nodes
         ]
         # monitor should be run on head node for `ray_start_cluster` fixture
-        autoscaler_export_addr = "{}:{}".format(
+        autoscaler_export_addr = build_address(
             cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
         )
-        dashboard_export_addr = "{}:{}".format(
+        dashboard_export_addr = build_address(
             cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]

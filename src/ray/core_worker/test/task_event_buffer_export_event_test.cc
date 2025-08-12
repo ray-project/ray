@@ -42,6 +42,15 @@ namespace core {
 
 namespace worker {
 
+class MockEventAggregatorClient : public ray::rpc::EventAggregatorClient {
+ public:
+  MOCK_METHOD(void,
+              AddEvents,
+              (const rpc::events::AddEventsRequest &request,
+               const rpc::ClientCallback<rpc::events::AddEventsReply> &callback),
+              (override));
+};
+
 class TaskEventTestWriteExport : public ::testing::Test {
  public:
   TaskEventTestWriteExport() {
@@ -54,12 +63,15 @@ class TaskEventTestWriteExport : public ::testing::Test {
   "task_events_send_batch_size": 100,
   "export_task_events_write_batch_size": 1,
   "task_events_max_num_export_status_events_buffer_on_worker": 15,
-  "enable_export_api_write": true
+  "enable_export_api_write": true,
+  "enable_core_worker_ray_event_to_aggregator": false
 }
   )");
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>());
+        std::make_unique<ray::gcs::MockGcsClient>(),
+        std::make_unique<MockEventAggregatorClient>(),
+        "test_session_name");
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -88,6 +100,8 @@ class TaskEventTestWriteExport : public ::testing::Test {
                                              attempt_num,
                                              rpc::TaskStatus::RUNNING,
                                              running_ts,
+                                             /*is_actor_task_event=*/false,
+                                             "test_session_name",
                                              nullptr,
                                              state_update);
   }

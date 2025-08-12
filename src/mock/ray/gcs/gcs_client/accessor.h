@@ -140,7 +140,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               AsyncGetAll,
               (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                int64_t timeout_ms,
-               std::optional<NodeID> node_id),
+               const std::vector<NodeID> &node_ids),
               (override));
   MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
@@ -161,7 +161,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                int64_t timeout_ms,
                std::vector<bool> &nodes_alive),
               (override));
-  MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
+  MOCK_METHOD(bool, IsNodeDead, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
 };
 

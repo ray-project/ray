@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -64,8 +65,18 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            /*record_stats=*/true,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
-      raylet_client_pool_(
-          std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
+      raylet_client_pool_([this](const rpc::Address &addr) {
+        return std::make_shared<ray::raylet::RayletClient>(
+            addr,
+            this->client_call_manager_,
+            /*raylet_unavailable_timeout_callback=*/[this, addr]() {
+              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+              auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
+              if (!alive_node.has_value()) {
+                this->raylet_client_pool_.Disconnect(node_id);
+              }
+            });
+      }),
       worker_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
@@ -78,25 +89,23 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                 this->worker_client_pool_.Disconnect(worker_id);
                 return;
               }
-              auto raylet_client = this->raylet_client_pool_->GetOrConnectByID(node_id);
-              RAY_CHECK(raylet_client.has_value());
+              auto raylet_client = this->raylet_client_pool_.GetByID(node_id);
+              RAY_CHECK(raylet_client);
               // Worker could still be dead even if node is alive.
-              (*raylet_client)
-                  ->IsLocalWorkerDead(
-                      worker_id,
-                      [this, worker_id, node_id](const Status &status,
-                                                 const auto &reply) {
-                        if (!status.ok()) {
-                          RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-                              << "Failed to check if worker is dead on request to raylet";
-                          return;
-                        }
-                        if (reply.is_dead()) {
-                          RAY_LOG(INFO).WithField(worker_id)
-                              << "Disconnect core worker client since it is dead";
-                          this->worker_client_pool_.Disconnect(worker_id);
-                        }
-                      });
+              raylet_client->IsLocalWorkerDead(
+                  worker_id,
+                  [this, worker_id, node_id](const Status &status, const auto &reply) {
+                    if (!status.ok()) {
+                      RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                          << "Failed to check if worker is dead on request to raylet";
+                      return;
+                    }
+                    if (reply.is_dead()) {
+                      RAY_LOG(INFO).WithField(worker_id)
+                          << "Disconnect core worker client since it is dead";
+                      this->worker_client_pool_.Disconnect(worker_id);
+                    }
+                  });
             });
       }),
       pubsub_periodical_runner_(
@@ -191,8 +200,7 @@ void GcsServer::GetOrGenerateClusterId(
          if (!provided_cluster_id.has_value()) {
            instrumented_io_context &io_context = continuation.io_context();
            ClusterID cluster_id = ClusterID::FromRandom();
-           RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
-                         << cluster_id.Hex();
+           RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
            kv_manager_->GetInstance().Put(
                kClusterIdNamespace,
                kClusterIdKey,
@@ -200,7 +208,7 @@ void GcsServer::GetOrGenerateClusterId(
                false,
                {[cluster_id,
                  continuation = std::move(continuation)](bool added_entry) mutable {
-                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
+                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID.";
                   std::move(continuation)
                       .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
                                 cluster_id);
@@ -208,7 +216,8 @@ void GcsServer::GetOrGenerateClusterId(
                 io_context});
          } else {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
-           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
+           RAY_LOG(INFO).WithField(cluster_id)
+               << "Using existing cluster ID from external storage.";
            std::move(continuation)
                .Dispatch("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
          }
@@ -331,7 +340,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
                                        gcs_table_storage_.get(),
                                        io_context_provider_.GetDefaultIOContext(),
-                                       raylet_client_pool_.get(),
+                                       &raylet_client_pool_,
                                        rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
@@ -351,11 +360,12 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(), node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      rpc::Address remote_address;
-      remote_address.set_raylet_id(item.second.node_id());
-      remote_address.set_ip_address(item.second.node_manager_address());
-      remote_address.set_port(item.second.node_manager_port());
-      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      auto remote_address =
+          rpc::RayletClientPool::GenerateRayletAddress(item.first,
+                                                       item.second.node_manager_address(),
+                                                       item.second.node_manager_port());
+      auto raylet_client =
+          raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
       gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
   }
@@ -381,15 +391,16 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
           // GetOrConnectionByID will not connect to the raylet is it hasn't been
           // connected.
-          if (auto conn_opt = raylet_client_pool_->GetOrConnectByID(alive_node.first)) {
-            raylet_client = *conn_opt;
+          if (auto raylet_client_opt = raylet_client_pool_.GetByID(alive_node.first)) {
+            raylet_client = raylet_client_opt;
           } else {
             // When not connect, use GetOrConnectByAddress
-            rpc::Address remote_address;
-            remote_address.set_raylet_id(alive_node.second->node_id());
-            remote_address.set_ip_address(alive_node.second->node_manager_address());
-            remote_address.set_port(alive_node.second->node_manager_port());
-            raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+            auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+                alive_node.first,
+                alive_node.second->node_manager_address(),
+                alive_node.second->node_manager_port());
+            raylet_client =
+                raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
           }
           if (raylet_client == nullptr) {
             RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
@@ -488,7 +499,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       *cluster_task_manager_,
       schedule_failure_handler,
       schedule_success_handler,
-      *raylet_client_pool_,
+      raylet_client_pool_,
       worker_client_pool_,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
@@ -519,7 +530,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       *gcs_table_storage_,
       *gcs_node_manager_,
       *cluster_resource_scheduler_,
-      *raylet_client_pool_);
+      raylet_client_pool_);
 
   gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
       io_context_provider_.GetDefaultIOContext(),
@@ -538,8 +549,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 GcsServer::StorageType GcsServer::GetStorageType() const {
   if (RayConfig::instance().gcs_storage() == kInMemoryStorage) {
     if (!config_.redis_address.empty()) {
-      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
-                    << ":" << config_.redis_port;
+      RAY_LOG(INFO) << "Using external Redis for KV storage: "
+                    << BuildAddress(config_.redis_address, config_.redis_port);
       return StorageType::REDIS_PERSIST;
     }
     return StorageType::IN_MEMORY;
@@ -719,7 +730,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       *gcs_node_manager_,
       *gcs_actor_manager_,
       *gcs_placement_group_manager_,
-      *raylet_client_pool_,
+      raylet_client_pool_,
       kv_manager_->GetInstance(),
       io_context_provider_.GetDefaultIOContext(),
       gcs_publisher_.get());
@@ -736,7 +747,7 @@ void GcsServer::InitGcsTaskManager() {
   rpc_server_.RegisterService(
       std::make_unique<rpc::TaskInfoGrpcService>(io_context, *gcs_task_manager_));
   rpc_server_.RegisterService(
-      std::make_unique<rpc::EventExportGrpcService>(io_context, *gcs_task_manager_));
+      std::make_unique<rpc::RayEventExportGrpcService>(io_context, *gcs_task_manager_));
 }
 
 void GcsServer::InstallEventListeners() {
@@ -750,12 +761,10 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
-        rpc::Address address;
-        address.set_raylet_id(node->node_id());
-        address.set_ip_address(node->node_manager_address());
-        address.set_port(node->node_manager_port());
+        auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+            node_id, node->node_manager_address(), node->node_manager_port());
 
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+        auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
 
         if (gcs_healthcheck_manager_) {
           RAY_CHECK(raylet_client != nullptr);
@@ -775,7 +784,7 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);
-        raylet_client_pool_->Disconnect(node_id);
+        raylet_client_pool_.Disconnect(node_id);
         worker_client_pool_.Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());

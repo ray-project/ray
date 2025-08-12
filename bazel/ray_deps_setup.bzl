@@ -198,6 +198,15 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/cython/cython/archive/refs/tags/3.0.12.tar.gz",
         sha256 = "a156fff948c2013f2c8c398612c018e2b52314fdf0228af8fbdb5585e13699c2",
+        patches = [
+            # Use python3 rather than python. macos does not have python installed
+            # by default, and hermetic strict action does not work as python cannot
+            # be found under /usr/bin or any systeme PATH in bazel sandbox.
+            #
+            # This patch can be removed after the following change is included.
+            # https://github.com/cython/cython/pull/7053
+            "//thirdparty/patches:cython.patch",
+        ],
     )
 
     auto_http_archive(
@@ -270,6 +279,8 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-avoid-goaway-messages.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
         ],
     )
 

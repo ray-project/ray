@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
@@ -29,7 +30,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -65,7 +65,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_tasks_resubmitted = 0;
 };
 
-class MockRayletClient : public PinObjectsInterface {
+class MockRayletClient : public FakeRayletClient {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
@@ -128,21 +128,21 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(
             std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
+        raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
+            [&](const rpc::Address &) { return raylet_client_; })),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_manager_(std::make_shared<MockTaskManager>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &node_id) { return true; },
+            /*is_node_dead=*/[](const NodeID &) { return false; },
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
-            [&](const std::string &ip, int port) { return raylet_client_; },
-            raylet_client_,
+            raylet_client_pool_,
             [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
               object_directory_->AsyncGetLocations(object_id, callback);
-              return Status::OK();
             },
             *task_manager_,
             *ref_counter_,
@@ -159,7 +159,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-              RAY_CHECK(memory_store_->Put(data, object_id));
+              memory_store_->Put(data, object_id);
             }) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
@@ -180,6 +180,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockRayletClient> raylet_client_;
   std::shared_ptr<MockTaskManager> task_manager_;
   std::shared_ptr<ReferenceCounter> ref_counter_;
@@ -234,8 +235,9 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address()});
-  object_directory_->SetLocations(object_id, addresses);
+  rpc::Address address;
+  address.set_raylet_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
@@ -253,8 +255,11 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address(), rpc::Address()});
-  object_directory_->SetLocations(object_id, addresses);
+  rpc::Address address1;
+  address1.set_raylet_id(NodeID::FromRandom().Binary());
+  rpc::Address address2;
+  address2.set_raylet_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address1, address2});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);

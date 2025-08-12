@@ -33,7 +33,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ResourceManager,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
@@ -301,6 +303,8 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        self.op.metrics.num_output_queue_blocks = self.output_queue.num_blocks
+        self.op.metrics.num_output_queue_bytes = self.output_queue.memory_usage
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
