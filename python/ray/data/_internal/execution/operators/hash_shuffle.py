@@ -1008,9 +1008,15 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         if self._get_operator_num_cpus_per_partition_override() is not None:
             return self._get_operator_num_cpus_per_partition_override()
 
-        # 2. Check cluster resources
-        max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
-        if max_resources and (max_resources.get("CPU") or 0) > 0:
+        # 2. Fetch total available cluster resources
+        #
+        # NOTE: If cluster configuration is not available fallback to `ray.cluster_resources()`
+        total_cluster_resources = (
+            ray._private.state.state.get_max_resources_from_cluster_config() or
+            ray.cluster_resources()
+        )
+
+        if total_cluster_resources and (total_cluster_resources.get("CPU") or 0) > 0:
             # NOTE: For shuffling operations we aim to allocate no more than
             #       50% of CPUs, but no more than 1 CPU per partition
             return min(1, (max_resources["CPU"] / 2) / num_partitions)
