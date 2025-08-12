@@ -100,7 +100,6 @@ class DeploymentVersion:
         # Include app-level route prefix in the version hashes so changing
         # it triggers an in-place reconfigure of running replicas.
         serialized_route_prefix_for_hashing = _serialize(self.route_prefix_for_hashing)
-        serialized_route_prefix = _serialize(self.deployment_config.route_prefix)
 
         # If this changes, DeploymentReplica.reconfigure() will call reconfigure on the
         # actual replica actor
