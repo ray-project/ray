@@ -6,11 +6,13 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 
+@dataclass
 class BuildArgSet:
     name: str
     build_args: Dict[str, str]
 
 
+@dataclass
 class Depset:
     name: str
     operation: str
