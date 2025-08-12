@@ -90,7 +90,9 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     # Try to kill the actor, it should not die since a task is running
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    with pytest.raises(RuntimeError, match="The condition wasn't met before the timeout expired."):
+    with pytest.raises(
+        RuntimeError, match="The condition wasn't met before the timeout expired."
+    ):
         wait_for_condition(lambda: _actor_killed(worker_pid), 1)
 
     # Force kill the actor
