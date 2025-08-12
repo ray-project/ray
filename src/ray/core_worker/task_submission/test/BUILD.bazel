@@ -15,7 +15,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "ooo_actor_submit_queue_test",
+    name = "out_of_order_actor_submit_queue_test",
     size = "small",
     srcs = ["out_of_order_actor_submit_queue_test.cc"],
     tags = ["team:core"],
