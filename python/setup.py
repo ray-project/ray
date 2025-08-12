@@ -121,7 +121,7 @@ if os.getenv("RAY_INSTALL_CPP") == "1":
         "A subpackage of Ray which provides the Ray C++ API.",
         BUILD_TYPE,
     )
-elif os.getenv("RAY_PLACEHOLDER") == "1":
+elif RAY_PLACEHOLDER:
     setup_spec = SetupSpec(
         SetupType.RAY_PLACEHOLDER,
         "ray-placeholder",
