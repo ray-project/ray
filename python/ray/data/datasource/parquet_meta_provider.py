@@ -41,10 +41,10 @@ class _ParquetFileFragmentMetaData:
         self.num_row_groups = fragment_metadata.num_row_groups
         self.num_rows = fragment_metadata.num_rows
         self.serialized_size = fragment_metadata.serialized_size
-        # This is a pickled schema object, to be set later with
-        # `self.set_schema_pickled()`. To get the underlying schema, use
-        # `cloudpickle.loads(self.schema_pickled)`.
-        self.schema_pickled = None
+
+        # Serialize the schema directly in the constructor
+        schema_ser = cloudpickle.dumps(fragment_metadata.schema.to_arrow_schema())
+        self.schema_pickled = schema_ser
 
         # Calculate the total byte size of the file fragment using the original
         # object, as it is not possible to access row groups from this class.
@@ -212,32 +212,14 @@ def _fetch_metadata_serialization_wrapper(
 def _fetch_metadata(
     fragments: List["pyarrow.dataset.ParquetFileFragment"],
 ) -> List[_ParquetFileFragmentMetaData]:
-    fragment_metadata: List["pyarrow.parquet.FileMetaData"] = []
+    fragment_metadatas = []
     for f in fragments:
         try:
-            fragment_metadata.append(f.metadata)
+            # Convert directly to _ParquetFileFragmentMetaData
+            fragment_metadatas.append(_ParquetFileFragmentMetaData(f.metadata))
         except AttributeError:
             break
-    return _dedupe_metadata(fragment_metadata)
-
-
-def _dedupe_metadata(
-    raw_metadatas: List["pyarrow.parquet.FileMetaData"],
-) -> List[_ParquetFileFragmentMetaData]:
-    """For datasets with a large number of columns, the FileMetaData
-    (in particular the schema) can be very large. We can reduce the
-    memory usage by only keeping unique schema objects across all
-    file fragments. This method deduplicates the schemas and returns
-    a list of `_ParquetFileFragmentMetaData` objects."""
-    # Convert raw metadata to _ParquetFileFragmentMetaData objects
-    fragment_metadatas = []
-    for fragment_metadata in raw_metadatas:
-        stripped_md = _ParquetFileFragmentMetaData(fragment_metadata)
-        schema_ser = cloudpickle.dumps(fragment_metadata.schema.to_arrow_schema())
-        stripped_md.set_schema_pickled(schema_ser)
-        fragment_metadatas.append(stripped_md)
-
-    # Deduplicate schemas across all fragment metadata objects
+    # Deduplicate schemas to reduce memory usage
     return _dedupe_schemas(fragment_metadatas)
 
 
