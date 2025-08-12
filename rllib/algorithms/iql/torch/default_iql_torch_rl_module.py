@@ -23,11 +23,8 @@ class DefaultIQLTorchRLModule(DefaultSACTorchRLModule, DefaultIQLRLModule):
     @override(DefaultSACTorchRLModule)
     def _forward_train(self, batch: Dict, **kwargs) -> Dict[str, Any]:
 
-        if self.inference_only:
-            raise RuntimeError(
-                "Trying to train a module that is not a learner module. Set the "
-                "flag `inference_only=False` when building the module."
-            )
+        # Right now, IQL runs only with continuous action spaces.
+        # TODO (simon): Implement it also for discrete action spaces.
         if not isinstance(self.action_space, gym.spaces.Box):
             raise ValueError(
                 f"Unsupported action space type: {type(self.action_space)}. "

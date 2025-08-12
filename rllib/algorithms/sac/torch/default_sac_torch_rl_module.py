@@ -54,11 +54,8 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
-        if self.inference_only:
-            raise RuntimeError(
-                "Trying to train a module that is not a learner module. Set the "
-                "flag `inference_only=False` when building the module."
-            )
+        # Call the `super`'s `forward_train`
+        super()._forward_train()
         if isinstance(self.action_space, gym.spaces.Discrete):
             return self._forward_train_discrete(batch)
         elif isinstance(self.action_space, gym.spaces.Box):

@@ -65,11 +65,11 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rates correspondingly.
-        actor_lr=2.85e-4 * (args.num_learners or 1) ** 0.5,
-        critic_lr=4e-5 * (args.num_learners or 1) ** 0.5,
-        value_lr=5.7e-5 * (args.num_learners or 1) ** 0.5,
+        actor_lr=2.59e-4 * (args.num_learners or 1) ** 0.5,
+        critic_lr=2.14e-4 * (args.num_learners or 1) ** 0.5,
+        value_lr=3.7e-5 * (args.num_learners or 1) ** 0.5,
         # Smooth Polyak-averaging for the target network.
-        tau=1.8e-3,
+        tau=6e-4,
         # Update the target network each training iteration.
         target_network_update_freq=1,
         train_batch_size_per_learner=1024,
