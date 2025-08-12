@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Set
 import threading
+from collections import defaultdict, deque
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -68,6 +69,7 @@ def __ray_recv__(
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
+    # ~ signal that an object is arriving
 
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
@@ -119,10 +121,11 @@ class GPUObjectStore:
     """
 
     def __init__(self):
-        # A dictionary that maps from an object ID to a list of tensors.
+        # A dictionary that maps from an object ID to a queue of tensor lists.
+        # Each entry in the queue is a list of tensors for one copy of the object.
         #
         # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
-        self._gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
+        self._gpu_object_store: Dict[str, deque[List["torch.Tensor"]]] = defaultdict(deque)
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
@@ -130,13 +133,20 @@ class GPUObjectStore:
         # A set of object IDs that are the primary copy.
         self._primary_gpu_object_ids: Set[str] = set()
 
+        
+
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
-            return obj_id in self._gpu_object_store
+            return obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
-            return self._gpu_object_store[obj_id]
+            queue = self._gpu_object_store.get(obj_id)
+            if queue and len(queue) > 0:
+                # For primary copies, we peek at the front without removing
+                # For non-primary, we also peek (pop happens separately)
+                return queue[0]
+            return None
 
     def add_object(
         self,
@@ -155,7 +165,8 @@ class GPUObjectStore:
         with self._object_present_cv:
             if is_primary:
                 self._primary_gpu_object_ids.add(obj_id)
-            self._gpu_object_store[obj_id] = gpu_object
+            # Append to the queue instead of overwriting
+            self._gpu_object_store[obj_id].append(gpu_object)
             self._object_present_cv.notify_all()
 
     def is_primary_copy(self, obj_id: str) -> bool:
@@ -214,7 +225,8 @@ class GPUObjectStore:
         """
         with self._object_present_cv:
             present = self._object_present_cv.wait_for(
-                lambda: obj_id in self._gpu_object_store, timeout=timeout
+                lambda: obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0,
+                timeout=timeout
             )
             if not present:
                 raise TimeoutError(
@@ -223,17 +235,14 @@ class GPUObjectStore:
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
-            assert (
-                obj_id in self._gpu_object_store
-            ), f"obj_id={obj_id} not found in GPU object store"
-            tensors = self._gpu_object_store.pop(obj_id)
-            if obj_id in self._primary_gpu_object_ids:
-                self._primary_gpu_object_ids.remove(obj_id)
-            return tensors
+            queue = self._gpu_object_store.get(obj_id)
+            assert queue and len(queue) > 0, f"obj_id={obj_id} not found in GPU object store"
+            return queue.popleft()
 
     def get_num_objects(self) -> int:
         """
         Return the number of objects in the GPU object store.
         """
         with self._lock:
-            return len(self._gpu_object_store)
+            # Count total objects across all queues
+            return sum(len(queue) for queue in self._gpu_object_store.values())
