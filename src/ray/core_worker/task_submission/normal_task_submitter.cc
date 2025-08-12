@@ -275,8 +275,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
     backlog_report.set_backlog_size(backlog.second.second);
     backlog_reports.emplace_back(backlog_report);
   }
-  local_raylet_client_->ReportWorkerBacklog(
-      WorkerID::FromBinary(rpc_address_.worker_id()), backlog_reports);
+  local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
@@ -323,8 +322,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   }
 
   // Generate a LeaseID using the current worker ID
-  const LeaseID lease_id =
-      LeaseID::FromWorkerId(WorkerID::FromBinary(rpc_address_.worker_id()));
+  const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_);
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker. TODO(joshlee): Remove this once
@@ -345,7 +343,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto raylet_client = GetOrConnectRayletClient(raylet_address);
   const std::string task_name = resource_spec.GetName();
-  RAY_LOG(DEBUG) << "Requesting lease " << lease_id.Hex() << " from raylet "
+  RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
                  << task_name;
 
