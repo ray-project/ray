@@ -4132,6 +4132,7 @@ py_test(
     args = [
         "--as-test",
         "--port=12346",
+        "--use-dummy-client",
     ],
     main = "examples/envs/env_connecting_to_rllib_w_tcp_client.py",
     tags = [
