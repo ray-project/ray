@@ -171,7 +171,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
         # ints will be converted to floats upon serialization
         # manually do it here for clarity
         return float(obj)
-    elif isinstance(obj, (bool)) or obj is None:
+    elif isinstance(obj, bool) or obj is None:
         return obj
     elif isinstance(obj, str):
         return _add_ellipsis(obj, truncate_length)
