@@ -345,17 +345,17 @@ class ServeControllerClient:
         ray.get(self._controller.apply_config.remote(config))
 
         if _blocking:
-            start = time.time()
+            timeout_s = 60
 
-            while time.time() - start < RAY_SERVE_APP_DELETION_TIMEOUT_S:
+            start = time.time()
+            while time.time() - start < timeout_s:
                 curr_status = self.get_serve_status()
                 if curr_status.app_status.status == ApplicationStatus.RUNNING:
                     break
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
             else:
                 raise TimeoutError(
-                    f"Serve application isn't running after "
-                    f"{RAY_SERVE_APP_DELETION_TIMEOUT_S}s."
+                    f"Serve application isn't running after {timeout_s}s."
                 )
 
     @_ensure_connected
@@ -367,7 +367,7 @@ class ServeControllerClient:
         self._controller.delete_apps.remote(names)
         if blocking:
             start = time.time()
-            while time.time() - start < 60:
+            while time.time() - start < RAY_SERVE_APP_DELETION_TIMEOUT_S:
                 curr_statuses_bytes = ray.get(
                     self._controller.get_serve_statuses.remote(names)
                 )
