@@ -95,12 +95,12 @@ class DependencySetManager:
             self.execute_single(depset)
 
     def get_depset_by_id(self, depset_id: Tuple[str, str]) -> Depset:
-        depset = self.depset_map[depset_id]
-        if not depset:
+        try:
+            return self.depset_map[depset_id]
+        except KeyError:
             raise KeyError(
                 f"Dependency set {depset_id[0]} with build arg set {depset_id[1]} not found"
             )
-        return depset
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
