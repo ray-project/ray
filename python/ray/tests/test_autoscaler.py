@@ -3516,10 +3516,8 @@ class AutoscalingTest(unittest.TestCase):
                 StandardAutoscaler=FaultyAutoscaler,
                 _internal_kv_initialized=Mock(return_value=False),
             ):
-                # gcs_addr = ray._private.worker._global_node.gcs_address
                 monitor = Monitor(
                     address="localhost:12345",
-                    # address=gcs_addr,
                     autoscaling_config="",
                     log_dir=self.tmpdir,
                 )
