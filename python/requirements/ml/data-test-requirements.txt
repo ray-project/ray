@@ -2,8 +2,12 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 python-snappy
+tensorflow
 tensorflow-datasets==4.9.3
-datasets>=3.0.2
+torchvision
+torchtext
+transformers
+datasets
 pytest-repeat
 soundfile
 fastavro

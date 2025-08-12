@@ -117,8 +117,6 @@ of the returned batch, set ``batch_format``.
 
             import ray
 
-            assert ray.data.context.DataContext.get_current().execution_options.preserve_order
-
             ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
             batch = ds.take_batch(batch_size=2, batch_format="pandas")
@@ -144,6 +142,8 @@ Ray Data calculates statistics during execution for each operator, such as wall 
 
 To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data/ray-data.log`.
 For more on how to read this output, see :ref:`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
+
+.. This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54101.
 
 .. testcode::
     :skipif: True

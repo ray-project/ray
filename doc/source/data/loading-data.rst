@@ -487,7 +487,8 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         by your Daft query.
 
         .. warning::
-            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later.
+            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later. For more
+            information, see `this issue <https://github.com/ray-project/ray/issues/54837>`__.
 
         .. testcode::
             :skipif: True
@@ -669,6 +670,8 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
             large memory-mapped HuggingFace Datasets. Additionally, HuggingFace `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and
             `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
             objects aren't supported.
+
+        .. This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54837.
 
         .. testcode::
             :skipif: True
