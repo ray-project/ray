@@ -391,7 +391,7 @@ async def _main(
     multiple=True,
     type=int,
     default=[5, 100, 800],
-    help="Max ongoing requests for throughput benchmarks. Must be in the same order as --concurrency. Default: [5, 100, 800]",
+    help="Max ongoing requests for throughput benchmarks. Must be in the same order as --concurrencies. Default: [5, 100, 800]",
 )
 @click.option(
     "--concurrencies",
