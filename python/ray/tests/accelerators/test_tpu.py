@@ -425,6 +425,5 @@ def test_reserve_tpu_slice(ray_tpu_cluster):
     assert reserved_name == tpu_slice_name
 
 
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

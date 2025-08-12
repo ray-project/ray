@@ -131,8 +131,6 @@ def infer_tpu_pod_type_from_topology(
 def fetch_tpu_slice_name_from_pg(pg):
     @ray.remote(num_cpus=0)
     def _get_tpu_slice_name():
-        import ray
-
         return (
             TPUAcceleratorManager.get_current_node_tpu_name()
         )
