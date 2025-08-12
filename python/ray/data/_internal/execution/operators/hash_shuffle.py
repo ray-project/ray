@@ -550,7 +550,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             input_key_column_names = self._key_column_names[input_index]
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
-                "num_cpus": 1,
+                "num_cpus": 0.5,
                 "memory": self._estimate_shuffling_memory_req(block_metadata),
             }
 
@@ -1020,8 +1020,12 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         if total_cluster_resources and (total_cluster_resources.get("CPU") or 0) > 0:
             # NOTE: For shuffling operations we aim to allocate no more than
-            #       50% of CPUs, but no more than 1 CPU per partition
-            return min(1, (max_resources["CPU"] / 2) / num_partitions)
+            #       10% of CPUs, but no more than 0.25 CPU per partition
+            #
+            # TODO finalization stage of shuffle operation always executes standalone,
+            #      hence there's no need to allocate actual CPU resources to it as
+            #      there are no other ops to contend w/ it
+            return min(0.25, (total_cluster_resources["CPU"] * 0.1) / num_partitions)
 
         # 3. Fallback to defaults if the first two options are not available
         return self._get_default_num_cpus_per_partition()
