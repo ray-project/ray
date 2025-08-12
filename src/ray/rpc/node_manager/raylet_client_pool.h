@@ -63,6 +63,9 @@ class RayletClientPool {
                                             const std::string &ip_address,
                                             int port);
 
+  void AddExistingClient(const NodeID &raylet_id,
+                         const std::shared_ptr<ray::RayletClientInterface> &client);
+
  private:
   absl::Mutex mu_;
 

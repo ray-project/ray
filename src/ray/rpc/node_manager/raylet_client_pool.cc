@@ -79,6 +79,12 @@ std::function<void()> RayletClientPool::GetDefaultUnavailableTimeoutCallback(
   };
 }
 
+void RayletClientPool::AddExistingClient(
+    const NodeID &raylet_id, const std::shared_ptr<ray::RayletClientInterface> &client) {
+  absl::MutexLock lock(&mu_);
+  client_map_[raylet_id] = client;
+}
+
 std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddress(
     const rpc::Address &address) {
   RAY_CHECK(address.raylet_id() != "");

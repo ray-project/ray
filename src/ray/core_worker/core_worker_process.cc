@@ -277,6 +277,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_raylet_id, options.node_ip_address, options.node_manager_port);
 
+  auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
+      std::move(raylet_address),
+      *client_call_manager,
+      /*raylet_unavailable_timeout_callback=*/[] {});
+
   auto raylet_rpc_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -290,7 +295,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                       core_worker->raylet_rpc_client_pool_.get(),
                       addr));
       });
-  raylet_rpc_client_pool->GetOrConnectByAddress(raylet_address);
+
+  raylet_rpc_client_pool->AddExistingClient(local_raylet_id,
+                                            std::move(local_raylet_rpc_client));
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
       std::make_shared<rpc::CoreWorkerClientPool>([this](const rpc::Address &addr) {
