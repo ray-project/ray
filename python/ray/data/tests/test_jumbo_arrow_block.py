@@ -8,9 +8,9 @@ import pytest
 from pyarrow import parquet as pq
 
 import ray
-from ray.tests.conftest import _ray_start
 from ray.data import DataContext
 from ray.data._internal.util import GiB, MiB
+from ray.tests.conftest import _ray_start
 
 
 @pytest.fixture(scope="module")
@@ -58,7 +58,6 @@ def ray_cluster_3gb_object_store():
     ray._private.ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = original_limit
 
 
-@patch("ray._private.ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT", 3 * GiB)
 @pytest.mark.parametrize(
     "op",
     [
