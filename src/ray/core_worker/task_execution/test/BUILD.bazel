@@ -25,7 +25,7 @@ ray_cc_test(
 
 # Test name is shortened for running on Windows.
 ray_cc_test(
-    name = "concrncy_grp_mgr_test",
+    name = "concurrency_grp_mgr_test",
     srcs = ["concurrency_group_manager_test.cc"],
     tags = ["team:core"],
     deps = [

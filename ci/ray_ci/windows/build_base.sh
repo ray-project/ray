@@ -20,6 +20,9 @@ pip install -U --ignore-installed -c python/requirements_compiled.txt \
   -r python/requirements/test-requirements.txt \
   -r python/requirements/ml/dl-cpu-requirements.txt
 
+# Set LongPathsEnabled=1 in the registry to avoid errors from long paths in bazel tests.
+powershell ci/ray_ci/windows/enable_long_paths.ps1
+
 # Clean up caches to minimize image size. These caches are not needed, and
 # removing them help with the build speed.
 pip cache purge
