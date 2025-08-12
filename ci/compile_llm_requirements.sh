@@ -17,8 +17,6 @@ for CUDA_CODE in cpu cu121 cu128; do
 	UV_PIP_COMPILE=(
 		uv pip compile --generate-hashes --strip-extras
 		--unsafe-package ray
-		# The version we use on python 3.9 is not installable on python 3.11
-		--unsafe-package grpcio-tools
 		# setuptools should not be pinned.
 		--unsafe-package setuptools
 		--index-url "https://pypi.org/simple"
