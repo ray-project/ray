@@ -348,16 +348,17 @@ to turn it off.
 Frequently Asked Questions (FAQs)
 --------------------------------------------------
 
+.. TODO(#55491): Rewrite this section once the restriction is lifted.
 .. _cross_node_parallelism:
 
-Can I configure LLM stage to parallelize across multiple nodes?
+How to configure LLM stage to parallelize across multiple nodes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-At the moment, Ray Data LLM does not support cross-node parallelism (either
+At the moment, Ray Data LLM doesn't support cross-node parallelism (either
 tensor parallelism or pipeline parallelism).
 
-The processing pipeline is designed to run on a single node. We calculate the
-number of GPUs as the product of the tensor parallel size and the pipeline
+The processing pipeline is designed to run on a single node. The number of
+GPUs is calculated as the product of the tensor parallel size and the pipeline
 parallel size, and apply
 [`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
 to ensure that each replica of the LLM stage is executed on a single node.
@@ -369,7 +370,7 @@ replicas is configured by the `concurrency` argument in
 
 .. _model_cache:
 
-How do I cache model weight to remote object storage
+How to cache model weight to remote object storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 While deploying Ray Data LLM to large scale clusters, model loading may be rate
