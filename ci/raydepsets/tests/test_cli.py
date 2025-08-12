@@ -298,8 +298,6 @@ class TestCli(unittest.TestCase):
         expected_flags.remove("--unsafe-package")
         expected_flags.remove("ray")
         expected_flags.remove("--unsafe-package")
-        expected_flags.remove("grpcio-tools")
-        expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
         assert (
