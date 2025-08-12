@@ -133,6 +133,7 @@ async def _main(
     run_throughput: bool,
     run_streaming: bool,
     throughput_max_ongoing_requests: List[int],
+    concurrencies: List[int],
 ):
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
@@ -157,14 +158,16 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: HTTP throughput
-            for max_ongoing_requests in throughput_max_ongoing_requests:
+            for max_ongoing_requests, concurrency in zip(
+                throughput_max_ongoing_requests, concurrencies
+            ):
                 serve.run(
                     Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
                 )
                 url = get_application_url(use_localhost=True)
                 mean, std, _ = await run_throughput_benchmark(
-                    fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
-                    multiplier=BATCH_SIZE,
+                    fn=partial(do_single_http_batch, batch_size=concurrency, url=url),
+                    multiplier=concurrency,
                     num_trials=NUM_TRIALS,
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
@@ -279,7 +282,9 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
-            for max_ongoing_requests in throughput_max_ongoing_requests:
+            for max_ongoing_requests, concurrency in zip(
+                throughput_max_ongoing_requests, concurrencies
+            ):
                 serve.start(grpc_options=serve_grpc_options)
                 serve.run(
                     GrpcDeployment.options(
@@ -291,9 +296,9 @@ async def _main(
                 )
                 mean, std, _ = await run_throughput_benchmark(
                     fn=partial(
-                        do_single_grpc_batch, batch_size=BATCH_SIZE, target=target
+                        do_single_grpc_batch, batch_size=concurrency, target=target
                     ),
-                    multiplier=BATCH_SIZE,
+                    multiplier=concurrency,
                     num_trials=NUM_TRIALS,
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
@@ -320,14 +325,16 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: Handle throughput
-            for max_ongoing_requests in throughput_max_ongoing_requests:
+            for max_ongoing_requests, concurrency in zip(
+                throughput_max_ongoing_requests, concurrencies
+            ):
                 h: DeploymentHandle = serve.run(
                     Benchmarker.options(max_ongoing_requests=max_ongoing_requests).bind(
                         Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
                     )
                 )
                 mean, std, _ = await h.run_throughput_benchmark.remote(
-                    batch_size=BATCH_SIZE,
+                    batch_size=concurrency,
                     num_trials=NUM_TRIALS,
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
@@ -383,8 +390,16 @@ async def _main(
     "-t",
     multiple=True,
     type=int,
-    default=[5, 100],
-    help="Max ongoing requests for throughput benchmarks. Default: [5, 100]",
+    default=[5, 100, 800],
+    help="Max ongoing requests for throughput benchmarks. Must be in the same order as --concurrencies. Default: [5, 100, 800]",
+)
+@click.option(
+    "--concurrencies",
+    "-c",
+    multiple=True,
+    type=int,
+    default=[100, 100, 800],
+    help="User concurrency for throughput benchmarks. Must be in the same order as --throughput-max-ongoing-requests. Default: [100, 100, 800]",
 )
 def main(
     output_path: Optional[str],
@@ -396,7 +411,12 @@ def main(
     run_throughput: bool,
     run_streaming: bool,
     throughput_max_ongoing_requests: List[int],
+    concurrencies: List[int],
 ):
+    assert len(throughput_max_ongoing_requests) == len(
+        concurrencies
+    ), "Must have the same number of --throughput-max-ongoing-requests and --concurrencies"
+
     # If none of the flags are set, default to run all
     if not (
         run_http
@@ -426,6 +446,7 @@ def main(
             run_throughput,
             run_streaming,
             throughput_max_ongoing_requests,
+            concurrencies,
         )
     )
 
