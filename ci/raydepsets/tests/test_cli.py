@@ -298,8 +298,6 @@ class TestCli(unittest.TestCase):
         expected_flags.remove("--unsafe-package")
         expected_flags.remove("ray")
         expected_flags.remove("--unsafe-package")
-        expected_flags.remove("grpcio-tools")
-        expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
         assert (
@@ -462,9 +460,7 @@ depsets:
             )
             depset = manager.get_depset("build_args_test_depset_py311")
             assert depset.name == "build_args_test_depset_py311"
-            assert depset.build_arg_set.name == "py311_cpu"
-            assert depset.build_arg_set.build_args["PYTHON_VERSION"] == "py311"
-            assert depset.build_arg_set.build_args["CUDA_VERSION"] == "cpu"
+            assert depset.build_arg_set_name == "py311_cpu"
 
     def test_get_depset_without_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -475,7 +471,7 @@ depsets:
             )
             depset = manager.get_depset("ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
-            assert depset.build_arg_set is None
+            assert depset.build_arg_set_name is None
 
 
 if __name__ == "__main__":
