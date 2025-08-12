@@ -2112,7 +2112,6 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
     // Unset the worker's assigned task. We keep the assigned task ID for
     // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
-    worker->AssignLeaseId(LeaseID::Nil());
     worker->AssignTaskId(TaskID::Nil());
     worker->SetOwnerAddress(rpc::Address());
   }

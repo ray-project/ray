@@ -286,8 +286,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Warning: this does NOT release the worker's resources, or put the leased worker
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
   // resources well.
-  void ReleaseWorker(const LeaseID &lease_id) {
+  void ReleaseWorker(LeaseID lease_id) {
     if (leased_workers_[lease_id]) {
+      // NOTE: since the leaseID passed to ReleaseWorker is retrieved from the worker, if
+      // we pass by const reference it will modify the parameter causing the erase to fail
       leased_workers_[lease_id]->AssignLeaseId(LeaseID::Nil());
     }
     leased_workers_.erase(lease_id);
