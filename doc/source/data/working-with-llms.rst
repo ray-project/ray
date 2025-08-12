@@ -352,7 +352,7 @@ Frequently Asked Questions (FAQs)
 .. _cross_node_parallelism:
 
 How to configure LLM stage to parallelize across multiple nodes?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 At the moment, Ray Data LLM doesn't support cross-node parallelism (either
 tensor parallelism or pipeline parallelism).
