@@ -85,18 +85,18 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
-    use_tpu: Union[bool, SampleRange] = False
+    use_tpu: Union[bool] = False
     topology: Optional[str] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
-        if self.resources_per_worker:
-            if self.use_gpu and self.use_tpu:
-                raise ValueError(
-                    "Cannot specify both `use_gpu=True` and `use_tpu=True`."
-                )
+
+        if self.use_gpu and self.use_tpu:
+            raise ValueError(
+                "Cannot specify both `use_gpu=True` and `use_tpu=True`."
+            )
 
         if not self.use_tpu and self.num_tpus_per_worker > 0:
             raise ValueError(

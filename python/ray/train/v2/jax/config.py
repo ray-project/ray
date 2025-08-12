@@ -32,7 +32,7 @@ def _setup_jax_tpu_environment(
 
     jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
 
-    if jax_platforms == "tpu":
+    if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 

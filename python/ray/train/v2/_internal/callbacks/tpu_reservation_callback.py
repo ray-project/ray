@@ -26,11 +26,13 @@ class TPUReservationCallback(ControllerCallback):
             the worker group on the reserved TPU slice.
         """
         bundle_label_selector = None
+        assert scaling_config.accelerator_type is not None
+        assert scaling_config.topology is not None
 
-        if getattr(scaling_config, "use_tpu", False) and num_workers > 1:
+        if scaling_config.use_tpu and (num_workers > 1 or scaling_config.num_workers > 1):
             slice_name = reserve_tpu_slice(
-                topology=getattr(scaling_config, "topology", None),
-                accelerator_type=getattr(scaling_config, "accelerator_type", None),
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
             )
             if not slice_name:
                 raise RuntimeError("Failed to reserve TPU slice.")

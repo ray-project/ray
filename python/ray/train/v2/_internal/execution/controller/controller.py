@@ -285,14 +285,13 @@ class TrainController:
         # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
         bundle_label_selector = None
         try:
-            for callback in self._callbacks:
-                if hasattr(callback, "on_controller_start_worker_group"):
-                    selector = callback.on_controller_start_worker_group(
-                        scaling_config=scaling_config, num_workers=num_workers
-                    )
-                    if selector:
-                        bundle_label_selector = selector
-                        break
+            for callback in self._controller_callbacks:
+                selector = callback.on_controller_start_worker_group(
+                    scaling_config=scaling_config, num_workers=num_workers
+                )
+                if selector:
+                    bundle_label_selector = selector
+                    break
         except Exception as e:
             return ControllerError(e)
 

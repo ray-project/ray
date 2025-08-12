@@ -79,6 +79,10 @@ class ControllerCallback(RayTrainCallback):
         before the control loop starts executing."""
         pass
 
+    # TODO(matthewdeng): Revisit this callback interface for better extensibility.
+    # This hook was added for the specific use case of setting a `bundle_label_selector`
+    # for new worker groups (e.g., for TPU reservations). The current interface is
+    # tightly coupled to this purpose and limits its reuse for other use-cases.
     def on_controller_start_worker_group(
         self, *, scaling_config: ScalingConfig, num_workers: int
     ) -> Optional[Dict[str, str]]:
