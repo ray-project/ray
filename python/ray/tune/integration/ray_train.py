@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 
-import ray.tune
 from ray.train import Checkpoint as RayTrainCheckpoint
+from ray.train._internal.session import get_session
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.callback import UserCallback
 from ray.util.annotations import DeveloperAPI
@@ -12,6 +12,9 @@ CHECKPOINT_PATH_KEY = "checkpoint_path"
 @DeveloperAPI
 class TuneReportCallback(UserCallback):
     """Propagate metrics and checkpoint paths from Ray Train workers to Ray Tune."""
+
+    def __init__(self):
+        self.training_actor_result_queue = get_session().training_actor_result_queue
 
     def after_report(
         self,
@@ -29,4 +32,4 @@ class TuneReportCallback(UserCallback):
         if checkpoint:
             metrics[CHECKPOINT_PATH_KEY] = checkpoint.path
 
-        ray.tune.report(metrics=metrics)
+        self.training_actor_result_queue.put(metrics)

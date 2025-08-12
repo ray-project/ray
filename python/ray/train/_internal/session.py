@@ -36,6 +36,7 @@ from ray.train.constants import (
 )
 from ray.train.error import SessionMisuseError
 from ray.train.utils import _log_deprecation_warning
+from ray.util import queue as ray_queue
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -205,6 +206,9 @@ class _TrainSession:
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
 
+        # Queue for sending results from training actor to main thread.
+        self.training_actor_result_queue = ray_queue.Queue(1)
+
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
         # error reporting to block until finished.
@@ -282,24 +286,14 @@ class _TrainSession:
         result = None
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
-            try:
-                result = self.result_queue.get(
-                    block=True, timeout=_RESULT_FETCH_TIMEOUT
-                )
-            except queue.Empty:
-                pass
+            result = self._get_result_from_queues(block=True)
 
         # If no result was found, then the runner must no longer be alive.
         if result is None:
             # Try one last time to fetch results in case results were
             # reported in between the time of the last check and the
             # termination of the thread runner.
-            try:
-                result = self.result_queue.get(
-                    block=False, timeout=_RESULT_FETCH_TIMEOUT
-                )
-            except queue.Empty:
-                pass
+            result = self._get_result_from_queues(block=False)
 
         # check if error occurred inside the thread runner.
         if result is None:
@@ -323,6 +317,25 @@ class _TrainSession:
             self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
+        return result
+
+    def _get_result_from_queues(self, block: bool) -> Optional[_TrainingResult]:
+        """Get result from result queue. Pass result from training actor result queue if needed."""
+        result = None
+        try:
+            training_actor_result = self.training_actor_result_queue.get(
+                block=block, timeout=_RESULT_FETCH_TIMEOUT
+            )
+            if training_actor_result:
+                # Must release continue_lock to allow report to work.
+                self.continue_lock.release()
+                self.report(training_actor_result)
+        except ray_queue.Empty:
+            pass
+        try:
+            result = self.result_queue.get(block=block, timeout=_RESULT_FETCH_TIMEOUT)
+        except queue.Empty:
+            pass
         return result
 
     def _auto_fill_metrics(self, result: dict) -> dict:
