@@ -475,105 +475,45 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 )
 
 # Task Completion Time Percentiles
-TASK_COMPLETION_TIME_P00_PANEL = Panel(
+TASK_COMPLETION_TIME_PANEL = Panel(
     id=38,
-    title="(p00) Task Completion Time",
-    description="Time spent running tasks to completion.",
+    title="Task Completion Time",
+    description="Time spent running tasks to completion w/ backpressure.",
     unit="seconds",
     targets=[
         Target(
-            expr="histogram_quantile(0, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p00) Completion Time: {{dataset}}, {{operator}}",
+            expr="increase(ray_data_task_completion_time{{{global_filters}}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+            legend="Task Completion Time: {{dataset}}, {{operator}}",
         ),
     ],
     fill=0,
     stack=False,
 )
 
-TASK_COMPLETION_TIME_P05_PANEL = Panel(
+TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
     id=39,
-    title="(p05) Task Completion Time",
-    description="Time spent running tasks to completion.",
+    title="Task Output Backpressure Time",
+    description="Time spent in output backpressure.",
     unit="seconds",
     targets=[
         Target(
-            expr="histogram_quantile(0.05, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p05) Completion Time: {{dataset}}, {{operator}}",
+            expr="increase(ray_data_task_output_backpressure_time{{{global_filters}}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+            legend="Task Output Backpressure Time: {{dataset}}, {{operator}}",
         ),
     ],
     fill=0,
     stack=False,
 )
 
-TASK_COMPLETION_TIME_P50_PANEL = Panel(
+TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
     id=40,
-    title="(p50) Task Completion Time",
-    description="Time spent running tasks to completion.",
+    title="Task Completion Time Without Backpressure",
+    description="Time spent running tasks to completion w/o backpressure.",
     unit="seconds",
     targets=[
         Target(
-            expr="histogram_quantile(0.50, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p50) Completion Time: {{dataset}}, {{operator}}",
-        ),
-    ],
-    fill=0,
-    stack=False,
-)
-
-TASK_COMPLETION_TIME_P75_PANEL = Panel(
-    id=41,
-    title="(p75) Task Completion Time",
-    description="Time spent running tasks to completion.",
-    unit="seconds",
-    targets=[
-        Target(
-            expr="histogram_quantile(0.75, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p75) Completion Time: {{dataset}}, {{operator}}",
-        ),
-    ],
-    fill=0,
-    stack=False,
-)
-
-TASK_COMPLETION_TIME_P90_PANEL = Panel(
-    id=42,
-    title="(p90) Task Completion Time",
-    description="Time spent running tasks to completion.",
-    unit="seconds",
-    targets=[
-        Target(
-            expr="histogram_quantile(0.9, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p90) Completion Time: {{dataset}}, {{operator}}",
-        ),
-    ],
-    fill=0,
-    stack=False,
-)
-
-TASK_COMPLETION_TIME_P99_PANEL = Panel(
-    id=44,
-    title="p(99) Task Completion Time",
-    description="Time spent running tasks to completion.",
-    unit="seconds",
-    targets=[
-        Target(
-            expr="histogram_quantile(0.99, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p99) Completion Time: {{dataset}}, {{operator}}",
-        ),
-    ],
-    fill=0,
-    stack=False,
-)
-
-TASK_COMPLETION_TIME_P100_PANEL = Panel(
-    id=45,
-    title="p(100) Task Completion Time",
-    description="Time spent running tasks to completion.",
-    unit="seconds",
-    targets=[
-        Target(
-            expr="histogram_quantile(1, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-            legend="(p100) Completion Time: {{dataset}}, {{operator}}",
+            expr="increase(ray_data_task_completion_time_without_backpressure{{{global_filters}}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}}}[5m])",
+            legend="Task Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
         ),
     ],
     fill=0,
@@ -935,15 +875,24 @@ DATA_GRAFANA_ROWS = [
             ROWS_OUTPUT_PER_SECOND_PANEL,
             AVERAGE_BYTES_PER_BLOCK_PANEL,
             AVERAGE_BLOCKS_PER_TASK_PANEL,
+            BLOCK_GENERATION_TIME_PANEL,
         ],
         collapsed=True,
     ),
-    # Scheduling Loop Row
+    # Tasks
     Row(
-        title="Scheduling Loop",
+        title="Tasks",
         id=104,
         panels=[
-            SCHEDULING_LOOP_DURATION_PANEL,
+            TASK_COMPLETION_TIME_PANEL,
+            TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
+            TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
+            TASK_SUBMISSION_BACKPRESSURE_PANEL,
+            TASK_THROUGHPUT_BY_NODE_PANEL,
+            TASKS_WITH_OUTPUT_PANEL,
+            SUBMITTED_TASKS_PANEL,
+            FINISHED_TASKS_PANEL,
+            FAILED_TASKS_PANEL,
         ],
         collapsed=True,
     ),
@@ -965,10 +914,19 @@ DATA_GRAFANA_ROWS = [
         ],
         collapsed=True,
     ),
+    # Scheduling Loop Row
+    Row(
+        title="Scheduling Loop",
+        id=106,
+        panels=[
+            SCHEDULING_LOOP_DURATION_PANEL,
+        ],
+        collapsed=True,
+    ),
     # Iteration Row
     Row(
         title="Iteration",
-        id=106,
+        id=107,
         panels=[
             ITERATION_INITIALIZATION_PANEL,
             ITERATION_BLOCKED_PANEL,
