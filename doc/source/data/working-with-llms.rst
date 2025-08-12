@@ -362,6 +362,11 @@ parallel size, and apply
 [`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
 to ensure that each replica of the LLM stage is executed on a single node.
 
+Nevertheless, you can still horizontally scale the LLM stage to multiple nodes
+as long as each replica (TP * PP) fits into a single node. The number of
+replicas is configured by the `concurrency` argument in
+:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
+
 .. _model_cache:
 
 How do I cache model weight to remote object storage
