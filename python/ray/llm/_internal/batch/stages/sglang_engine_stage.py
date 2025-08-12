@@ -184,7 +184,7 @@ class SGLangEngineWrapper:
             request: The request.
 
         Returns:
-            A tuple of index in batch, request output and bypassed custom fields, and time taken.
+            A tuple of index in batch, request output, bypassed custom fields, and time taken.
         """
         request = await self._prepare_llm_request(row)
         t = time.perf_counter()
@@ -193,7 +193,6 @@ class SGLangEngineWrapper:
             output = await self._generate_async(request)
 
         time_taken = time.perf_counter() - t
-
         output_data = SGLangOutputData.from_sglang_engine_output(output)
         return request, output_data.model_dump(), time_taken
 
