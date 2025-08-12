@@ -211,17 +211,19 @@ class _DeploymentHandleBase:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
-    def shutdown(self, _skip_asyncio_check: bool = False):
+    def shutdown(self):
         if self._router:
             shutdown_future = self._router.shutdown()
             if self._is_router_running_in_separate_loop():
                 shutdown_future.result()
             else:
-                if not _skip_asyncio_check:
+                loop = asyncio.get_running_loop()
+                if loop is None:
                     raise RuntimeError(
-                        "Sync methods should not be called from within an `asyncio` event "
-                        "loop. Use `await handle.shutdown_async()` instead."
+                        "Handle was initialized with `_run_router_in_separate_loop=False` "
+                        "but not inside an asyncio event loop."
                     )
+                asyncio.run_coroutine_threadsafe(shutdown_future, loop).result()
 
     async def shutdown_async(self):
         if self._router:
