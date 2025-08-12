@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
@@ -145,10 +146,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 };
 
 class MockTaskManager : public MockTaskManagerInterface {
+  // TODO(ray-core): Consider adding an integration test between TaskManager and
+  // NormalTaskSubmitter, due to the complexity of the interaction between the two.
+  // https://github.com/ray-project/ray/issues/54922
  public:
   MockTaskManager() {}
 
-  void CompletePendingTask(const TaskID &,
+  void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &,
                            const rpc::Address &actor_addr,
                            bool is_application_error) override {
@@ -176,6 +180,10 @@ class MockTaskManager : public MockTaskManagerInterface {
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override {
     num_tasks_failed++;
+    if (!fail_immediately) {
+      RetryTaskIfPossible(task_id,
+                          ray_error_info ? *ray_error_info : rpc::RayErrorInfo());
+    }
     return true;
   }
 
@@ -186,6 +194,8 @@ class MockTaskManager : public MockTaskManagerInterface {
   }
 
   void MarkTaskCanceled(const TaskID &task_id) override {}
+
+  void MarkTaskNoRetry(const TaskID &task_id) override {}
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
@@ -213,7 +223,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_generator_failed_and_resubmitted = 0;
 };
 
-class MockRayletClient : public WorkerLeaseInterface {
+class MockRayletClient : public FakeRayletClient {
  public:
   Status ReturnWorker(int worker_port,
                       const WorkerID &worker_id,
@@ -237,9 +247,19 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
     std::lock_guard<std::mutex> lock(mu_);
-    ray::rpc::GetTaskFailureCauseReply reply;
-    callback(Status::OK(), std::move(reply));
+    get_task_failure_cause_callbacks.push_back(callback);
     num_get_task_failure_causes += 1;
+  }
+
+  bool ReplyGetTaskFailureCause() {
+    if (get_task_failure_cause_callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = std::move(get_task_failure_cause_callbacks.front());
+    get_task_failure_cause_callbacks.pop_front();
+    rpc::GetTaskFailureCauseReply reply;
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
   void ReportWorkerBacklog(
@@ -272,11 +292,10 @@ class MockRayletClient : public WorkerLeaseInterface {
     }
     callbacks.push_back(callback);
   }
+
   void PrestartWorkers(
       const rpc::PrestartWorkersRequest &request,
-      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
-    RAY_LOG(FATAL) << "Not implemented";
-  }
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {}
 
   void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
@@ -460,11 +479,13 @@ TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
 class NormalTaskSubmitterTest : public testing::Test {
  public:
   NormalTaskSubmitterTest()
-      : raylet_client(std::make_shared<MockRayletClient>()),
+      : raylet_client_pool(std::make_shared<rpc::RayletClientPool>(
+            [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
+        raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
         store(DefaultCoreWorkerMemoryStoreWithThread::CreateShared()),
         client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
-            [&](const rpc::Address &addr) { return worker_client; })),
+            [&](const rpc::Address &) { return worker_client; })),
         task_manager(std::make_unique<MockTaskManager>()),
         actor_creator(std::make_shared<MockActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
@@ -473,18 +494,25 @@ class NormalTaskSubmitterTest : public testing::Test {
   NormalTaskSubmitter CreateNormalTaskSubmitter(
       std::shared_ptr<LeaseRequestRateLimiter> rate_limiter,
       WorkerType worker_type = WorkerType::WORKER,
-      LeaseClientFactoryFn lease_client_factory = nullptr,
+      std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>
+          raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
       int64_t lease_timeout_ms = kLongTimeout,
       NodeID local_raylet_id = NodeID::Nil()) {
     if (custom_memory_store != nullptr) {
       store = custom_memory_store;
     }
+    if (raylet_client_factory == nullptr) {
+      raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
+          [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); });
+    } else {
+      raylet_client_pool = std::make_shared<rpc::RayletClientPool>(raylet_client_factory);
+    }
     return NormalTaskSubmitter(
         address,
         raylet_client,
         client_pool,
-        lease_client_factory,
+        raylet_client_pool,
         std::move(lease_policy),
         store,
         *task_manager,
@@ -499,6 +527,7 @@ class NormalTaskSubmitterTest : public testing::Test {
   }
 
   rpc::Address address;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::shared_ptr<MockRayletClient> raylet_client;
   std::shared_ptr<MockWorkerClient> worker_client;
   std::shared_ptr<CoreWorkerMemoryStore> store;
@@ -622,6 +651,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -634,6 +664,28 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
+  // This test is a regression test for a bug where a crash happens when
+  // the task cancellation races between ReplyPushTask and ReplyGetTaskFailureCause.
+  // For an example of a python integration test, see
+  // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
+
+  TaskSpecification task = BuildEmptyTaskSpec();
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate a system failure, i.e., worker died unexpectedly so that
+  // GetTaskFailureCause is called.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  // Cancel the task while GetTaskFailureCause has not been completed.
+  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  // Completing the GetTaskFailureCause call. Check that the reply runs without error
+  // and FailPendingTask is not called.
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
 }
 
 TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
@@ -922,7 +974,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   auto submitter = CreateNormalTaskSubmitter(
       rateLimiter,
       WorkerType::WORKER,
-      /*lease_client_factory*/ [&](const std::string &, int) { return raylet_client; });
+      /*raylet_client_factory*/ [&](const rpc::Address &addr) { return raylet_client; });
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1217,6 +1269,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
 
   // Task 1 finishes with failure; the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1264,18 +1317,17 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestSpillback) {
-  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  LeaseClientFactoryFn lease_client_factory = [&remote_lease_clients](
-                                                  const std::string &ip, int port) {
-    RAY_CHECK(remote_lease_clients.count(port) == 0);
+  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_raylet_clients;
+  auto raylet_client_factory = [&remote_raylet_clients](const rpc::Address &addr) {
+    RAY_CHECK(remote_raylet_clients.count(addr.port()) == 0);
     auto client = std::make_shared<MockRayletClient>();
-    remote_lease_clients[port] = client;
+    remote_raylet_clients[addr.port()] = client;
     return client;
   };
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
-                                lease_client_factory);
+                                raylet_client_factory);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1283,31 +1335,31 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(remote_lease_clients.size(), 0);
+  ASSERT_EQ(remote_raylet_clients.size(), 0);
 
   // Spillback to a remote node.
   auto remote_raylet_id = NodeID::FromRandom();
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
-  ASSERT_EQ(remote_lease_clients.count(7777), 1);
+  ASSERT_EQ(remote_raylet_clients.count(7777), 1);
   // Confirm that lease policy is not consulted on spillback.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   // There should be no more callbacks on the local client.
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger retry at the remote node.
   ASSERT_TRUE(
-      remote_lease_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
+      remote_raylet_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
 
   // The worker is returned to the remote node, not the local one.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(remote_lease_clients[7777]->num_workers_returned, 1);
+  ASSERT_EQ(remote_raylet_clients[7777]->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(remote_lease_clients[7777]->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_raylet_clients[7777]->num_workers_disconnected, 0);
   ASSERT_EQ(task_manager->num_tasks_complete, 1);
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
-  for (const auto &remote_client : remote_lease_clients) {
+  for (const auto &remote_client : remote_raylet_clients) {
     ASSERT_EQ(remote_client.second->num_leases_canceled, 0);
     ASSERT_FALSE(remote_client.second->ReplyCancelWorkerLease());
   }
@@ -1318,12 +1370,12 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
-  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  auto lease_client_factory = [&](const std::string &ip, int port) {
+  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_raylet_clients;
+  auto raylet_client_factory = [&](const rpc::Address &addr) {
     // We should not create a connection to the same raylet more than once.
-    RAY_CHECK(remote_lease_clients.count(port) == 0);
+    RAY_CHECK(remote_raylet_clients.count(addr.port()) == 0);
     auto client = std::make_shared<MockRayletClient>();
-    remote_lease_clients[port] = client;
+    remote_raylet_clients[addr.port()] = client;
     return client;
   };
   auto local_raylet_id = NodeID::FromRandom();
@@ -1332,7 +1384,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
-                                lease_client_factory,
+                                raylet_client_factory,
                                 store,
                                 kLongTimeout,
                                 local_raylet_id);
@@ -1343,26 +1395,26 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(remote_lease_clients.size(), 0);
+  ASSERT_EQ(remote_raylet_clients.size(), 0);
 
   // Spillback to a remote node.
   auto remote_raylet_id = NodeID::FromRandom();
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
-  ASSERT_EQ(remote_lease_clients.count(7777), 1);
-  ASSERT_EQ(remote_lease_clients[7777]->num_workers_requested, 1);
+  ASSERT_EQ(remote_raylet_clients.count(7777), 1);
+  ASSERT_EQ(remote_raylet_clients[7777]->num_workers_requested, 1);
   // Confirm that the spillback lease request has grant_or_reject set to true.
-  ASSERT_EQ(remote_lease_clients[7777]->num_grant_or_reject_leases_requested, 1);
+  ASSERT_EQ(remote_raylet_clients[7777]->num_grant_or_reject_leases_requested, 1);
   // Confirm that lease policy is not consulted on spillback.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger a rejection back to the local node.
-  ASSERT_TRUE(remote_lease_clients[7777]->GrantWorkerLease(
+  ASSERT_TRUE(remote_raylet_clients[7777]->GrantWorkerLease(
       "local", 1234, local_raylet_id, false, "", /*reject=*/true));
   // We should not have created another lease client to the local raylet.
-  ASSERT_EQ(remote_lease_clients.size(), 1);
+  ASSERT_EQ(remote_raylet_clients.size(), 1);
   // There should be no more callbacks on the remote node.
   ASSERT_FALSE(
-      remote_lease_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
+      remote_raylet_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
 
   // The worker is returned to the local node.
   ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
@@ -1370,14 +1422,14 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("local", 1234, NodeID::Nil()));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
-  ASSERT_EQ(remote_lease_clients[7777]->num_workers_returned, 0);
+  ASSERT_EQ(remote_raylet_clients[7777]->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(remote_lease_clients[7777]->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_raylet_clients[7777]->num_workers_disconnected, 0);
   ASSERT_EQ(task_manager->num_tasks_complete, 1);
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
-  for (const auto &remote_client : remote_lease_clients) {
+  for (const auto &remote_client : remote_raylet_clients) {
     ASSERT_EQ(remote_client.second->num_leases_canceled, 0);
     ASSERT_FALSE(remote_client.second->ReplyCancelWorkerLease());
   }
@@ -1514,16 +1566,16 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store->Put(*data, direct1));
-  ASSERT_TRUE(store->Put(*data, direct2));
+  store->Put(*data, direct1);
+  store->Put(*data, direct2);
 
   // Force plasma objects to be promoted.
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_TRUE(store->Put(plasma_data, plasma1));
-  ASSERT_TRUE(store->Put(plasma_data, plasma2));
+  store->Put(plasma_data, plasma1);
+  store->Put(plasma_data, plasma2);
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
   same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -1558,7 +1610,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
-                                /*lease_client_factory=*/nullptr,
+                                /*raylet_client_factory=*/nullptr,
                                 store);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
@@ -1576,8 +1628,8 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_TRUE(store->Put(plasma_data, plasma1));
-  ASSERT_TRUE(store->Put(plasma_data, plasma2));
+  store->Put(plasma_data, plasma1);
+  store->Put(plasma_data, plasma2);
 
   // Same SchedulingClass, different SchedulingKey
   TaskSpecification task2 = BuildTaskSpec(resources1, descriptor1);
@@ -1619,7 +1671,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
-                                /*lease_client_factory=*/nullptr,
+                                /*raylet_client_factory=*/nullptr,
                                 store,
                                 /*lease_timeout_ms=*/5);
   TaskSpecification task1 = BuildEmptyTaskSpec();
@@ -1638,6 +1690,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 1 finishes with failure; the worker is returned due to the error even though
   // it hasn't timed out.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
@@ -1677,6 +1730,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
@@ -1740,7 +1794,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
   ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store->Put(*data, obj1));
+  store->Put(*data, obj1);
   WaitForObjectIdInMemoryStore(*store, obj1);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);

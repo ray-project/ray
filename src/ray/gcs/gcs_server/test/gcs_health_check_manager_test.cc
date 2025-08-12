@@ -35,6 +35,7 @@ using namespace boost::asio::ip;  // NOLINT
 
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
+#include "ray/util/network_util.h"
 
 int GetFreePort() {
   io_context io_service;
@@ -89,7 +90,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     RAY_LOG(INFO) << "Get port " << port;
     auto server = std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true);
 
-    auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
+    auto channel = grpc::CreateChannel(BuildAddress("localhost", port),
                                        grpc::InsecureChannelCredentials());
     server->Run();
     if (alive) {

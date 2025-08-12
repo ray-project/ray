@@ -327,7 +327,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &resource_demands,
       int64_t num_ready_queued,
       int64_t num_infeasible,
-      int64_t num_backlog) {
+      int64_t num_backlog,
+      const std::vector<ray::rpc::LabelSelector> &label_selectors = {}) {
     rpc::ResourceDemand resource_demand;
     for (const auto &resource : resource_demands) {
       (*resource_demand.mutable_shape())[resource.first] = resource.second;
@@ -335,6 +336,9 @@ struct Mocker {
     resource_demand.set_num_ready_requests_queued(num_ready_queued);
     resource_demand.set_num_infeasible_requests_queued(num_infeasible);
     resource_demand.set_backlog_size(num_backlog);
+    for (const auto &selector : label_selectors) {
+      *resource_demand.add_label_selectors() = selector;
+    }
     return resource_demand;
   }
 

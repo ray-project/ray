@@ -15,7 +15,11 @@
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -109,6 +113,10 @@ void TaskSpecification::ComputeResources() {
         new ResourceSet(MapFromProtobuf(required_placement_resources)));
   }
 
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
+
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
@@ -121,17 +129,17 @@ void TaskSpecification::ComputeResources() {
             : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc = SchedulingClassDescriptor(
-        resource_set, function_descriptor, depth, GetSchedulingStrategy());
+    auto label_selector = GetLabelSelector();
+    auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                    label_selector,
+                                                    function_descriptor,
+                                                    depth,
+                                                    GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
-
-  // Set LabelSelector required for scheduling if specified. Parses string map
-  // from proto to LabelSelector data type.
-  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 }
 
 // Task specification getter methods.
@@ -525,9 +533,9 @@ const rpc::TensorTransport TaskSpecification::TensorTransport() const {
   return rpc::TensorTransport::OBJECT_STORE;
 }
 
-bool TaskSpecification::ExecuteOutOfOrder() const {
+bool TaskSpecification::AllowOutOfOrderExecution() const {
   return IsActorCreationTask() &&
-         message_->actor_creation_task_spec().execute_out_of_order();
+         message_->actor_creation_task_spec().allow_out_of_order_execution();
 }
 
 bool TaskSpecification::IsAsyncioActor() const {

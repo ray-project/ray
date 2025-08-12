@@ -21,6 +21,7 @@ from filelock import FileLock
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, parse_address
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions
@@ -264,10 +265,6 @@ class ConsolePopen(subprocess.Popen):
             super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
-def address(ip_address, port):
-    return ip_address + ":" + str(port)
-
-
 def _find_address_from_flag(flag: str):
     """
     Attempts to find all valid Ray addresses on this node, specified by the
@@ -425,6 +422,8 @@ def wait_for_node(
     timeout: int = _timeout,
 ):
     """Wait until this node has appeared in the client table.
+    NOTE: Makes an RPC to the GCS up to every 0.1 seconds to
+    get all node info. Use only for testing.
 
     Args:
         gcs_address: The gcs address
@@ -524,12 +523,18 @@ def canonicalize_bootstrap_address(
         addr = get_ray_address_from_environment(addr, temp_dir)
     if addr is None or addr == "local":
         return None
+
+    parsed = parse_address(addr)
+    if parsed is None:
+        raise ValueError(f"Invalid address format: {addr}")
+    host, port = parsed
+
     try:
-        bootstrap_address = resolve_ip_for_localhost(addr)
+        bootstrap_host = resolve_ip_for_localhost(host)
     except Exception:
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
-    return bootstrap_address
+    return build_address(bootstrap_host, port)
 
 
 def canonicalize_bootstrap_address_or_die(
@@ -572,11 +577,12 @@ def canonicalize_bootstrap_address_or_die(
 
 
 def extract_ip_port(bootstrap_address: str):
-    if ":" not in bootstrap_address:
+    ip_port = parse_address(bootstrap_address)
+    if ip_port is None:
         raise ValueError(
             f"Malformed address {bootstrap_address}. " f"Expected '<host>:<port>'."
         )
-    ip, _, port = bootstrap_address.rpartition(":")
+    ip, port = ip_port
     try:
         port = int(port)
     except ValueError:
@@ -589,27 +595,24 @@ def extract_ip_port(bootstrap_address: str):
     return ip, port
 
 
-def resolve_ip_for_localhost(address: str):
-    """Convert to a remotely reachable IP if the address is "localhost"
-            or "127.0.0.1". Otherwise do nothing.
+def resolve_ip_for_localhost(host: str):
+    """Convert to a remotely reachable IP if the host is "localhost",
+            "127.0.0.1", or "::1". Otherwise do nothing.
 
     Args:
-        address: This can be either a string containing a hostname (or an IP
-            address) and a port or it can be just an IP address.
+        host: The hostname or IP address.
 
     Returns:
-        The same address but with the local host replaced by remotely
+        The same host but with the local host replaced by remotely
             reachable IP.
     """
-    if not address:
-        raise ValueError(f"Malformed address: {address}")
-    address_parts = address.split(":")
-    if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
+    if not host:
+        raise ValueError(f"Malformed host: {host}")
+    if host == "127.0.0.1" or host == "::1" or host == "localhost":
         # Make sure localhost isn't resolved to the loopback ip
-        ip_address = get_node_ip_address()
-        return ":".join([ip_address] + address_parts[1:])
+        return get_node_ip_address()
     else:
-        return address
+        return host
 
 
 def node_ip_address_from_perspective(address: str):
@@ -622,7 +625,7 @@ def node_ip_address_from_perspective(address: str):
     Returns:
         The IP address by which the local node can be reached from the address.
     """
-    ip_address, port = address.split(":")
+    ip_address, port = parse_address(address)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # This command will raise an exception if there is no internet
@@ -1242,14 +1245,18 @@ def start_api_server(
                 else:
                     raise e
         # Make sure the process can start.
-        minimal: bool = not ray._private.utils.check_dashboard_dependencies_installed()
+        dashboard_dependency_error = ray._private.utils.get_dashboard_dependency_error()
 
         # Explicitly check here that when the user explicitly specifies
         # dashboard inclusion, the install is not minimal.
-        if include_dashboard and minimal:
+        if include_dashboard and dashboard_dependency_error:
             logger.error(
-                "--include-dashboard is not supported when minimal ray is used. "
-                "Download ray[default] to use the dashboard."
+                f"Ray dashboard dependencies failed to install properly: {dashboard_dependency_error}.\n"
+                "Potential causes include:\n"
+                "1. --include-dashboard is not supported when minimal ray is used. "
+                "Download ray[default] to use the dashboard.\n"
+                "2. Dashboard dependencies are conflicting with your python environment. "
+                "Investigate your python environment and try reinstalling ray[default].\n"
             )
             raise Exception("Cannot include dashboard with missing packages.")
 
@@ -1293,7 +1300,7 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-        if minimal:
+        if dashboard_dependency_error is not None:
             command.append("--minimal")
 
         if not include_dash:
@@ -1407,7 +1414,7 @@ def start_api_server(
                 # Is it reachable?
                 raise Exception("Failed to start a dashboard.")
 
-        if minimal or not include_dash:
+        if dashboard_dependency_error is not None or not include_dash:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
@@ -1424,7 +1431,7 @@ def get_address(redis_address):
     parts = redis_address.split("://", 1)
     enable_redis_ssl = False
     if len(parts) == 1:
-        redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+        redis_ip_address, redis_port = parse_address(parts[0])
     else:
         # rediss for SSL
         if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
@@ -1433,7 +1440,7 @@ def get_address(redis_address):
                 "Expected format is ip:port or redis://ip:port, "
                 "or rediss://ip:port for SSL."
             )
-        redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+        redis_ip_address, redis_port = parse_address(parts[1])
         if parts[0] == "rediss":
             enable_redis_ssl = True
     return redis_ip_address, redis_port, enable_redis_ssl
@@ -1538,7 +1545,7 @@ def start_raylet(
     session_dir: str,
     resource_dir: str,
     log_dir: str,
-    resource_spec,
+    resource_and_label_spec,
     plasma_directory: str,
     fallback_directory: str,
     object_store_memory: int,
@@ -1572,7 +1579,6 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
-    labels: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1594,7 +1600,7 @@ def start_raylet(
         session_dir: The path of this session.
         resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
-        resource_spec: Resources for this raylet.
+        resource_and_label_spec: Resources and key-value labels for this raylet.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         fallback_directory: A directory where the Object store fallback files will be created.
@@ -1649,7 +1655,6 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
-        labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1658,8 +1663,9 @@ def start_raylet(
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
-    assert resource_spec.resolved()
-    static_resources = resource_spec.to_resource_dict()
+    # Get the static resources and labels from the resolved ResourceAndLabelSpec
+    static_resources = resource_and_label_spec.to_resource_dict()
+    labels = resource_and_label_spec.labels
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -1821,7 +1827,7 @@ def start_raylet(
         )
         dashboard_agent_command.append(f"--logging-format={logging_format}")
 
-    if not ray._private.utils.check_dashboard_dependencies_installed():
+    if ray._private.utils.get_dashboard_dependency_error() is not None:
         # If dependencies are not installed, it is the minimally packaged
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
@@ -1907,7 +1913,7 @@ def start_raylet(
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     command.append(
-        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+        "--num_prestart_python_workers={}".format(int(resource_and_label_spec.num_cpus))
     )
     command.append(
         "--dashboard_agent_command={}".format(
@@ -2352,9 +2358,7 @@ def start_ray_client_server(
         root_ray_dir, "_private", "workers", ray_constants.SETUP_WORKER_FILENAME
     )
 
-    ray_client_server_host = (
-        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
-    )
+    ray_client_server_host = ray_client_server_ip
     command = [
         sys.executable,
         setup_worker_path,

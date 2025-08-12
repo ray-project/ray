@@ -81,27 +81,4 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
   EXPECT_EQ(values.size(), 1);
   EXPECT_TRUE(values.contains("dev"));
 }
-
-TEST(LabelSelectorTest, ErrorLogsOnEmptyKey) {
-  google::protobuf::Map<std::string, std::string> label_selector_dict;
-  label_selector_dict[""] = "value";
-
-  testing::internal::CaptureStderr();
-  LabelSelector selector(label_selector_dict);
-  std::string stderr_output = testing::internal::GetCapturedStderr();
-
-  EXPECT_NE(stderr_output.find("Empty Label Selector key."), std::string::npos);
-}
-
-TEST(LabelSelectorTest, ErrorLogsOnEmptyInList) {
-  LabelSelector selector;
-
-  testing::internal::CaptureStderr();
-  selector.AddConstraint("key", "in()");
-  std::string stderr_output = testing::internal::GetCapturedStderr();
-
-  EXPECT_NE(stderr_output.find("No values provided for Label Selector key: key"),
-            std::string::npos);
-}
-
 }  // namespace ray

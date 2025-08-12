@@ -162,8 +162,12 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
+        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
+        # tell which operator they belong to. To fix that, we dynamically create a new
+        # class per operator with a unique name.
+        self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
         # Cached actor class.
-        self._cls = None
+        self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
 
@@ -194,7 +198,7 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         # Create the actor workers and add them to the pool.
-        self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
+        self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.min_size(), reason="scaling to min size"
@@ -238,11 +242,11 @@ class ActorPoolMapOperator(MapOperator):
         Returns:
             A tuple of the actor handle and the object ref to the actor's location.
         """
-        assert self._cls is not None
+        assert self._actor_cls is not None
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
-        actor = self._cls.options(
+        actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
             ctx=ctx,
@@ -251,7 +255,7 @@ class ActorPoolMapOperator(MapOperator):
             map_transformer=self._map_transformer,
             actor_location_tracker=get_or_create_actor_location_tracker(),
         )
-        res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
+        res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
@@ -298,7 +302,6 @@ class ActorPoolMapOperator(MapOperator):
             )
             gen = actor.submit.options(
                 num_returns="streaming",
-                name=f"{self.name}.submit",
                 **self._ray_actor_task_remote_args,
             ).remote(
                 self.data_context,
@@ -343,7 +346,7 @@ class ActorPoolMapOperator(MapOperator):
         for k, v in new_remote_args.items():
             remote_args[k] = v
             new_and_overriden_remote_args[k] = v
-        self._cls = ray.remote(**remote_args)(_MapWorker)
+        self._actor_cls = ray.remote(**remote_args)(self._map_worker_cls)
         return new_and_overriden_remote_args
 
     def all_inputs_done(self):
@@ -396,7 +399,9 @@ class ActorPoolMapOperator(MapOperator):
             memory=memory_per_actor * min_actors,
             # To ensure that all actors are utilized, reserve enough resource budget
             # to launch one task for each worker.
-            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            object_store_memory=(
+                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+            )
             * min_actors,
         )
 
@@ -458,6 +463,14 @@ class ActorPoolMapOperator(MapOperator):
             and ray_remote_args.get("max_restarts") != 0
         ):
             ray_remote_args["max_task_retries"] = -1
+
+        # Allow actor tasks to execute out of order by default. This prevents actors
+        # from idling when the first actor task is blocked.
+        #
+        # `MapOperator` should still respect `preserve_order` in this case.
+        if "allow_out_of_order_execution" not in ray_remote_args:
+            ray_remote_args["allow_out_of_order_execution"] = True
+
         return ray_remote_args
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:

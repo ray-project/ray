@@ -9,7 +9,7 @@ import psutil
 from benchmark import Benchmark
 import ray
 from ray._private.internal_api import memory_summary
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, GiB
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
@@ -120,11 +120,14 @@ if __name__ == "__main__":
     partition_size = int(float(args.partition_size))
     print(
         f"Dataset size: {num_partitions} partitions, "
-        f"{partition_size / 1e9}GB partition size, "
-        f"{num_partitions * partition_size / 1e9}GB total"
+        f"{partition_size / GiB}GB partition size, "
+        f"{num_partitions * partition_size / GiB}GB total"
     )
 
     def run_benchmark(args):
+        # Override target max-block size to avoid creating too many blocks
+        DataContext.get_current().target_max_block_size = 1 * GiB
+
         source = RandomIntRowDatasource()
         # Each row has an int64 key.
         num_rows_per_partition = partition_size // (8 + args.row_size_bytes)
