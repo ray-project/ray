@@ -91,7 +91,8 @@ class TaskEventBufferTest : public ::testing::Test {
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>());
+        std::make_unique<MockEventAggregatorClient>(),
+        "test_session_name");
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -156,6 +157,7 @@ class TaskEventBufferTest : public ::testing::Test {
         rpc::TaskStatus::RUNNING,
         1,
         /*is_actor_task_event=*/false,
+        "test_session_name",
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
   }
@@ -172,6 +174,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                              rpc::TaskStatus::RUNNING,
                                              running_ts,
                                              /*is_actor_task_event=*/false,
+                                             "test_session_name",
                                              nullptr,
                                              state_update);
   }
@@ -463,8 +466,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   rpc::events::AddEventsRequest add_events_request;
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .WillOnce(DoAll(
@@ -524,8 +525,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
     rpc::events::AddEventsReply reply_1;
     Status status_1 = Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN);
     rpc::events::AddEventsReply reply_2;
-    reply_2.mutable_status()->set_code(/*OK*/ 0);
-    reply_2.mutable_status()->set_message("All events received");
     Status status_2 = Status::OK();
 
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
@@ -547,7 +546,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   }
   if (to_aggregator) {
     ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
-                  TaskEventBufferCounter::kTotalNumFailedToReportToAggregator),
+                  TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator),
               1);
   }
 
@@ -570,7 +569,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   }
   if (to_aggregator) {
     ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
-                  TaskEventBufferCounter::kTotalNumFailedToReportToAggregator),
+                  TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator),
               1);
   }
 }
@@ -682,8 +681,6 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .Times(num_events / batch_size)
@@ -788,8 +785,6 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
-    reply.mutable_status()->set_code(/*OK*/ 0);
-    reply.mutable_status()->set_message("All events received");
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .WillOnce(DoAll(

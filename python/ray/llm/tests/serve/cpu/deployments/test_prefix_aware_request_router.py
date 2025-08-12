@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
-    PrefixAwarePow2ReplicaRouter,
+    PrefixCacheAffinityRouter,
 )
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
@@ -40,11 +40,11 @@ def tree_actor():
 
 @pytest.fixture
 def prefix_request_router(tree_actor, request):
-    """Create a fresh PrefixAwarePow2ReplicaRouter with connected tree_actor."""
+    """Create a fresh PrefixCacheAffinityRouter with connected tree_actor."""
     params = getattr(request, "param", {})
 
     async def construct_request_router(loop: asyncio.AbstractEventLoop):
-        request_router = PrefixAwarePow2ReplicaRouter(
+        request_router = PrefixCacheAffinityRouter(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
             use_replica_queue_len_cache=False,

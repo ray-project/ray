@@ -132,12 +132,12 @@ def native_java_library(module_name, name, native_library_name):
         visibility = ["//visibility:public"],
     )
 
-def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
+def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility = ["//visibility:public"], **kwargs):
     cc_library(
         name = name,
         strip_include_prefix = strip_include_prefix,
         copts = COPTS + copts,
-        visibility = ["//visibility:public"],
+        visibility = visibility,
         **kwargs
     )
 

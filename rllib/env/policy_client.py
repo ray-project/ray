@@ -1,9 +1,3 @@
-"""REST client to interact with a policy server.
-
-This client supports both local and remote policy inference modes. Local
-inference is faster but causes more compute to be done on the client.
-"""
-
 import logging
 import threading
 import time
@@ -23,7 +17,7 @@ from ray.rllib.utils.typing import (
 )
 
 # Backward compatibility.
-from ray.rllib.env.utils.external_env_protocol import RLlink as Commands
+from ray.rllib.env.external.rllink import RLlink as Commands
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +42,6 @@ class PolicyClient:
         update_interval: float = 10.0,
         session: Optional[requests.Session] = None,
     ):
-        """Create a PolicyClient instance.
-
-        Args:
-            address: Server to connect to (e.g., "localhost:9090").
-            inference_mode: Whether to use 'local' or 'remote' policy
-                inference for computing actions.
-            update_interval (float or None): If using 'local' inference mode,
-                the policy is refreshed after this many seconds have passed,
-                or None for manual control via client.
-            session (requests.Session or None): If available the session object
-                is used to communicate with the policy server. Using a session
-                can lead to speedups as connections are reused. It is the
-                responsibility of the creator of the session to close it.
-        """
         self.address = address
         self.session = session
         self.env: ExternalEnv = None
@@ -76,18 +56,6 @@ class PolicyClient:
     def start_episode(
         self, episode_id: Optional[str] = None, training_enabled: bool = True
     ) -> str:
-        """Record the start of one or more episode(s).
-
-        Args:
-            episode_id (Optional[str]): Unique string id for the episode or
-                None for it to be auto-assigned.
-            training_enabled: Whether to use experiences for this
-                episode to improve the policy.
-
-        Returns:
-            episode_id: Unique string id for the episode.
-        """
-
         if self.local:
             self._update_local_policy()
             return self.env.start_episode(episode_id, training_enabled)
@@ -103,16 +71,6 @@ class PolicyClient:
     def get_action(
         self, episode_id: str, observation: Union[EnvObsType, MultiAgentDict]
     ) -> Union[EnvActionType, MultiAgentDict]:
-        """Record an observation and get the on-policy action.
-
-        Args:
-            episode_id: Episode id returned from start_episode().
-            observation: Current environment observation.
-
-        Returns:
-            action: Action from the env action space.
-        """
-
         if self.local:
             self._update_local_policy()
             if isinstance(episode_id, (list, tuple)):
@@ -138,14 +96,6 @@ class PolicyClient:
         observation: Union[EnvObsType, MultiAgentDict],
         action: Union[EnvActionType, MultiAgentDict],
     ) -> None:
-        """Record an observation and (off-policy) action taken.
-
-        Args:
-            episode_id: Episode id returned from start_episode().
-            observation: Current environment observation.
-            action: Action for the observation.
-        """
-
         if self.local:
             self._update_local_policy()
             return self.env.log_action(episode_id, observation, action)
@@ -166,19 +116,6 @@ class PolicyClient:
         info: Union[EnvInfoDict, MultiAgentDict] = None,
         multiagent_done_dict: Optional[MultiAgentDict] = None,
     ) -> None:
-        """Record returns from the environment.
-
-        The reward will be attributed to the previous action taken by the
-        episode. Rewards accumulate until the next action. If no reward is
-        logged before the next action, a reward of 0.0 is assumed.
-
-        Args:
-            episode_id: Episode id returned from start_episode().
-            reward: Reward from the environment.
-            info: Extra info dict.
-            multiagent_done_dict: Multi-agent done information.
-        """
-
         if self.local:
             self._update_local_policy()
             if multiagent_done_dict is not None:
@@ -201,13 +138,6 @@ class PolicyClient:
     def end_episode(
         self, episode_id: str, observation: Union[EnvObsType, MultiAgentDict]
     ) -> None:
-        """Record the end of an episode.
-
-        Args:
-            episode_id: Episode id returned from start_episode().
-            observation: Current environment observation.
-        """
-
         if self.local:
             self._update_local_policy()
             return self.env.end_episode(episode_id, observation)
@@ -276,9 +206,8 @@ class PolicyClient:
             self.last_updated = time.time()
 
 
+@OldAPIStack
 class _LocalInferenceThread(threading.Thread):
-    """Thread that handles experience generation (worker.sample() loop)."""
-
     def __init__(self, rollout_worker, send_fn):
         super().__init__()
         self.daemon = True
@@ -313,13 +242,8 @@ class _LocalInferenceThread(threading.Thread):
             logger.error("Error: inference worker thread died!", e)
 
 
+@OldAPIStack
 def _auto_wrap_external(real_env_creator):
-    """Wrap an environment in the ExternalEnv interface if needed.
-
-    Args:
-        real_env_creator: Create an env given the env_config.
-    """
-
     def wrapped_creator(env_config):
         real_env = real_env_creator(env_config)
         if not isinstance(real_env, (ExternalEnv, ExternalMultiAgentEnv)):
@@ -352,14 +276,8 @@ def _auto_wrap_external(real_env_creator):
     return wrapped_creator
 
 
+@OldAPIStack
 def _create_embedded_rollout_worker(kwargs, send_fn):
-    """Create a local rollout worker and a thread that samples from it.
-
-    Args:
-        kwargs: Args for the RolloutWorker constructor.
-        send_fn: Function to send a JSON request to the server.
-    """
-
     # Since the server acts as an input datasource, we have to reset the
     # input config to the default, which runs env rollouts.
     kwargs = kwargs.copy()
