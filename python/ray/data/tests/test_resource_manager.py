@@ -424,18 +424,16 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
-        # memory_budget[o2] = 0 + 225/2 = 112.5
-        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 112.5)
-        # memory_budget[o3] = 95 + 225/2 = 207.5
-        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207.5)
+        # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
+        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
+        # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
+        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
-        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 137.5
-        # (will be rounded down).
-        assert allocator.max_task_output_bytes_to_read(o2) == 137
-        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257.5
-        # (will be rounded down).
+        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
+        assert allocator.max_task_output_bytes_to_read(o2) == 138
+        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
 
         # Test global_limits updated.

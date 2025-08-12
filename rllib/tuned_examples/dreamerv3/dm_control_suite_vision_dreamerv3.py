@@ -14,7 +14,9 @@ https://arxiv.org/pdf/2010.02193.pdf
 # To see all available options:
 # python [this script name].py --help
 
+from ray import tune
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+from ray.rllib.env.wrappers.dm_control_wrapper import ActionClip, DMCEnv
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -22,6 +24,7 @@ parser = add_rllib_example_script_args(
     default_reward=800.0,
     default_timesteps=1000000,
 )
+parser.set_defaults(env="DMC/cartpole/swingup")
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -30,16 +33,33 @@ args = parser.parse_args()
 if args.num_envs_per_env_runner is None:
     args.num_envs_per_env_runner = 4 * (args.num_learners or 1)
 
+parts = args.env.split("/")
+assert len(parts) == 3, (
+    "ERROR: DMC env must be formatted as 'DMC/[task]/[domain]', e.g. "
+    f"'DMC/cartpole/swingup'! You provided '{args.env}'."
+)
+
+
+def env_creator(cfg):
+    return ActionClip(
+        DMCEnv(
+            parts[1],
+            parts[2],
+            from_pixels=True,
+            channels_first=False,
+        )
+    )
+
+
+tune.register_env("env", env_creator)
+
 default_config = DreamerV3Config()
 lr_multiplier = (args.num_learners or 1) ** 0.5
 
 config = (
     DreamerV3Config()
     # Use image observations.
-    .environment(
-        env=args.env,
-        env_config={"from_pixels": True},
-    )
+    .environment(env="env")
     .env_runners(
         remote_worker_envs=True,
     )

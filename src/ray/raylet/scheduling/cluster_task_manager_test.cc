@@ -28,12 +28,12 @@
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/local_task_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
@@ -281,7 +281,7 @@ RayTask CreateTask(
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_node_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
   spec_builder.SetCommonTaskSpec(id,
                                  "dummy_task",
@@ -874,8 +874,7 @@ TEST_F(ClusterTaskManagerTest, DrainingWhileResolving) {
   missing_objects_.erase(missing_arg);
   std::vector<TaskID> unblocked = {resolving_args_task.GetTaskSpecification().TaskId()};
   local_task_manager_->TasksUnblocked(unblocked);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
 }
 
 TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
@@ -994,8 +993,7 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -1049,8 +1047,7 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -1117,8 +1114,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
 
   // The third task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 0);
 
   // Two workers start. First task was dispatched now.
@@ -1212,7 +1208,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   pool_.callbacks.clear();
   task_manager_.ScheduleAndDispatchTasks();
   // task1 is spilled and task2 is cancelled.
-  ASSERT_EQ(reply1.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(reply1.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_TRUE(reply2.canceled());
   ASSERT_EQ(reply2.scheduling_failure_message(), "runtime env setup error");
 }
@@ -1811,7 +1807,7 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
   // Make sure the spillback callback is called.
-  ASSERT_EQ(reply.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   AssertNoLeaks();
 }
 
@@ -2192,14 +2188,14 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
   // Spill from the back of the waiting queue.
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
-  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[2]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[3]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_FALSE(task_manager_.CancelTask(tasks[2].GetTaskSpecification().TaskId()));
   ASSERT_FALSE(task_manager_.CancelTask(tasks[3].GetTaskSpecification().TaskId()));
   // Do not spill back tasks ready to dispatch.
-  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[4]->retry_at_raylet_address().node_id(), "");
 
   AddNode(remote_node_id, 8);
   // Dispatch the ready task.
@@ -2210,8 +2206,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
   // One waiting task spilled.
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
@@ -2221,8 +2217,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
   // One waiting task spilled.
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
@@ -2231,7 +2227,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   AddNode(remote_node_id, 8);
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 4);
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
@@ -2576,7 +2572,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapSpillback) {
   AddNode(remote_node_id, 8);
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
 }
 
 /// Test that we exponentially increase the amount of time it takes to increase
@@ -2927,8 +2923,7 @@ TEST_F(ClusterTaskManagerTest, UnscheduleableWhileDraining) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
 }
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:

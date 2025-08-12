@@ -30,6 +30,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
+from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
@@ -657,7 +658,7 @@ def get_metric_check_condition(
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
     addr = node_info["NodeManagerAddress"]
-    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+    prom_addr = export_addr or build_address(addr, metrics_export_port)
 
     def f():
         for metric_pattern in metrics_to_check:
@@ -770,9 +771,8 @@ def put_object(obj, use_ray_put):
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
-    ip_port = address.split(":")
-    ip = ip_port[0]
-    port = int(ip_port[1])
+    ip, port_str = parse_address(address)
+    port = int(port_str)
     time_elapsed = 0
     start = time.time()
     while time_elapsed <= timeout_ms:
@@ -1293,7 +1293,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         kill_delay_s: float = 0,
-        max_to_kill: int = 2,
+        max_to_kill: Optional[int] = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
@@ -1332,7 +1332,7 @@ class ResourceKillerActor:
 
             for to_kill in to_kills:
                 self._kill_resource(*to_kill)
-            if len(self.killed) >= self.max_to_kill:
+            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
@@ -1421,7 +1421,7 @@ class RayletKiller(NodeKillerBase):
 
         from ray.core.generated import node_manager_pb2_grpc
 
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
@@ -1774,7 +1774,9 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
@@ -1826,7 +1828,9 @@ def kill_raylet(raylet, graceful=False):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:

@@ -330,6 +330,9 @@ class Unbuffered(object):
         self.stream.flush()
 
     def __getattr__(self, attr):
+        # Avoid endless loop when get `stream` attribute
+        if attr == "stream":
+            return super().__getattribute__("stream")
         return getattr(self.stream, attr)
 
 

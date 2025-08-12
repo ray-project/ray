@@ -146,3 +146,12 @@ class AcceleratorManager(ABC):
             Return None if it's unknown.
         """
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Optional[Dict[str, str]]:
+        """Get accelerator related Ray node labels of the curent node.
+
+        Returns:
+            A dictionary mapping accelerator related label keys to values.
+        """
+        return None
