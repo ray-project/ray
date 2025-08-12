@@ -1,6 +1,8 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
+startup --output_base=C:\\b
+
 build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
 
 # Provides users an option to turn on strict action env.
@@ -226,5 +228,3 @@ try-import %workspace%/.llvm-local.bazelrc
 build:macos --sandbox_block_path=/usr/local/
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
-
-startup:windows --output_base=C:\\b
