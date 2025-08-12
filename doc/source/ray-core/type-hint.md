@@ -10,7 +10,7 @@ However, certain patterns require specific approaches to ensure proper type anno
 
 ## Build an actor
 
-In Ray, the `@ray.remote` decorator indicates that instances of the class `T` are actors, with each actor running in its own Python process. However, the `@ray.remote` decorator will transform the class `T` into a `ActorClass[T]` type, which is not the original class type. Unfortunately, IDE and static type checkers will not be able to infer the original type `T` of the `ActorClass[T]`. To solve this problem, using `ray.remote(T)` will explcitly return a new generic class `ActorClass[T]` type while preserving the original class type.
+In Ray, the `@ray.remote` decorator indicates that instances of the class `T` are actors, with each actor running in its own Python process. However, the `@ray.remote` decorator will transform the class `T` into a `ActorClass[T]` type, which is not the original class type. Unfortunately, IDE and static type checkers will not be able to infer the original type `T` of the `ActorClass[T]`. To solve this problem, using `ray.remote(T)` will explicitly return a new generic class `ActorClass[T]` type while preserving the original class type.
 
 > Note: Recommend to use `ray.remote(T)` to build an `ActorClass[T]` from class `T` instead of using `@ray.remote` decorator.
 
