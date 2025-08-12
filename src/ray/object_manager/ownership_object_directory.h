@@ -187,7 +187,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   ray::stats::Gauge ray_metric_object_directory_location_updates_{
       /*name=*/"object_directory_updates",
       /*description=*/
-      "Number of object location updates per second., If this is high, the raylet is "
+      "Number of object location updates per second. If this is high, the raylet is "
       "attempting to pull a lot of objects and/or the locations for objects are "
       "frequently "
       "changing (e.g. due to many object copies or evictions).",
