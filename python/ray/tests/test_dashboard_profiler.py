@@ -48,7 +48,9 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     node_id = ray_start_with_dashboard.address_info["node_id"]
 
     def get_actor_stack():
-        url = f"{webui_url}/worker/traceback?pid={pid}&node_id={node_id}&native={native}"
+        url = (
+            f"{webui_url}/worker/traceback?pid={pid}&node_id={node_id}&native={native}"
+        )
         print("GET URL", url)
         response = requests.get(url)
         print("STATUS CODE", response.status_code)
@@ -215,7 +217,9 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     node_id = ray_start_with_dashboard.address_info["node_id"]
 
     def get_actor_stack():
-        response = requests.get(f"{webui_url}/worker/traceback?pid={pid}&node_id={node_id}")
+        response = requests.get(
+            f"{webui_url}/worker/traceback?pid={pid}&node_id={node_id}"
+        )
         response.raise_for_status()
         content = response.content.decode("utf-8")
         print("CONTENT", content)
@@ -230,14 +234,18 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     )
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/traceback?pid=1234567&node_id={node_id}")
+    response = requests.get(
+        f"{webui_url}/worker/traceback?pid=1234567&node_id={node_id}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567&node_id={node_id}")
+    response = requests.get(
+        f"{webui_url}/worker/cpu_profile?pid=1234567&node_id={node_id}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
