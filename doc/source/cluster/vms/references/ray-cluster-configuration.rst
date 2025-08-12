@@ -953,7 +953,14 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: Azure
 
-        Not available.
+        For Azure, the avability zone avability depends on each specific VM size / location combination.
+        Each ``available_node_types.<>node_type_name>.node_config.azure_arm_parameters`` configuration can specify
+        which availability zones should be used when creating new VMs.
+
+        See The following example Azure cluster config for more details:
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-availability-zones.yaml
+            :language: yaml
 
     .. tab-item:: GCP
 
