@@ -1,25 +1,23 @@
 (prefix-aware-request-router-guide)=
-# PrefixAwarePow2RequestRouter for LLM Inference Optimization
+# `PrefixCacheAffinityRouter` for LLM Inference Optimization
 
 :::{warning}
 This API is in alpha and may change before becoming stable.
 :::
 
-Large Language Model (LLM) inference can benefit significantly from cache locality optimization. When similar or related prompts are processed by the same replica, the model can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. The [`PrefixAwarePow2RequestRouter`](../api/doc/ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router.PrefixAwarePow2ReplicaRouter.rst) is designed specifically for this use case.
+Large Language Model (LLM) inference can benefit significantly from cache locality optimization. When similar or related prompts are processed by the same replica, the engine can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. This technique is known as [Automatic Prefix Caching (APC)](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching.html) in vLLM. The [`PrefixCacheAffinityRouter`](../api/doc/ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router.PrefixAwarePow2ReplicaRouter.rst) is designed specifically for this use case.
 
 This advanced request router extends the Power of Two Choices algorithm with prefix-matching capabilities to optimize replica selection for LLM workloads. It intelligently routes requests based on input text prefixes while maintaining load balance across replicas.
 
 This guide covers:
 - Understanding the prefix cache-aware routing algorithm
+- Building the components of a prefix-aware router
 - Configuration parameters and their impact
-- Deployment examples for LLM applications
-- Performance optimization strategies
-- Monitoring and debugging prefix cache effectiveness
 
 (prefix-aware-algorithm)=
-## How Prefix Cache-Aware Routing Works
+## How Ray Serve LLM Prefix Cache-Aware Routing Works
 
-The `PrefixAwarePow2RequestRouter` implements a three tier routing strategy that balances cache locality with load distribution:
+The `PrefixCacheAffinityRouter` implements a three-tier routing strategy that balances cache locality with load distribution:
 
 ### 1. Load Balance Check
 First, it evaluates whether the current load is balanced across replicas by comparing queue lengths. If the difference between the highest and lowest queue lengths is below the `imbalanced_threshold`, it proceeds with prefix cache-aware routing.
@@ -40,10 +38,134 @@ The router maintains a distributed prefix tree actor that:
 - Supports automatic eviction of old entries to manage memory usage
 - Persists across router instances using Ray's detached actor pattern
 
+(building-prefix-aware-components)=
+## Building Prefix-Aware Router Components
+
+Understanding how to build the components of a prefix-aware router helps you customize or extend the `PrefixCacheAffinityRouter` for your specific use cases. This section breaks down the key components and shows how they work together, referencing patterns from the [custom request router guide](custom-request-router-guide).
+
+### Base RequestRouter Foundation
+
+Like all custom routers in Ray Serve, the `PrefixCacheAffinityRouter` extends the base [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) class. The two core methods that define router behavior are:
+
+- **`choose_replicas()`**: The main routing logic that selects which replicas should handle a request
+- **`on_request_routed()`**: A callback that updates router state after a request is successfully routed
+
+For a detailed explanation of these methods and their parameters, see the [simple uniform request router](simple-uniform-request-router) example in the custom request router guide.
+
+### 1. Load Balance Detection Component
+
+The first component evaluates whether the current load is balanced across replicas:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: __begin_load_balance_component__
+:end-before: __end_load_balance_component__
+:language: python
+```
+
+The actual implementation in `PrefixCacheAffinityRouter` uses this logic within the `_prefix_match_best_replicas` method:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: # Check for imbalanced load.
+:end-before: is_imbalanced = (
+:language: python
+:linenos:
+```
+
+This component prioritizes load balancing over cache locality when replicas become too imbalanced, similar to how the [throughput-aware request router](throughput-aware-request-router) uses replica statistics to make routing decisions.
+
+### 2. Prefix Tree Management Component
+
+The prefix tree component is implemented as a separate Ray actor that manages prefix tracking across the distributed system. The actual tree structure uses a multi-tenant prefix tree (approximate radix tree):
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_tree.py
+:start-after: class Node:
+:end-before: def __init__(self, text: str = "", parent: Optional[Node] = None) -> None:
+:language: python
+:linenos:
+```
+
+The PrefixTreeActor provides key methods for prefix matching:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_tree.py
+:start-after: def prefix_match(
+:end-before: """
+:language: python
+:linenos:
+```
+
+This distributed architecture allows the prefix information to persist across router restarts and be shared among multiple router instances, similar to how the [utility mixins](utility-mixin) in custom routers manage shared state.
+
+### 3. Prefix Matching Logic Component
+
+The core prefix matching component implements the routing decision logic in the `_prefix_match_best_replicas` method. When load is balanced, it performs prefix matching to find the best replica:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: if not is_imbalanced:
+:end-before: return [
+:language: python
+:linenos:
+```
+
+This logic implements the three-tier strategy:
+1. **High match rate**: Routes to replicas with the highest prefix match when `match_rate >= match_rate_threshold`
+2. **Low match rate**: Falls back to replicas with smallest KV-cache usage when match rate is below threshold
+3. **No match**: Uses default Power of Two Choices selection
+
+### 4. Integration with Power of Two Choices
+
+The prefix-aware router extends the proven Power of Two Choices algorithm, falling back to it when prefix-based routing isn't advantageous. Here's an educational example showing the integration pattern:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: __begin_router_foundation__
+:end-before: __end_router_foundation__
+:language: python
+```
+
+The actual implementation in `PrefixCacheAffinityRouter` integrates these components in the `choose_replicas` method:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: # Get fallback replicas from PowerOfTwoChoicesRequestRouter
+:end-before: return fallback_replicas
+:language: python
+:linenos:
+```
+
+### 5. State Management and Callbacks
+
+The router uses the `on_request_routed()` callback to update the prefix tree with routing decisions:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: def on_request_routed(
+:end-before: ray.get(
+:language: python
+:linenos:
+```
+
+The actual prefix tree update happens asynchronously:
+
+```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+:start-after: # Insert into prefix tree
+:end-before: )
+:language: python
+:linenos:
+```
+
+This pattern of using the callback for state updates is similar to the approach shown in the [uniform request router example](simple-uniform-request-router).
+
+### Component Integration Patterns
+
+When building custom prefix-aware routers, consider these integration patterns:
+
+1. **Layered Decision Making**: Like the [throughput-aware router](throughput-aware-request-router), combine multiple routing factors (load balance, prefix matching, resource utilization) in a hierarchical decision process.
+
+2. **Mixin Compatibility**: The prefix-aware router can potentially be combined with [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst) or [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) for additional routing intelligence.
+
+3. **Graceful Degradation**: Always provide fallback mechanisms when specialized routing conditions aren't met, ensuring robust operation under all circumstances.
+
 (prefix-aware-configuration)=
 ## Configuration Parameters
 
-The `PrefixAwarePow2RequestRouter` provides several configuration parameters to tune its behavior:
+The `PrefixCacheAffinityRouter` provides several configuration parameters to tune its behavior:
 
 ### Core Routing Parameters
 
@@ -67,11 +189,9 @@ The `PrefixAwarePow2RequestRouter` provides several configuration parameters to 
 Here's how to deploy an LLM application using the prefix cache-aware request router:
 
 ```python
-import ray
 from ray import serve
-from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
-    PrefixAwarePow2ReplicaRouter
-)
+from ray.serve.llm import LLMConfig, build_openai_app
+from ray.serve.llm.request_router import PrefixCacheAffinityRouter
 
 llm_config = LLMConfig(
     model_loading_config=dict(
@@ -79,19 +199,21 @@ llm_config = LLMConfig(
         model_source="Qwen/Qwen2.5-0.5B-Instruct",
     ),
     deployment_config=dict(
-        request_router_config=dict(
-            request_router_class=PrefixAwarePow2ReplicaRouter,
-            request_router_kwargs=
+        autoscaling_config=dict(
+            min_replicas=4,
+            max_replicas=4
         ),
-        # Configure routing behavior
-        request_router_kwargs={
-            "imbalanced_threshold": 5,  # More aggressive load balancing
-            "match_rate_threshold": 0.15,  # Require 15% match rate
-            "do_eviction": True,  # Enable memory management
-            "eviction_threshold_chars": 500_000,
-            "eviction_target_chars": 400_000,
-            "eviction_interval_secs": 30,
-        }
+        request_router_config=dict(
+            request_router_class=PrefixCacheAffinityRouter,
+            request_router_kwargs={
+                "imbalanced_threshold": 5,  # More aggressive load balancing
+                "match_rate_threshold": 0.15,  # Require 15% match rate
+                "do_eviction": True,  # Enable memory management
+                "eviction_threshold_chars": 500_000,
+                "eviction_target_chars": 400_000,
+                "eviction_interval_secs": 30,
+            }
+        ),
     ),
 )
 
@@ -99,102 +221,3 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app)
 ```
-
-(optimizing-prefix-performance)=
-## Performance Optimization Strategies
-
-### 1. Tuning Load Balance Threshold
-
-For workloads with high cache locality potential:
-```python
-# More aggressive prefix cache routing (higher cache hit rate, potential load imbalance)
-request_router_kwargs={
-    "imbalanced_threshold": 15,  # Allow more queue length variation
-    "match_rate_threshold": 0.05,  # Lower match requirement
-}
-```
-
-For load-balancing prioritized workloads:
-```python
-# Prioritize load balancing (more predictable latency, reduced cache hits)
-request_router_kwargs={
-    "imbalanced_threshold": 3,  # Strict load balancing
-    "match_rate_threshold": 0.2,  # Higher match requirement
-}
-```
-
-### 2. Memory Management for Long-Running Services
-
-For production deployments processing large volumes:
-```python
-request_router_kwargs={
-    "do_eviction": True,
-    "eviction_threshold_chars": 1_000_000,  # 1M character threshold
-    "eviction_target_chars": 800_000,  # Reduce to 800K
-    "eviction_interval_secs": 60,  # Check every minute
-}
-```
-
-### 3. Replica Scaling Considerations
-
-The prefix cache-aware router works best with sufficient replicas (4+ recommended) to allow effective prefix grouping across different request patterns.
-
-(monitoring-prefix-routing)=
-## Monitoring and Debugging
-
-### Understanding Routing Decisions
-
-The router makes routing decisions based on three key metrics you can monitor:
-
-1. **Queue Length Imbalance**: Monitor the difference between max and min queue lengths across replicas
-2. **Prefix Match Rate**: Track the percentage of input text that matches existing prefixes
-3. **Cache Hit Rate**: Measure KV-cache effectiveness at the model level
-
-### Debugging Common Issues
-
-**Low Cache Hit Rates:**
-- Increase `imbalanced_threshold` to allow more prefix cache-based routing
-- Decrease `match_rate_threshold` to accept lower match rates
-- Check if input prompts have sufficient commonality
-
-**Load Imbalance:**
-- Decrease `imbalanced_threshold` for stricter load balancing
-- Monitor replica queue lengths and processing times
-- Consider adjusting the number of replicas
-
-**Memory Growth:**
-- Enable eviction with appropriate thresholds
-- Monitor prefix tree size through the tree actor
-- Adjust eviction parameters based on workload patterns
-
-(prefix-aware-best-practices)=
-## Best Practices
-
-### 1. Gradual Parameter Tuning
-Start with aggressive prefix routing to verify effectiveness, then tune for balance:
-
-```python
-# Phase 1: Aggressive settings to verify prefix routing works
-request_router_kwargs={
-    "imbalanced_threshold": 20,  # Allow significant load imbalance
-    "match_rate_threshold": 0.05,  # Accept weak prefix matches
-    "do_eviction": False,  # Disable initially for testing
-}
-
-# Phase 2: Tune for your workload's balance of cache hits vs load distribution
-# Monitor cache hit rates and queue length variations, then adjust thresholds
-```
-
-### 2. Testing and Validation
-Test the router's effectiveness with your specific workload patterns:
-
-```python
-# Test with similar prompts to verify cache locality
-test_prompts = [
-    "Translate the following English text to French: Hello",
-    "Translate the following English text to French: Goodbye", 
-    "Translate the following English text to Spanish: Hello",
-]
-```
-
-The `PrefixAwarePow2RequestRouter` provides a powerful way to optimize LLM inference by intelligently routing related requests to the same replicas, improving cache locality while maintaining load balance. Proper configuration and monitoring are key to achieving optimal performance for your specific use case.

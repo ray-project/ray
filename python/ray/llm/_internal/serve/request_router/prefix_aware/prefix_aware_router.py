@@ -167,6 +167,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
+                # Start Sphinx tag: __begin_load_balance_component__
                 # Check for imbalanced load.
                 highest_queue_len = 0
                 lowest_queue_len = float("inf")
@@ -195,6 +196,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 is_imbalanced = (
                     highest_queue_len - lowest_queue_len > self._imbalanced_threshold
                 )
+                # End Sphinx tag: __end_load_balance_component__
                 if not is_imbalanced:
                     # Convert candidate replica IDs to strings for prefix matching.
                     candidate_replica_ids_strings = [
@@ -283,6 +285,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
+        # Start Sphinx tag: __begin_router_foundation__
         # Get fallback replicas from PowerOfTwoChoicesRequestRouter
         fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
@@ -291,6 +294,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         )
         if pending_request is None or not fallback_replicas:
             return fallback_replicas
+        # End Sphinx tag: __end_router_foundation__
 
         if (
             pending_request is not None
