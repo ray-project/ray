@@ -14,6 +14,7 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.test_utils import (
+    check_running,
     get_application_url,
     send_signal_on_cancellation,
 )
@@ -251,6 +252,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
             await asyncio.sleep(1000000)
 
     serve.run(Hang.bind())
+    wait_for_condition(check_running)
 
     def get_num_running_tasks():
         return len(

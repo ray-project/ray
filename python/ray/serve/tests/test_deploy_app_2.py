@@ -17,6 +17,8 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
+    check_running,
+    get_application_url,
 )
 from ray.serve.schema import (
     ApplicationStatus,
@@ -24,7 +26,6 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
-from ray.serve.tests.test_deploy_app import check_running
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
@@ -404,18 +405,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ],
     )
     client.deploy_apps(config)
-
-    def check_application_running(
-        name: str, route_prefix: str, *, msg: str = "wonderful world"
-    ):
-        status = serve.status().applications[name]
-        assert status.status == "RUNNING"
-        assert httpx.post(f"http://localhost:8000{route_prefix}/").text == msg
-        return True
-
-    wait_for_condition(
-        check_application_running, name="declarative-app-1", route_prefix="/app-1"
-    )
+    wait_for_condition(check_running, app_name="declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
 
     # Now `serve.run` a dynamic app.
     @serve.deployment
@@ -424,12 +416,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             return "Hello!"
 
     serve.run(D.bind(), name="dynamic-app", route_prefix="/dynamic")
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     # Add a new app via declarative API.
     # Existing declarative app and dynamic app should not be affected.
@@ -441,46 +430,35 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ),
     )
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running, name="declarative-app-2", route_prefix="/app-2"
-    )
-    wait_for_condition(
-        check_application_running, name="declarative-app-1", route_prefix="/app-1"
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
+
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     # Delete one of the apps via declarative API.
     # Other declarative app and dynamic app should not be affected.
     config.applications.pop(0)
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running, name="declarative-app-2", route_prefix="/app-2"
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
 
     # Now overwrite the declarative app with a dynamic app with the same name.
     # On subsequent declarative apply, that app should not be affected.
     serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     config.applications = [
         ServeApplicationSchema(
@@ -490,39 +468,30 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ),
     ]
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-1",
-        route_prefix="/app-1",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    wait_for_condition(check_running, app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
+
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     # Verify that the controller does not delete the dynamic apps on recovery.
     ray.kill(client._controller, no_restart=False)
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    # Controller takes some time to discover running proxy replica and recover the ProxyState.
+    time.sleep(3)
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
+
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     # Now overwrite the dynamic app with a declarative one and check that it gets
     # deleted upon another apply that doesn't include it.
@@ -534,11 +503,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ),
     ]
     client.deploy_apps(config)
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-    )
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
     config.applications = []
     client.deploy_apps(config)

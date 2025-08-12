@@ -1256,6 +1256,30 @@ class DeploymentReplica:
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
 
+    def query_ports_and_node_id_from_actor(self) -> Tuple[int, int, str]:
+        """Query the ports and node id from the actor.
+        This method is useful before ActorReplicaWrapper is fully initialized.
+        """
+        (
+            _,
+            _,
+            _,
+            _,
+            _,
+            http_port,
+            grpc_port,
+        ) = ray.get(self._actor._ready_obj_ref)
+
+        (
+            _,
+            _,
+            _,
+            node_id,
+            _,
+            _,
+            _,
+        ) = ray.get(self._actor._allocated_obj_ref)
+        return http_port, grpc_port, node_id
 
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
