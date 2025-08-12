@@ -8,7 +8,6 @@ srcs:
   - python/requirements/ml/dl-cpu-requirements.txt
   - ci/ray_ci/windows/build_base.sh
   - ci/ray_ci/windows/install_bazelisk.ps1
-  - ci/ray_ci/windows/enable_long_paths.ps1
   - ci/ray_ci/windows/cleanup.ps1
 tags:
   - cr.ray.io/rayproject/windowsbuild

@@ -226,3 +226,6 @@ try-import %workspace%/.llvm-local.bazelrc
 build:macos --sandbox_block_path=/usr/local/
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
+
+build:windows --output_base=C:\b
+test:windows --output_base=C:\b
