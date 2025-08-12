@@ -233,44 +233,33 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
     (a method decorated with @ray.method(tensor_transport=...)) or (b) an actor-level decorator
     @ray.remote(enable_tensor_transport=True)."""
 
-    if has_tensor_transport_method:
+    class _GPUTestActor:
+        def double(self, data):
+            if isinstance(data, list):
+                return [self.double(d) for d in data]
+            if support_tensordict and isinstance(data, TensorDict):
+                return data.apply(lambda x: x * 2)
+            return data * 2
 
+        def infinite_sleep(self, signal):
+            signal.send.remote()
+            while True:
+                time.sleep(1)
+
+
+    if has_tensor_transport_method:
+        # Test tensor transport annotation via ray.method.
         @ray.remote
-        class GPUTestActor:
+        class GPUTestActor(_GPUTestActor):
             @ray.method(tensor_transport="gloo")
             def echo(self, data):
                 return data
-
-            def double(self, data):
-                if isinstance(data, list):
-                    return [self.double(d) for d in data]
-                if support_tensordict and isinstance(data, TensorDict):
-                    return data.apply(lambda x: x * 2)
-                return data * 2
-
-            def infinite_sleep(self, signal):
-                signal.send.remote()
-                while True:
-                    time.sleep(1)
-
     else:
-
+        # Test tensor transport annotation via ray.remote.
         @ray.remote(enable_tensor_transport=True)
-        class GPUTestActor:
+        class GPUTestActor(_GPUTestActor):
             def echo(self, data):
                 return data
-
-            def double(self, data):
-                if isinstance(data, list):
-                    return [self.double(d) for d in data]
-                if support_tensordict and isinstance(data, TensorDict):
-                    return data.apply(lambda x: x * 2)
-                return data * 2
-
-            def infinite_sleep(self, signal):
-                signal.send.remote()
-                while True:
-                    time.sleep(1)
 
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
