@@ -469,7 +469,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             data_context=data_context,
         )
 
-        self._running_resource_usage = ExecutionResources.zero()
+        # We track the running usage total because iterating
+        # and summing over all shuffling tasks can be expensive.
+        self._shuffling_resource_usage = ExecutionResources.zero()
 
         self._input_block_transformer = input_block_transformer
 
@@ -587,9 +589,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             def _on_partitioning_done(cur_shuffle_task_idx: int):
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
-                self._running_resource_usage = self._running_resource_usage.subtract(
-                    ExecutionResources(
-                        cpu=task.get_requested_resource_bundle().cpu, gpu=0
+                self._shuffling_resource_usage = (
+                    self._shuffling_resource_usage.subtract(
+                        task.get_requested_resource_bundle()
                     )
                 )
                 # Fetch input block and resulting partition shards block metadata and
@@ -633,9 +635,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     shuffle_task_resource_bundle
                 ),
             )
-            self._running_resource_usage = self._running_resource_usage.add(
-                ExecutionResources(cpu=task.get_requested_resource_bundle().cpu, gpu=0)
-            )
+            if task.get_requested_resource_bundle() is not None:
+                self._shuffling_resource_usage = self._shuffling_resource_usage.add(
+                    task.get_requested_resource_bundle()
+                )
 
             #  Update Shuffle Metrics on task submission
             self.shuffle_metrics.on_task_submitted(
@@ -863,7 +866,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - Active shuffling tasks
         #   - Active finalizing tasks (actor tasks)
         base_usage = self.base_resource_usage
-        running_usage = self._running_resource_usage
+        running_usage = self._shuffling_resource_usage
 
         # TODO add memory to resources being tracked
         return base_usage.add(running_usage)
