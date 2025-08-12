@@ -432,7 +432,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     from fastapi import APIRouter, Depends
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
-    def get_current_servable_instance():
+    async def get_current_servable_instance():
         from ray import serve
 
         return serve.get_replica_context().servable_object
