@@ -11,7 +11,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def _calculate_desired_num_replicas(
     autoscaling_config: AutoscalingConfig,
-    current_requests_per_replica: int,
+    total_num_requests: float,
     num_running_replicas: int,
     override_min_replicas: Optional[float] = None,
     override_max_replicas: Optional[float] = None,
@@ -21,9 +21,9 @@ def _calculate_desired_num_replicas(
     Args:
         autoscaling_config: The autoscaling parameters to use for this
             calculation.
-        current_requests_per_replica: Aggregated request count per replica
-            across all currently running replicas. The aggregation method
-             (e.g., average, max, min) is configurable.
+        total_num_requests (float): A list of the number of
+            ongoing requests for each replica.  Assumes each entry has already
+            been time-averaged over the desired lookback window.
         override_min_replicas: Overrides min_replicas from the config
             when calculating the final number of replicas.
         override_max_replicas: Overrides max_replicas from the config
@@ -40,9 +40,9 @@ def _calculate_desired_num_replicas(
     # Example: if error_ratio == 2.0, we have two times too many ongoing
     # requests per replica, so we desire twice as many replicas.
     target_num_requests = (
-        autoscaling_config.get_target_ongoing_requests()
+        autoscaling_config.get_target_ongoing_requests() * num_running_replicas
     )
-    error_ratio: float = current_requests_per_replica / target_num_requests
+    error_ratio: float = total_num_requests / target_num_requests
 
     # If error ratio >= 1, then the number of ongoing requests per
     # replica exceeds the target and we will make an upscale decision,
@@ -84,7 +84,7 @@ def _calculate_desired_num_replicas(
 @PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
     curr_target_num_replicas: int,
-    current_requests_per_replica: int,
+    total_num_requests: float,
     num_running_replicas: int,
     config: Optional[AutoscalingConfig],
     capacity_adjusted_min_replicas: int,
@@ -103,7 +103,7 @@ def replica_queue_length_autoscaling_policy(
     decision_counter = policy_state.get("decision_counter", 0)
     if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
-        if current_requests_per_replica > 0:
+        if total_num_requests > 0:
             return max(
                 math.ceil(1 * config.get_upscaling_factor()),
                 curr_target_num_replicas,
@@ -114,7 +114,7 @@ def replica_queue_length_autoscaling_policy(
 
     desired_num_replicas = _calculate_desired_num_replicas(
         config,
-        current_requests_per_replica,
+        total_num_requests,
         num_running_replicas=num_running_replicas,
         override_min_replicas=capacity_adjusted_min_replicas,
         override_max_replicas=capacity_adjusted_max_replicas,

@@ -5,7 +5,17 @@ import statistics
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, DefaultDict, Dict, Hashable, Iterable, List, Optional
+from itertools import chain
+from typing import (
+    Callable,
+    DefaultDict,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+)
 
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -120,6 +130,20 @@ class TimeStampedValue:
     value: float = field(compare=False)
 
 
+class _Counted:
+    def __init__(self, it: Iterable[float]):
+        self._it = iter(it)
+        self.count = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        x = next(self._it)
+        self.count += 1
+        return x
+
+
 class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
@@ -173,7 +197,7 @@ class InMemoryMetricsStore:
         self,
         keys: Iterable[Hashable],
         aggregate_fn: Callable[[Iterable[float]], float],
-    ) -> Optional[float]:
+    ) -> Optional[Tuple[float, int]]:
         """Reduce the entire set of timeseries values across the specified keys.
 
         Args:
@@ -181,15 +205,24 @@ class InMemoryMetricsStore:
             aggregate_fn: Function to apply across all float values, e.g., sum, max.
 
         Returns:
-            A single float value or None if aggregation fails.
+            A tuple of (float, int) where the first element is the aggregated value
+            and the second element is the count of values aggregated. Returns None
+            if no values are available.
         """
         values = (
-            timeseries.value
-            for key in keys
-            for timeseries in self.data.get(key, [])
+            timeseries.value for key in keys for timeseries in self.data.get(key, ())
         )
 
-        return aggregate_fn(values)
+        # Return None if no values are available.
+        _empty = object()
+        first = next(values, _empty)
+        if first is _empty:
+            return None
+
+        counter = _Counted(chain((first,), values))
+        agg_result = aggregate_fn(counter)
+
+        return agg_result, counter.count
 
     def get_latest(
         self,
@@ -203,39 +236,31 @@ class InMemoryMetricsStore:
     def aggregate_min(
         self,
         keys: Iterable[Hashable],
-    ) -> Optional[float]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate min value across the specified keys."""
-        try:
-            return self._aggregate_reduce(keys, min)
-        except ValueError:
-            return 0.0
+        return self._aggregate_reduce(keys, min)
 
     def aggregate_max(
         self,
         keys: Iterable[Hashable],
-    ) -> Optional[float]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate max value across the specified keys."""
-        try:
-            return self._aggregate_reduce(keys, max)
-        except ValueError:
-            return 0.0
+        return self._aggregate_reduce(keys, max)
 
     def aggregate_sum(
         self,
         keys: Iterable[Hashable],
-    ) -> Optional[float]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate sum value across the specified keys."""
         return self._aggregate_reduce(keys, sum)
 
     def aggregate_avg(
         self,
         keys: Iterable[Hashable],
-    ) -> Optional[float]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate average value across the specified keys."""
-        try:
-            return self._aggregate_reduce(keys, statistics.mean)
-        except statistics.StatisticsError:
-            return 0.0
+        return self._aggregate_reduce(keys, statistics.mean)
+
 
 def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetricsStore:
     merged = stores[0]
@@ -248,8 +273,13 @@ def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetrics
                 if key == QUEUED_REQUESTS_KEY:
                     # Sum queued requests across handle metrics.
                     merged.data[QUEUED_REQUESTS_KEY][-1].value += timeseries[-1].value
-                elif (key not in merged.data or
-                    (timeseries and (not merged.data[key] or timeseries[-1].timestamp > merged.data[key][-1].timestamp))):
+                elif key not in merged.data or (
+                    timeseries
+                    and (
+                        not merged.data[key]
+                        or timeseries[-1].timestamp > merged.data[key][-1].timestamp
+                    )
+                ):
                     # Replace if not present or if newer datapoints are available
                     merged.data[key] = timeseries.copy()
 
