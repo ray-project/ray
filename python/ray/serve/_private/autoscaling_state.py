@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -213,7 +213,10 @@ class AutoscalingState:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, metrics_store: InMemoryMetricsStore, send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        metrics_store: InMemoryMetricsStore,
+        send_timestamp: float,
     ) -> None:
         """Records the raw autoscaling metrics for a replica."""
         if (
@@ -221,8 +224,7 @@ class AutoscalingState:
             or send_timestamp > self._replica_requests[replica_id].timestamp
         ):
             self._replica_requests[replica_id] = ReplicaMetricReport(
-                metrics_store=metrics_store,
-                timestamp=send_timestamp
+                metrics_store=metrics_store, timestamp=send_timestamp
             )
 
     def record_request_metrics_for_handle(
@@ -234,12 +236,11 @@ class AutoscalingState:
         metrics_store: InMemoryMetricsStore,
         send_timestamp: float,
     ) -> None:
-        """Records the raw autoscaling metrics for a deployment handle.
-        """
+        """Records the raw autoscaling metrics for a deployment handle."""
 
         if (
             handle_id not in self._handle_requests
-            or send_timestamp > self._handle_requests[handle_id].timestamp
+            or send_timestamp >= self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = HandleMetricReport(
                 actor_id=actor_id,
@@ -326,6 +327,55 @@ class AutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
+    def _get_request_count(self) -> Tuple[float, int]:
+        """Helper function to aggregate request counts from replicas and handles.
+        If there are 0 running replicas, then returns the number
+        of requests queued at handles.
+        """
+
+        total_requests = 0
+        report_count = 0
+        if self._replica_requests:
+            merged_metrics = consolidate_metrics_stores(
+                *[
+                    replica_report.metrics_store
+                    for replica_report in self._replica_requests.values()
+                ]
+            )
+        elif self._handle_requests:
+            merged_metrics = consolidate_metrics_stores(
+                *[
+                    handle_metric.metrics_store
+                    for handle_metric in self._handle_requests.values()
+                ]
+            )
+        else:
+            logger.debug("No metrics stores detected in autoscaler.")
+            return total_requests, report_count
+
+        queued_requests = merged_metrics.get_latest(QUEUED_REQUESTS_KEY) or 0.0
+        queued_per_replica = (
+            queued_requests / len(self._running_replicas)
+            if self._running_replicas
+            else queued_requests
+        )
+        aggregate_function = self._config.aggregation_function
+        if aggregate_function == "mean":
+            total_requests, report_count = merged_metrics.aggregate_avg(
+                self._running_replicas
+            ) or (0.0, 0)
+        elif aggregate_function == "max":
+            total_requests, report_count = merged_metrics.aggregate_max(
+                self._running_replicas
+            ) or (0.0, 0)
+        elif aggregate_function == "min":
+            total_requests, report_count = merged_metrics.aggregate_min(
+                self._running_replicas
+            ) or (0.0, 0)
+        total_requests += queued_per_replica
+
+        return total_requests, report_count
+
     def get_total_num_requests(self) -> float:
         """Get total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -337,7 +387,8 @@ class AutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        return self.get_current_requests_per_replica() * len(self._running_replicas)
+        aggregated_requests, report_count = self._get_request_count()
+        return aggregated_requests * max(1, report_count)
 
     def get_current_requests_per_replica(self) -> float:
         """Get number of requests per-replica aggregated over the past
@@ -351,32 +402,8 @@ class AutoscalingState:
         to ensure enclusivity of the metrics.
         """
 
-        total_requests = 0
-
-        if self._replica_requests:
-            merged_metrics = consolidate_metrics_stores(
-                *[replica_report.metrics_store for replica_report in self._replica_requests.values()]
-            )
-        elif self._handle_requests:
-            merged_metrics = consolidate_metrics_stores(
-                *[handle_metric.metrics_store for handle_metric in self._handle_requests.values()]
-            )
-        else:
-            logger.debug("No metrics stores detected in autoscaler.")
-            return 0.0
-
-        queued_requests = merged_metrics.get_latest(QUEUED_REQUESTS_KEY) or 0.0
-        queued_per_replica = queued_requests / len(self._running_replicas) if self._running_replicas else queued_requests
-        aggregate_function = self._config.aggregation_function
-        if aggregate_function == "mean":
-            total_requests = merged_metrics.aggregate_avg(self._running_replicas)
-        elif aggregate_function == "max":
-            total_requests = merged_metrics.aggregate_max(self._running_replicas)
-        elif aggregate_function == "min":
-            total_requests = merged_metrics.aggregate_min(self._running_replicas)
-        total_requests += queued_per_replica
-
-        return total_requests
+        aggregated_requests, _ = self._get_request_count()
+        return aggregated_requests
 
 
 class AutoscalingStateManager:
@@ -443,7 +470,10 @@ class AutoscalingStateManager:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, metrics_store: InMemoryMetricsStore, send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        metrics_store: InMemoryMetricsStore,
+        send_timestamp: float,
     ) -> None:
         deployment_id = replica_id.deployment_id
         # Defensively guard against delayed replica metrics arriving

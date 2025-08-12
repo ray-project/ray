@@ -264,13 +264,11 @@ class ServeController:
         self,
         replica_id: str,
         metrics_store: InMemoryMetricsStore,
-        send_timestamp: float
+        send_timestamp: float,
     ):
         """Record metrics for autoscaling directly from replicas. Either this
         method or `record_handle_metrics` should be called, but not both"""
-        logger.debug(
-            f"Received metrics from replica {replica_id} for autoscaling."
-        )
+        logger.debug(f"Received metrics from replica {replica_id} for autoscaling.")
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_id, metrics_store, send_timestamp
         )
