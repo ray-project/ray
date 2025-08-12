@@ -9,6 +9,7 @@ import logging
 import torch
 import torch.distributed as dist
 import ray
+from ray._private.accelerators import NPUAcceleratorManager as Accelerator
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import (
     BaseGroup,
@@ -127,7 +128,10 @@ class HCCLRootInfoStore:
 class HCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an HCCL collective group."""
-        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = "0,1,2,3"
+        devices = Accelerator.get_current_node_num_accelerators()
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(
+            str(i) for i in range(devices)
+        )
         # Ensure HCCL backend is registered with torch.distributed
         import torch_npu  # noqa: F401
 
