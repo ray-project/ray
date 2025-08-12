@@ -17,9 +17,8 @@ while true; do
     echo "Run #${run_count} - $(date)"
     echo "=========================================="
 
-    # Run the bazel command
-    bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_logging_2 core \
-        --run-flaky-tests \
+    if [ $run_count -eq 1 ]; then
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_logging_2 core \
         --except-tags no_windows \
         --build-name windowsbuild \
         --operating-system windows \
@@ -27,6 +26,17 @@ while true; do
         --test-env=RAY_CI_POST_WHEEL_TESTS="1" \
         --test-env=USERPROFILE \
         --workers "${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "${BUILDKITE_PARALLEL_JOB}"
+    else
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_logging_2 core \
+        --except-tags no_windows \
+        --build-name windowsbuild \
+        --operating-system windows \
+        --test-env=CI="1" \
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1" \
+        --test-env=USERPROFILE \
+        --workers "${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "${BUILDKITE_PARALLEL_JOB}" \
+        --skip-ray-installation
+    fi
 
     # Check the exit status
     exit_code=$?
