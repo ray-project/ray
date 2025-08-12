@@ -163,19 +163,15 @@ class AggregatorAgent(
         self._events_published_since_last_metrics_update = 0
         self._events_filtered_out_since_last_metrics_update = 0
         self._events_export_addr = (
-            dashboard_agent.events_export_addr
-            if dashboard_agent.events_export_addr
-            else EVENTS_EXPORT_ADDR
+            dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
         )
 
-        if self._events_export_addr == "":
+        self._event_http_target_enabled = bool(self._events_export_addr)
+        if not self._event_http_target_enabled:
             logger.info(
                 "Event HTTP target not set, skipping sending events to "
                 f"external http service. events_export_addr: {self._events_export_addr}"
             )
-            self._event_http_target_enabled = False
-        else:
-            self._event_http_target_enabled = True
 
         self._event_processing_enabled = self._event_http_target_enabled
         if self._event_processing_enabled:

@@ -37,10 +37,7 @@ from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
 _EVENT_AGGREGATOR_AGENT_TARGET_ADDR = (
-    "http://"
-    + _EVENT_AGGREGATOR_AGENT_TARGET_IP
-    + ":"
-    + str(_EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+    f"http://{_EVENT_AGGREGATOR_AGENT_TARGET_IP}:{_EVENT_AGGREGATOR_AGENT_TARGET_PORT}"
 )
 
 
