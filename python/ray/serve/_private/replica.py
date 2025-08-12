@@ -751,7 +751,9 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(
+        self, deployment_config: DeploymentConfig, route_prefix: Optional[str] = None
+    ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -785,11 +787,11 @@ class ReplicaBase(ABC):
                 servable_object=self._user_callable_wrapper.user_callable
             )
 
-            # Update the route prefix only when the new config provides one.
-            # This prevents unrelated reconfigures from clearing the prefix and breaking HTTP routing
-            # as deployment_config.route_prefix is None.
-            if deployment_config.route_prefix is not None:
-                self._route_prefix = deployment_config.route_prefix
+            # Update the route prefix only when provided explicitly by controller.
+            # Keeps existing prefix for unrelated reconfigures.
+            if route_prefix is not None:
+                self._route_prefix = route_prefix
+                self._version.route_prefix_for_hashing = route_prefix
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
@@ -1048,8 +1050,10 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config)
+    async def reconfigure(
+        self, deployment_config, route_prefix: Optional[str] = None
+    ) -> ReplicaMetadata:
+        await self._replica_impl.reconfigure(deployment_config, route_prefix)
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(

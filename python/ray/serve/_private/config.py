@@ -123,7 +123,6 @@ class DeploymentConfig(BaseModel):
         user_configured_option_names: The names of options manually
             configured by the user.
         request_router_config: Configuration for deployment request router.
-        route_prefix: The prefix of the deployment's route.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -188,11 +187,6 @@ class DeploymentConfig(BaseModel):
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
-
-    route_prefix: Optional[str] = Field(
-        default=None,
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
-    )
 
     class Config:
         validate_assignment = True
@@ -347,9 +341,6 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
                 )
-        if "route_prefix" in data:
-            if data["route_prefix"] == "":
-                data["route_prefix"] = None
 
         return cls(**data)
 

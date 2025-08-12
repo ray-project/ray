@@ -1354,6 +1354,5 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
-            deployment.deployment_config.route_prefix = app_route_prefix
 
     return deployment_infos

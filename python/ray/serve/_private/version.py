@@ -22,6 +22,7 @@ class DeploymentVersion:
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
+        route_prefix_for_hashing: Optional[str] = None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -37,6 +38,7 @@ class DeploymentVersion:
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
         self.max_replicas_per_node = max_replicas_per_node
+        self.route_prefix_for_hashing = route_prefix_for_hashing
         self.compute_hashes()
 
     @classmethod
@@ -95,12 +97,16 @@ class DeploymentVersion:
             combined_placement_group_options
         )
         self.placement_group_options_hash = crc32(serialized_placement_group_options)
+        # Include app-level route prefix in the version hashes so changing
+        # it triggers an in-place reconfigure of running replicas.
+        serialized_route_prefix_for_hashing = _serialize(self.route_prefix_for_hashing)
         serialized_route_prefix = _serialize(self.deployment_config.route_prefix)
 
         # If this changes, DeploymentReplica.reconfigure() will call reconfigure on the
         # actual replica actor
         self.reconfigure_actor_hash = crc32(
-            self._get_serialized_options(
+            _serialize({"route_prefix": self.route_prefix_for_hashing})
+            + self._get_serialized_options(
                 [DeploymentOptionUpdateType.NeedsActorReconfigure]
             )
         )
@@ -112,7 +118,7 @@ class DeploymentVersion:
             + serialized_ray_actor_options
             + serialized_placement_group_options
             + str(self.max_replicas_per_node).encode("utf-8")
-            + serialized_route_prefix
+            + + serialized_route_prefix_for_hashing
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,

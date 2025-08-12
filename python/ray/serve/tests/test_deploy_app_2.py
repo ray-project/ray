@@ -559,7 +559,6 @@ def test_change_route_prefix(serve_instance):
     wait_for_condition(check_running)
     url = get_application_url()
     pid1 = httpx.get(url).json()[0]
-
     # Redeploy application with route prefix /new.
     app_config["route_prefix"] = "/new"
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
@@ -572,8 +571,8 @@ def test_change_route_prefix(serve_instance):
         assert "Path '/old' not found." in resp.text
 
         # Response from new route should be same PID
-        url = get_application_url(exclude_route_prefix=True)
-        pid2 = httpx.get(f"{url}/new").json()[0]
+        url = get_application_url()
+        pid2 = httpx.get(url).json()[0]
         assert pid2 == pid1
         return True
 
