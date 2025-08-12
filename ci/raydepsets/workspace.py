@@ -6,13 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 
-@dataclass
 class BuildArgSet:
     name: str
     build_args: Dict[str, str]
 
 
-@dataclass
 class Depset:
     name: str
     operation: str
@@ -97,9 +95,11 @@ class Config:
 
 
 def _expand_depsets_per_build_arg_set(
-    depset: dict, build_arg_set_matrix: List[str], build_arg_sets: List[BuildArgSet]
+    depset: dict,
+    build_arg_set_matrix: List[str],
+    build_arg_sets: Dict[str, BuildArgSet],
 ) -> List[Depset]:
-    """returns a list of depsets with the build arg set name appended to the name"""
+    """returns a list of depsets expanded per build arg set"""
     expanded_depsets = []
     for build_arg_set_name in build_arg_set_matrix:
         build_arg_set = next(
