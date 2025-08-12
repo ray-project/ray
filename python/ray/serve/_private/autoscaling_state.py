@@ -370,13 +370,11 @@ class AutoscalingState:
         aggregate_function = self._config.aggregation_function
         if aggregate_function == "mean":
             total_requests = merged_metrics.aggregate_avg(self._running_replicas)
-            total_requests += queued_per_replica
         elif aggregate_function == "max":
             total_requests = merged_metrics.aggregate_max(self._running_replicas)
-            total_requests += queued_per_replica
         elif aggregate_function == "min":
             total_requests = merged_metrics.aggregate_min(self._running_replicas)
-            total_requests += queued_per_replica
+        total_requests += queued_per_replica
 
         return total_requests
 
