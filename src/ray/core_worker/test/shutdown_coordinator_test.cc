@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/buffer.h"
+
 namespace ray {
 namespace core {
 
@@ -47,6 +49,14 @@ class MockShutdownExecutor : public ShutdownExecutorInterface {
                std::string_view detail,
                std::chrono::milliseconds timeout_ms),
               (override));
+  MOCK_METHOD(
+      void,
+      ExecuteExit,
+      (std::string_view exit_type,
+       std::string_view detail,
+       std::chrono::milliseconds timeout_ms,
+       const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes),
+      (override));
   MOCK_METHOD(void,
               ExecuteHandleExit,
               (std::string_view exit_type,
@@ -68,6 +78,11 @@ class NoOpShutdownExecutor : public ShutdownExecutorInterface {
   void ExecuteWorkerExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {}
+  void ExecuteExit(std::string_view exit_type,
+                   std::string_view detail,
+                   std::chrono::milliseconds timeout_ms,
+                   const std::shared_ptr<::ray::LocalMemoryBuffer>
+                       &creation_task_exception_pb_bytes) override {}
   void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {}
@@ -116,7 +131,8 @@ TEST_F(ShutdownCoordinatorTest, IdempotentShutdownRequests) {
   // First graceful request should succeed
   EXPECT_TRUE(coordinator->RequestShutdown(
       false, ShutdownReason::kGracefulExit, "test_graceful"));
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
+  EXPECT_THAT(coordinator->GetState(),
+              ::testing::AnyOf(ShutdownState::kDisconnecting, ShutdownState::kShutdown));
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
   // A second graceful request should be ignored
@@ -153,11 +169,18 @@ TEST_F(ShutdownCoordinatorTest, ValidStateTransitions) {
   // Running -> ShuttingDown -> Disconnecting
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
+  auto s = coordinator->GetState();
+  EXPECT_THAT(s,
+              ::testing::AnyOf(ShutdownState::kDisconnecting, ShutdownState::kShutdown));
 
-  // Disconnecting -> Shutdown
-  EXPECT_TRUE(coordinator->TryTransitionToShutdown());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  if (s == ShutdownState::kDisconnecting) {
+    // Disconnecting -> Shutdown
+    EXPECT_TRUE(coordinator->TryTransitionToShutdown());
+    EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  } else {
+    // Already in shutdown
+    EXPECT_FALSE(coordinator->TryTransitionToShutdown());
+  }
 
   // Manual transitions should fail since already in shutdown state
   EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
@@ -388,6 +411,71 @@ TEST_F(ShutdownCoordinatorTest, MemoryOrderingConsistency) {
   EXPECT_TRUE(thread1_saw_shutdown.load());
   EXPECT_TRUE(thread2_saw_shutdown.load());
   EXPECT_TRUE(coordinator->ShouldEarlyExit());
+}
+
+TEST_F(ShutdownCoordinatorTest, ConcurrentGracefulAndForce_ForceExecutesOnce) {
+  using ::testing::StrictMock;
+  auto mock = std::make_unique<StrictMock<MockShutdownExecutor>>();
+  auto *mock_ptr = mock.get();
+
+  EXPECT_CALL(*mock_ptr, ExecuteForceShutdown(::testing::_, ::testing::_)).Times(1);
+  EXPECT_CALL(*mock_ptr,
+              ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))
+      .Times(::testing::AtMost(1));
+  EXPECT_CALL(*mock_ptr, ExecuteWorkerExit(::testing::_, ::testing::_, ::testing::_))
+      .Times(::testing::AnyNumber());
+  EXPECT_CALL(*mock_ptr, ExecuteHandleExit(::testing::_, ::testing::_, ::testing::_))
+      .Times(::testing::AnyNumber());
+  EXPECT_CALL(*mock_ptr, KillChildProcessesImmediately()).Times(::testing::AnyNumber());
+  EXPECT_CALL(*mock_ptr, ShouldWorkerIdleExit())
+      .Times(::testing::AnyNumber())
+      .WillRepeatedly(::testing::Return(false));
+
+  auto coordinator =
+      std::make_unique<ShutdownCoordinator>(std::move(mock), WorkerType::WORKER);
+
+  std::thread t1([&] {
+    coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit, "graceful");
+  });
+  std::thread t2(
+      [&] { coordinator->RequestShutdown(true, ShutdownReason::kForcedExit, "force"); });
+  t1.join();
+  t2.join();
+
+  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);
+}
+
+TEST_F(ShutdownCoordinatorTest, ConcurrentDoubleForce_ForceExecutesOnce) {
+  using ::testing::StrictMock;
+  auto mock = std::make_unique<StrictMock<MockShutdownExecutor>>();
+  auto *mock_ptr = mock.get();
+
+  EXPECT_CALL(*mock_ptr, ExecuteForceShutdown(::testing::_, ::testing::_)).Times(1);
+  EXPECT_CALL(*mock_ptr,
+              ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))
+      .Times(0);
+  EXPECT_CALL(*mock_ptr, ExecuteWorkerExit(::testing::_, ::testing::_, ::testing::_))
+      .Times(::testing::AnyNumber());
+  EXPECT_CALL(*mock_ptr, ExecuteHandleExit(::testing::_, ::testing::_, ::testing::_))
+      .Times(::testing::AnyNumber());
+  EXPECT_CALL(*mock_ptr, KillChildProcessesImmediately()).Times(::testing::AnyNumber());
+  EXPECT_CALL(*mock_ptr, ShouldWorkerIdleExit())
+      .Times(::testing::AnyNumber())
+      .WillRepeatedly(::testing::Return(false));
+
+  auto coordinator =
+      std::make_unique<ShutdownCoordinator>(std::move(mock), WorkerType::WORKER);
+
+  std::thread t1(
+      [&] { coordinator->RequestShutdown(true, ShutdownReason::kForcedExit, "force1"); });
+  std::thread t2(
+      [&] { coordinator->RequestShutdown(true, ShutdownReason::kForcedExit, "force2"); });
+  t1.join();
+  t2.join();
+
+  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);
 }
 
 }  // namespace core

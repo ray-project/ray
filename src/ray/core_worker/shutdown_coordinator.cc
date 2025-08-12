@@ -14,13 +14,16 @@
 
 #include "ray/core_worker/shutdown_coordinator.h"
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "ray/common/buffer.h"       // LocalMemoryBuffer
+#include "ray/core_worker/common.h"  // for WorkerType alias
 namespace ray {
 
 namespace core {
@@ -29,8 +32,6 @@ ShutdownCoordinator::ShutdownCoordinator(
     std::unique_ptr<ShutdownExecutorInterface> executor, WorkerType worker_type)
     : executor_(std::move(executor)), worker_type_(worker_type) {
   RAY_CHECK(executor_) << "ShutdownExecutor cannot be null";
-  state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
-                          std::memory_order_relaxed);
 }
 
 bool ShutdownCoordinator::RequestShutdown(
@@ -40,33 +41,32 @@ bool ShutdownCoordinator::RequestShutdown(
     std::chrono::milliseconds timeout_ms,
     bool force_on_timeout,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  uint16_t expected = state_and_reason_.load(std::memory_order_acquire);
-
-  while (true) {
-    ShutdownState current_state = UnpackState(expected);
-
-    if (current_state == ShutdownState::kShutdown) {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (state_ == ShutdownState::kShutdown) {
       return false;
     }
-
-    if (!force_shutdown && current_state != ShutdownState::kRunning) {
+    if (!force_shutdown && state_ != ShutdownState::kRunning) {
       // Graceful shutdown is only allowed from the `Running` state.
       return false;
     }
-
-    uint16_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
-
-    if (state_and_reason_.compare_exchange_strong(
-            expected, desired, std::memory_order_acq_rel, std::memory_order_acquire)) {
-      shutdown_detail_ = detail;
-      ExecuteShutdownSequence(force_shutdown,
-                              detail,
-                              timeout_ms,
-                              force_on_timeout,
-                              creation_task_exception_pb_bytes);
-      return true;
+    if (state_ == ShutdownState::kRunning) {
+      state_ = ShutdownState::kShuttingDown;
+      reason_ = reason;
+      shutdown_detail_ = std::string(detail);
+    } else if (force_shutdown) {
+      // Allow force to override reason mid-shutdown.
+      reason_ = reason;
+      shutdown_detail_ = std::string(detail);
     }
   }
+
+  ExecuteShutdownSequence(force_shutdown,
+                          detail,
+                          timeout_ms,
+                          force_on_timeout,
+                          creation_task_exception_pb_bytes);
+  return true;
 }
 
 bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
@@ -76,50 +76,36 @@ bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
-  uint16_t current = state_and_reason_.load(std::memory_order_acquire);
-  ShutdownState current_state = UnpackState(current);
-  ShutdownReason current_reason = UnpackReason(current);
-
-  if (current_state != ShutdownState::kShuttingDown) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (state_ != ShutdownState::kShuttingDown) {
     return false;
   }
-
-  uint16_t expected = current;
-  uint16_t desired = PackStateReason(ShutdownState::kDisconnecting, current_reason);
-
-  return state_and_reason_.compare_exchange_strong(
-      expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
+  state_ = ShutdownState::kDisconnecting;
+  return true;
 }
 
 bool ShutdownCoordinator::TryTransitionToShutdown() {
-  uint16_t current = state_and_reason_.load(std::memory_order_acquire);
-  ShutdownState current_state = UnpackState(current);
-  ShutdownReason current_reason = UnpackReason(current);
-
-  // Can transition from kDisconnecting (normal flow) or kShuttingDown (force shutdown)
-  if (current_state != ShutdownState::kShuttingDown &&
-      current_state != ShutdownState::kDisconnecting) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (state_ != ShutdownState::kShuttingDown && state_ != ShutdownState::kDisconnecting) {
     return false;
   }
-
-  uint16_t expected = current;
-  uint16_t desired = PackStateReason(ShutdownState::kShutdown, current_reason);
-
-  return state_and_reason_.compare_exchange_strong(
-      expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
+  state_ = ShutdownState::kShutdown;
+  return true;
 }
 
 ShutdownState ShutdownCoordinator::GetState() const {
-  return UnpackState(state_and_reason_.load(std::memory_order_acquire));
+  std::lock_guard<std::mutex> lock(mu_);
+  return state_;
 }
 
 ShutdownReason ShutdownCoordinator::GetReason() const {
-  return UnpackReason(state_and_reason_.load(std::memory_order_acquire));
+  std::lock_guard<std::mutex> lock(mu_);
+  return reason_;
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  return UnpackState(state_and_reason_.load(std::memory_order_acquire)) !=
-         ShutdownState::kRunning;
+  std::lock_guard<std::mutex> lock(mu_);
+  return state_ != ShutdownState::kRunning;
 }
 
 bool ShutdownCoordinator::IsRunning() const {
@@ -188,6 +174,14 @@ void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
 
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (force_executed_) {
+      RAY_LOG(WARNING) << "ExecuteForceShutdown already executed; skipping duplicate.";
+      return;
+    }
+    force_executed_ = true;
+  }
   RAY_LOG(WARNING) << "ExecuteForceShutdown: calling executor_->ExecuteForceShutdown";
   executor_->ExecuteForceShutdown(GetExitTypeString(), detail);
   RAY_LOG(WARNING) << "ExecuteForceShutdown: executor_->ExecuteForceShutdown completed";
@@ -299,26 +293,5 @@ std::string ShutdownCoordinator::GetReasonString() const {
   }
 }
 
-// Private helper methods
-
-uint16_t ShutdownCoordinator::PackStateReason(ShutdownState state,
-                                              ShutdownReason reason) {
-  StateReasonPacked packed;
-  packed.fields.state = static_cast<uint8_t>(state);
-  packed.fields.reason = static_cast<uint8_t>(reason);
-  return packed.packed;
-}
-
-ShutdownState ShutdownCoordinator::UnpackState(uint16_t packed_value) const {
-  StateReasonPacked packed;
-  packed.packed = packed_value;
-  return static_cast<ShutdownState>(packed.fields.state);
-}
-
-ShutdownReason ShutdownCoordinator::UnpackReason(uint16_t packed_value) const {
-  StateReasonPacked packed;
-  packed.packed = packed_value;
-  return static_cast<ShutdownReason>(packed.fields.reason);
-}
 }  // namespace core
 }  // namespace ray

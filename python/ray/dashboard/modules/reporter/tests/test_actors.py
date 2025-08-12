@@ -95,7 +95,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     ):
         wait_for_condition(lambda: _actor_killed(worker_pid), 1)
 
-    # Force kill the actor - give it more time to propagate
+    # Force kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=True)
     assert "Force killed actor with id" in resp["msg"]
     wait_for_condition(lambda: _actor_killed(worker_pid))

@@ -14,22 +14,24 @@
 
 #pragma once
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 
-#include "ray/core_worker/common.h"
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/core_worker/common.h"  // brings WorkerType alias
+
+namespace ray {
+class LocalMemoryBuffer;
+}  // namespace ray
 
 namespace ray {
 
 namespace core {
 
-/// Interface for executing shutdown operations and provides the shutdown executor
-/// that the coordinator invokes. CoreWorkerShutdownExecutor executes real work.
+/// Interface for executing shutdown operations that the coordinator invokes.
 class ShutdownExecutorInterface {
  public:
   virtual ~ShutdownExecutorInterface() = default;
@@ -48,11 +50,11 @@ class ShutdownExecutorInterface {
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
-  virtual void ExecuteExit(
-      std::string_view exit_type,
-      std::string_view detail,
-      std::chrono::milliseconds timeout_ms,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) = 0;
+  virtual void ExecuteExit(std::string_view exit_type,
+                           std::string_view detail,
+                           std::chrono::milliseconds timeout_ms,
+                           const std::shared_ptr<::ray::LocalMemoryBuffer>
+                               &creation_task_exception_pb_bytes) = 0;
 
   /// Execute handle exit sequence with idle checking
   virtual void ExecuteHandleExit(std::string_view exit_type,
@@ -99,10 +101,9 @@ enum class ShutdownState : std::uint8_t {
 
 /// Thread-safe coordinator for managing worker shutdown state and transitions.
 ///
-/// This class provides atomic state management for shutdown operations using a
-/// single 64-bit atomic variable that packs both state and reason information.
-/// This design ensures consistent reads of both state and reason together,
-/// eliminating race conditions in multi-threaded shutdown scenarios.
+/// This class uses a simple mutex to coordinate state transitions and reason updates.
+/// This design prioritizes clarity and correctness over micro-optimizations since
+/// shutdown is a control path and not latency-sensitive.
 ///
 /// Key features:
 /// - Atomic state transitions with integrated reason tracking
@@ -159,7 +160,7 @@ class ShutdownCoordinator {
       std::string_view detail = "",
       std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{-1},
       bool force_on_timeout = false,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+      const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes =
           nullptr);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
@@ -246,7 +247,7 @@ class ShutdownCoordinator {
       std::string_view detail,
       std::chrono::milliseconds timeout_ms,
       bool force_on_timeout,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Execute graceful shutdown with timeout
   void ExecuteGracefulShutdown(std::string_view detail,
@@ -265,33 +266,17 @@ class ShutdownCoordinator {
       std::string_view detail,
       std::chrono::milliseconds timeout_ms,
       bool force_on_timeout,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
-
-  /// Pack state and reason into a single 16-bit value for atomic operations.
-  uint16_t PackStateReason(ShutdownState state, ShutdownReason reason);
-
-  /// Extract state from packed 16-bit value.
-  ShutdownState UnpackState(uint16_t packed) const;
-
-  /// Extract reason from packed 16-bit value.
-  ShutdownReason UnpackReason(uint16_t packed) const;
+      const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   // Executor and configuration
   std::unique_ptr<ShutdownExecutorInterface> executor_;
   WorkerType worker_type_;
 
-  /// Portable state and reason packing structure
-  union StateReasonPacked {
-    uint16_t packed;
-    struct {
-      uint8_t state;
-      uint8_t reason;
-    } fields;
-  };
-
-  /// Single atomic variable holding both state and reason.
-  /// Uses uint16_t since we only need 2 bytes of data.
-  std::atomic<uint16_t> state_and_reason_;
+  // Mutex-guarded shutdown state
+  mutable std::mutex mu_;
+  ShutdownState state_ = ShutdownState::kRunning;
+  ShutdownReason reason_ = ShutdownReason::kNone;
+  bool force_executed_ = false;
 
   /// Shutdown detail for observability (set once during shutdown initiation)
   std::string shutdown_detail_;
