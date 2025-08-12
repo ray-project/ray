@@ -14,7 +14,14 @@
 
 #include "ray/object_manager/common.h"
 
+#include <algorithm>
 #include <string>
+#include <thread>
+#if defined(__APPLE__) || defined(__linux__)
+#include <pthread.h>
+#include <errno.h>
+#include <unistd.h>  // for sched_yield
+#endif
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/ray_config.h"
@@ -42,6 +49,21 @@ void PlasmaObjectHeader::Init() {
   num_read_releases_remaining = 0;
   data_size = 0;
   metadata_size = 0;
+
+#if defined(__APPLE__) || defined(__linux__)
+  // Initialize cross-process condition variable and mutex
+  pthread_mutexattr_t mutex_attr;
+  pthread_mutexattr_init(&mutex_attr);
+  pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
+  pthread_mutex_init(&version_mutex_storage, &mutex_attr);
+  pthread_mutexattr_destroy(&mutex_attr);
+
+  pthread_condattr_t cond_attr;
+  pthread_condattr_init(&cond_attr);
+  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
+  pthread_cond_init(&version_cond_storage, &cond_attr);
+  pthread_condattr_destroy(&cond_attr);
+#endif
 }
 
 void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
@@ -86,28 +108,94 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
   if (!timeout_point) {
     RAY_CHECK_EQ(sem_wait(sem), 0);
   } else {
+#ifdef __linux__
+    // Linux: Use native sem_timedwait for optimal performance
+    struct timespec abs_timeout;
+    auto timeout_duration = timeout_point->time_since_epoch();
+    abs_timeout.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout_duration).count();
+    abs_timeout.tv_nsec = (timeout_duration % std::chrono::seconds(1)).count();
+
+    const auto check_signal_interval = std::chrono::milliseconds(
+        RayConfig::instance().get_check_signal_interval_milliseconds());
+    auto last_signal_check_time = std::chrono::steady_clock::now();
+
+    while (true) {
+      // Try timed wait with short intervals to allow signal checking
+      struct timespec short_timeout = abs_timeout;
+      auto now = std::chrono::steady_clock::now();
+
+      // If we need to check signals soon, use a shorter timeout
+      if (check_signals && now - last_signal_check_time > check_signal_interval) {
+        RAY_RETURN_NOT_OK(check_signals());
+        last_signal_check_time = now;
+      }
+
+      // Calculate remaining time for this iteration
+      auto remaining = *timeout_point - now;
+      if (remaining <= std::chrono::nanoseconds(0)) {
+        return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
+      }
+
+      // Use shorter timeout if signal check is needed soon
+      auto next_signal_check = last_signal_check_time + check_signal_interval;
+      auto time_to_signal_check = next_signal_check - now;
+      auto wait_duration = std::min(remaining,
+                                    check_signals ? time_to_signal_check : remaining);
+
+      auto wait_time = now + wait_duration;
+      auto wait_time_duration = wait_time.time_since_epoch();
+      short_timeout.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(wait_time_duration).count();
+      short_timeout.tv_nsec = (wait_time_duration % std::chrono::seconds(1)).count();
+
+      int result = sem_timedwait(sem, &short_timeout);
+      if (result == 0) {
+        // Successfully acquired semaphore
+        break;
+      } else if (errno == ETIMEDOUT) {
+        // Continue loop to check signals and overall timeout
+        continue;
+      } else {
+        // Other error
+        RAY_LOG(ERROR) << "sem_timedwait failed with errno: " << errno;
+        return Status::IOError("Semaphore wait failed");
+      }
+    }
+#else
+    // macOS: Use adaptive polling since sem_timedwait is not available
     bool got_sem = false;
     const auto check_signal_interval = std::chrono::milliseconds(
         RayConfig::instance().get_check_signal_interval_milliseconds());
     auto last_signal_check_time = std::chrono::steady_clock::now();
+
     // try to acquire the semaphore at least once even if the timeout_point is passed
+    int attempt_count = 0;
     do {
-      // macOS does not support sem_timedwait, so we implement a unified,
-      // spinning-based solution here
-      // TODO(dayshah): use new semaphore with c++20 upgrade for with universal try_until
       if (sem_trywait(sem) == 0) {
         got_sem = true;
         break;
       }
+
+      // Add adaptive sleep to avoid busy spinning
+      if (attempt_count < 5) {
+        // First few attempts: yield for minimal latency
+        sched_yield();
+      } else {
+        // After several attempts: sleep to reduce CPU usage
+        std::this_thread::sleep_for(std::chrono::microseconds(50));
+      }
+      attempt_count++;
+
       if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
                                check_signal_interval) {
         RAY_RETURN_NOT_OK(check_signals());
         last_signal_check_time = std::chrono::steady_clock::now();
       }
     } while (std::chrono::steady_clock::now() < *timeout_point);
+
     if (!got_sem) {
       return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
     }
+#endif
   }
 
   // Check `has_error` again so that no more than one thread is ever in the critical
@@ -174,6 +262,14 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   num_read_releases_remaining = num_readers;
 
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+
+  // Signal waiting readers that the object is now sealed and ready
+  if (sem.version_cond && sem.version_mutex) {
+    RAY_CHECK_EQ(pthread_mutex_lock(sem.version_mutex), 0);
+    RAY_CHECK_EQ(pthread_cond_broadcast(sem.version_cond), 0);
+    RAY_CHECK_EQ(pthread_mutex_unlock(sem.version_mutex), 0);
+  }
+
   return Status::OK();
 }
 
@@ -190,29 +286,81 @@ Status PlasmaObjectHeader::ReadAcquire(
   // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  // TODO(jhumphri): Wouldn't a futex be better here than polling?
+  // Use condition variable for efficient waiting instead of busy polling
   // Wait for the requested version (or a more recent one) to be sealed.
 
-  const auto check_signal_interval = std::chrono::milliseconds(
-      RayConfig::instance().get_check_signal_interval_milliseconds());
-  auto last_signal_check_time = std::chrono::steady_clock::now();
-  while (version < version_to_read || !is_sealed) {
-    if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
-                             check_signal_interval) {
-      RAY_RETURN_NOT_OK(check_signals());
-      last_signal_check_time = std::chrono::steady_clock::now();
+  if (sem.version_cond && sem.version_mutex) {
+    // Use condition variable for efficient waiting
+    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);  // Release header lock
+
+    RAY_CHECK_EQ(pthread_mutex_lock(sem.version_mutex), 0);
+
+    // Wait for condition with proper spurious wakeup handling
+    while (version < version_to_read || !is_sealed) {
+      // Check timeout before waiting
+      if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
+        pthread_mutex_unlock(sem.version_mutex);
+        return Status::ChannelTimeoutError(absl::StrCat(
+            "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
+      }
+
+      // Check signals before blocking
+      if (check_signals) {
+        pthread_mutex_unlock(sem.version_mutex);
+        Status signal_status = check_signals();
+        pthread_mutex_lock(sem.version_mutex);
+        if (!signal_status.ok()) {
+          pthread_mutex_unlock(sem.version_mutex);
+          return signal_status;
+        }
+      }
+
+      // Block until signaled (handles spurious wakeups automatically)
+      if (timeout_point) {
+        struct timespec abs_timeout;
+        auto timeout_duration = timeout_point->time_since_epoch();
+        abs_timeout.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout_duration).count();
+        abs_timeout.tv_nsec = (timeout_duration % std::chrono::seconds(1)).count();
+
+        int result = pthread_cond_timedwait(sem.version_cond, sem.version_mutex, &abs_timeout);
+        if (result == ETIMEDOUT) {
+          pthread_mutex_unlock(sem.version_mutex);
+          return Status::ChannelTimeoutError(absl::StrCat(
+              "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
+        }
+      } else {
+        RAY_CHECK_EQ(pthread_cond_wait(sem.version_cond, sem.version_mutex), 0);
+      }
+      // Loop continues to check condition after wakeup
     }
-    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-    sched_yield();
-    // We need to get the desired version before timeout
-    if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
-      return Status::ChannelTimeoutError(absl::StrCat(
-          "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
+
+    pthread_mutex_unlock(sem.version_mutex);
+    RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point, check_signals));
+  } else {
+    // Fallback to improved polling (existing implementation)
+    const auto check_signal_interval = std::chrono::milliseconds(
+        RayConfig::instance().get_check_signal_interval_milliseconds());
+    auto last_signal_check_time = std::chrono::steady_clock::now();
+
+    while (version < version_to_read || !is_sealed) {
+      if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                               check_signal_interval) {
+        RAY_RETURN_NOT_OK(check_signals());
+        last_signal_check_time = std::chrono::steady_clock::now();
+      }
+      RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+
+      // Use short sleep instead of busy spinning
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+
+      if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
+        return Status::ChannelTimeoutError(absl::StrCat(
+            "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
+      }
+
+      RAY_RETURN_NOT_OK(
+          TryToAcquireSemaphore(sem.header_sem, timeout_point, check_signals));
     }
-    // Unlike other header, this is used for busy waiting, so we need to apply
-    // timeout_point and check signals.
-    RAY_RETURN_NOT_OK(
-        TryToAcquireSemaphore(sem.header_sem, timeout_point, check_signals));
   }
 
   bool success = false;
