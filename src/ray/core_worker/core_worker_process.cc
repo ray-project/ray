@@ -288,12 +288,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::make_shared<ray::raylet::RayletClient>(
             addr,
             *core_worker->client_call_manager_,
-            addr.node_id() == local_node_id.Binary()
-                ? []() {}
-                : rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
-                      core_worker->gcs_client_.get(),
-                      core_worker->raylet_rpc_client_pool_.get(),
-                      addr));
+            rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                core_worker->gcs_client_.get(),
+                core_worker->raylet_rpc_client_pool_.get(),
+                addr));
       });
 
   raylet_rpc_client_pool->AddExistingClient(local_node_id,
