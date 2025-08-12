@@ -154,6 +154,10 @@ class ParquetMetadataProvider(FileMetadataProvider):
             return _dedupe_schemas(raw_metadata)
 
         else:
+            # We don't deduplicate schemas in this branch because they're already
+            # deduplicated in `_fetch_metadata`. See
+            # https://github.com/ray-project/ray/pull/54821/files#r2265140929 for
+            # related discussion.
             raw_metadata = _fetch_metadata(fragments)
             return raw_metadata
 
