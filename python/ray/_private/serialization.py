@@ -167,7 +167,7 @@ class SerializationContext:
             # Check if this is a GPU ObjectRef being serialized inside a collection
             if (
                 self.is_in_band_serialization()
-                and worker.gpu_object_manager.is_managed_gpu_object(obj.hex())
+                and worker.gpu_object_manager.is_managed_object(obj.hex())
             ):
                 raise ValueError(
                     "GPU ObjectRefs in data structures are not supported. "
