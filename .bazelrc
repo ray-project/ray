@@ -1,8 +1,6 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
-startup --output_base=C:\\b
-
 build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
 
 # Provides users an option to turn on strict action env.

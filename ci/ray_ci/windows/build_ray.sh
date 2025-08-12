@@ -11,7 +11,7 @@ cd /c/rayci
 {
   echo "build --announce_rc";
   echo "build --config=ci";
-  echo "startup --output_user_root=c:/raytmp";
+  echo "startup --output_base=c:/ray";
   echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
 } >> ~/.bazelrc
 
