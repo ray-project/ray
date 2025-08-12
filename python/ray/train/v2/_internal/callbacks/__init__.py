@@ -3,12 +3,14 @@ from .backend_setup import BackendSetupCallback
 from .datasets import DatasetsSetupCallback
 from .state_manager import StateManagerCallback
 from .working_dir_setup import WorkingDirectorySetupCallback
+from .tpu_reservation_callback import TPUReservationCallback
 
 __all__ = [
     "AcceleratorSetupCallback",
     "BackendSetupCallback",
     "DatasetsSetupCallback",
     "StateManagerCallback",
+    "TPUReservationCallback",
     "WorkingDirectorySetupCallback",
 ]
 
