@@ -6,6 +6,60 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
+THROUGHPUT_PANEL = Panel(
+    id=11,
+    title="Throughput (Rows Output / Second)",
+    description="Total rows output per second by dataset operators.",
+    unit="rows/sec",
+    targets=[
+        Target(
+            expr='sum(rate(ray_data_output_rows{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            legend="Rows Output / Second: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+LOGICAL_CPU_USAGE_PANEL = Panel(
+    id=5,
+    title="CPUs (logical slots)",
+    description="Logical CPUs allocated to dataset operators.",
+    unit="cores",
+    targets=[
+        Target(
+            expr='sum(ray_data_cpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="CPU Usage: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+LOGICAL_GPU_USAGE_PANEL = Panel(
+    id=6,
+    title="GPUs (logical slots)",
+    description="Logical GPUs allocated to dataset operators.",
+    unit="cores",
+    targets=[
+        Target(
+            expr='sum(ray_data_gpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="GPU Usage: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+# List of important panels related to operators.
+# For example, ray dashboard can embed these panels with each operator in the UI.
+OPERATOR_PANELS = [
+    THROUGHPUT_PANEL,
+    LOGICAL_CPU_USAGE_PANEL,
+    LOGICAL_GPU_USAGE_PANEL,
+]
+
+
 # When adding a new panels for an OpRuntimeMetric, follow this format:
 # Panel(
 #     title=title,
@@ -68,34 +122,8 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    Panel(
-        id=5,
-        title="CPUs (logical slots)",
-        description="Logical CPUs allocated to dataset operators.",
-        unit="cores",
-        targets=[
-            Target(
-                expr='sum(ray_data_cpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
-                legend="CPU Usage: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=6,
-        title="GPUs (logical slots)",
-        description="Logical GPUs allocated to dataset operators.",
-        unit="cores",
-        targets=[
-            Target(
-                expr='sum(ray_data_gpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
-                legend="GPU Usage: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
+    LOGICAL_CPU_USAGE_PANEL,
+    LOGICAL_GPU_USAGE_PANEL,
     Panel(
         id=7,
         title="Bytes Output / Second",
@@ -124,20 +152,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    Panel(
-        id=11,
-        title="Throughput (Rows Output / Second)",
-        description="Total rows output per second by dataset operators.",
-        unit="rows/sec",
-        targets=[
-            Target(
-                expr='sum(rate(ray_data_output_rows{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
-                legend="Rows Output / Second: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
+    THROUGHPUT_PANEL,
     # Ray Data Metrics (Inputs)
     Panel(
         id=17,
