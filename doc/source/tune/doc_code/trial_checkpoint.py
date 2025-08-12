@@ -163,7 +163,7 @@ assert not result_grid.errors
 assert len(result_grid[0].best_checkpoints) == NUM_EPOCHS // CHECKPOINT_FREQ
 
 # __callback_api_checkpointing_start__
-import tune
+from ray import tune
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.experiment import Trial
 
