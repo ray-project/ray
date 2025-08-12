@@ -470,7 +470,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         )
 
         # We track the running usage total because iterating
-        # and summing over all shuffling tasks can be expensive.
+        # and summing over all shuffling tasks can be expensive
+        # if the # of shuffling tasks is large
         self._shuffling_resource_usage = ExecutionResources.zero()
 
         self._input_block_transformer = input_block_transformer
