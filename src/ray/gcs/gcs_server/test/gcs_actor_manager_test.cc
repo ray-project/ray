@@ -157,7 +157,7 @@ class GcsActorManagerTest : public ::testing::Test {
     rpc::Address address;
     auto node_id = NodeID::FromRandom();
     auto worker_id = WorkerID::FromRandom();
-    address.set_raylet_id(node_id.Binary());
+    address.set_node_id(node_id.Binary());
     address.set_worker_id(worker_id.Binary());
     return address;
   }
@@ -350,7 +350,7 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -408,7 +408,7 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Remove node and then check that the actor is dead.
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
 
   OnNodeDead(node_id);
@@ -447,7 +447,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -463,7 +463,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(finished_actors.size(), 1);
   auto node_id2 = NodeID::FromRandom();
-  address.set_raylet_id(node_id2.Binary());
+  address.set_node_id(node_id2.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -515,7 +515,7 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -689,7 +689,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -747,7 +747,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -805,7 +805,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -891,7 +891,7 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   rpc::Address address;
   auto node_id = NodeID::FromRandom();
   auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
+  address.set_node_id(node_id.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
   const auto &actor_id = actor->GetActorID();
@@ -942,7 +942,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   const auto &owner_address = registered_actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   io_service_.run_one();
@@ -968,7 +968,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeDetachedActorDependenciesRes
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1, /*detached=*/true);
   const auto &owner_address = registered_actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   io_service_.run_one();
@@ -993,7 +993,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   const auto &owner_address = registered_actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   OnNodeDead(node_id);
   ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_TRUE(
@@ -1015,7 +1015,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResol
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1, /*detached=*/true);
   const auto &owner_address = registered_actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   OnNodeDead(node_id);
   ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_TRUE(
@@ -1135,7 +1135,7 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
 
   auto owner_address = request_1.task_spec().caller_address();
   auto node_info = std::make_shared<rpc::GcsNodeInfo>();
-  node_info->set_node_id(owner_address.raylet_id());
+  node_info->set_node_id(owner_address.node_id());
   gcs_actor_manager_->OnNodeDead(node_info, "");
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
             ActorID::Nil().Binary());
@@ -1358,7 +1358,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -1375,7 +1375,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
   auto node_id2 = NodeID::FromRandom();
-  address.set_raylet_id(node_id2.Binary());
+  address.set_node_id(node_id2.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -1407,7 +1407,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
   auto node_id3 = NodeID::FromRandom();
-  address.set_raylet_id(node_id3.Binary());
+  address.set_node_id(node_id3.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -1538,7 +1538,7 @@ TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstructio
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
   auto node_id = NodeID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
+  address.set_node_id(node_id.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -1667,7 +1667,7 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
 
   // Make the actor alive on a specific node
   auto address = RandomAddress();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -1686,7 +1686,7 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
 
   // Make the actor alive on a specific node again.
   auto new_address = RandomAddress();
-  auto new_node_id = NodeID::FromBinary(new_address.raylet_id());
+  auto new_node_id = NodeID::FromBinary(new_address.node_id());
   auto new_worker_id = WorkerID::FromBinary(new_address.worker_id());
   actor->UpdateAddress(new_address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -1709,7 +1709,7 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
 
   // Make the actor alive on another node again
   auto new_address_2 = RandomAddress();
-  auto new_node_id_2 = NodeID::FromBinary(new_address_2.raylet_id());
+  auto new_node_id_2 = NodeID::FromBinary(new_address_2.node_id());
   auto new_worker_id_2 = WorkerID::FromBinary(new_address_2.worker_id());
   actor->UpdateAddress(new_address_2);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());

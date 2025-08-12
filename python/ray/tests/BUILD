@@ -67,6 +67,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_util_helpers.py",
     ],
     tags = [
         "exclusive",
@@ -874,6 +875,7 @@ py_test_module_list(
         "test_actor_failures.py",
         "test_cancel.py",
         "test_chaos.py",
+        "test_core_worker_fault_tolerance.py",
         "test_failure.py",
         "test_failure_2.py",
         "test_generators.py",

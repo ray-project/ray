@@ -70,7 +70,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
             addr,
             this->client_call_manager_,
             /*raylet_unavailable_timeout_callback=*/[this, addr]() {
-              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+              const NodeID node_id = NodeID::FromBinary(addr.node_id());
               auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
               if (!alive_node.has_value()) {
                 this->raylet_client_pool_.Disconnect(node_id);
@@ -82,7 +82,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
             addr,
             this->client_call_manager_,
             /*core_worker_unavailable_timeout_callback*/ [this, addr]() {
-              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+              const NodeID node_id = NodeID::FromBinary(addr.node_id());
               const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
               auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
               if (!alive_node.has_value()) {
@@ -391,8 +391,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
           // GetOrConnectionByID will not connect to the raylet is it hasn't been
           // connected.
-          if (auto conn_opt = raylet_client_pool_.GetByID(alive_node.first)) {
-            raylet_client = conn_opt;
+          if (auto raylet_client_opt = raylet_client_pool_.GetByID(alive_node.first)) {
+            raylet_client = raylet_client_opt;
           } else {
             // When not connect, use GetOrConnectByAddress
             auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
@@ -797,7 +797,7 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         worker_client_pool_.Disconnect(worker_id);
-        auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        auto node_id = NodeID::FromBinary(worker_address.node_id());
         auto worker_ip = worker_address.ip_address();
         const rpc::RayException *creation_task_exception = nullptr;
         if (worker_failure_data->has_creation_task_exception()) {

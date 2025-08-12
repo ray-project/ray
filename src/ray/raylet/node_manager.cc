@@ -68,7 +68,7 @@ inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
     const flatbuffers::String &object_id, const ray::protocol::Address &address) {
   ray::rpc::ObjectReference ref;
   ref.set_object_id(object_id.str());
-  ref.mutable_owner_address()->set_raylet_id(address.raylet_id()->str());
+  ref.mutable_owner_address()->set_node_id(address.node_id()->str());
   ref.mutable_owner_address()->set_ip_address(address.ip_address()->str());
   ref.mutable_owner_address()->set_port(address.port());
   ref.mutable_owner_address()->set_worker_id(address.worker_id()->str());
@@ -85,7 +85,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
     ray::rpc::ObjectReference ref;
     ref.set_object_id(object_ids.Get(i)->str());
     const auto &addr = owner_addresses.Get(i);
-    ref.mutable_owner_address()->set_raylet_id(addr->raylet_id()->str());
+    ref.mutable_owner_address()->set_node_id(addr->node_id()->str());
     ref.mutable_owner_address()->set_ip_address(addr->ip_address()->str());
     ref.mutable_owner_address()->set_port(addr->port());
     ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
@@ -251,7 +251,7 @@ void NodeManager::RegisterGcs() {
         /* reporter */ &cluster_resource_scheduler_.GetLocalResourceManager(),
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
+        report_resources_period_ms_);
 
     // Register a commands channel.
     // It's only used for GC right now.
@@ -281,7 +281,7 @@ void NodeManager::RegisterGcs() {
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
-  // node failure. These workers can be identified by comparing the raylet_id
+  // node failure. These workers can be identified by comparing the node_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const rpc::WorkerDeltaData &worker_failure_data) {
@@ -836,7 +836,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
-    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().node_id());
     RAY_CHECK(!owner_node_id.IsNil());
     if (worker->IsDetachedActor() || owner_node_id != node_id) {
       continue;
@@ -1212,8 +1212,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
     RAY_CHECK(job_config.has_value());
 
     rpc::Address driver_address;
-    // Assume raylet ID is the same as the node ID.
-    driver_address.set_raylet_id(self_node_id_.Binary());
+    // Assume node ID is the same as the node ID.
+    driver_address.set_node_id(self_node_id_.Binary());
     driver_address.set_ip_address(worker->IpAddress());
     driver_address.set_port(port);
     driver_address.set_worker_id(worker->WorkerId().Binary());
@@ -1663,7 +1663,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
   const auto caller_node =
-      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
+      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().node_id());
   if (!task.GetTaskSpecification().IsDetachedActor() &&
       (failed_workers_cache_.contains(caller_worker) ||
        failed_nodes_cache_.contains(caller_node))) {
@@ -2588,8 +2588,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
-    client->GetNodeStats(
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
           if (!status.ok()) {

@@ -486,8 +486,7 @@ service CoreWorkerService {
   // A worker asks the object's owner worker about the object's current status.
   // This RPC assumes the ref won't be removed in the middle of execution and it's the
   // caller's responsibility to guarantee that.
-  // Failure: TODO, Needs better failure behavior, currently assumes owner is dead and
-  // object is lost.
+  // Failure: Retries, it's idempotent.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 
   // From GCS actor manager to the actor's owner.

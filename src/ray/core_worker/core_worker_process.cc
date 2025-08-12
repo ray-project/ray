@@ -175,7 +175,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager));
+                                                       *client_call_manager),
+      options.session_name);
 
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
@@ -211,10 +212,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     worker_context->MaybeInitializeJobInfo(worker_context->GetCurrentJobID(), job_config);
   }
 
-  auto raylet_ipc_client = std::make_shared<ipc::RayletIpcClient>(
+  auto raylet_ipc_client = std::make_shared<ray::ipc::RayletIpcClient>(
       io_service_, options.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
-  NodeID local_raylet_id;
+  NodeID local_node_id;
   int assigned_port = 0;
   Status status = raylet_ipc_client->RegisterClient(worker_context->GetWorkerID(),
                                                     options.worker_type,
@@ -224,7 +225,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.node_ip_address,
                                                     options.serialized_job_config,
                                                     options.startup_token,
-                                                    &local_raylet_id,
+                                                    &local_node_id,
                                                     &assigned_port);
   if (!status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -242,7 +243,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
-      local_raylet_id, options.node_ip_address, options.node_manager_port);
+      local_node_id, options.node_ip_address, options.node_manager_port);
   auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
       std::move(raylet_address),
       *client_call_manager,
@@ -259,13 +260,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   core_worker_server->Run();
 
   // Set our own address.
-  RAY_CHECK(!local_raylet_id.IsNil());
+  RAY_CHECK(!local_node_id.IsNil());
   rpc::Address rpc_address;
   rpc_address.set_ip_address(options.node_ip_address);
   rpc_address.set_port(core_worker_server->GetPort());
-  rpc_address.set_raylet_id(local_raylet_id.Binary());
+  rpc_address.set_node_id(local_node_id.Binary());
   rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
-  RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_raylet_id)
+  RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_node_id)
       << "Initializing worker at address: "
       << BuildAddress(rpc_address.ip_address(), rpc_address.port());
 
@@ -487,7 +488,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     std::optional<rpc::Address> address_opt;
     if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
       auto &address = address_opt.emplace();
-      address.set_raylet_id(node_info->node_id());
+      address.set_node_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
       address.set_port(node_info->node_manager_port());
     }
@@ -509,7 +510,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::move(lease_policy),
       memory_store,
       *task_manager,
-      local_raylet_id,
+      local_node_id,
       options.worker_type,
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator,
@@ -570,7 +571,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
           continue;
         }
         rpc::Address addr;
-        addr.set_raylet_id(node_info->node_id());
+        addr.set_node_id(node_info->node_id());
         addr.set_ip_address(node_info->node_manager_address());
         addr.set_port(node_info->node_manager_port());
         locations.push_back(std::move(addr));
@@ -586,7 +587,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
           for (const auto &node_info : node_infos) {
             if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
               rpc::Address addr;
-              addr.set_raylet_id(node_info.node_id());
+              addr.set_node_id(node_info.node_id());
               addr.set_ip_address(node_info.node_manager_address());
               addr.set_port(node_info.node_manager_port());
               locations.push_back(std::move(addr));

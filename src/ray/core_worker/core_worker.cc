@@ -16,7 +16,6 @@
 
 #include <algorithm>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -270,24 +269,24 @@ CoreWorker::CoreWorker(
     std::unique_ptr<rpc::ClientCallManager> client_call_manager,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
     std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-    std::shared_ptr<PeriodicalRunner> periodical_runner,
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
     std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
-    std::shared_ptr<raylet::RayletClient> local_raylet_rpc_client,
+    std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client,
+    std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
     std::shared_ptr<ReferenceCounter> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
     std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-    std::shared_ptr<experimental::MutableObjectProvider>
+    std::shared_ptr<experimental::MutableObjectProviderInterface>
         experimental_mutable_object_provider,
     std::unique_ptr<FutureResolver> future_resolver,
     std::shared_ptr<TaskManager> task_manager,
     std::shared_ptr<ActorCreatorInterface> actor_creator,
     std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
-    std::unique_ptr<pubsub::Publisher> object_info_publisher,
-    std::unique_ptr<pubsub::Subscriber> object_info_subscriber,
+    std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+    std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
     std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
     std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
     std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
@@ -397,7 +396,8 @@ CoreWorker::CoreWorker(
           /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
           /*timestamp=*/absl::GetCurrentTimeNanos(),
-          /*is_actor_task=*/false,
+          /*is_actor_task_event=*/false,
+          options_.session_name,
           std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
@@ -570,7 +570,8 @@ void CoreWorker::Disconnect(
         /*attempt_number=*/0,
         rpc::TaskStatus::FINISHED,
         /*timestamp=*/absl::GetCurrentTimeNanos(),
-        /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil());
+        /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
+        options_.session_name);
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -789,7 +790,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   }
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
-  worker_data->mutable_worker_address()->set_raylet_id(rpc_address_.raylet_id());
+  worker_data->mutable_worker_address()->set_node_id(rpc_address_.node_id());
   worker_data->mutable_worker_address()->set_ip_address(rpc_address_.ip_address());
   worker_data->mutable_worker_address()->set_port(rpc_address_.port());
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -1041,7 +1042,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      object.GetSize(),
                                      /*is_reconstructable=*/false,
                                      /*add_local_ref=*/true,
-                                     NodeID::FromBinary(rpc_address_.raylet_id()));
+                                     NodeID::FromBinary(rpc_address_.node_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
     RemoveLocalReference(*object_id);
@@ -1125,7 +1126,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        /*add_local_ref=*/true,
-                                       NodeID::FromBinary(rpc_address_.raylet_id()));
+                                       NodeID::FromBinary(rpc_address_.node_id()));
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
@@ -3493,6 +3494,7 @@ void CoreWorker::HandleRayletNotifyGCSRestart(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// HandleGetObjectStatus is expected to be idempotent
 void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
@@ -4346,7 +4348,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       request.object_size(),
       /*is_reconstructable=*/false,
       /*add_local_ref=*/false,
-      /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
+      /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -4653,30 +4655,6 @@ void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec,
       RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
     }
   }
-}
-
-ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
-    size_t min_concurrent_lease_limit)
-    : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}
-
-size_t ClusterSizeBasedLeaseRequestRateLimiter::
-    GetMaxPendingLeaseRequestsPerSchedulingCategory() {
-  return std::max<size_t>(min_concurrent_lease_cap_, num_alive_nodes_.load());
-}
-
-void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
-    const rpc::GcsNodeInfo &data) {
-  if (data.state() == rpc::GcsNodeInfo::DEAD) {
-    if (num_alive_nodes_ != 0) {
-      num_alive_nodes_--;
-    } else {
-      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
-                       << " change state to DEAD but num_alive_node is 0.";
-    }
-  } else {
-    num_alive_nodes_++;
-  }
-  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
 }  // namespace ray::core
