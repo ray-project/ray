@@ -486,8 +486,8 @@ def httpserver_listen_address():
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 2,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -516,21 +516,19 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_received_total",
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
             "ray_event_aggregator_agent_events_published_total",
+            "ray_event_aggregator_agent_events_filtered_out_total",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
     def test_case_value_correct():
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
-            "ray_event_aggregator_agent_events_received_total": 2.0,
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
+            "ray_event_aggregator_agent_events_received_total": 3.0,
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
+            "ray_event_aggregator_agent_events_filtered_out_total": 1.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
@@ -559,10 +557,18 @@ def test_metrics_export_event_aggregator_agent(
                 RayEvent(
                     event_id=b"2",
                     source_type=RayEvent.SourceType.CORE_WORKER,
-                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    event_type=RayEvent.EventType.TASK_PROFILE_EVENT,
                     timestamp=timestamp,
                     severity=RayEvent.Severity.INFO,
                     message="hello 2",
+                ),
+                RayEvent(
+                    event_id=b"3",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello 3",
                 ),
             ],
             task_events_metadata=TaskEventsMetadata(

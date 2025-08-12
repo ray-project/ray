@@ -64,7 +64,7 @@ _with_aggregator_port = pytest.mark.parametrize(
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -167,7 +167,7 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -182,7 +182,6 @@ def test_aggregator_agent_receive_event_full(
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-
 
     request = AddEventsRequest(
         events_data=RayEventsData(
@@ -210,13 +209,7 @@ def test_aggregator_agent_receive_event_full(
         )
     )
 
-<<<<<<< HEAD
     stub.AddEvents(request)
-=======
-    reply = stub.AddEvents(request)
-    assert reply is not None
-
->>>>>>> 646884b0c2 (update the configuration in aggregation agent)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     req, _ = httpserver.log[0]
@@ -278,18 +271,7 @@ def test_aggregator_agent_receive_multiple_events(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-<<<<<<< HEAD
-<<<<<<< HEAD
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
-=======
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
->>>>>>> 646884b0c2 (update the configuration in aggregation agent)
-=======
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
->>>>>>> 3a08e9b21f (merge the addr and port env var)
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -410,9 +392,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
             },
         },

@@ -115,7 +115,9 @@ if prometheus_client:
     )
     events_filtered_out = Counter(
         f"{metrics_prefix}_events_filtered_out",
-        "Total number of events filtered out before publishing to external server.",
+        "Total number of events filtered out before publishing to external server. The "
+        "metric counts the events that are received by the aggregator agent but are "
+        "not part of the public API yet.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -159,6 +161,7 @@ class AggregatorAgent(
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
+        self._events_filtered_out_since_last_metrics_update = 0
         self._events_export_addr = (
             dashboard_agent.events_export_addr
             if dashboard_agent.events_export_addr
@@ -180,18 +183,18 @@ class AggregatorAgent(
         else:
             logger.info("Event processing disabled")
 
+        self._exposable_event_types = {
+            event_type.strip()
+            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
+        }
+
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
         )
 
         self._is_cleanup = False
         self._cleanup_finished_event = threading.Event()
-
-        self._exposable_event_types = {
-            event_type.strip()
-            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
-            if event_type.strip()
-        }
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -273,7 +276,7 @@ class AggregatorAgent(
 
         try:
             response = self._http_session.post(
-                f"{self._events_export_addr}", json=event_batch
+                f"{self._events_export_addr}", json=filtered_event_batch_json
             )
             response.raise_for_status()
             with self._lock:
@@ -328,18 +331,10 @@ class AggregatorAgent(
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
-            _events_failed_to_add_to_aggregator = (
-                self._events_failed_to_add_to_aggregator_since_last_metrics_update
-            )
-            _events_dropped_at_event_aggregator = (
-                self._events_dropped_at_event_aggregator_since_last_metrics_update
-            )
             _events_published = self._events_published_since_last_metrics_update
             _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
-            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
-            self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
@@ -353,12 +348,6 @@ class AggregatorAgent(
             "SessionName": self.session_name,
         }
         events_received.labels(**labels).inc(_events_received)
-        events_failed_to_add_to_aggregator.labels(**labels).inc(
-            _events_failed_to_add_to_aggregator
-        )
-        events_dropped_at_event_aggregator.labels(**labels).inc(
-            _events_dropped_at_event_aggregator
-        )
         events_failed_to_add_to_aggregator.labels(**labels).inc(
             _events_failed_to_add_to_aggregator
         )
