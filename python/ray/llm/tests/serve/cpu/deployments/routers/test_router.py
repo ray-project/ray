@@ -148,8 +148,20 @@ class TestRouter:
             stream=stream,
             max_tokens=200,
         )
-        assert response.choices[0].message.content is not None
-        print(response.choices[0].message)
+
+        if stream:
+            text = ""
+            role = None
+            for chunk in response:
+                if chunk.choices[0].delta.role is not None and role is None:
+                    role = chunk.choices[0].delta.role
+                if chunk.choices[0].delta.content:
+                    text += chunk.choices[0].delta.content
+        else:
+            text = response.choices[0].message.content
+            role = response.choices[0].message.role
+
+        assert text
 
     def test_router_with_num_router_replicas_config(self):
         """Test the router with num_router_replicas config."""
