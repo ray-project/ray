@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
 #include "gtest/gtest.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -52,10 +53,17 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   event->set_message("test message");
 
   auto *task_def_event = event->mutable_task_definition_event();
+  task_def_event->set_task_type(rpc::TaskType::NORMAL_TASK);
+  task_def_event->set_language(rpc::Language::PYTHON);
+  task_def_event->mutable_task_func()
+      ->mutable_python_function_descriptor()
+      ->set_function_name("test_task_name");
   task_def_event->set_task_id("test_task_id");
   task_def_event->set_task_attempt(1);
   task_def_event->set_job_id("test_job_id");
   task_def_event->set_task_name("test_task_name");
+  task_def_event->set_parent_task_id("parent_task_id");
+  task_def_event->set_placement_group_id("pg_id");
 
   // Add some required resources
   (*task_def_event->mutable_required_resources())["CPU"] = 1.0;
@@ -80,7 +88,12 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_TRUE(converted_task.has_task_info());
   const auto &task_info = converted_task.task_info();
   EXPECT_EQ(task_info.name(), "test_task_name");
+  EXPECT_EQ(task_info.type(), rpc::TaskType::NORMAL_TASK);
+  EXPECT_EQ(task_info.language(), rpc::Language::PYTHON);
+  EXPECT_EQ(task_info.func_or_class_name(), "test_task_name");
   EXPECT_EQ(task_info.runtime_env_info().serialized_runtime_env(), "test_env");
+  EXPECT_EQ(task_info.parent_task_id(), "parent_task_id");
+  EXPECT_EQ(task_info.placement_group_id(), "pg_id");
 
   // Verify required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 1.0);

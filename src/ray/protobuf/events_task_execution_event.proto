@@ -28,16 +28,16 @@ message TaskExecutionEvent {
 
   // The task execution information
 
+  // The map of task state to the time when the state was last updated.
   // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
   // Value is the timestamp when status changes to the target status indicated by the key.
   map<int32, google.protobuf.Timestamp> task_state = 3;
-  UserErrorInfo user_error_info = 4;
-  RayErrorInfo ray_error_info = 5;
+  RayErrorInfo ray_error_info = 4;
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
-  bytes node_id = 6;
-  bytes worker_id = 7;
-  int32 worker_pid = 8;
-  bytes job_id = 11;
+  bytes node_id = 5;
+  bytes worker_id = 6;
+  int32 worker_pid = 7;
+  bytes job_id = 8;
 }

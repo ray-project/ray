@@ -51,29 +51,38 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequest(
 }
 
 void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
-                                               rpc::TaskEvents &task_event) {
-  task_event.set_task_id(event.task_id());
-  task_event.set_attempt_number(event.task_attempt());
-  task_event.set_job_id(event.job_id());
+  rpc::TaskEvents &task_event) {
+task_event.set_task_id(event.task_id());
+task_event.set_attempt_number(event.task_attempt());
+task_event.set_job_id(event.job_id());
 
-  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
-  task_info->set_name(event.task_name());
-  *task_info->mutable_runtime_env_info() = std::move(event.runtime_env_info());
-  auto function_descriptor = event.task_func();
-  if (function_descriptor.has_cpp_function_descriptor()) {
-    task_info->set_language(rpc::Language::CPP);
-    task_info->set_func_or_class_name(
-        function_descriptor.cpp_function_descriptor().function_name());
-  } else if (function_descriptor.has_python_function_descriptor()) {
-    task_info->set_language(rpc::Language::PYTHON);
-    task_info->set_func_or_class_name(
-        function_descriptor.python_function_descriptor().function_name());
-  } else if (function_descriptor.has_java_function_descriptor()) {
-    task_info->set_language(rpc::Language::JAVA);
-    task_info->set_func_or_class_name(
-        function_descriptor.java_function_descriptor().function_name());
-  }
-  *task_info->mutable_required_resources() = std::move(event.required_resources());
+rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+task_info->set_type(event.task_type());
+task_info->set_name(event.task_name());
+task_info->set_language(event.language());
+task_info->set_task_id(event.task_id());
+task_info->set_job_id(event.job_id());
+*task_info->mutable_runtime_env_info() = std::move(event.runtime_env_info());
+task_info->set_parent_task_id(event.parent_task_id());
+if (!event.placement_group_id().empty()) {
+task_info->set_placement_group_id(event.placement_group_id());
+}
+
+auto function_descriptor = event.task_func();
+if (event.language() == rpc::Language::CPP &&
+function_descriptor.has_cpp_function_descriptor()) {
+task_info->set_func_or_class_name(
+function_descriptor.cpp_function_descriptor().function_name());
+} else if (event.language() == rpc::Language::PYTHON &&
+function_descriptor.has_python_function_descriptor()) {
+task_info->set_func_or_class_name(
+function_descriptor.python_function_descriptor().function_name());
+} else if (event.language() == rpc::Language::JAVA &&
+function_descriptor.has_java_function_descriptor()) {
+task_info->set_func_or_class_name(
+function_descriptor.java_function_descriptor().function_name());
+}
+*task_info->mutable_required_resources() = std::move(event.required_resources());
 }
 
 void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
