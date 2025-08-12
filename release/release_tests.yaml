@@ -2058,7 +2058,7 @@
 
   cluster:
     byod: {}
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
