@@ -129,7 +129,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
     address.set_port(num_running_tasks);
 
     // Populate other fields, the value is not important.
-    address.set_raylet_id(NodeID::FromRandom().Binary());
+    address.set_node_id(NodeID::FromRandom().Binary());
     address.set_ip_address("123.456.7.8");
     address.set_worker_id(WorkerID::FromRandom().Binary());
 
@@ -557,7 +557,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   rpc::Address address;
   address.set_ip_address("10.0.0.1");
   address.set_port(8264);
-  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_node_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
   add_job_request->mutable_data()->set_driver_ip_address("10.0.0.1");
   add_job_request->mutable_data()->mutable_driver_address()->CopyFrom(address);
@@ -744,7 +744,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
 
   // Remove node and then check that the job is dead.
   auto address = all_job_info_reply.job_info_list().Get(0).driver_address();
-  auto node_id = NodeID::FromBinary(address.raylet_id());
+  auto node_id = NodeID::FromBinary(address.node_id());
   gcs_job_manager_->OnNodeDead(node_id);
 
   // Test get all jobs and check if killed node jobs marked as finished
@@ -763,7 +763,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
     bool job_condition = true;
     // job1 from the current node should dead, while job2 is still alive
     for (auto job_info : all_job_info_reply2.job_info_list()) {
-      auto job_node_id = NodeID::FromBinary(job_info.driver_address().raylet_id());
+      auto job_node_id = NodeID::FromBinary(job_info.driver_address().node_id());
       job_condition = job_condition && (job_info.is_dead() == (job_node_id == node_id));
     }
     return job_condition;
