@@ -148,7 +148,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
           core_worker_->task_receiver_->Stop();
 
           // Release resources only after tasks have stopped executing.
-          auto status = core_worker_->local_raylet_client_->NotifyDirectCallTaskBlocked();
+          auto status = core_worker_->raylet_ipc_client_->NotifyDirectCallTaskBlocked();
           if (!status.ok()) {
             RAY_LOG(WARNING)
                 << "Failed to notify Raylet. The raylet may have already shut down or "
@@ -267,8 +267,8 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         rpc::TaskStatus::FINISHED,
         /* timestamp */ absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/
-        core_worker_->worker_context_->GetCurrentActorID()
-            .IsNil());
+        core_worker_->worker_context_->GetCurrentActorID().IsNil(),
+        core_worker_->options_.session_name);
     core_worker_->task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -276,7 +276,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
   if (core_worker_->connected_) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     core_worker_->connected_ = false;
-    if (core_worker_->local_raylet_client_) {
+    if (core_worker_->raylet_ipc_client_) {
       rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;
       if (exit_type == "INTENDED_SYSTEM_EXIT") {
         worker_exit_type = rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
@@ -288,7 +288,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         worker_exit_type = rpc::WorkerExitType::NODE_OUT_OF_MEMORY;
       }
 
-      Status status = core_worker_->local_raylet_client_->Disconnect(
+      Status status = core_worker_->raylet_ipc_client_->Disconnect(
           worker_exit_type, std::string(detail), creation_task_exception_pb_bytes);
       if (status.ok()) {
         RAY_LOG(INFO) << "Disconnected from the local raylet.";
