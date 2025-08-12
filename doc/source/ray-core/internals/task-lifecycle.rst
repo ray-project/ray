@@ -48,7 +48,7 @@ Under the hood, `.remote()` does the following:
 Scheduling a task
 -----------------
 
-Once the task is submitted to `NormalTaskSubmitter`, a worker process on some Ray node is selected to execute the task and this process is called scheduling.
+Once the task is submitted to ``NormalTaskSubmitter``, a worker process on some Ray node is selected to execute the task and this process is called scheduling.
 
 1. ``NormalTaskSubmitter`` first `waits <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L33>`__ for all the ``ObjectRef`` arguments (i.e. pass-by-reference) to be available. Available means tasks that produce those ``ObjectRef``s finished execution and the data is available somewhere in the cluster.
 2. Once all the arguments are available, ``NormalTaskSubmitter`` will try to find an idle worker to execute the task. ``NormalTaskSubmitter`` gets workers for task execution from raylet via a process called worker lease and this is where scheduling happens.
