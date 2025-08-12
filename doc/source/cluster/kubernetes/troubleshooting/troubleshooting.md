@@ -110,7 +110,10 @@ For comprehensive troubleshooting of multi-node GPU serving issues, refer to {re
 
 Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR are supported. Changes to other fields may not take effect or could lead to unexpected results.
 
-### How to configure reconcile concurrency?
+### How to configure reconcile concurrency when there are large mount of CRs?
+
+Take [kuberay#3909](https://github.com/ray-project/kuberay/issues/3909) as an example.
+The user encountered high latency when processing RayCluster CRs and found that the ReconcileConcurrency value was set to 1.
 
 The KubeRay operator supports configuring the `ReconcileConcurrency` setting, which controls the number of concurrent workers processing Ray custom resources (CRs).
 
