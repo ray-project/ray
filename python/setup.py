@@ -32,6 +32,7 @@ BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
+RAY_PLACEHOLDER = os.getenv("RAY_PLACEHOLDER") == "1"
 
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
@@ -63,6 +64,7 @@ def find_version(*filepath):
 class SetupType(Enum):
     RAY = 1
     RAY_CPP = 2
+    RAY_PLACEHOLDER = 3
 
 
 class BuildType(Enum):
@@ -119,6 +121,14 @@ if os.getenv("RAY_INSTALL_CPP") == "1":
         "A subpackage of Ray which provides the Ray C++ API.",
         BUILD_TYPE,
     )
+elif os.getenv("RAY_PLACEHOLDER") == "1":
+    setup_spec = SetupSpec(
+        SetupType.RAY_PLACEHOLDER,
+        "ray-placeholder",
+        "A placeholder package for Ray which provides dependency metadata",
+        BUILD_TYPE,
+    )
+
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
@@ -152,6 +162,9 @@ if sys.platform == "linux":
 if BUILD_JAVA or os.path.exists(os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
+if setup_spec.type == SetupType.RAY_PLACEHOLDER:
+    setup_spec.files_to_include = []
+
 if setup_spec.type == SetupType.RAY_CPP:
     setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
     # C++ API library and project template files.
@@ -160,6 +173,7 @@ if setup_spec.type == SetupType.RAY_CPP:
         for dirpath, dirnames, filenames in os.walk("ray/cpp")
         for filename in filenames
     ]
+
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
