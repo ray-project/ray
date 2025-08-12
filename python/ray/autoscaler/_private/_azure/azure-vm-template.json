@@ -132,10 +132,18 @@
             "metadata": {
                 "descriptions": "Whether to enable accelerated networking."
             }
+        },
+        "zones": {
+            "type": "array",
+            "defaultValue": [],
+            "metadata": {
+                "description": "Availability zones for the virtual machine. If empty, no zones will be specified."
+            }
         }
     },
     "variables": {
         "location": "[resourceGroup().location]",
+        "useZones": "[greater(length(parameters('zones')), 0)]",
         "networkInterfaceNamePrivate": "[concat(parameters('vmName'), '-nic')]",
         "networkInterfaceNamePublic": "[concat(parameters('vmName'), '-nic-public')]",
         "networkInterfaceName": "[if(parameters('provisionPublicIp'), variables('networkInterfaceNamePublic'), variables('networkInterfaceNamePrivate'))]",
@@ -219,8 +227,9 @@
                 "name": "PublicIpCopy",
                 "count": "[parameters('vmCount')]"
             },
+            "zones": "[if(variables('useZones'), createArray(string(parameters('zones')[mod(copyIndex(), length(parameters('zones')))])), json('null'))]",
             "sku": {
-                "name": "Basic",
+                "name": "[if(variables('useZones'), 'Standard', 'Basic')]",
                 "tier": "Regional"
             },
             "condition": "[parameters('provisionPublicIp')]"
@@ -238,6 +247,7 @@
                 "count": "[parameters('vmCount')]"
             },
             "tags": "[parameters('vmTags')]",
+            "zones": "[if(variables('useZones'), createArray(string(parameters('zones')[mod(copyIndex(), length(parameters('zones')))])), json('null'))]",
             "properties": {
                 "hardwareProfile": {
                     "vmSize": "[parameters('vmSize')]"
