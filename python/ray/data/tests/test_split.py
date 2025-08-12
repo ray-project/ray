@@ -85,7 +85,7 @@ def test_equal_split(shutdown_only):
         ([2, 5], 1),  # Single split.
     ],
 )
-def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits):
+def test_equal_split_balanced(ray_start_regular_shared_2_cpus, block_sizes, num_splits):
     _test_equal_split_balanced(block_sizes, num_splits)
 
 
@@ -126,7 +126,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     assert len(set(extract_values("id", split_rows))) == len(split_rows)
 
 
-def test_equal_split_balanced_grid(ray_start_regular_shared):
+def test_equal_split_balanced_grid(ray_start_regular_shared_2_cpus):
     # Tests balanced equal splitting over a grid of configurations.
     # Grid: num_blocks x num_splits x num_rows_block_1 x ... x num_rows_block_n
     seed = int(time.time())
@@ -155,7 +155,7 @@ def test_equal_split_balanced_grid(ray_start_regular_shared):
                 _test_equal_split_balanced(block_sizes, num_splits)
 
 
-def test_split_small(ray_start_regular_shared):
+def test_split_small(ray_start_regular_shared_2_cpus):
     x = [Counter.remote() for _ in range(4)]
     data = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
     fail = []
@@ -199,7 +199,7 @@ def test_split_small(ray_start_regular_shared):
     assert not fail, fail
 
 
-def test_split_at_indices_simple(ray_start_regular_shared):
+def test_split_at_indices_simple(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
@@ -257,7 +257,7 @@ def test_split_at_indices_simple(ray_start_regular_shared):
         [7, 11, 23, 33],
     ],
 )
-def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices):
+def test_split_at_indices_coverage(ray_start_regular_shared_2_cpus, num_blocks, indices):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
     ds = ray.data.range(20, override_num_blocks=num_blocks)
@@ -286,7 +286,7 @@ def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices
     ],  # Selected three-split cases
 )
 def test_split_at_indices_coverage_complete(
-    ray_start_regular_shared, num_blocks, indices
+    ray_start_regular_shared_2_cpus, num_blocks, indices
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
@@ -297,7 +297,7 @@ def test_split_at_indices_coverage_complete(
     assert r == [arr.tolist() for arr in np.array_split(list(range(10)), indices)]
 
 
-def test_split_proportionately(ray_start_regular_shared):
+def test_split_proportionately(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
@@ -335,7 +335,7 @@ def test_split_proportionately(ray_start_regular_shared):
         ds.split_proportionately([0.90] + ([0.001] * 90))
 
 
-def test_split(ray_start_regular_shared):
+def test_split(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
@@ -364,7 +364,7 @@ def test_split(ray_start_regular_shared):
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
 
-def test_split_hints(ray_start_regular_shared):
+def test_split_hints(ray_start_regular_shared_2_cpus):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -520,7 +520,7 @@ def _create_blocks_with_metadata(blocks):
     return _create_blocklist(blocks).get_blocks_with_metadata()
 
 
-def test_split_single_block(ray_start_regular_shared):
+def test_split_single_block(ray_start_regular_shared_2_cpus):
     block = pd.DataFrame({"id": [1, 2, 3]})
     metadata = _create_meta(3)
 
@@ -597,7 +597,7 @@ def verify_splits(splits, blocks_by_split):
             assert meta.num_rows == len(block)
 
 
-def test_generate_global_split_results(ray_start_regular_shared):
+def test_generate_global_split_results(ray_start_regular_shared_2_cpus):
     inputs = [
         _create_block_and_metadata([1]),
         _create_block_and_metadata([2, 3]),
@@ -618,7 +618,7 @@ def test_generate_global_split_results(ray_start_regular_shared):
     verify_splits(splits, [[], []])
 
 
-def test_private_split_at_indices(ray_start_regular_shared):
+def test_private_split_at_indices(ray_start_regular_shared_2_cpus):
     inputs = _create_blocks_with_metadata([])
     splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
@@ -673,7 +673,7 @@ def verify_equalize_result(input_block_lists, expected_block_lists):
     assert result_block_lists == expected_block_lists
 
 
-def test_equalize(ray_start_regular_shared):
+def test_equalize(ray_start_regular_shared_2_cpus):
     verify_equalize_result([], [])
     verify_equalize_result([[]], [[]])
     verify_equalize_result([[[1]], []], [[], []])
@@ -687,7 +687,7 @@ def test_equalize(ray_start_regular_shared):
     )
 
 
-def test_equalize_randomized(ray_start_regular_shared):
+def test_equalize_randomized(ray_start_regular_shared_2_cpus):
     # verify the entries in the splits are in the range of 0 .. num_rows,
     # unique, and the total number matches num_rows if exact_num == True.
     def assert_unique_and_inrange(splits, num_rows, exact_num=False):
@@ -741,7 +741,7 @@ def test_equalize_randomized(ray_start_regular_shared):
         assert_equal_split(equalized_splits, num_rows, num_split)
 
 
-def test_train_test_split(ray_start_regular_shared):
+def test_train_test_split(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(8)
 
     # float
@@ -756,8 +756,8 @@ def test_train_test_split(ray_start_regular_shared):
 
     # shuffle
     train, test = ds.train_test_split(test_size=0.25, shuffle=True, seed=1)
-    assert extract_values("id", train.take()) == [4, 5, 3, 2, 7, 6]
-    assert extract_values("id", test.take()) == [0, 1]
+    assert extract_values("id", train.take()) == [7, 4, 6, 0, 5, 2]
+    assert extract_values("id", test.take()) == [1, 3]
 
     # error handling
     with pytest.raises(TypeError):
@@ -776,7 +776,7 @@ def test_train_test_split(ray_start_regular_shared):
         ds.train_test_split(test_size=9)
 
 
-def test_train_test_split_stratified(ray_start_regular_shared):
+def test_train_test_split_stratified(ray_start_regular_shared_2_cpus):
     # Test basic stratification with simple dataset
     data = [
         {"id": 0, "label": "A"},
@@ -807,7 +807,7 @@ def test_train_test_split_stratified(ray_start_regular_shared):
     assert test_label_counts == {"A": 1, "B": 1, "C": 1}
 
 
-def test_train_test_split_shuffle_stratify_error(ray_start_regular_shared):
+def test_train_test_split_shuffle_stratify_error(ray_start_regular_shared_2_cpus):
     # Test that shuffle=True and stratify cannot be used together
     data = [
         {"id": 0, "label": "A"},
@@ -824,7 +824,7 @@ def test_train_test_split_shuffle_stratify_error(ray_start_regular_shared):
         ds.train_test_split(test_size=0.5, shuffle=True, stratify="label")
 
 
-def test_train_test_split_stratified_imbalanced(ray_start_regular_shared):
+def test_train_test_split_stratified_imbalanced(ray_start_regular_shared_2_cpus):
     # Test stratified split with imbalanced class distribution
     data = [
         {"id": 0, "label": "A"},
