@@ -95,7 +95,12 @@ export const CpuStackTraceLink = ({
   nodeId,
   type = "",
 }: CpuProfilingLinkProps) => {
-  if (!pid || !nodeId || typeof pid === "undefined" || typeof nodeId === "undefined") {
+  if (
+    !pid ||
+    !nodeId ||
+    typeof pid === "undefined" ||
+    typeof nodeId === "undefined"
+  ) {
     return <div></div>;
   }
   return (
