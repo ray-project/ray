@@ -76,7 +76,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     # Kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    wait_for_condition(lambda: _actor_killed(worker_pid), 5)
+    wait_for_condition(lambda: _actor_killed(worker_pid))
 
     # Create an actor and have it loop
     a = Actor.remote()
@@ -85,24 +85,18 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     a.loop.remote()
 
     # wait for loop() to start
-    wait_for_condition(
-        lambda: _is_actor_task_running(worker_pid, "Actor.loop"),
-        timeout=10,
-        retry_interval_ms=100,
-    )
+    wait_for_condition(lambda: _is_actor_task_running(worker_pid, "Actor.loop"))
 
     # Try to kill the actor, it should not die since a task is running
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    try:
+    with pytest.raises(RuntimeError, match="The condition wasn't met before the timeout expired."):
         wait_for_condition(lambda: _actor_killed(worker_pid), 1)
-    except RuntimeError as e:
-        assert str(e) == "The condition wasn't met before the timeout expired."
 
     # Force kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=True)
     assert "Force killed actor with id" in resp["msg"]
-    wait_for_condition(lambda: _actor_killed(worker_pid), 5)
+    wait_for_condition(lambda: _actor_killed(worker_pid))
 
 
 if __name__ == "__main__":
