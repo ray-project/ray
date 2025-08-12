@@ -401,7 +401,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
 
   rpc::Address owner_address;
-  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  owner_address.set_node_id(object_info.owner_node_id.Binary());
   owner_address.set_ip_address(object_info.owner_ip_address);
   owner_address.set_port(object_info.owner_port);
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
