@@ -26,7 +26,7 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - tmp/ray-deps/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled.txt
     output: python/requirements_compiled_ray_test_py311_${CUDA_CODE}.txt
     operation: compile
 
@@ -42,12 +42,6 @@ depsets:
     constraints:
       - python/requirements_compiled_ray_test_py311_${CUDA_CODE}.txt
     output: python/requirements_compiled_rayllm_test_py311_${CUDA_CODE}.txt
-    override_flags:
-      - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    build_arg_sets:
-      - cpu
-      - cu121
-      - cu128
 
   - name: compiled_ray_depset
     <<: *common_settings
