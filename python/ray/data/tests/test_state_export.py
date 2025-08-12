@@ -590,8 +590,16 @@ class BasicObject:
                 "string_field": "test",
                 "int_field": "1",
                 "float_field": "1.0",
-                "set_field": ["1", "2", "3"],  # sets will be converted to Lists of strings
-                "tuple_field": ["1", "2", "3"],  # tuples will be converted to Lists of strings
+                "set_field": [
+                    "1",
+                    "2",
+                    "3",
+                ],  # sets will be converted to Lists of strings
+                "tuple_field": [
+                    "1",
+                    "2",
+                    "3",
+                ],  # tuples will be converted to Lists of strings
                 "bool_field": "True",
                 "none_field": "None",
             },
