@@ -168,7 +168,9 @@ class TestDeploymentConfig:
             "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
         )
         if sys.platform == "win32":
-            request_router_path = "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            request_router_path = (
+                "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            )
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
