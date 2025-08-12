@@ -313,7 +313,7 @@ class MockRayletClient : public FakeRayletClient {
   bool GrantWorkerLease(
       const std::string &address,
       int port,
-      const NodeID &retry_at_raylet_id,
+      const NodeID &retry_at_node_id,
       bool cancel = false,
       std::string worker_id = WorkerID::FromRandom().Binary(),
       bool reject = false,
@@ -325,14 +325,14 @@ class MockRayletClient : public FakeRayletClient {
       reply.set_failure_type(failure_type);
     } else if (reject) {
       reply.set_rejected(true);
-    } else if (!retry_at_raylet_id.IsNil()) {
+    } else if (!retry_at_node_id.IsNil()) {
       reply.mutable_retry_at_raylet_address()->set_ip_address(address);
       reply.mutable_retry_at_raylet_address()->set_port(port);
-      reply.mutable_retry_at_raylet_address()->set_raylet_id(retry_at_raylet_id.Binary());
+      reply.mutable_retry_at_raylet_address()->set_node_id(retry_at_node_id.Binary());
     } else {
       reply.mutable_worker_address()->set_ip_address(address);
       reply.mutable_worker_address()->set_port(port);
-      reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
+      reply.mutable_worker_address()->set_node_id(retry_at_node_id.Binary());
       reply.mutable_worker_address()->set_worker_id(worker_id);
     }
     rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
@@ -446,9 +446,7 @@ class MockActorCreator : public ActorCreatorInterface {
 
 class MockLeasePolicy : public LeasePolicyInterface {
  public:
-  void SetNodeID(NodeID node_id) {
-    fallback_rpc_address_.set_raylet_id(node_id.Binary());
-  }
+  void SetNodeID(NodeID node_id) { fallback_rpc_address_.set_node_id(node_id.Binary()); }
 
   std::pair<rpc::Address, bool> GetBestNodeForTask(const TaskSpecification &spec) {
     num_lease_policy_consults++;
@@ -490,7 +488,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         actor_creator(std::make_shared<MockActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
         lease_policy_ptr(lease_policy.get()) {
-    address.set_raylet_id(local_node_id.Binary());
+    address.set_node_id(local_node_id.Binary());
     lease_policy_ptr->SetNodeID(local_node_id);
   }
 
@@ -511,7 +509,7 @@ class NormalTaskSubmitterTest : public testing::Test {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
           [this, raylet_client_factory](
               const rpc::Address &addr) -> std::shared_ptr<RayletClientInterface> {
-            NodeID addr_node_id = NodeID::FromBinary(addr.raylet_id());
+            NodeID addr_node_id = NodeID::FromBinary(addr.node_id());
             if (addr_node_id == local_node_id) {
               return this->raylet_client;
             } else {
@@ -1349,8 +1347,8 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
   ASSERT_EQ(remote_raylet_clients.size(), 0);
 
   // Spillback to a remote node.
-  auto remote_raylet_id = NodeID::FromRandom();
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
+  auto remote_node_id = NodeID::FromRandom();
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_node_id));
   ASSERT_EQ(remote_raylet_clients.count(7777), 1);
   // Confirm that lease policy is not consulted on spillback.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
@@ -1389,7 +1387,6 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  lease_policy_ptr->SetNodeID(local_node_id);
   auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
@@ -1407,8 +1404,8 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   ASSERT_EQ(remote_raylet_clients.size(), 0);
 
   // Spillback to a remote node.
-  auto remote_raylet_id = NodeID::FromRandom();
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
+  auto remote_node_id = NodeID::FromRandom();
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_node_id));
   ASSERT_EQ(remote_raylet_clients.count(7777), 1);
   ASSERT_EQ(remote_raylet_clients[7777]->num_workers_requested, 1);
   // Confirm that the spillback lease request has grant_or_reject set to true.
