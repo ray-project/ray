@@ -121,10 +121,6 @@ uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
     -c $HOME/requirements_compiled.txt \
     "${PIP_PKGS[@]}"
 
-# To avoid the following error on Jenkins:
-# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-uv pip uninstall --system dask
-
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
 
