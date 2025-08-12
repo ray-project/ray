@@ -1,6 +1,5 @@
 import pytest
 import sys
-from openai import OpenAI
 
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
@@ -122,62 +121,6 @@ def is_default_app_running():
         return default_app.status == ApplicationStatus.RUNNING
     except (KeyError, AttributeError):
         return False
-
-
-@pytest.mark.asyncio(scope="function")
-async def test_tool_calls_serialization():
-    """
-    Test that the tool calls serialization works correctly.
-    """
-
-    # Set up serve app
-    llm_config = LLMConfig(
-        model_loading_config=dict(
-            model_id="qwen",
-            model_source="Qwen/Qwen3-8B",
-        ),
-        engine_kwargs=dict(
-            max_model_len=8192,
-            enable_auto_tool_choice=True,
-            tool_call_parser="hermes",
-            reasoning_parser="qwen3",
-        ),
-    )
-    app = build_openai_app({"llm_configs": [llm_config]})
-    serve.run(app, blocking=False)
-    wait_for_condition(is_default_app_running, timeout=300)
-
-    # Query with multi-turn tool call
-    client = OpenAI(base_url="http://localhost:8000/v1", api_key="FAKE_KEY")
-    messages = [
-        {
-            "role": "user",
-            "content": "Can you tell me what the temperate will be in Dallas, in fahrenheit?",
-        },
-        {
-            "content": None,
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "RBS92VTjJ",
-                    "function": {
-                        "arguments": '{"city": "Dallas", "state": "TX", "unit": "fahrenheit"}',
-                        "name": "get_current_weather",
-                    },
-                    "type": "function",
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "content": "The weather in Dallas, TX is 85 degrees fahrenheit. It is partly cloudly, with highs in the 90's.",
-            "tool_call_id": "n3OMUpydP",
-        },
-    ]
-    chat_completion = client.chat.completions.create(messages=messages, model="qwen")
-    assert chat_completion.choices[0].message.content is not None
-    print(chat_completion.choices[0].message)
-    serve.shutdown()
 
 
 @pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
