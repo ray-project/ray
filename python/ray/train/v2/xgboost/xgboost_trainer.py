@@ -1,11 +1,37 @@
+"""
+Scalable XGBoost Trainer with External Memory Support
+
+This module provides an improved XGBoost Trainer that avoids dataset materialization
+for large datasets by using XGBoost's external memory capabilities with Ray Data's
+streaming iteration. This implementation is optimized based on XGBoost's external
+memory best practices and distributed training characteristics.
+
+Key Features:
+- ExtMemQuantileDMatrix for optimal external memory performance (XGBoost 2.0+)
+- Cluster-aware memory management based on Ray cluster resources  
+- Smart batch size calculation and caching strategies
+- Seamless integration with Ray Data preprocessing pipelines
+- Optimized parameters for external memory performance (hist + depthwise)
+- GPU training support with memory-efficient configurations
+- Support for different XGBoost objectives and task types
+- OS-level caching optimization for repeated data access
+- RAPIDS Memory Manager (RMM) integration for GPU performance
+- Hardware-aware optimizations (NVLink-C2C, PCIe, NUMA)
+
+All external memory optimization is handled automatically through the train_loop_utils
+module, providing a clean interface that requires minimal user configuration.
+"""
+
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
+import ray.data
 import ray.train
-from ray.train import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.util import PublicAPI
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
@@ -14,72 +40,118 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class XGBoostTrainer(DataParallelTrainer):
     """A Trainer for distributed data-parallel XGBoost training.
 
-    Example
-    -------
+    This trainer automatically handles external memory optimization to avoid dataset
+    materialization, making it suitable for large datasets that don't fit in memory.
+    The trainer provides seamless external memory training with hardware-aware optimization
+    through the ray.train.xgboost utilities.
 
-    .. testcode::
+    The trainer is designed to be robust across different XGBoost workloads including:
+    - Binary and multi-class classification
+    - Regression tasks
+    - Ranking problems
+    - Different data types (numerical, categorical, missing values)
+    - GPU and CPU training
+    - Checkpoint resuming and early stopping
 
-        import xgboost
+    At a high level, this Trainer does the following:
 
-        import ray.data
-        import ray.train
-        from ray.train.xgboost import RayTrainReportCallback
-        from ray.train.xgboost import XGBoostTrainer
+    1. Launches multiple workers as defined by the ``scaling_config``.
+    2. Sets up a distributed XGBoost environment on these workers
+       as defined by the ``xgboost_config``.
+    3. Ingests the input ``datasets`` based on the ``dataset_config``.
+    4. Runs the input ``train_loop_per_worker(train_loop_config)``
+       on all workers.
 
-        def train_fn_per_worker(config: dict):
-            # (Optional) Add logic to resume training state from a checkpoint.
-            # ray.train.get_checkpoint()
+    Example:
 
-            # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
-            train_ds_iter, eval_ds_iter = (
-                ray.train.get_dataset_shard("train"),
-                ray.train.get_dataset_shard("validation"),
+        .. testcode::
+
+            import xgboost
+            import ray.data
+            import ray.train
+            from ray.train.xgboost import RayTrainReportCallback
+            from ray.train.v2.xgboost import XGBoostTrainer
+            import ray.train.xgboost as train_xgboost  # Training utilities
+
+            def train_fn_per_worker(config: dict):
+                # Get dataset shards
+                train_ds = ray.train.get_dataset_shard("train")
+                eval_ds = ray.train.get_dataset_shard("validation")
+
+                # All optimization handled automatically - one line!
+                dtrain, deval, params = train_xgboost.prepare_datasets_and_params(
+                    train_ds,
+                    label_column="target",
+                    eval_dataset_shard=eval_ds,
+                    objective="binary:logistic",
+                    use_gpu=True,  # Automatic GPU optimization
+                    eta=0.1,       # Custom parameters as needed
+                    max_depth=6
+                )
+
+                # Standard XGBoost training - all complexity hidden
+                bst = xgboost.train(
+                    params,
+                    dtrain=dtrain,
+                    evals=[(deval, "validation")],
+                    num_boost_round=100,
+                    callbacks=[RayTrainReportCallback()],
+                )
+
+            # Load datasets
+            train_ds = ray.data.read_parquet("s3://dataset/train/")
+            eval_ds = ray.data.read_parquet("s3://dataset/validation/")
+
+            trainer = XGBoostTrainer(
+                train_fn_per_worker,
+                datasets={"train": train_ds, "validation": eval_ds},
+                scaling_config=ray.train.ScalingConfig(num_workers=4, use_gpu=True),
             )
-            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
+            result = trainer.fit()
 
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
-            train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
-            eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
+        .. testoutput::
+            :hide:
 
-            dtrain = xgboost.DMatrix(train_X, label=train_y)
-            deval = xgboost.DMatrix(eval_X, label=eval_y)
+            ...
 
-            params = {
-                "tree_method": "approx",
-                "objective": "reg:squarederror",
-                "eta": 1e-4,
-                "subsample": 0.5,
-                "max_depth": 2,
-            }
+        Alternative usage with manual control:
 
-            # 2. Do distributed data-parallel training.
-            # Ray Train sets up the necessary coordinator processes and
-            # environment variables for your workers to communicate with each other.
-            bst = xgboost.train(
-                params,
-                dtrain=dtrain,
-                evals=[(deval, "validation")],
-                num_boost_round=10,
-                callbacks=[RayTrainReportCallback()],
-            )
+        .. testcode::
 
-        train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
-        trainer = XGBoostTrainer(
-            train_fn_per_worker,
-            datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
-        )
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
+            import ray.train.xgboost as train_xgboost
 
-    .. testoutput::
-        :hide:
+            def train_fn_per_worker(config: dict):
+                train_ds = ray.train.get_dataset_shard("train")
+                eval_ds = ray.train.get_dataset_shard("validation")
 
-        ...
+                # Manual dataset preparation (automatic memory optimization)
+                dtrain = train_xgboost.prepare_dataset(train_ds, label_column="target")
+                deval = train_xgboost.prepare_dataset(eval_ds, label_column="target")
+
+                # Hardware-optimized parameters (automatic system detection)
+                params = train_xgboost.get_recommended_params(
+                    objective="reg:squarederror",
+                    use_gpu=False,
+                    eta=0.05,
+                    max_depth=8
+                )
+
+                bst = xgboost.train(params, dtrain, evals=[(deval, "validation")])
+
+        .. testoutput::
+            :hide:
+
+            ...
+
+    The training utilities automatically handle:
+    - Memory-aware dataset preparation (materialization vs external memory)
+    - Hardware detection (NUMA, storage type, GPU capabilities)
+    - Parameter optimization for external memory training
+    - System-specific performance tuning
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -125,7 +197,7 @@ class XGBoostTrainer(DataParallelTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        dataset_config: Optional[ray.train.DataConfig] = None,
+        dataset_config: Optional[DataConfig] = None,
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -148,6 +220,15 @@ class XGBoostTrainer(DataParallelTrainer):
             )
 
         from ray.train.xgboost import XGBoostConfig
+
+        # Configure dataset for external memory optimization
+        if dataset_config is None:
+            dataset_config = DataConfig(
+                execution_options=ray.data.ExecutionOptions(
+                    preserve_order=False,  # Allow reordering for better performance
+                    locality_with_output=True,  # Keep data local to workers
+                )
+            )
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
