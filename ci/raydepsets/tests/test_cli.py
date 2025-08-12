@@ -66,20 +66,31 @@ class TestCli(unittest.TestCase):
             manager = _create_test_manager(tmpdir)
             assert manager is not None
             assert manager.workspace.dir == tmpdir
-            assert manager.config.depsets[0].name == "ray_base_test_depset"
-            assert manager.config.depsets[0].operation == "compile"
-            assert manager.config.depsets[0].requirements == ["requirements_test.txt"]
-            assert manager.config.depsets[0].constraints == [
+            assert (
+                manager.depset_map[("ray_base_test_depset", None)].name
+                == "ray_base_test_depset"
+            )
+            assert (
+                manager.depset_map[("ray_base_test_depset", None)].operation
+                == "compile"
+            )
+            assert manager.depset_map[("ray_base_test_depset", None)].requirements == [
+                "requirements_test.txt"
+            ]
+            assert manager.depset_map[("ray_base_test_depset", None)].constraints == [
                 "requirement_constraints_test.txt"
             ]
-            assert manager.config.depsets[0].output == "requirements_compiled.txt"
+            assert (
+                manager.depset_map[("ray_base_test_depset", None)].output
+                == "requirements_compiled.txt"
+            )
 
     def test_dependency_set_manager_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                manager.get_depset_by_id(depset_id=("fake_depset", None))
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -334,20 +345,23 @@ class TestCli(unittest.TestCase):
             assert len(manager.build_graph.nodes()) == 6
             assert len(manager.build_graph.edges()) == 3
             # assert that the compile depsets are first
-            assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
             assert (
-                manager.build_graph.nodes["subset_general_depset"]["operation"]
+                manager.build_graph.nodes[("general_depset", None)]["operation"]
+                == "compile"
+            )
+            assert (
+                manager.build_graph.nodes[("subset_general_depset", None)]["operation"]
                 == "subset"
             )
             assert (
-                manager.build_graph.nodes["expand_general_depset"]["operation"]
+                manager.build_graph.nodes[("expand_general_depset", None)]["operation"]
                 == "expand"
             )
             sorted_nodes = list(topological_sort(manager.build_graph))
             # assert that the root nodes are the compile depsets
-            assert "ray_base_test_depset" in sorted_nodes[:3]
-            assert "general_depset" in sorted_nodes[:3]
-            assert "build_args_test_depset_py311" in sorted_nodes[:3]
+            assert ("ray_base_test_depset", None) in sorted_nodes[:3]
+            assert ("general_depset", None) in sorted_nodes[:3]
+            assert ("build_args_test_depset_py311", "py311_cpu") in sorted_nodes[:3]
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -458,7 +472,9 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("build_args_test_depset_py311")
+            depset = manager.get_depset_by_id(
+                depset_id=("build_args_test_depset_py311", "py311_cpu")
+            )
             assert depset.name == "build_args_test_depset_py311"
             assert depset.build_arg_set_name == "py311_cpu"
 
@@ -469,7 +485,7 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("ray_base_test_depset")
+            depset = manager.get_depset_by_id(depset_id=("ray_base_test_depset", None))
             assert depset.name == "ray_base_test_depset"
             assert depset.build_arg_set_name is None
 

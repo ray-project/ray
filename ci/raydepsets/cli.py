@@ -6,6 +6,7 @@ from typing import List, Optional
 import click
 import runfiles
 from networkx import DiGraph, topological_sort
+from typing import Tuple
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -33,11 +34,13 @@ def cli():
 @click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
+@click.option("--build-arg-set", default=None)
 @click.option("--uv-cache-dir", default=None)
 def load(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
+    build_arg_set: Optional[str],
     uv_cache_dir: Optional[str],
 ):
     """Load a dependency sets from a config file."""
@@ -47,7 +50,9 @@ def load(
         uv_cache_dir=uv_cache_dir,
     )
     if name:
-        manager.execute_single(manager.get_depset(name))
+        manager.execute_single(
+            manager.get_depset_by_id(depset_id=(name, build_arg_set))
+        )
     else:
         manager.execute()
 
@@ -60,29 +65,27 @@ class DependencySetManager:
         uv_cache_dir: Optional[str] = None,
     ):
         self.workspace = Workspace(workspace_dir)
-        self.config = self.workspace.load_config(config_path)
+        self.depset_map = self.workspace.build_depset_map(config_path)
         self.build_graph = DiGraph()
         self._build()
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
 
     def _build(self):
-        for depset in self.config.depsets:
+        for depset_id, depset in self.depset_map.items():
             if depset.operation == "compile":
-                self.build_graph.add_node(
-                    depset.name, operation="compile", depset=depset
-                )
+                self.build_graph.add_node(depset_id, operation="compile", depset=depset)
             elif depset.operation == "subset":
-                self.build_graph.add_node(
-                    depset.name, operation="subset", depset=depset
+                self.build_graph.add_node(depset_id, operation="subset", depset=depset)
+                self.build_graph.add_edge(
+                    (depset.source_depset, depset.build_arg_set_name), depset_id
                 )
-                self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
-                self.build_graph.add_node(
-                    depset.name, operation="expand", depset=depset
-                )
+                self.build_graph.add_node(depset_id, operation="expand", depset=depset)
                 for depset_name in depset.depsets:
-                    self.build_graph.add_edge(depset_name, depset.name)
+                    self.build_graph.add_edge(
+                        (depset_name, depset.build_arg_set_name), depset_id
+                    )
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
 
@@ -91,11 +94,13 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str) -> Depset:
-        for depset in self.config.depsets:
-            if depset.name == name:
-                return depset
-        raise KeyError(f"Dependency set {name} not found")
+    def get_depset_by_id(self, depset_id: Tuple[str, str]) -> Depset:
+        depset = self.depset_map[depset_id]
+        if not depset:
+            raise KeyError(
+                f"Dependency set {depset_id[0]} with build arg set {depset_id[1]} not found"
+            )
+        return depset
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
@@ -119,6 +124,7 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
+                build_arg_set_name=depset.build_arg_set_name,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
@@ -131,6 +137,7 @@ class DependencySetManager:
                 constraints=depset.constraints,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                build_arg_set_name=depset.build_arg_set_name,
                 name=depset.name,
                 output=depset.output,
             )
@@ -168,12 +175,15 @@ class DependencySetManager:
         source_depset: str,
         requirements: List[str],
         name: str,
+        build_arg_set_name: Optional[str] = None,
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = self.get_depset_by_id(
+            depset_id=(source_depset, build_arg_set_name)
+        )
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -190,6 +200,7 @@ class DependencySetManager:
         requirements: List[str],
         constraints: List[str],
         name: str,
+        build_arg_set_name: Optional[str] = None,
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
@@ -198,7 +209,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name)
+            depset = self.get_depset_by_id(depset_id=(depset_name, build_arg_set_name))
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
