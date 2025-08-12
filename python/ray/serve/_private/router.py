@@ -989,5 +989,16 @@ class CurrentLoopRouter(Router):
             ),
         )
 
+    def _run_shutdown_in_thread(self):
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._asyncio_router.shutdown())
+        finally:
+            loop.close()
+
     def shutdown(self) -> asyncio.Future:
-        return self._asyncio_loop.create_task(self._asyncio_router.shutdown())
+        # Shutdown in a separate thread so the main event loop can block
+        # on the shutdown result without causing deadlock.
+        return asyncio.to_thread(self._run_shutdown_in_thread)
