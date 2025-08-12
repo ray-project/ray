@@ -22,7 +22,7 @@ def build_llm_deployment(
     name_prefix: Optional[str] = None,
     deployment_kwargs: Optional[dict] = None,
 ) -> Application:
-    name_prefix = name_prefix or "LLMDeployment"
+    name_prefix = name_prefix or "LLMDeployment:"
     deployment_kwargs = deployment_kwargs or {}
 
     deployment_options = llm_config.get_serve_options(
