@@ -1,6 +1,7 @@
 import collections
 import copy
 import html
+import io
 import itertools
 import logging
 import time
@@ -450,6 +451,62 @@ class Dataset:
         UUID, and current execution index.
         """
         return self._plan.get_dataset_id()
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def load_from_uris(
+        self,
+        uri_column: str,
+        *,
+        decode_fn: Optional[Callable[[io.RawIOBase], Iterator[DataBatch]]] = None,
+    ):
+        """Load binary data from a column of URIs.
+
+        Args:
+            uri_column: The name of the column containing the URIs.
+            decode_fn: A function that takes a file-like object and returns an iterator
+                of data batches.
+
+        Returns:
+            A new Dataset with the decoded data.
+        """
+        RANDOM_SAMPLE_SIZE = 10
+        import math
+        import random
+
+        if decode_fn is None:
+
+            def default_decode_fn(f: io.RawIOBase) -> Iterator[DataBatch]:
+                return f
+
+            decode_fn = default_decode_fn
+
+        # Step 1: Take all paths for sampling and to determine how many there are.
+        paths = self.select_columns([uri_column]).take_all()
+
+        # Step 2: Sample paths to estimate total in memory size after reading.
+        sampled_paths = [
+            row[uri_column] for row in random.sample(paths, RANDOM_SAMPLE_SIZE)
+        ]
+        total_sampled_size = (
+            ray.data.read_binary_files(sampled_paths)
+            .map(lambda r: {"size_bytes": len(r["bytes"])})
+            .sum("size_bytes")
+        )
+        sampled_size = total_sampled_size / RANDOM_SAMPLE_SIZE
+
+        # Step 3: Determine number of partitions needed to prevent obvious OOMs
+        in_memory_size_estimate = len(paths) * sampled_size
+        num_partitions = math.ceil(
+            in_memory_size_estimate / (1024 * 1024 * 1024)
+        )  # (Each task reads 1 GiB)
+
+        # Step 4: Repartition the dataset and apply the decode function with the map api.
+        # print(f"num_rows: {len(paths)}")
+        # print(f"total_sampled_size: {total_sampled_size}")
+        # print(f"sampled_size: {sampled_size}")
+        # print(f"in_memory_size_estimate: {in_memory_size_estimate}")
+        # print(f"repartitioning to {num_partitions} partitions")
+        return self.repartition(num_partitions).map(decode_fn)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
