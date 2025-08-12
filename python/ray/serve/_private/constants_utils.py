@@ -1,5 +1,10 @@
 import os
+import warnings
 from typing import Callable, List, Optional, Type, TypeVar
+
+from packaging import version as packaging_version
+
+import ray
 
 
 def str_to_list(s: str) -> List[str]:
@@ -221,3 +226,40 @@ def get_env_bool(name: str, default: Optional[str]) -> bool:
         True if the environment variable value is "1", False otherwise.
     """
     return os.environ.get(name, default) == "1"
+
+
+def get_env_float_warning_till_2_50(
+    name: str, default: Optional[float]
+) -> Optional[float]:
+    """Introduced for backward compatibility for constants:
+
+    PROXY_HEALTH_CHECK_TIMEOUT_S
+    PROXY_HEALTH_CHECK_PERIOD_S
+    PROXY_READY_CHECK_TIMEOUT_S
+    PROXY_MIN_DRAINING_PERIOD_S
+    RAY_SERVE_KV_TIMEOUT_S
+
+    todo: after the 2.49.0 release - delete this function and use get_env_float_positive instead
+    """
+    current_version = packaging_version.parse(ray.__version__)
+    removal_version = packaging_version.parse("2.50.0")
+
+    env_value = get_env_float(name, default)
+
+    if current_version < removal_version:
+        print(env_value)
+        if env_value is not None and env_value <= 0:
+            # warning message if unexpected value
+            warnings.warn(
+                f"Got unexpected value `{env_value}` for `{name}` environment variable! "
+                f"Starting from version {removal_version}, the environment variable `{name}` will require a positive value. "
+                f"Either set a positive value or remove this variable to use the default value `{default}`. "
+                f"Your current Ray version is {current_version}.",
+                FutureWarning,
+                stacklevel=2,
+            )
+        # return the same value as now for backward compatibility
+        return env_value or default
+    else:
+        # since v2.50.0
+        return get_env_float_positive(name, default)

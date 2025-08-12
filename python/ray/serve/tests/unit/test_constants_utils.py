@@ -2,12 +2,14 @@ import os
 from unittest.mock import patch
 
 import pytest
+from testfixtures import mock
 
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
     get_env_float_non_negative,
     get_env_float_positive,
+    get_env_float_warning_till_2_50,
     get_env_int,
     get_env_int_non_negative,
     get_env_int_positive,
@@ -196,6 +198,92 @@ class TestEnvValueFunctions:
         # Test with default when environment variable not set
         assert get_env_bool("NONEXISTENT_VAR", "1") is True
         assert get_env_bool("NONEXISTENT_VAR", "0") is False
+
+
+class TestDeprecationFunctions:
+    def test_current_behavior(self, mock_environ):
+        mock_environ["OLD_VAR_NEG"] = "-1"
+        assert get_env_float("OLD_VAR_NEG", 10.0) or 10.0 == -1.0
+        assert (get_env_float("OLD_VAR_NEG", 0.0) or None) == -1.0
+
+        mock_environ["OLD_VAR_ZERO"] = "0"
+        assert get_env_float("OLD_VAR_ZERO", 10.0) or 10.0 == 10.0
+
+        assert get_env_float("NOT_SET", 10.0) or 10.0 == 10.0
+
+        assert (get_env_float("NOT_SET", 0.0) or None) is None
+
+    @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
+    def test_with_positive_value_before_250(self, mock_environ):
+        env_name = "TEST_POSITIVE_FLOAT"
+        mock_environ[env_name] = "5.5"
+
+        result = get_env_float_warning_till_2_50(env_name, 10.0)
+
+        assert result == 5.5
+
+    @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
+    def test_with_non_positive_value_before_250(self, mock_environ):
+        env_name = "TEST_NON_POSITIVE_FLOAT"
+        mock_environ[env_name] = "-2.5"
+
+        with pytest.warns(FutureWarning) as record:
+            result = get_env_float_warning_till_2_50(env_name, 10.0)
+
+        assert result == -2.5
+        assert len(record) == 1
+        assert "will require a positive value" in str(record[0].message)
+
+    @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
+    def test_with_zero_value_before_250(self, mock_environ):
+        env_name = "TEST_ZERO_FLOAT"
+        mock_environ[env_name] = "0.0"
+
+        with pytest.warns(FutureWarning) as record:
+            result = get_env_float_warning_till_2_50(env_name, 10.0)
+
+        assert result == 10.0
+        assert len(record) == 1
+        assert "will require a positive value" in str(record[0].message)
+
+    @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
+    def test_with_no_env_value_before_250(self):
+        env_name = "TEST_MISSING_FLOAT"
+        # Don't set environment variable
+
+        result = get_env_float_warning_till_2_50(env_name, 1.0)
+
+        assert result == 1.0
+
+    @mock.patch("ray.__version__", "2.50.0")  # Version at 2.50.0
+    def test_delegates_to_positive_at_250(self, mock_environ):
+        env_name = "TEST_FLOAT"
+        mock_environ[env_name] = "2.0"
+
+        assert get_env_float_warning_till_2_50(env_name, 1.0) == 2.0
+
+        mock_environ["TEST_VAR"] = "-1.2"
+        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
+            get_env_float_warning_till_2_50("TEST_VAR", 5.0)
+
+        mock_environ["TEST_VAR"] = "0.0"
+        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
+            get_env_float_warning_till_2_50("TEST_VAR", 5.0)
+
+    @mock.patch("ray.__version__", "2.51.0")  # Version after 2.50.0
+    def test_delegates_to_positive_after_250(self, mock_environ):
+        env_name = "TEST_FLOAT"
+        mock_environ[env_name] = "2.0"
+
+        assert get_env_float_warning_till_2_50(env_name, 1.0) == 2.0
+
+        mock_environ["TEST_VAR"] = "-1.2"
+        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
+            get_env_float_warning_till_2_50("TEST_VAR", 5.0)
+
+        mock_environ["TEST_VAR"] = "0.0"
+        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
+            get_env_float_warning_till_2_50("TEST_VAR", 5.0)
 
 
 if __name__ == "__main__":
