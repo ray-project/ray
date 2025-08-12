@@ -458,7 +458,7 @@ def test_write_after_save(ray_start_regular):
     tensor2 = receiver.receive.remote(ref)
 
     # The sender task should not have returned yet because the ObjectRef is
-    # still in scope.i
+    # still in scope.
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(tensor1, timeout=1)
 
