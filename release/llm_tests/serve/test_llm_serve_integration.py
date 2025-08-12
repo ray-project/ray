@@ -149,33 +149,34 @@ async def test_tool_calls_serialization():
 
     # Query with multi-turn tool call
     client = OpenAI(base_url="http://localhost:8000/v1", api_key="FAKE_KEY")
-    messages = [{"role": "user", "content": "What's 2+2 ?"}]
-    response = client.chat.completions.create(
-        model="qwen",
-        messages=messages,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-    )
-
-    messages.append(
+    messages = [
         {
-            "content": "2 + 2 equals 4.",
-            "refusal": None,
+            "role": "user",
+            "content": "Can you tell me what the temperate will be in Dallas, in fahrenheit?",
+        },
+        {
+            "content": None,
             "role": "assistant",
-            "annotations": None,
-            "audio": None,
-            "function_call": None,
-            "tool_calls": [],
-            "reasoning_content": None,
-        }
-    )
-
-    response = client.chat.completions.create(
-        model="qwen",
-        messages=messages,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-    )
-
-    print(response.choices[0].message)
+            "tool_calls": [
+                {
+                    "id": "RBS92VTjJ",
+                    "function": {
+                        "arguments": '{"city": "Dallas", "state": "TX", "unit": "fahrenheit"}',
+                        "name": "get_current_weather",
+                    },
+                    "type": "function",
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "content": "The weather in Dallas, TX is 85 degrees fahrenheit. It is partly cloudly, with highs in the 90's.",
+            "tool_call_id": "n3OMUpydP",
+        },
+    ]
+    chat_completion = client.chat.completions.create(messages=messages, model="qwen")
+    assert chat_completion.choices[0].message.content is not None
+    print(chat_completion.choices[0].message)
     serve.shutdown()
 
 
