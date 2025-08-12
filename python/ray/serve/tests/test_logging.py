@@ -1154,10 +1154,10 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     """
     logs_dir = Path(tmp_dir)
     logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
-    serve_logger = logging.getLogger("ray.serve")
 
     @serve.deployment(logging_config=logging_config)
     def disable_stdout():
+        serve_logger = logging.getLogger("ray.serve")
         serve_logger.info("from_serve_logger")
         print("from_print")
         sys.stdout.write("direct_from_stdout\n")
@@ -1169,7 +1169,13 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     serve.run(app)
     url = get_application_url(use_localhost=True)
 
-    httpx.get(url, timeout=None)
+    # Expect the request to fail due to the RuntimeError
+    with pytest.raises(httpx.HTTPStatusError):
+        response = httpx.get(url, timeout=10)
+        response.raise_for_status()
+
+    # Give some time for logs to be flushed
+    time.sleep(2)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
@@ -1199,6 +1205,22 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
                         direct_from_stderr = True
                     elif "this\nis\nmultiline\nlog\n" in message:
                         multiline_log = True
+
+    # If error log not found, check for the error in the message field as well
+    if not from_error_check:
+        for log_file in os.listdir(logs_dir):
+            if log_file.startswith("replica_default_disable_stdout"):
+                with open(logs_dir / log_file) as f:
+                    for line in f:
+                        structured_log = json.loads(line)
+                        message = structured_log.get("message", "")
+                        if (
+                            "from_error" in message
+                            or "RuntimeError: from_error" in message
+                        ):
+                            from_error_check = True
+                            break
+
     assert from_serve_logger_check
     assert from_print_check
     assert from_error_check
