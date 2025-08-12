@@ -15,10 +15,10 @@
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
 #include "gtest/gtest.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
-#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -55,8 +55,9 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   auto *task_def_event = event->mutable_task_definition_event();
   task_def_event->set_task_type(rpc::TaskType::NORMAL_TASK);
   task_def_event->set_language(rpc::Language::PYTHON);
-  task_def_event->mutable_task_func()->mutable_python_function_descriptor()->set_function_name(
-      "test_task_name");
+  task_def_event->mutable_task_func()
+      ->mutable_python_function_descriptor()
+      ->set_function_name("test_task_name");
   task_def_event->set_task_id("test_task_id");
   task_def_event->set_task_attempt(1);
   task_def_event->set_job_id("test_job_id");

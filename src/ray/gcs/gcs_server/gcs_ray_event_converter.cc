@@ -65,13 +65,16 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
   }
 
   auto function_descriptor = event.task_func();
-  if (event.language() == rpc::Language::CPP && function_descriptor.has_cpp_function_descriptor()) {
+  if (event.language() == rpc::Language::CPP &&
+      function_descriptor.has_cpp_function_descriptor()) {
     task_info->set_func_or_class_name(
         function_descriptor.cpp_function_descriptor().function_name());
-  } else if (event.language() == rpc::Language::PYTHON && function_descriptor.has_python_function_descriptor()) {
+  } else if (event.language() == rpc::Language::PYTHON &&
+             function_descriptor.has_python_function_descriptor()) {
     task_info->set_func_or_class_name(
         function_descriptor.python_function_descriptor().function_name());
-  } else if (event.language() == rpc::Language::JAVA && function_descriptor.has_java_function_descriptor()) {
+  } else if (event.language() == rpc::Language::JAVA &&
+             function_descriptor.has_java_function_descriptor()) {
     task_info->set_func_or_class_name(
         function_descriptor.java_function_descriptor().function_name());
   }
