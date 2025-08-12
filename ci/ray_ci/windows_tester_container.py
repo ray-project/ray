@@ -1,7 +1,7 @@
 from typing import List, Optional
 
-from ci.ray_ci.windows_container import WindowsContainer
 from ci.ray_ci.tester_container import TesterContainer
+from ci.ray_ci.windows_container import WindowsContainer
 
 
 class WindowsTesterContainer(TesterContainer, WindowsContainer):

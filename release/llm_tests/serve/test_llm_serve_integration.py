@@ -147,6 +147,7 @@ def test_deepseek_model(model_name):
             enable_chunked_prefill=True,
             enable_prefix_caching=True,
             enforce_eager=True,
+            trust_remote_code=True,
         ),
     )
     app = build_openai_app({"llm_configs": [llm_config]})

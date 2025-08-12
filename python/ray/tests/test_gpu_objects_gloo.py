@@ -20,6 +20,9 @@ class GPUTestActor:
     def echo(self, data):
         return data
 
+    def add(self, a, b):
+        return a + b
+
     def double(self, data):
         if isinstance(data, list):
             return [self.double(d) for d in data]
@@ -27,17 +30,21 @@ class GPUTestActor:
             return data.apply(lambda x: x * 2)
         return data * 2
 
-    def get_gpu_object(self, obj_id: str, timeout=None):
+    def get_out_of_band_tensors(self, obj_id: str, timeout=None):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
         )
         if timeout is None:
             timeout = 0
-        return gpu_object_store.wait_and_get_object(obj_id, timeout)
+        gpu_object = gpu_object_store.wait_and_get_object(obj_id, timeout)
+        return gpu_object.data
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
         return gpu_object_manager.gpu_object_store.get_num_objects()
+
+    def fail(self, error_message):
+        raise Exception(error_message)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
@@ -199,6 +206,57 @@ def test_p2p(ray_start_regular):
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
 
 
+def test_p2p_with_cpu_data(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    sender = actors[0]
+    receiver = actors[1]
+
+    cpu_data = 123
+    ref = sender.echo.remote(cpu_data)
+    result = receiver.double.remote(ref)
+    assert ray.get(result) == cpu_data * 2
+
+
+def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+    sender = actors[0]
+    receiver = actors[1]
+
+    ref = sender.echo.remote(small_tensor)
+    result = receiver.add.remote(ref, ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+    wait_for_condition(
+        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
+def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+    sender = actors[0]
+    receiver = actors[1]
+
+    ref = sender.echo.remote(small_tensor)
+    result = receiver.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+    result = receiver.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+
 def test_intra_gpu_tensor_transfer(ray_start_regular):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
@@ -228,6 +286,17 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
     assert result[0] == pytest.approx(tensor1 * 2)
     assert result[1] == pytest.approx(tensor2 * 2)
     assert result[2] == cpu_data * 2
+
+
+def test_send_same_ref_multiple_times_intra_actor(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+
+    ref = actor.echo.remote(small_tensor)
+    result = actor.add.remote(ref, ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
 def test_mix_cpu_gpu_data(ray_start_regular):
@@ -295,7 +364,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     gpu_obj_id = gpu_ref.hex()
 
     # Check src_actor has the GPU object
-    ret_val_src = ray.get(src_actor.get_gpu_object.remote(gpu_obj_id))
+    ret_val_src = ray.get(src_actor.get_out_of_band_tensors.remote(gpu_obj_id))
     assert ret_val_src is not None
     assert len(ret_val_src) == 1
     assert torch.equal(ret_val_src[0], tensor)
@@ -308,7 +377,9 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, task_args)
 
     # Check dst_actor has the GPU object
-    ret_val_dst = ray.get(dst_actor.get_gpu_object.remote(gpu_obj_id, timeout=10))
+    ret_val_dst = ray.get(
+        dst_actor.get_out_of_band_tensors.remote(gpu_obj_id, timeout=10)
+    )
     assert ret_val_dst is not None
     assert len(ret_val_dst) == 1
     assert torch.equal(ret_val_dst[0], tensor)
@@ -415,11 +486,60 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
 
     # Since the tensor is extracted from the tensordict, the `ret_val_src` will be a list of tensors
     # instead of a tensordict.
-    ret_val_src = ray.get(actor.get_gpu_object.remote(gpu_ref.hex()))
+    ret_val_src = ray.get(actor.get_out_of_band_tensors.remote(gpu_ref.hex()))
     assert ret_val_src is not None
     assert len(ret_val_src) == 2
     assert torch.equal(ret_val_src[0], td["action"])
     assert torch.equal(ret_val_src[1], td["reward"])
+
+
+def test_app_error_inter_actor(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    # Make sure the receiver can receive an exception from the sender.
+    ref = src_actor.fail.options(tensor_transport="gloo").remote("test_app_error")
+    with pytest.raises(Exception, match="test_app_error"):
+        ray.get(dst_actor.double.remote(ref))
+
+    # Make sure the sender and receiver do not hang.
+    small_tensor = torch.randn((1,))
+    ref = src_actor.echo.remote(small_tensor)
+    result = dst_actor.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+
+def test_app_error_intra_actor(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    # Make sure the receiver can receive an exception from the sender.
+    ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
+    with pytest.raises(Exception, match="test_app_error"):
+        ray.get(actor.double.remote(ref))
+
+    # Make sure the sender and receiver do not hang.
+    small_tensor = torch.randn((1,))
+    ref = actor.echo.remote(small_tensor)
+    result = actor.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+
+def test_app_error_fetch_to_driver(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
+    with pytest.raises(Exception, match="test_app_error"):
+        ray.get(ref)
+
+    # Make sure the driver can receive an exception from the actor.
+    small_tensor = torch.tensor([1, 2, 3])
+    ref = actor.echo.remote(small_tensor)
+    assert torch.equal(ray.get(ref), small_tensor)
 
 
 if __name__ == "__main__":
