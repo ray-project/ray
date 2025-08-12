@@ -140,7 +140,8 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
-        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager));
+        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
+        "test_session");
 
     auto task_manager = std::make_shared<TaskManager>(
         *memory_store_,
