@@ -39,6 +39,11 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequest(
       ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()), task_event);
       break;
     }
+    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
+      ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()),
+                          task_event);
+      break;
+    }
     default:
       // TODO(can-anyscale): Handle other event types
       break;
@@ -57,10 +62,18 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
   task_event.set_job_id(event.job_id());
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  task_info->set_type(event.task_type());
   task_info->set_name(event.task_name());
+  task_info->set_task_id(event.task_id());
+  task_info->set_job_id(event.job_id());
+  task_info->set_parent_task_id(event.parent_task_id());
+  if (!event.placement_group_id().empty()) {
+    task_info->set_placement_group_id(event.placement_group_id());
+  }
   GenerateTaskInfoEntry(std::move(*event.mutable_runtime_env_info()),
                         std::move(*event.mutable_task_func()),
                         std::move(*event.mutable_required_resources()),
+                        event.language(),
                         task_info);
 }
 
@@ -89,46 +102,42 @@ void GcsRayEventConverter::ConvertToTaskEvents(
   task_event.set_job_id(event.job_id());
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  task_info->set_type(rpc::TaskType::ACTOR_TASK);
+  task_info->set_name(event.actor_task_name());
+  task_info->set_task_id(event.task_id());
+  task_info->set_job_id(event.job_id());
+  task_info->set_parent_task_id(event.parent_task_id());
+  if (!event.placement_group_id().empty()) {
+    task_info->set_placement_group_id(event.placement_group_id());
+  }
+  if (!event.actor_id().empty()) {
+    task_info->set_actor_id(event.actor_id());
+  }
   GenerateTaskInfoEntry(std::move(*event.mutable_runtime_env_info()),
                         std::move(*event.mutable_actor_func()),
                         std::move(*event.mutable_required_resources()),
+                        event.language(),
                         task_info);
-}
-
-void GcsRayEventConverter::ConvertToTaskEvents(
-    rpc::events::ActorTaskExecutionEvent &&event, rpc::TaskEvents &task_event) {
-  task_event.set_task_id(event.task_id());
-  task_event.set_attempt_number(event.task_attempt());
-  task_event.set_job_id(event.job_id());
-
-  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
-  task_state_update->set_node_id(event.node_id());
-  task_state_update->set_worker_id(event.worker_id());
-  *task_state_update->mutable_error_info() = std::move(event.ray_error_info());
-  task_state_update->set_worker_pid(event.worker_pid());
-
-  for (const auto &[state, timestamp] : event.task_state()) {
-    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
-    (*task_state_update->mutable_state_ts_ns())[state] = ns;
-  }
 }
 
 void GcsRayEventConverter::GenerateTaskInfoEntry(
     rpc::RuntimeEnvInfo &&runtime_env_info,
     rpc::FunctionDescriptor &&function_descriptor,
     ::google::protobuf::Map<std::string, double> &&required_resources,
+    rpc::Language language,
     rpc::TaskInfoEntry *task_info) {
+  task_info->set_language(language);
   *task_info->mutable_runtime_env_info() = std::move(runtime_env_info);
-  if (function_descriptor.has_cpp_function_descriptor()) {
-    task_info->set_language(rpc::Language::CPP);
+  if (language == rpc::Language::CPP &&
+      function_descriptor.has_cpp_function_descriptor()) {
     task_info->set_func_or_class_name(
         function_descriptor.cpp_function_descriptor().function_name());
-  } else if (function_descriptor.has_python_function_descriptor()) {
-    task_info->set_language(rpc::Language::PYTHON);
+  } else if (language == rpc::Language::PYTHON &&
+             function_descriptor.has_python_function_descriptor()) {
     task_info->set_func_or_class_name(
         function_descriptor.python_function_descriptor().function_name());
-  } else if (function_descriptor.has_java_function_descriptor()) {
-    task_info->set_language(rpc::Language::JAVA);
+  } else if (language == rpc::Language::JAVA &&
+             function_descriptor.has_java_function_descriptor()) {
     task_info->set_func_or_class_name(
         function_descriptor.java_function_descriptor().function_name());
   }

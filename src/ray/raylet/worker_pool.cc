@@ -28,15 +28,14 @@
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
-#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 DEFINE_stats(worker_register_time_ms,
@@ -401,6 +400,13 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
     RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
+
+  // optionally configure the worker's internal grpc thread count
+  int64_t worker_grpc_threads = RayConfig::instance().worker_num_grpc_internal_threads();
+  if (worker_grpc_threads > 0) {
+    env.emplace(kEnvVarKeyGrpcThreadCount, std::to_string(worker_grpc_threads));
+  }
+
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
@@ -635,11 +641,21 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env) {
+  // Launch the process to create the worker.
+  std::error_code ec;
+  std::vector<const char *> argv;
+  for (const std::string &arg : worker_command_args) {
+    argv.push_back(arg.c_str());
+  }
+  argv.push_back(NULL);
+
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
-    for (const auto &arg : worker_command_args) {
-      debug_info.append(" ").append(arg);
+    for (const char *arg : argv) {
+      if (arg != NULL) {
+        debug_info.append(" ").append(arg);
+      }
     }
     debug_info.append(", and the envs:");
     for (const auto &entry : env) {
@@ -656,14 +672,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     debug_info.append(".");
     RAY_LOG(DEBUG) << debug_info;
   }
-
-  // Launch the process to create the worker.
-  std::error_code ec;
-  std::vector<const char *> argv;
-  for (const std::string &arg : worker_command_args) {
-    argv.push_back(arg.c_str());
-  }
-  argv.push_back(NULL);
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
