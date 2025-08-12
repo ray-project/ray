@@ -13,6 +13,10 @@ class JoinType(Enum):
     LEFT_OUTER = "left_outer"
     RIGHT_OUTER = "right_outer"
     FULL_OUTER = "full_outer"
+    LEFT_SEMI = "left_semi"
+    RIGHT_SEMI = "right_semi"
+    LEFT_ANTI = "left_anti"
+    RIGHT_ANTI = "right_anti"
 
 
 class Join(NAry):
@@ -36,8 +40,9 @@ class Join(NAry):
         Args:
             left_input_op: The input operator at left hand side.
             right_input_op: The input operator at right hand side.
-            join_type: The kind of join that should be performed, one of (“inner”,
-               “left_outer”, “right_outer”, “full_outer”).
+            join_type: The kind of join that should be performed, one of ("inner",
+               "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
+               "left_anti", "right_anti").
             left_key_columns: The columns from the left Dataset that should be used as
               keys of the join operation.
             right_key_columns: The columns from the right Dataset that should be used as

@@ -44,10 +44,8 @@ cdef extern from * namespace "polyfill" nogil:
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    # TODO(ryw) in Cython 3.x we can directly use `cdef enum class CStatusCode`
-    cdef cppclass CStatusCode "ray::StatusCode":
+    cdef enum class CStatusCode "ray::StatusCode":
         pass
-    cdef CStatusCode CStatusCode_OK "ray::StatusCode::OK"
     c_bool operator==(CStatusCode lhs, CStatusCode rhs)
 
     cdef cppclass CRayStatus "ray::Status":
@@ -147,6 +145,11 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
+cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
+    cdef cppclass CStatusOr "ray::StatusOr"[T]:
+        c_bool ok()
+        const CRayStatus &status() const
+        T &value()
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
@@ -355,7 +358,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
-            c_bool execute_out_of_order,
+            c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
@@ -448,9 +451,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_vector[c_string] &drained_node_ids)
 
-        CRayStatus GetAllNoCache(
+        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
-            c_vector[CGcsNodeInfo] &result)
+            optional[CGcsNodeState] state_filter,
+            optional[CNodeSelector] node_selector)
 
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
@@ -702,6 +706,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
+
+    cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
+        pass
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const

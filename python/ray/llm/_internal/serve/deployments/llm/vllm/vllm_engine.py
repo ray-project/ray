@@ -56,7 +56,11 @@ def _get_vllm_engine_config(
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    from vllm.usage.usage_lib import UsageContext
+
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
@@ -324,7 +328,7 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm import envs as vllm_envs
 
-        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
+        # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
                 vllm_engine_args, vllm_engine_config, placement_group
@@ -360,19 +364,9 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        # TODO (Kourosh): We should uncomment this logic when
-        # https://github.com/vllm-project/vllm/pull/20636 is
-        # included in our vLLM release.
-        # if disk_lora_model.model_id in self._oai_models.lora_requests:
-        #     # Lora is already loaded, return
-        #     return
-
         self._validate_openai_serving_models()
 
-        if any(
-            lora_request.lora_name == disk_lora_model.model_id
-            for lora_request in self._oai_models.lora_requests  # type: ignore[attr-defined]
-        ):
+        if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
 

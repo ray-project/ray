@@ -7,7 +7,7 @@ import ray.cluster_utils
 from ray._common.test_utils import SignalActor
 
 
-def test_threaded_actor_execute_out_of_order(shutdown_only):
+def test_threaded_actor_allow_out_of_order_execution(shutdown_only):
     ray.init()
 
     @ray.remote
@@ -29,7 +29,7 @@ def test_threaded_actor_execute_out_of_order(shutdown_only):
     assert ray.get(out_ref_2, timeout=5) == 2
 
 
-def test_async_actor_execute_out_of_order(shutdown_only):
+def test_async_actor_allow_out_of_order_execution(shutdown_only):
     ray.init()
 
     @ray.remote

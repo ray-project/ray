@@ -23,7 +23,6 @@
 #include "mock/ray/core_worker/reference_count.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
@@ -105,7 +104,7 @@ class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
   MOCK_METHOD5(AddActorQueueIfNotExists,
                void(const ActorID &actor_id,
                     int32_t max_pending_calls,
-                    bool execute_out_of_order,
+                    bool allow_out_of_order_execution,
                     bool fail_if_actor_unreachable,
                     bool owned));
   MOCK_METHOD3(ConnectActor,

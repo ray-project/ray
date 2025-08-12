@@ -15,7 +15,11 @@
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -529,9 +533,9 @@ const rpc::TensorTransport TaskSpecification::TensorTransport() const {
   return rpc::TensorTransport::OBJECT_STORE;
 }
 
-bool TaskSpecification::ExecuteOutOfOrder() const {
+bool TaskSpecification::AllowOutOfOrderExecution() const {
   return IsActorCreationTask() &&
-         message_->actor_creation_task_spec().execute_out_of_order();
+         message_->actor_creation_task_spec().allow_out_of_order_execution();
 }
 
 bool TaskSpecification::IsAsyncioActor() const {
