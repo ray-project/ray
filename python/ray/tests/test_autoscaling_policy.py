@@ -15,7 +15,7 @@ from ray.tests.test_autoscaler import (
     MockProvider,
     MockProcessRunner,
     MockGcsClient,
-    mock_raylet_id,
+    mock_node_id,
     MockAutoscaler,
 )
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
@@ -83,7 +83,7 @@ class Node:
         self.in_cluster = in_cluster
         self.node_type = node_type
         self.start_time = start_time
-        self.raylet_id = mock_raylet_id()
+        self.node_id = mock_node_id()
 
     def bundle_fits(self, bundle):
         if not self.in_cluster:
@@ -370,7 +370,7 @@ class Simulator:
                 continue
             self.load_metrics.update(
                 ip=ip,
-                raylet_id=node.raylet_id,
+                node_id=node.node_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
                 node_idle_duration_s=0,

@@ -214,8 +214,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
   const auto worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
-  const auto raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
-  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(raylet_id)
+  const auto node_id = NodeID::FromBinary(actor_data.address().node_id());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(node_id)
       << "received notification on actor, state: " << actor_state
       << ", ip address: " << actor_data.address().ip_address()
       << ", port: " << actor_data.address().port()

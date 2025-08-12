@@ -57,7 +57,7 @@ class MockLocalityDataProvider : public LocalityDataProviderInterface {
 
 std::optional<rpc::Address> MockNodeAddrFactory(const NodeID &node_id) {
   rpc::Address mock_rpc_address;
-  mock_rpc_address.set_raylet_id(node_id.Binary());
+  mock_rpc_address.set_node_id(node_id.Binary());
   std::optional<rpc::Address> opt_mock_rpc_address = mock_rpc_address;
   return opt_mock_rpc_address;
 }
@@ -77,7 +77,7 @@ TEST(LocalLeasePolicyTest, TestReturnFallback) {
   auto [best_node_address, is_selected_based_on_locality] =
       local_lease_policy.GetBestNodeForTask(task_spec);
   // Test that fallback node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), fallback_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 
@@ -105,7 +105,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackSpreadSchedulingStrat
   // Locality logic is not run since it's a spread scheduling strategy.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, 0);
   // Test that fallback node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), fallback_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 
@@ -136,7 +136,7 @@ TEST(LocalityAwareLeasePolicyTest,
   // Locality logic is not run since it's a node affinity scheduling strategy.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, 0);
   // Test that node affinity node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), node_affinity_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), node_affinity_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 
@@ -161,7 +161,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityDominatingNode) {
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that best node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), best_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), best_node);
   ASSERT_TRUE(is_selected_based_on_locality);
 }
 
@@ -187,7 +187,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBiggerObject) {
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that best node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), best_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), best_node);
   ASSERT_TRUE(is_selected_based_on_locality);
 }
 
@@ -217,7 +217,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBetterNode) {
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that best node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), best_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), best_node);
   ASSERT_TRUE(is_selected_based_on_locality);
 }
 
@@ -241,7 +241,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that fallback node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), fallback_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 
@@ -260,7 +260,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoDeps) {
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that fallback node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), fallback_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 
@@ -285,7 +285,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that fallback node was chosen.
-  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), fallback_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 

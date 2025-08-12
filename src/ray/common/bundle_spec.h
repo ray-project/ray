@@ -28,7 +28,7 @@
 
 namespace ray {
 
-/// Arguments are the raylet ID to spill back to, the raylet's
+/// Arguments are the node ID to spill back to, the raylet's
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
 

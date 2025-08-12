@@ -121,7 +121,7 @@ class MockObjectDirectory {
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
   explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
-      : local_raylet_id_(NodeID::FromRandom()),
+      : local_node_id_(NodeID::FromRandom()),
         io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
@@ -171,7 +171,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
     io_context_.Stop();
   }
 
-  NodeID local_raylet_id_;
+  NodeID local_node_id_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
   // Used by memory_store_.
@@ -236,7 +236,7 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
                                true,
                                /*add_local_ref=*/true);
   rpc::Address address;
-  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_node_id(NodeID::FromRandom().Binary());
   object_directory_->SetLocations(object_id, {address});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
@@ -256,9 +256,9 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                true,
                                /*add_local_ref=*/true);
   rpc::Address address1;
-  address1.set_raylet_id(NodeID::FromRandom().Binary());
+  address1.set_node_id(NodeID::FromRandom().Binary());
   rpc::Address address2;
-  address2.set_raylet_id(NodeID::FromRandom().Binary());
+  address2.set_node_id(NodeID::FromRandom().Binary());
   object_directory_->SetLocations(object_id, {address1, address2});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
@@ -308,7 +308,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   // A new copy of the object is pinned.
   NodeID remote_node_id = NodeID::FromRandom();
   rpc::Address address;
-  address.set_raylet_id(remote_node_id.Binary());
+  address.set_node_id(remote_node_id.Binary());
   object_directory_->SetLocations(object_id, {address});
   ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(raylet_client_->Flush(), 1);

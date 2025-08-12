@@ -360,7 +360,7 @@ def node_stats_to_dict(
         "parentTaskId",
         "sourceActorId",
         "callerId",
-        "rayletId",
+        "nodeId",
         "workerId",
         "placementGroupId",
     }
