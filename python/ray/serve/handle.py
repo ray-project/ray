@@ -217,8 +217,9 @@ class _DeploymentHandleBase:
             if self._is_router_running_in_separate_loop():
                 shutdown_future.result()
             else:
-                loop = asyncio.get_running_loop()
-                if loop is None:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
                     raise RuntimeError(
                         "Handle was initialized with `_run_router_in_separate_loop=False` "
                         "but is not running inside an asyncio event loop."
