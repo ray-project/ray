@@ -35,12 +35,6 @@ class DPServer(LLMServer):
 
         await super().__init__(llm_config)
 
-    def _push_telemetry_report(self):
-        # Only push telemetry report for the first DP replica.
-        if self.dp_rank == 0:
-            # TODO(rui): refine the telemetry report for DP deployment.
-            super()._push_telemetry_report()
-
     @classmethod
     def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
         return serve.deployment(cls).options(**deployment_options)

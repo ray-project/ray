@@ -1,3 +1,4 @@
+import time
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
@@ -205,7 +206,32 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
 
 def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     """Push telemetry report for a model."""
-    telemetry_agent = _get_or_create_telemetry_agent()
+    max_retries = 5
+    base_delay = 0.1
+
+    telemetry_agent = None
+    for attempt in range(max_retries):
+        try:
+            telemetry_agent = _get_or_create_telemetry_agent()
+            break
+        except ValueError as e:
+            # Due to race conditions among multiple replicas, we may get:
+            #   ValueError: Actor with name 'llm_serve_telemetry' already
+            #   exists in the namespace llm_serve_telemetry
+            logger.info(
+                "Attempt %s/%s to get telemetry agent failed: %s",
+                attempt + 1,
+                max_retries,
+            )
+            if attempt == max_retries - 1:
+                raise e
+
+            # Exponential backoff with jitter
+            # Max total wait time is ~2.3 seconds for 5 attempts.
+            delay = base_delay * (2**attempt) + (time.time() % 0.2)
+            time.sleep(delay)
+
+    assert telemetry_agent is not None
     ray.get(telemetry_agent.record.remote(model))
 
 
