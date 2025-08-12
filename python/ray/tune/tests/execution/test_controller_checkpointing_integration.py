@@ -14,7 +14,13 @@ from ray.air.execution import FixedResourceManager, PlacementGroupResourceManage
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Checkpoint, CheckpointConfig, PlacementGroupFactory, ResumeConfig
+from ray.tune import (
+    Callback,
+    Checkpoint,
+    CheckpointConfig,
+    PlacementGroupFactory,
+    ResumeConfig,
+)
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
@@ -493,6 +499,49 @@ def test_checkpoint_force_with_num_to_keep(ray_start_4_cpus_2_gpus_extra, tmp_pa
         # which results in 5 more checkpoints (running for 10 iterations),
         # giving a total of 6
         assert sync_up.call_count == 6
+
+
+def test_checkpoint_force_by_trial_callback(ray_start_4_cpus_2_gpus_extra, tmp_path):
+    """Test that cloud syncing is forced if one of the trials has made more
+    than num_to_keep checkpoints since last sync.
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
+        testCloudCheckpointForceWithNumToKeep
+    """
+
+    class CheckpointCallback(Callback):
+        num_checkpoints = 0
+
+        def on_trial_result(self, iteration, trials, trial: Trial, result, **info):
+            # Checkpoint every two iterations
+            if result[TRAINING_ITERATION] % 2 == 0:
+                self.num_checkpoints += 1
+                trial.checkpoint_now()
+
+    storage = mock_storage_context()
+
+    # disable automatic checkpointing
+    checkpoint_config = CheckpointConfig(checkpoint_frequency=0)
+    callback = CheckpointCallback()
+    runner = TuneController(
+        resource_manager_factory=PlacementGroupResourceManager,
+        storage=storage,
+        callbacks=[callback],
+        trial_checkpoint_config=checkpoint_config,
+    )
+
+    trial = Trial(
+        MOCK_TRAINABLE_NAME,
+        checkpoint_config=checkpoint_config,
+        stopping_criterion={"training_iteration": 6},
+        storage=storage,
+    )
+    runner.add_trial(trial)
+
+    while not runner.is_finished():
+        runner.step()
+
+    assert callback.num_checkpoints == 3
+    assert num_checkpoints(trial) == 3
 
 
 def test_checkpoint_sync_up_timeout(

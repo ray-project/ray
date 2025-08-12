@@ -97,6 +97,22 @@ If you want a checkpoint to be created at the end of a trial, you can additional
     :start-after: __class_api_end_checkpointing_start__
     :end-before: __class_api_end_checkpointing_end__
 
+.. _tune-callback-checkpointing:
+
+Manual Checkpointing by Callback
+--------------------------------
+
+You can also manually trigger checkpointing by calling :meth:`checkpoint_now() <ray.tune.experiment.Trial.checkpoint_now>`
+on a trial object.
+When using a :class:`Callback <ray.tune.callback.Callback>`, you can do this at the latest during
+:meth:`on_trial_result() <ray.tune.callback.Callback.on_trial_result>` to trigger a manual
+save of the checkpoint.
+
+.. literalinclude:: /tune/doc_code/trial_checkpoint.py
+    :language: python
+    :start-after: __callback_api_checkpointing_start__
+    :end-before: __callback_api_checkpointing_end__
+
 
 Configurations
 --------------
@@ -110,21 +126,29 @@ is determined manually within the user-defined training loop. See the compatibil
    * -
      - Class API
      - Function API
+     - Callback API
    * - ``num_to_keep``
+     - ✅
      - ✅
      - ✅
    * - ``checkpoint_score_attribute``
      - ✅
      - ✅
+     - ✅*
    * - ``checkpoint_score_order``
      - ✅
      - ✅
+     - ✅*
    * - ``checkpoint_frequency``
      - ✅
      - ❌
+     - ✅*
    * - ``checkpoint_at_end``
      - ✅
      - ❌
+     - ✅*
+
+.. [*] Manual behavior must be implemented for the Callback API
 
 
 
