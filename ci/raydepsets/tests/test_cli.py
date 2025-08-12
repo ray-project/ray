@@ -469,9 +469,7 @@ depsets:
                 build_arg_set="py311_cpu",
             )
             assert depset.name == "build_args_test_depset_py311"
-            assert depset.build_arg_set.name == "py311_cpu"
-            assert depset.build_arg_set.build_args["PYTHON_VERSION"] == "py311"
-            assert depset.build_arg_set.build_args["CUDA_VERSION"] == "cpu"
+            assert depset.build_arg_set_name == "py311_cpu"
 
     def test_get_depset_without_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -482,7 +480,7 @@ depsets:
             )
             depset = _get_depset(manager.config.depsets, "ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
-            assert depset.build_arg_set is None
+            assert depset.build_arg_set_name is None
 
     def test_get_depset_with_build_arg_set_and_no_build_arg_set_provided(self):
         with tempfile.TemporaryDirectory() as tmpdir:
