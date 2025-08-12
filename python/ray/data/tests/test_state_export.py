@@ -6,7 +6,12 @@ import pytest
 
 import ray
 from ray.data import DataContext
-from ray.data._internal.metadata_exporter import Operator, Topology, sanitize_for_struct
+from ray.data._internal.metadata_exporter import (
+    UNKNOWN,
+    Operator,
+    Topology,
+    sanitize_for_struct,
+)
 from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.tests.conftest import _ray_start
 
@@ -257,6 +262,76 @@ def test_export_multiple_datasets(
     )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
+
+
+class UnserializableObject:
+    """A test class that can't be JSON serialized or converted to string easily."""
+
+    def __str__(self):
+        raise ValueError("Cannot convert to string")
+
+    def __repr__(self):
+        raise ValueError("Cannot convert to repr")
+
+
+class BasicObject:
+    """A test class that can be converted to string."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return f"BasicObject({self.value})"
+
+
+@pytest.mark.parametrize(
+    "input_obj,expected_output,truncate_length",
+    [
+        # Basic types - should return as-is
+        (42, 42, 100),
+        (3.14, 3.14, 100),
+        (True, True, 100),
+        (False, False, 100),
+        (None, None, 100),
+        # Strings - short strings return as-is
+        ("hello", "hello", 100),
+        # Strings - long strings get truncated
+        ("a" * 150, "a" * 100 + "...", 100),
+        ("hello world", "hello...", 5),
+        # Mappings - should recursively sanitize values
+        ({"key": "value"}, {"key": "value"}, 100),
+        ({"long_key": "a" * 150}, {"long_key": "a" * 100 + "..."}, 100),
+        ({"nested": {"inner": "value"}}, {"nested": {"inner": "value"}}, 100),
+        # Sequences - should recursively sanitize elements
+        ([1, 2, 3], [1, 2, 3], 100),
+        (["short", "a" * 150], ["short", "a" * 100 + "..."], 100),
+        # Complex nested structures
+        (
+            {"list": [1, "a" * 150], "dict": {"key": "a" * 150}},
+            {"list": [1, "a" * 100 + "..."], "dict": {"key": "a" * 100 + "..."}},
+            100,
+        ),
+        # Objects that can be converted to string
+        (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
+        # Objects that can't be JSON serialized but can be stringified
+        ({1, 2, 3}, "{1, 2, 3}", 100),  # Falls back to str()
+        # Objects that can't be serialized or stringified
+        (UnserializableObject(), UNKNOWN, 100),
+        # Empty containers
+        ({}, {}, 100),
+        ([], [], 100),
+        # Mixed type sequences
+        (
+            [1, "hello", {"key": "value"}, None],
+            [1, "hello", {"key": "value"}, None],
+            100,
+        ),
+    ],
+)
+def test_sanitize_for_struct(input_obj, expected_output, truncate_length):
+    """Test sanitize_for_struct with various input types and truncation lengths."""
+    result = sanitize_for_struct(input_obj, truncate_length)
+    assert result == expected_output
 
 
 if __name__ == "__main__":

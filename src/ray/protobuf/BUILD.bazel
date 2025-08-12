@@ -1,3 +1,4 @@
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
@@ -109,6 +110,13 @@ cc_proto_library(
     deps = [":node_manager_proto"],
 )
 
+cc_grpc_library(
+    name = "node_manager_cc_grpc",
+    srcs = [":node_manager_proto"],
+    grpc_only = True,
+    deps = [":node_manager_cc_proto"],
+)
+
 proto_library(
     name = "reporter_proto",
     srcs = ["reporter.proto"],
@@ -121,6 +129,13 @@ proto_library(
 cc_proto_library(
     name = "reporter_cc_proto",
     deps = [":reporter_proto"],
+)
+
+cc_grpc_library(
+    name = "reporter_cc_grpc",
+    srcs = ["//src/ray/protobuf:reporter_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:reporter_cc_proto"],
 )
 
 proto_library(
@@ -139,6 +154,13 @@ cc_proto_library(
     deps = [":gcs_service_proto"],
 )
 
+cc_grpc_library(
+    name = "gcs_service_cc_grpc",
+    srcs = [":gcs_service_proto"],
+    grpc_only = True,
+    deps = [":gcs_service_cc_proto"],
+)
+
 proto_library(
     name = "test_service_proto",
     srcs = ["test_service.proto"],
@@ -153,6 +175,13 @@ cc_proto_library(
     deps = [":test_service_proto"],
 )
 
+cc_grpc_library(
+    name = "test_service_cc_grpc",
+    srcs = [":test_service_proto"],
+    grpc_only = True,
+    deps = [":test_service_cc_proto"],
+)
+
 proto_library(
     name = "object_manager_proto",
     srcs = ["object_manager.proto"],
@@ -162,6 +191,13 @@ proto_library(
 cc_proto_library(
     name = "object_manager_cc_proto",
     deps = [":object_manager_proto"],
+)
+
+cc_grpc_library(
+    name = "object_manager_cc_grpc",
+    srcs = [":object_manager_proto"],
+    grpc_only = True,
+    deps = [":object_manager_cc_proto"],
 )
 
 proto_library(
@@ -175,8 +211,15 @@ proto_library(
 )
 
 cc_proto_library(
-    name = "worker_cc_proto",
+    name = "core_worker_cc_proto",
     deps = ["core_worker_proto"],
+)
+
+cc_grpc_library(
+    name = "core_worker_cc_grpc",
+    srcs = [":core_worker_proto"],
+    grpc_only = True,
+    deps = [":core_worker_cc_proto"],
 )
 
 proto_library(
@@ -318,7 +361,6 @@ proto_library(
     deps = [":common_proto"],
 )
 
-# Pubsub
 proto_library(
     name = "pubsub_proto",
     srcs = ["pubsub.proto"],
@@ -334,6 +376,17 @@ proto_library(
 cc_proto_library(
     name = "pubsub_cc_proto",
     deps = [":pubsub_proto"],
+)
+
+cc_grpc_library(
+    name = "pubsub_cc_grpc",
+    srcs = [":pubsub_proto"],
+    grpc_only = True,
+    deps = [
+        ":common_cc_proto",
+        ":gcs_cc_proto",
+        ":pubsub_cc_proto",
+    ],
 )
 
 # runtime env agent gRPC lib.
@@ -373,6 +426,15 @@ proto_library(
 cc_proto_library(
     name = "autoscaler_cc_proto",
     deps = [":autoscaler_proto"],
+)
+
+cc_grpc_library(
+    name = "autoscaler_cc_grpc",
+    srcs = ["//src/ray/protobuf:autoscaler_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:autoscaler_cc_proto",
+    ],
 )
 
 proto_library(
@@ -474,6 +536,13 @@ proto_library(
 cc_proto_library(
     name = "events_event_aggregator_service_cc_proto",
     deps = [":events_event_aggregator_service_proto"],
+)
+
+cc_grpc_library(
+    name = "events_event_aggregator_service_cc_grpc",
+    srcs = [":events_event_aggregator_service_proto"],
+    grpc_only = True,
+    deps = [":events_event_aggregator_service_cc_proto"],
 )
 
 # All core python protos are compiled in this single rule.

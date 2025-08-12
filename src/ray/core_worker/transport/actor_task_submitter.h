@@ -50,7 +50,7 @@ class ActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
-                                        bool execute_out_of_order,
+                                        bool allow_out_of_order_execution,
                                         bool fail_if_actor_unreachable,
                                         bool owned) = 0;
   virtual void ConnectActor(const ActorID &actor_id,
@@ -107,13 +107,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
-  /// \param[in] execute_out_of_order Whether to execute tasks out of order.
+  /// \param[in] allow_out_of_order_execution Whether to execute tasks out of order.
   /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
   /// \param[in] owned Whether the actor is owned by the current process.
   /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
-                                bool execute_out_of_order,
+                                bool allow_out_of_order_execution,
                                 bool fail_if_actor_unreachable,
                                 bool owned);
 
@@ -283,14 +283,14 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   struct ClientQueue {
     ClientQueue(ActorID actor_id,
-                bool execute_out_of_order,
+                bool allow_out_of_order_execution,
                 int32_t max_pending_calls,
                 bool fail_if_actor_unreachable,
                 bool owned)
         : max_pending_calls(max_pending_calls),
           fail_if_actor_unreachable(fail_if_actor_unreachable),
           owned(owned) {
-      if (execute_out_of_order) {
+      if (allow_out_of_order_execution) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
         actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>(actor_id);
@@ -384,7 +384,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] task_spec The task to send.
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
-  /// \return Void.
   void PushActorTask(ClientQueue &queue,
                      const TaskSpecification &task_spec,
                      bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -400,7 +399,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// wait until the notification is received to decide whether we should
   /// fail pending tasks or restart the actor.
   /// \param[in] actor_id Actor ID.
-  /// \return Void.
   void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.

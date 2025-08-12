@@ -62,7 +62,7 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
 
 void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
                                                   int32_t max_pending_calls,
-                                                  bool execute_out_of_order,
+                                                  bool allow_out_of_order_execution,
                                                   bool fail_if_actor_unreachable,
                                                   bool owned) {
   bool inserted;
@@ -75,7 +75,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
     inserted = client_queues_
                    .emplace(actor_id,
                             ClientQueue(actor_id,
-                                        execute_out_of_order,
+                                        allow_out_of_order_execution,
                                         max_pending_calls,
                                         fail_if_actor_unreachable,
                                         owned))
@@ -444,7 +444,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       task_manager_.MarkTaskNoRetry(task_id);
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
-      resolver_.CancelDependencyResolution(task_id);
+      RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
       bool fail_immediatedly =
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
@@ -716,7 +716,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
-    resolver_.CancelDependencyResolution(task_id);
+    RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
 
     will_retry = GetTaskManagerWithoutMu().FailOrRetryPendingTask(
         task_id,
@@ -900,7 +900,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
       if (!dep_resolved) {
         RAY_LOG(DEBUG).WithField(task_id)
             << "Task has been resolving dependencies. Cancel to resolve dependencies";
-        resolver_.CancelDependencyResolution(task_id);
+        RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
       }
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";

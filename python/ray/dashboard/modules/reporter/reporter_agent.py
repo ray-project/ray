@@ -30,6 +30,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
 )
+from ray._common.network_utils import parse_address
 from ray._private.utils import get_system_memory
 from ray.dashboard.modules.reporter.gpu_providers import (
     GpuMetricProvider,
@@ -417,7 +418,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}

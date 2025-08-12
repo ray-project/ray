@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
 
 namespace ray {
 namespace gcs {

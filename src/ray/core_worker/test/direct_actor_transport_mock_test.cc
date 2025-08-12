@@ -11,10 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "ray/core_worker/transport/actor_task_submitter.h"
 
 // clang-format off
-#include "ray/core_worker/transport/task_receiver.h"
-
 #include <memory>
 
 #include "gmock/gmock.h"
@@ -137,7 +136,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id,
                                                  -1,
-                                                 /*execute_out_of_order*/ false,
+                                                 /*allow_out_of_order_execution*/ false,
                                                  /*fail_if_actor_unreachable*/ true,
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
@@ -165,7 +164,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id,
                                                  -1,
-                                                 /*execute_out_of_order*/ false,
+                                                 /*allow_out_of_order_execution*/ false,
                                                  /*fail_if_actor_unreachable*/ true,
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));

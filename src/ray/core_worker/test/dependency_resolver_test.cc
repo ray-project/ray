@@ -228,7 +228,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_TRUE(store->Put(data, obj));
+  store->Put(data, obj);
   // Wait for the async callback to call
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_EQ(num_resolved, 1);
@@ -269,7 +269,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_EQ(num_resolved, 0);
-  ASSERT_TRUE(store->Put(data, obj));
+  store->Put(data, obj);
 
   for (const auto &cb : actor_creator.callbacks) {
     cb(Status());
@@ -294,7 +294,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_TRUE(store->Put(data, obj1));
+  store->Put(data, obj1);
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
@@ -323,8 +323,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
+  store->Put(*data, obj1);
+  store->Put(*data, obj2);
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
@@ -367,8 +367,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
+  store->Put(*data, obj1);
+  store->Put(*data, obj2);
 
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
@@ -406,8 +406,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
+  store->Put(*data, obj1);
+  store->Put(*data, obj2);
 
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
@@ -441,9 +441,9 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1));
+  store->Put(*data, obj1);
 
-  resolver.CancelDependencyResolution(task.TaskId());
+  ASSERT_TRUE(resolver.CancelDependencyResolution(task.TaskId()));
   // Callback is not called.
   ASSERT_FALSE(ok);
   // Should not have inlined any dependencies.
@@ -469,7 +469,7 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
 
   ObjectID obj = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store->Put(*data, obj));
+  store->Put(*data, obj);
 
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
@@ -512,8 +512,8 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
       });
 
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
+  store->Put(*data, obj1);
+  store->Put(*data, obj2);
 
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
