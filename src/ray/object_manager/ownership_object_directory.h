@@ -203,7 +203,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   ray::stats::Gauge ray_metric_object_directory_location_added_{
       /*name=*/"object_directory_added_locations",
       /*description=*/
-      "Number of object locations added per second., If this is high, a lot of objects "
+      "Number of object locations added per second. If this is high, a lot of objects "
       "have been added on this node.",
       /*unit=*/"additions"};
 
