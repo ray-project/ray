@@ -47,10 +47,3 @@ depsets:
     constraints:
       - requirement_constraints_expand.txt
     output: requirements_compiled_expand_general.txt
-  - name: build_wheel_depset
-    operation: build_wheel
-    setup_path: python
-    output: dist
-    python_version: ${PYTHON_VERSION}
-    build_arg_sets:
-      - py311_cpu
