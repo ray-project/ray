@@ -107,7 +107,7 @@ class MockGcsClient:
         # Tracks how many times DrainNode returned a successful RPC response.
         self.drain_node_reply_success = 0
 
-    def drain_nodes(self, raylet_ids_to_drain, timeout: int):
+    def drain_nodes(self, node_ids_to_drain, timeout: int):
         """Simulate NodeInfo stub's DrainNode call.
 
         Outcome determined by self.drain_outcome.
@@ -132,28 +132,28 @@ class MockGcsClient:
             DrainNodeOutcome.Succeeded,
             DrainNodeOutcome.FailedToFindIp,
         ]:
-            return raylet_ids_to_drain
+            return node_ids_to_drain
         elif self.drain_node_outcome == DrainNodeOutcome.NotAllDrained:
             # All but the last.
-            return raylet_ids_to_drain[:-1]
+            return node_ids_to_drain[:-1]
         else:
             # Shouldn't land here.
             assert False, "Possible drain node outcomes exhausted."
 
 
-def mock_raylet_id() -> bytes:
-    """Random raylet id to pass to load_metrics.update."""
+def mock_node_id() -> bytes:
+    """Random node id to pass to load_metrics.update."""
     return os.urandom(10)
 
 
-def fill_in_raylet_ids(provider, load_metrics) -> None:
-    """Raylet ids for each ip are usually obtained by polling the GCS
+def fill_in_node_ids(provider, load_metrics) -> None:
+    """Node ids for each ip are usually obtained by polling the GCS
     in monitor.py. For test purposes, we sometimes need to manually fill
     these fields with mocks.
     """
     for node in provider.non_terminated_nodes({}):
         ip = provider.internal_ip(node)
-        load_metrics.raylet_id_by_ip[ip] = mock_raylet_id()
+        load_metrics.node_id_by_ip[ip] = mock_node_id()
 
 
 class MockAutoscaler(StandardAutoscaler):
@@ -336,7 +336,7 @@ assert exc_info is not None
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 1}, 0)
+        lm.update("1.1.1.1", mock_node_id(), {"CPU": 2}, {"CPU": 1}, 0)
         lm.mark_active("2.2.2.2")
         assert "1.1.1.1" in lm.last_heartbeat_time_by_ip
         assert "2.2.2.2" in lm.last_heartbeat_time_by_ip
@@ -344,13 +344,13 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testDebugString(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 0}, 0)
+        lm.update("1.1.1.1", mock_node_id(), {"CPU": 2}, {"CPU": 0}, 0)
         lm.update(
-            "2.2.2.2", mock_raylet_id(), {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, 0
+            "2.2.2.2", mock_node_id(), {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, 0
         )
         lm.update(
             "3.3.3.3",
-            mock_raylet_id(),
+            mock_node_id(),
             {
                 "memory": 1.05 * 1024 * 1024 * 1024,
                 "object_store_memory": 2.1 * 1024 * 1024 * 1024,
@@ -695,7 +695,7 @@ class AutoscalingTest(unittest.TestCase):
             == "ray.worker.old"
         )
 
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(2)
         events = autoscaler.event_summarizer.summary()
@@ -1383,7 +1383,7 @@ class AutoscalingTest(unittest.TestCase):
         )
         self.waitForNodes(10, tag_filters=WORKER_FILTER)
 
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         # Gradually scales down to meet target size, never going too low
         for _ in range(10):
             autoscaler.update()
@@ -1546,7 +1546,7 @@ class AutoscalingTest(unittest.TestCase):
                 },
                 1,
             )
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, 0)
+        lm.update("172.0.0.0", mock_node_id(), {"CPU": 1}, {"CPU": 0}, 0)
         autoscaler = MockAutoscaler(
             config_path,
             lm,
@@ -1586,7 +1586,7 @@ class AutoscalingTest(unittest.TestCase):
         new_config["available_node_types"]["worker"]["max_workers"] = 1
         new_config["available_node_types"]["worker"]["min_workers"] = 1
         self.write_config(new_config)
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
@@ -1610,7 +1610,7 @@ class AutoscalingTest(unittest.TestCase):
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
         )[0]
         lm.update(
-            worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, DUMMY_IDLE_DURATION_S
+            worker_ip, mock_node_id(), {"CPU": 1}, {"CPU": 1}, DUMMY_IDLE_DURATION_S
         )
 
         autoscaler.update()
@@ -1682,7 +1682,7 @@ class AutoscalingTest(unittest.TestCase):
     #     self.waitForNodes(1)
     #     lm.update(
     #         head_ip,
-    #         mock_raylet_id(),
+    #         mock_node_id(),
     #         {"CPU": 1},
     #         {"CPU": 0},
     #         waiting_bundles=[{"CPU": 1}] * 7,
@@ -1708,7 +1708,7 @@ class AutoscalingTest(unittest.TestCase):
     #     # for being idle and instantly re-created due to resource demand!
     #     lm.update(
     #         head_ip,
-    #         mock_raylet_id(),
+    #         mock_node_id(),
     #         {},
     #         {},
     #         waiting_bundles=[],
@@ -1772,10 +1772,10 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         # This node has num_cpus=0
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, 0)
+        lm.update(head_ip, mock_node_id(), {"CPU": 1}, {"CPU": 0}, 0)
         lm.update(
             unmanaged_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 0},
             {"CPU": 0},
             DUMMY_IDLE_DURATION_S,
@@ -1785,7 +1785,7 @@ class AutoscalingTest(unittest.TestCase):
         # 1 CPU task cannot be scheduled.
         lm.update(
             unmanaged_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 0},
             {"CPU": 0},
             DUMMY_IDLE_DURATION_S,
@@ -1838,10 +1838,10 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
 
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, 0)
+        lm.update(head_ip, mock_node_id(), {"CPU": 1}, {"CPU": 0}, 0)
         lm.update(
             unmanaged_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 0},
             {"CPU": 0},
             DUMMY_IDLE_DURATION_S,
@@ -1896,7 +1896,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider.ready_to_create.clear()
         lm.update(
             head_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 1},
             {"CPU": 0},
             0,
@@ -1922,7 +1922,7 @@ class AutoscalingTest(unittest.TestCase):
         new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["available_node_types"]["worker"]["max_workers"] = 1
         self.write_config(new_config)
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         assert (
             len(
@@ -2076,7 +2076,7 @@ class AutoscalingTest(unittest.TestCase):
         ] = "updated"
         self.write_config(new_config)
         self.provider.ready_to_create.clear()
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         for _ in range(5):
             autoscaler.update()
         self.waitForNodes(0, tag_filters=WORKER_FILTER)
@@ -2100,7 +2100,7 @@ class AutoscalingTest(unittest.TestCase):
             1,
         )
         lm = LoadMetrics()
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, 0)
+        lm.update("172.0.0.0", mock_node_id(), {"CPU": 1}, {"CPU": 0}, 0)
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = MockAutoscaler(
             config_path,
@@ -2146,7 +2146,7 @@ class AutoscalingTest(unittest.TestCase):
         # Because one worker already started, the scheduler waits for its
         # resources to be updated before it launches the remaining min_workers.
         lm.update(
-            worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, DUMMY_IDLE_DURATION_S
+            worker_ip, mock_node_id(), {"CPU": 1}, {"CPU": 1}, DUMMY_IDLE_DURATION_S
         )
         autoscaler.update()
         self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
@@ -2279,7 +2279,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2, tag_filters=WORKER_FILTER)
         self.provider.finish_starting_nodes()
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         try:
             self.waitForNodes(
@@ -2412,7 +2412,7 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["p2.xlarge"]["min_workers"] = 6  # 5
         config["available_node_types"]["p2.xlarge"]["max_workers"] = 6
         self.write_config(config)
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
         self.waitFor(lambda: autoscaler.pending_launches.value == 0)
@@ -2437,7 +2437,7 @@ class AutoscalingTest(unittest.TestCase):
     def testFalseyLoadMetrics(self):
         lm = LoadMetrics()
         assert not lm
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, 0)
+        lm.update("172.0.0.0", mock_node_id(), {"CPU": 1}, {"CPU": 0}, 0)
         assert lm
 
     def testRecoverUnhealthyWorkers(self):
@@ -2571,7 +2571,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.disable_node_updaters = True
         # Reduce min_workers to 1
         autoscaler.config["available_node_types"]["worker"]["min_workers"] = 1
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
 
         if disable_liveness_check:
             # We've disabled the liveness check, so the unhealthy node should stick
@@ -2673,7 +2673,7 @@ class AutoscalingTest(unittest.TestCase):
         # Mark nodes unhealthy.
         for ip in ips:
             lm.last_heartbeat_time_by_ip[ip] = 0
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         # Unhealthy nodes are gone.
         self.waitForNodes(0, tag_filters=WORKER_FILTER)
@@ -3408,7 +3408,7 @@ class AutoscalingTest(unittest.TestCase):
         ), "Node zero still non-terminated."
         assert not self.provider.is_terminated("1"), "Node one terminated prematurely."
 
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         # Failed updates processed are now processed.
         assert (
@@ -3436,7 +3436,7 @@ class AutoscalingTest(unittest.TestCase):
         ), events
 
         # Should get two new nodes after the next update.
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(2)
         assert set(NonTerminatedNodes(self.provider).worker_ids) == {
@@ -3619,7 +3619,7 @@ class AutoscalingTest(unittest.TestCase):
 
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
-        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
+        lm.update(worker_ip, mock_node_id(), {"CPU": 1}, {"CPU": 1}, 20)
         autoscaler.update()
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
@@ -3691,7 +3691,7 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         lm.update(
             worker_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 1},
             {"CPU": 1},
             20,  # idle for 20 seconds, which is longer than the idle_timeout_minutes.

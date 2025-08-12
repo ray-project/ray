@@ -49,7 +49,7 @@ class RayletIpcClientInterface {
   /// \param ip_address The ip_address of the connecting worker.
   /// \param serialized_job_config The serialized job config of the connecting worker.
   /// \param startup_token The token that was passed to this worker at startup.
-  /// \param[out] raylet_id The node ID for the local Raylet.
+  /// \param[out] node_id The node ID for the local Raylet.
   /// \param[out] assigned_port The assigned port for the worker to listen on. If zero,
   ///             the worker should pick a port randomly.
   virtual ray::Status RegisterClient(const WorkerID &worker_id,
@@ -60,7 +60,7 @@ class RayletIpcClientInterface {
                                      const std::string &ip_address,
                                      const std::string &serialized_job_config,
                                      const StartupToken &startup_token,
-                                     NodeID *raylet_id,
+                                     NodeID *node_id,
                                      int *assigned_port) = 0;
 
   /// Notify the raylet that this client is disconnecting gracefully. This
@@ -210,7 +210,7 @@ class RayletIpcClient : public RayletIpcClientInterface {
                              const std::string &ip_address,
                              const std::string &serialized_job_config,
                              const StartupToken &startup_token,
-                             NodeID *raylet_id,
+                             NodeID *node_id,
                              int *assigned_port) override;
 
   ray::Status Disconnect(const rpc::WorkerExitType &exit_type,

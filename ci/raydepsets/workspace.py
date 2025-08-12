@@ -22,10 +22,9 @@ class Depset:
     override_flags: List[str]
     append_flags: List[str]
     source_depset: Optional[str] = None
-    build_arg_set: BuildArgSet = None
     depsets: Optional[List[str]] = None
     setup_path: Optional[str] = None
-    build_arg_set: Optional[BuildArgSet] = None
+    build_arg_set_name: Optional[str] = None
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -42,9 +41,7 @@ def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
         return obj
 
 
-def _dict_to_depset(
-    depset: dict, build_arg_set: Optional[BuildArgSet] = None
-) -> Depset:
+def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> Depset:
     return Depset(
         name=depset.get("name"),
         requirements=depset.get("requirements", []),
@@ -53,7 +50,7 @@ def _dict_to_depset(
         output=depset.get("output"),
         source_depset=depset.get("source_depset"),
         depsets=depset.get("depsets", []),
-        build_arg_set=build_arg_set,
+        build_arg_set_name=build_arg_set_name,
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
     )
@@ -84,7 +81,7 @@ class Config:
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_name} not found")
                     depset_yaml = _substitute_build_args(depset, build_arg_set)
-                    depsets.append(_dict_to_depset(depset_yaml, build_arg_set))
+                    depsets.append(_dict_to_depset(depset_yaml, build_arg_set_name))
             else:
                 depsets.append(_dict_to_depset(depset=depset))
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
