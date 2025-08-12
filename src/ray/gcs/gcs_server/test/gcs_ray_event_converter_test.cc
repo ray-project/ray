@@ -15,7 +15,6 @@
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
 #include "gtest/gtest.h"
-
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
