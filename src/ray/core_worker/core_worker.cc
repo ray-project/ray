@@ -268,7 +268,7 @@ CoreWorker::CoreWorker(
     instrumented_io_context &io_service,
     std::unique_ptr<rpc::ClientCallManager> client_call_manager,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-    std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+    std::shared_ptr<rpc::RayletClientPool> raylet_rpc_client_pool,
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
@@ -301,7 +301,7 @@ CoreWorker::CoreWorker(
       io_service_(io_service),
       client_call_manager_(std::move(client_call_manager)),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
-      raylet_client_pool_(std::move(raylet_client_pool)),
+      raylet_rpc_client_pool_(std::move(raylet_rpc_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
@@ -4656,7 +4656,7 @@ void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec,
 }
 
 std::shared_ptr<RayletClientInterface> CoreWorker::GetLocalRayletClient() const {
-  auto local_raylet_client = raylet_client_pool_->GetByID(GetCurrentNodeId());
+  auto local_raylet_client = raylet_rpc_client_pool_->GetByID(GetCurrentNodeId());
   RAY_CHECK(local_raylet_client != nullptr);
   return local_raylet_client;
 }

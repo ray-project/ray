@@ -277,7 +277,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_raylet_id, options.node_ip_address, options.node_manager_port);
 
-  auto raylet_client_pool =
+  auto raylet_rpc_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
         return std::make_shared<ray::raylet::RayletClient>(
@@ -287,10 +287,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 ? []() {}
                 : rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
                       core_worker->gcs_client_.get(),
-                      core_worker->raylet_client_pool_.get(),
+                      core_worker->raylet_rpc_client_pool_.get(),
                       addr));
       });
-  raylet_client_pool->GetOrConnectByAddress(raylet_address);
+  raylet_rpc_client_pool->GetOrConnectByAddress(raylet_address);
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
       std::make_shared<rpc::CoreWorkerClientPool>([this](const rpc::Address &addr) {
@@ -301,7 +301,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 core_worker->gcs_client_.get(),
                 core_worker->core_worker_client_pool_.get(),
-                core_worker->raylet_client_pool_.get(),
+                core_worker->raylet_rpc_client_pool_.get(),
                 addr));
       });
 
@@ -400,7 +400,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node_info->node_manager_address(), node_info->node_manager_port());
-    return core_worker->raylet_client_pool_->GetOrConnectByAddress(std::move(addr));
+    return core_worker->raylet_rpc_client_pool_->GetOrConnectByAddress(std::move(addr));
   };
 
   experimental_mutable_object_provider =
@@ -505,7 +505,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
       rpc_address,
       core_worker_client_pool,
-      raylet_client_pool,
+      raylet_rpc_client_pool,
       std::move(lease_policy),
       memory_store,
       *task_manager,
@@ -600,7 +600,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
       rpc_address,
-      raylet_client_pool,
+      raylet_rpc_client_pool,
       std::move(object_lookup),
       *task_manager,
       *reference_counter,
@@ -627,7 +627,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    io_service_,
                                    std::move(client_call_manager),
                                    std::move(core_worker_client_pool),
-                                   std::move(raylet_client_pool),
+                                   std::move(raylet_rpc_client_pool),
                                    std::move(periodical_runner),
                                    std::move(core_worker_server),
                                    std::move(rpc_address),

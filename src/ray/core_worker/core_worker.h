@@ -175,7 +175,7 @@ class CoreWorker {
              instrumented_io_context &io_service,
              std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-             std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+             std::shared_ptr<rpc::RayletClientPool> raylet_rpc_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
@@ -1722,8 +1722,8 @@ class CoreWorker {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
-  // Shared raylet client pool.
-  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
+  // Shared raylet rpc client pool.
+  std::shared_ptr<rpc::RayletClientPool> raylet_rpc_client_pool_;
 
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
