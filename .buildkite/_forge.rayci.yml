@@ -32,15 +32,11 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
 
-
   - name: raycpubase
     label: "wanda: ray.py{{matrix}}.cpu.base"
     tags:
       - python_dependencies
-      - python
       - docker
-      - tune
-      - serve
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:
       - "3.9"

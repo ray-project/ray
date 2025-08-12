@@ -146,6 +146,11 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::GetNodeStatsRequest &request,
                const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              GlobalGC,
+              (const rpc::ClientCallback<rpc::GlobalGCReply> &callback),
+              (override));
+  MOCK_METHOD(int64_t, GetPinsInFlight, (), (const, override));
 };
 
 }  // namespace ray

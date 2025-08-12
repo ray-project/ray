@@ -251,7 +251,7 @@ void NodeManager::RegisterGcs() {
         /* reporter */ &cluster_resource_scheduler_.GetLocalResourceManager(),
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
+        report_resources_period_ms_);
 
     // Register a commands channel.
     // It's only used for GC right now.
@@ -2588,8 +2588,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
-    client->GetNodeStats(
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
           if (!status.ok()) {
