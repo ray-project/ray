@@ -1,5 +1,6 @@
 import pytest
 import sys
+from openai import OpenAI
 
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
@@ -121,6 +122,61 @@ def is_default_app_running():
         return default_app.status == ApplicationStatus.RUNNING
     except (KeyError, AttributeError):
         return False
+
+
+@pytest.mark.asyncio(scope="function")
+async def test_tool_calls_serialization():
+    """
+    Test that the tool calls serialization works correctly.
+    """
+
+    # Set up serve app
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="qwen",
+            model_source="Qwen/Qwen3-8B",
+        ),
+        engine_kwargs=dict(
+            max_model_len=8192,
+            enable_auto_tool_choice=True,
+            tool_call_parser="hermes",
+            reasoning_parser="qwen3",
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    # Query with multi-turn tool call
+    client = OpenAI(base_url="http://localhost:8000/v1", api_key="FAKE_KEY")
+    messages = [{"role": "user", "content": "What's 2+2 ?"}]
+    response = client.chat.completions.create(
+        model="qwen",
+        messages=messages,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+
+    messages.append(
+        {
+            "content": "2 + 2 equals 4.",
+            "refusal": None,
+            "role": "assistant",
+            "annotations": None,
+            "audio": None,
+            "function_call": None,
+            "tool_calls": [],
+            "reasoning_content": None,
+        }
+    )
+
+    response = client.chat.completions.create(
+        model="qwen",
+        messages=messages,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+
+    print(response.choices[0].message)
+    serve.shutdown()
 
 
 @pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
