@@ -118,7 +118,7 @@ class DeploymentVersion:
             + serialized_ray_actor_options
             + serialized_placement_group_options
             + str(self.max_replicas_per_node).encode("utf-8")
-            + + serialized_route_prefix_for_hashing
+            + serialized_route_prefix_for_hashing
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,
