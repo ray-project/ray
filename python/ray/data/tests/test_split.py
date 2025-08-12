@@ -257,7 +257,9 @@ def test_split_at_indices_simple(ray_start_regular_shared_2_cpus):
         [7, 11, 23, 33],
     ],
 )
-def test_split_at_indices_coverage(ray_start_regular_shared_2_cpus, num_blocks, indices):
+def test_split_at_indices_coverage(
+    ray_start_regular_shared_2_cpus, num_blocks, indices
+):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
     ds = ray.data.range(20, override_num_blocks=num_blocks)
