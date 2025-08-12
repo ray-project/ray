@@ -1,5 +1,4 @@
 import logging
-import os
 import random
 import time
 from collections.abc import Sequence
@@ -20,6 +19,7 @@ from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
+    RAY_SERVE_APP_DELETION_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
 )
@@ -345,17 +345,17 @@ class ServeControllerClient:
         ray.get(self._controller.apply_config.remote(config))
 
         if _blocking:
-            timeout_s = float(os.environ.get("RAY_SERVE_APP_DELETION_TIMEOUT_S", "60"))
             start = time.time()
 
-            while time.time() - start < timeout_s:
+            while time.time() - start < RAY_SERVE_APP_DELETION_TIMEOUT_S:
                 curr_status = self.get_serve_status()
                 if curr_status.app_status.status == ApplicationStatus.RUNNING:
                     break
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
             else:
                 raise TimeoutError(
-                    f"Serve application isn't running after {timeout_s}s."
+                    f"Serve application isn't running after "
+                    f"{RAY_SERVE_APP_DELETION_TIMEOUT_S}s."
                 )
 
     @_ensure_connected
