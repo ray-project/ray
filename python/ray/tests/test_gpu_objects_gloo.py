@@ -427,13 +427,6 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
 
 
 def test_duplicate_objectref_transfer(ray_start_regular):
-    """
-    This test checks for a race condition when the same GPU object ref 
-    is passed to the same actor multiple times.
-    
-    Expected behavior: Each call should get its own copy of the tensor.
-    Bug: Background receives may overwrite each other before pops happen.
-    """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -441,42 +434,39 @@ def test_duplicate_objectref_transfer(ray_start_regular):
     actor0, actor1 = actors[0], actors[1]
 
     small_tensor = torch.randn((1,))
-    
+
     # Store the original value for comparison
     original_value = small_tensor.clone()
 
     ref = actor0.echo.remote(small_tensor)
-    
+
     # Pass the same ref to actor1 twice
     result1 = actor1.increment.remote(ref)
     result2 = actor1.increment.remote(ref)
-    
-    # Both should return original_value + 1 (immutability guarantee)
+
+    # Both should return original_value + 1 because each increment task should receive the same object value.
     val1 = ray.get(result1)
     val2 = ray.get(result2)
-    
+
     print(f"Original tensor: {original_value}")
     print(f"Result1: {val1}, Expected: {original_value + 1}")
     print(f"Result2: {val2}, Expected: {original_value + 1}")
-    
+
     # Check for correctness
-    assert val1 == pytest.approx(original_value + 1), \
-        f"Result1 incorrect: got {val1}, expected {original_value + 1}"
-    assert val2 == pytest.approx(original_value + 1), \
-        f"Result2 incorrect: got {val2}, expected {original_value + 1}"
-    
+    assert val1 == pytest.approx(
+        original_value + 1
+    ), f"Result1 incorrect: got {val1}, expected {original_value + 1}"
+    assert val2 == pytest.approx(
+        original_value + 1
+    ), f"Result2 incorrect: got {val2}, expected {original_value + 1}"
+
     # Additional check: results should be equal (both got clean copies)
-    assert val1 == pytest.approx(val2), \
-        f"Results differ: result1={val1}, result2={val2}"
+    assert val1 == pytest.approx(
+        val2
+    ), f"Results differ: result1={val1}, result2={val2}"
 
 
 def test_duplicate_objectref_race_stress(ray_start_regular):
-    """
-    Stress test for the race condition with multiple duplicate refs.
-    This increases the chance of exposing the background thread race.
-
-    Tracks how many iterations succeed before the race condition manifests.
-    """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -511,7 +501,9 @@ def test_duplicate_objectref_race_stress(ray_start_regular):
 
             successes += 1
         except Exception as e:
-            print(f"Race condition reproduced at iteration {iteration} after {successes} successful iterations")
+            print(
+                f"Race condition reproduced at iteration {iteration} after {successes} successful iterations"
+            )
             print(f"Exception: {e}")
             pytest.fail(
                 f"Race condition: failed at iteration {iteration} after {successes} successes: {e}"

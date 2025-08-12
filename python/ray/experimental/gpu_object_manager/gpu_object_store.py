@@ -124,7 +124,9 @@ class GPUObjectStore:
         # Each entry in the queue is a list of tensors for one copy of the object.
         #
         # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
-        self._gpu_object_store: Dict[str, deque[List["torch.Tensor"]]] = defaultdict(deque)
+        self._gpu_object_store: Dict[str, deque[List["torch.Tensor"]]] = defaultdict(
+            deque
+        )
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
@@ -132,20 +134,16 @@ class GPUObjectStore:
         # A set of object IDs that are the primary copy.
         self._primary_gpu_object_ids: Set[str] = set()
 
-        
-
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
-            return obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0
+            return (
+                obj_id in self._gpu_object_store
+                and len(self._gpu_object_store[obj_id]) > 0
+            )
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
-            queue = self._gpu_object_store.get(obj_id)
-            if queue and len(queue) > 0:
-                # For primary copies, we peek at the front without removing
-                # For non-primary, we also peek (pop happens separately)
-                return queue[0]
-            return None
+            return self._gpu_object_store[obj_id][0]
 
     def add_object(
         self,
@@ -224,8 +222,9 @@ class GPUObjectStore:
         """
         with self._object_present_cv:
             present = self._object_present_cv.wait_for(
-                lambda: obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0,
-                timeout=timeout
+                lambda: obj_id in self._gpu_object_store
+                and len(self._gpu_object_store[obj_id]) > 0,
+                timeout=timeout,
             )
             if not present:
                 raise TimeoutError(
@@ -235,15 +234,19 @@ class GPUObjectStore:
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
             queue = self._gpu_object_store.get(obj_id)
-            assert queue and len(queue) > 0, f"obj_id={obj_id} not found in GPU object store"
+            assert (
+                queue and len(queue) > 0
+            ), f"obj_id={obj_id} not found in GPU object store"
             if obj_id in self._primary_gpu_object_ids:
                 self._primary_gpu_object_ids.remove(obj_id)
-            return queue.popleft()
+            obj = queue.popleft()
+            if len(queue) == 0:
+                del self._gpu_object_store[obj_id]
+            return obj
 
     def get_num_objects(self) -> int:
         """
-        Return the number of objects in the GPU object store.
+        Return the total number of object copies in the GPU object store, not unique objects.
         """
         with self._lock:
-            # Count total objects across all queues
             return sum(len(queue) for queue in self._gpu_object_store.values())
