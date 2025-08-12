@@ -61,6 +61,28 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   std::string DebugString() override { return ""; }
 
+  bool RecordTaskStatusEventIfNeeded(
+      const TaskID &task_id,
+      const JobID &job_id,
+      int32_t attempt_number,
+      const TaskSpecification &spec,
+      rpc::TaskStatus status,
+      bool include_task_info,
+      std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update)
+      override {
+    AddTaskEvent(std::make_unique<worker::TaskStatusEvent>(
+        task_id,
+        job_id,
+        attempt_number,
+        status,
+        /* timestamp */ absl::GetCurrentTimeNanos(),
+        /*is_actor_task_event=*/spec.IsActorTask(),
+        "test-session-name",
+        include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
+        std::move(state_update)));
+    return true;
+  }
+
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 };
 
