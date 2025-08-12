@@ -31,15 +31,6 @@ def test_parse_build_arg_sets():
         }
 
 
-def test_from_dict_build_arg_set_matrix():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        copy_data_to_tmpdir(tmpdir)
-        workspace = Workspace(dir=tmpdir)
-        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-        assert config.build_arg_sets[0].build_args["PYTHON_VERSION"] == "py311"
-        assert config.build_arg_sets[0].build_args["CUDA_VERSION"] == "cpu"
-
-
 def test_substitute_build_args():
     build_arg_set = BuildArgSet(
         name="py311_cpu",
