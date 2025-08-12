@@ -5,6 +5,7 @@ import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray._private import ray_constants
+from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
@@ -25,6 +26,7 @@ class GPUObjectMeta(NamedTuple):
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
 
 
+@PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
     Wait for the tensor to be freed from this actor's GPU object store.
