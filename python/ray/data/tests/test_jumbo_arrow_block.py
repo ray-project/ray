@@ -8,6 +8,7 @@ import pytest
 from pyarrow import parquet as pq
 
 import ray
+from ray.tests.conftest import _ray_start
 from ray.data import DataContext
 from ray.data._internal.util import GiB, MiB
 
@@ -45,15 +46,19 @@ def parquet_dataset_single_column_gt_2gb():
         print(f">>> Cleaning up dataset at {dataset_path}")
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [
-        {
-            "object_store_memory": 2 * GiB,
-        }
-    ],
-    indirect=True,
-)
+@pytest.fixture(scope="module")
+def ray_cluster_3gb_object_store():
+    original_limit = ray._private.ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+
+    ray._private.ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 3 * GiB
+
+    with _ray_start(object_store_memory=3 * GiB) as res:
+        yield res
+
+    ray._private.ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = original_limit
+
+
+@patch("ray._private.ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT", 3 * GiB)
 @pytest.mark.parametrize(
     "op",
     [
@@ -63,7 +68,7 @@ def parquet_dataset_single_column_gt_2gb():
 )
 @pytest.mark.timeout(300)
 def test_arrow_batch_gt_2gb(
-    ray_start_regular,
+    ray_cluster_3gb_object_store,
     parquet_dataset_single_column_gt_2gb,
     restore_data_context,
     op,
