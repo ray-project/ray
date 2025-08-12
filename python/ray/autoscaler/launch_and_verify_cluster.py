@@ -29,10 +29,7 @@ from google.cloud import storage
 import ray
 from ray.autoscaler._private.aws.config import RAY
 
-# Fix import path issue with local azure folder - must be done before azure imports
-current_dir = os.getcwd()
-if current_dir in sys.path:
-    sys.path.remove(current_dir)
+# Please use `-I` when running this script to avoid import issues with azure* modules
 from azure.keyvault.secrets import SecretClient  # noqa: E402
 from azure.identity import DefaultAzureCredential  # noqa: E402
 
