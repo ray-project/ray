@@ -42,6 +42,7 @@ available_node_types:
 # they all contain python modules that are not compatible with Ray at the moment.
 setup_commands:
     - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
+    - conda tos accept
     - conda create -n ray-env python=3.10 -y
     - conda activate ray-env && echo 'conda activate ray-env' >> ~/.bashrc
     - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
