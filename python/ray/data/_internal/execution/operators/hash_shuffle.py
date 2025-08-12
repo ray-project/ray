@@ -866,7 +866,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         running_usage = self._running_resource_usage
 
         # TODO add memory to resources being tracked
-        return base_usage + running_usage
+        return base_usage.add(running_usage)
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
