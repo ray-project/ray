@@ -124,7 +124,7 @@ if os.getenv("RAY_INSTALL_CPP") == "1":
 elif RAY_PLACEHOLDER:
     setup_spec = SetupSpec(
         SetupType.RAY_PLACEHOLDER,
-        "ray-placeholder",
+        "ray",
         "A placeholder package for Ray which provides dependency metadata",
         BUILD_TYPE,
     )
