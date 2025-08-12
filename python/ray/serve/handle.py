@@ -214,17 +214,7 @@ class _DeploymentHandleBase:
     def shutdown(self):
         if self._router:
             shutdown_future = self._router.shutdown()
-            if self._is_router_running_in_separate_loop():
-                shutdown_future.result()
-            else:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    raise RuntimeError(
-                        "Handle was initialized with `_run_router_in_separate_loop=False` "
-                        "but is not running inside an asyncio event loop."
-                    ) from None
-                asyncio.run_coroutine_threadsafe(shutdown_future, loop).result()
+            shutdown_future.result()
 
     async def shutdown_async(self):
         if self._router:
