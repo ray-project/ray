@@ -69,7 +69,6 @@ def __ray_recv__(
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
-    # ~ signal that an object is arriving
 
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
@@ -237,6 +236,8 @@ class GPUObjectStore:
         with self._lock:
             queue = self._gpu_object_store.get(obj_id)
             assert queue and len(queue) > 0, f"obj_id={obj_id} not found in GPU object store"
+            if obj_id in self._primary_gpu_object_ids:
+                self._primary_gpu_object_ids.remove(obj_id)
             return queue.popleft()
 
     def get_num_objects(self) -> int:
