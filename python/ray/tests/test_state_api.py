@@ -171,7 +171,7 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         name="abc",
         pid=1234,
         class_name=class_name,
-        address=Address(node_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
+        address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
         job_id=b"123",
         node_id=None,
         ray_namespace="",
@@ -208,7 +208,7 @@ def generate_worker_data(
 ):
     return WorkerTableData(
         worker_address=Address(
-            node_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+            raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
         ),
         is_alive=True,
         timestamp=1234,

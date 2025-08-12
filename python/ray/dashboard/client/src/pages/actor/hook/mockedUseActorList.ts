@@ -5,7 +5,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     actorId: "ACTOR_1",
     jobId: "01000000",
     address: {
-      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
@@ -28,7 +28,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     actorId: "ACTOR_2",
     jobId: "01000000",
     address: {
-      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
@@ -51,7 +51,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     actorId: "ACTOR_3",
     jobId: "01000000",
     address: {
-      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
@@ -74,7 +74,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     actorId: "ACTOR_4",
     jobId: "01000000",
     address: {
-      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
@@ -97,7 +97,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     actorId: "ACTOR_5",
     jobId: "01000000",
     address: {
-      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",

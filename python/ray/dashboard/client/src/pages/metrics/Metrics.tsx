@@ -222,6 +222,10 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=1",
       },
       {
+        title: "Bytes Allocated",
+        pathParams: "theme=light&panelId=2",
+      },
+      {
         title: "Bytes Freed",
         pathParams: "theme=light&panelId=3",
       },

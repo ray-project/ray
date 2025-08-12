@@ -118,12 +118,12 @@ const ActorDetailPage = () => {
           },
           {
             label: "Node ID",
-            content: actorDetail.address?.nodeId
+            content: actorDetail.address?.rayletId
               ? {
-                  value: actorDetail.address?.nodeId,
-                  copyableValue: actorDetail.address?.nodeId,
-                  link: actorDetail.address.nodeId
-                    ? generateNodeLink(actorDetail.address.nodeId)
+                  value: actorDetail.address?.rayletId,
+                  copyableValue: actorDetail.address?.rayletId,
+                  link: actorDetail.address.rayletId
+                    ? generateNodeLink(actorDetail.address.rayletId)
                     : undefined,
                 }
               : { value: "-" },

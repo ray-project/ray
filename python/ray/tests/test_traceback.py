@@ -54,13 +54,6 @@ def scrub_traceback(ex):
     )
     # Clean up underscore in stack trace, which is new in python 3.12
     ex = re.sub("^\\s+~*\\^+~*\n", "", ex, flags=re.MULTILINE)
-    # Remove internal Cython frames from ray._raylet that can appear on Windows.
-    ex = re.sub(
-        r"^\s*File \"FILE\", line ZZ, in ray\._raylet\.[^\n]+\n",
-        "",
-        ex,
-        flags=re.MULTILINE,
-    )
     return ex
 
 

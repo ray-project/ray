@@ -983,7 +983,7 @@ def start(
                 cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_API_SERVER_ADDRESS='http://{}' ray job submit "
+                        "  RAY_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),

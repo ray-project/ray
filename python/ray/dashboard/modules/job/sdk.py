@@ -46,7 +46,7 @@ class JobSubmissionClient(SubmissionClient):
             ray.init(), e.g. a Ray Client address (ray://<head_node_host>:10001),
             or "auto", or "localhost:<port>". If unspecified, will try to connect to
             a running local Ray cluster. This argument is always overridden by the
-            RAY_API_SERVER_ADDRESS or RAY_ADDRESS environment variable.
+            RAY_ADDRESS environment variable.
         create_cluster_if_needed: Indicates whether the cluster at the specified
             address needs to already be running. Ray doesn't start a cluster
             before interacting with jobs, but third-party job managers may do so.

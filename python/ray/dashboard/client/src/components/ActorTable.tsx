@@ -385,10 +385,10 @@ const ActorTable = ({
           data-testid="nodeIdFilter"
           style={{ margin: 8, width: 150 }}
           options={Array.from(
-            new Set(Object.values(actors).map((e) => e.address?.nodeId)),
+            new Set(Object.values(actors).map((e) => e.address?.rayletId)),
           )}
           onInputChange={(_: any, value: string) => {
-            changeFilter("address.nodeId", value.trim());
+            changeFilter("address.rayletId", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Node ID" />
@@ -684,14 +684,14 @@ const ActorTable = ({
                     {address?.ipAddress ? address?.ipAddress : "-"}
                   </TableCell>
                   <TableCell align="center">
-                    {address?.nodeId ? (
-                      <Tooltip title={address?.nodeId} arrow>
+                    {address?.rayletId ? (
+                      <Tooltip title={address?.rayletId} arrow>
                         <Box sx={rowStyles.idCol}>
                           <Link
                             component={RouterLink}
-                            to={generateNodeLink(address.nodeId)}
+                            to={generateNodeLink(address.rayletId)}
                           >
-                            {address?.nodeId}
+                            {address?.rayletId}
                           </Link>
                         </Box>
                       </Tooltip>

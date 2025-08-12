@@ -635,10 +635,10 @@ class StandardAutoscaler:
         # For type checking, assert that this object has been instantitiated.
         assert self.provider
 
-        # The GCS expects Node ids in the request, rather than NodeProvider
-        # ids. To get the Node ids of the nodes to we're draining, we make
+        # The GCS expects Raylet ids in the request, rather than NodeProvider
+        # ids. To get the Raylet ids of the nodes to we're draining, we make
         # the following translations of identifiers:
-        # node provider node id -> ip -> node id
+        # node provider node id -> ip -> raylet id
 
         # Convert node provider node ids to ips.
         node_ips = set()
@@ -660,29 +660,29 @@ class StandardAutoscaler:
 
         # Only attempt to drain connected nodes, i.e. nodes with ips in
         # LoadMetrics.
-        connected_node_ips = node_ips & self.load_metrics.node_id_by_ip.keys()
+        connected_node_ips = node_ips & self.load_metrics.raylet_id_by_ip.keys()
 
-        # Convert ips to Node ids.
-        # (The assignment ip->node_id is well-defined under current
+        # Convert ips to Raylet ids.
+        # (The assignment ip->raylet_id is well-defined under current
         # assumptions. See "use_node_id_as_ip" in monitor.py)
-        node_ids_to_drain = {
-            self.load_metrics.node_id_by_ip[ip] for ip in connected_node_ips
+        raylet_ids_to_drain = {
+            self.load_metrics.raylet_id_by_ip[ip] for ip in connected_node_ips
         }
 
-        if not node_ids_to_drain:
+        if not raylet_ids_to_drain:
             return
 
-        logger.info(f"Draining {len(node_ids_to_drain)} raylet(s).")
+        logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:
             # A successful response indicates that the GCS has marked the
             # desired nodes as "drained." The cloud provider can then terminate
             # the nodes without the GCS printing an error.
             # Check if we succeeded in draining all of the intended nodes by
             # looking at the RPC response.
-            drained_node_ids = set(
-                self.gcs_client.drain_nodes(node_ids_to_drain, timeout=5)
+            drained_raylet_ids = set(
+                self.gcs_client.drain_nodes(raylet_ids_to_drain, timeout=5)
             )
-            failed_to_drain = node_ids_to_drain - drained_node_ids
+            failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(f"Failed to drain {len(failed_to_drain)} raylet(s).")

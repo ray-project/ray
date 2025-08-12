@@ -102,7 +102,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "Foo" in actor_response["className"]
             assert "address" in actor_response
             assert type(actor_response["address"]) is dict
-            assert actor_response["address"]["nodeId"] == node_id
+            assert actor_response["address"]["rayletId"] == node_id
             assert actor_response["state"] == "ALIVE"
             assert actor_response["name"] == "first"
             assert actor_response["numRestarts"] == "0"
@@ -285,7 +285,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "parentId",
                 "jobId",
                 "workerId",
-                "nodeId",
+                "rayletId",
                 "callerId",
                 "taskId",
                 "parentTaskId",

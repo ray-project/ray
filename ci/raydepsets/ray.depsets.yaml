@@ -1,33 +1,27 @@
-build_arg_sets:
-  - name: py311_cpu
-    build_args:
-      CUDA_VERSION: cpu
-      PYTHON_VERSION: py311
-  - name: py311_gpu
-    build_args:
-      CUDA_VERSION: cu128
-      PYTHON_VERSION: py311
 depsets:
-  - name: ray_base_test_depset_${PYTHON_VERSION}
+  - name: subset_general_depset
+    operation: subset
+    source_depset: general_depset
+    requirements:
+      - python/requirements/cloud-requirements.txt
+    output: ci/raydepsets/test/requirements_compiled_subset_general_py311_cpu.txt
+  - name: ray_base_test_depset
     requirements:
       - python/requirements.txt
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt
-    output: python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt
+      - python/requirements_compiled_ray_test_py311_cpu.txt
+    output: ci/raydepsets/test/requirements_compiled_ray_test_py311_cpu.txt
     operation: compile
-    build_arg_sets:
-      - py311_cpu
-      - py311_gpu
   - name: general_depset
     operation: compile
     requirements:
       - python/requirements.txt
     output: python/test/requirements_compiled_general_py311_cpu.txt
-  - name: subset_ray_base_depset
+  - name: subset_general_depset
     operation: subset
-    source_depset: ray_base_test_depset
+    source_depset: general_depset
     requirements:
-      - python/requirements/cloud-requirements.txt
-    output: python/test/requirements_compiled_subset_ray_base_py311_cpu.txt
+      - ci/raydepsets/cloud-requirements.txt
+    output: python/test/requirements_compiled_subset_general_py311_cpu.txt

@@ -3,15 +3,12 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 import requests
 
 import ray
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
-from ray._common.test_utils import wait_for_condition
-from ray._private.state_api_test_utils import _is_actor_task_running
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +16,23 @@ KILL_ACTOR_ENDPOINT = "/api/actors/kill"
 
 
 def _actor_killed(pid: str) -> bool:
-    """Check if a process with given pid is running."""
-    return not psutil.pid_exists(int(pid))
+    """Check For the existence of a unix pid."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return True
+    else:
+        return False
+
+
+def _actor_killed_loop(worker_pid: str, timeout_secs=3) -> bool:
+    dead = False
+    for _ in range(timeout_secs):
+        time.sleep(1)
+        if _actor_killed(worker_pid):
+            dead = True
+            break
+    return dead
 
 
 def _kill_actor_using_dashboard_gcs(
@@ -32,7 +44,6 @@ def _kill_actor_using_dashboard_gcs(
             "actor_id": actor_id,
             "force_kill": force_kill,
         },
-        timeout=5,
     )
     assert resp.status_code == expected_status_code
     resp_json = resp.json()
@@ -67,7 +78,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     OK = 200
     NOT_FOUND = 404
 
-    # Kill a non-existent actor
+    # Kill an non-existent actor
     resp = _kill_actor_using_dashboard_gcs(
         webui_url, "non-existent-actor-id", NOT_FOUND
     )
@@ -76,7 +87,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     # Kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    wait_for_condition(lambda: _actor_killed(worker_pid))
+    assert _actor_killed_loop(worker_pid)
 
     # Create an actor and have it loop
     a = Actor.remote()
@@ -84,21 +95,15 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     actor_id = a._ray_actor_id.hex()
     a.loop.remote()
 
-    # wait for loop() to start
-    wait_for_condition(lambda: _is_actor_task_running(worker_pid, "Actor.loop"))
-
     # Try to kill the actor, it should not die since a task is running
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
     assert "It will exit once running tasks complete" in resp["msg"]
-    with pytest.raises(
-        RuntimeError, match="The condition wasn't met before the timeout expired."
-    ):
-        wait_for_condition(lambda: _actor_killed(worker_pid), 1)
+    assert not _actor_killed_loop(worker_pid, timeout_secs=1)
 
     # Force kill the actor
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=True)
     assert "Force killed actor with id" in resp["msg"]
-    wait_for_condition(lambda: _actor_killed(worker_pid))
+    assert _actor_killed_loop(worker_pid)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ export enum ActorEnum {
 }
 
 export type Address = {
-  nodeId: string;
+  rayletId: string;
   ipAddress: string;
   port: number;
   workerId: string;

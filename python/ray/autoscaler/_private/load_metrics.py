@@ -73,7 +73,7 @@ class LoadMetrics:
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
-        self.node_id_by_ip = {}
+        self.raylet_id_by_ip = {}
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
@@ -85,12 +85,12 @@ class LoadMetrics:
         """A load metrics instance is Falsey iff the autoscaler process
         has not received a resource message from the GCS.
         """
-        return bool(self.node_id_by_ip)
+        return bool(self.raylet_id_by_ip)
 
     def update(
         self,
         ip: str,
-        node_id: bytes,
+        raylet_id: bytes,
         static_resources: Dict[str, Dict],
         dynamic_resources: Dict[str, Dict],
         node_idle_duration_s: float,
@@ -100,7 +100,7 @@ class LoadMetrics:
         cluster_full_of_actors_detected: bool = False,
     ):
         self.static_resources_by_ip[ip] = static_resources
-        self.node_id_by_ip[ip] = node_id
+        self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
 
         if not waiting_bundles:
@@ -163,7 +163,7 @@ class LoadMetrics:
 
         prune(self.ray_nodes_last_used_time_by_ip, should_log=True)
         prune(self.static_resources_by_ip, should_log=False)
-        prune(self.node_id_by_ip, should_log=False)
+        prune(self.raylet_id_by_ip, should_log=False)
         prune(self.dynamic_resources_by_ip, should_log=False)
         prune(self.last_heartbeat_time_by_ip, should_log=False)
 

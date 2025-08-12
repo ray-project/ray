@@ -579,7 +579,7 @@ def test_streaming_exec_schedule_s():
         continue
 
     ds_stats = ds._plan.stats()
-    assert ds_stats.streaming_exec_schedule_s.get() > 0
+    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
 
 
 def test_execution_callbacks():

@@ -243,10 +243,10 @@ class StateAPIManager:
             result = []
             for message in reply.worker_table_data:
                 data = protobuf_message_to_dict(
-                    message=message, fields_to_decode=["worker_id", "node_id"]
+                    message=message, fields_to_decode=["worker_id", "raylet_id"]
                 )
                 data["worker_id"] = data["worker_address"]["worker_id"]
-                data["node_id"] = data["worker_address"]["node_id"]
+                data["node_id"] = data["worker_address"]["raylet_id"]
                 data["ip"] = data["worker_address"]["ip_address"]
                 data["start_time_ms"] = int(data["start_time_ms"])
                 data["end_time_ms"] = int(data["end_time_ms"])

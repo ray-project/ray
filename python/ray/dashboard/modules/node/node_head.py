@@ -87,7 +87,7 @@ def _actor_table_data_to_dict(message):
             "parentId",
             "jobId",
             "workerId",
-            "nodeId",
+            "rayletId",
             "callerId",
             "taskId",
             "parentTaskId",
@@ -576,7 +576,7 @@ class NodeHead(SubprocessModule):
                 # Update node actors and job actors.
                 node_actors = defaultdict(dict)
                 for actor_id_bytes, updated_actor_table in actor_dicts.items():
-                    node_id = updated_actor_table["address"]["nodeId"]
+                    node_id = updated_actor_table["address"]["rayletId"]
                     # Update only when node_id is not Nil.
                     if node_id != actor_consts.NIL_NODE_ID:
                         node_actors[node_id][actor_id_bytes] = updated_actor_table
@@ -653,7 +653,7 @@ class NodeHead(SubprocessModule):
             actor_table_data = actor
 
         actor_id = actor_table_data["actorId"]
-        node_id = actor_table_data["address"]["nodeId"]
+        node_id = actor_table_data["address"]["rayletId"]
 
         if actor_table_data["state"] == "DEAD":
             self._destroyed_actors_queue.append(actor_id)
@@ -688,7 +688,7 @@ class NodeHead(SubprocessModule):
                     actor_id = self._destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
-                        node_id = actor["address"].get("nodeId")
+                        node_id = actor["address"].get("rayletId")
                         if node_id and node_id != actor_consts.NIL_NODE_ID:
                             del DataSource.node_actors[node_id][actor_id]
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)

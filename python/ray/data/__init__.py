@@ -1,9 +1,6 @@
 # Short term workaround for https://github.com/ray-project/ray/issues/32435
 # Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
 import pandas  # noqa
-from packaging.version import parse as parse_version
-
-from ray._private.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
@@ -77,40 +74,6 @@ from ray.data.read_api import (  # noqa: F401
 _map_actor_context = None
 
 configure_logging()
-
-try:
-    import pyarrow as pa
-
-    # Import these arrow extension types to ensure that they are registered.
-    from ray.air.util.tensor_extensions.arrow import (  # noqa
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
-
-    # https://github.com/apache/arrow/pull/38608 deprecated `PyExtensionType`, and
-    # disabled it's deserialization by default. To ensure that users can load data
-    # written with earlier version of Ray Data, we enable auto-loading of serialized
-    # tensor extensions.
-    #
-    # NOTE: `PyExtensionType` is deleted from Arrow >= 21.0
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
-        pass
-    else:
-        from ray._private.ray_constants import env_bool
-
-        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
-            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
-        )
-
-        if (
-            pyarrow_version >= parse_version("14.0.1")
-            and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
-        ):
-            pa.PyExtensionType.set_auto_load(True)
-
-except ModuleNotFoundError:
-    pass
 
 
 __all__ = [

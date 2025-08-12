@@ -380,9 +380,9 @@ def test_custom_resources(ray_start_cluster):
         return ray._private.worker.global_worker.node.unique_id
 
     # The g tasks should be scheduled only on the second raylet.
-    node_ids = set(ray.get([g.remote() for _ in range(50)]))
-    assert len(node_ids) == 1
-    assert list(node_ids)[0] == custom_resource_node.unique_id
+    raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
+    assert len(raylet_ids) == 1
+    assert list(raylet_ids)[0] == custom_resource_node.unique_id
 
     # Make sure that resource bookkeeping works when a task that uses a
     # custom resources gets blocked.
@@ -460,9 +460,9 @@ def test_two_custom_resources(ray_start_cluster):
     assert len(set(ray.get([g.remote() for _ in range(500)]))) == 2
 
     # The h tasks should be scheduled only on the second raylet.
-    node_ids = set(ray.get([h.remote() for _ in range(50)]))
-    assert len(node_ids) == 1
-    assert list(node_ids)[0] == custom_resource_node.unique_id
+    raylet_ids = set(ray.get([h.remote() for _ in range(50)]))
+    assert len(raylet_ids) == 1
+    assert list(raylet_ids)[0] == custom_resource_node.unique_id
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
