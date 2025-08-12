@@ -15,7 +15,6 @@ ENV LANG=C.UTF-8
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
-ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -67,9 +66,19 @@ RUN <<EOF
 
 set -euo pipefail
 
+# Determine the architecture of the host
+if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
+    exit 1
+fi
+
 # Install miniforge
 wget --quiet \
-    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
+    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${ARCH}.sh" \
     -O /tmp/miniforge.sh
 
 /bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
