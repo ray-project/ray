@@ -34,7 +34,6 @@ logger = get_logger(__name__)
 class VLLMEngineConfig(BaseModelExtended):
     model_config = ConfigDict(
         use_enum_values=True,
-        extra="forbid",
     )
 
     model_id: str = Field(

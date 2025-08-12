@@ -131,8 +131,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers,
-             bool is_from_worker) override {
+             std::vector<plasma::ObjectBuffer> *object_buffers) override {
     for (const auto &id : object_ids) {
       auto &buffers = objects_in_plasma_[id];
       plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(

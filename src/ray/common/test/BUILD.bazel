@@ -52,6 +52,7 @@ ray_cc_test(
         "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
         "//src/ray/rpc:grpc_server",
+        "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_googletest//:gtest",
@@ -121,6 +122,7 @@ ray_cc_binary(
     srcs = ["syncer_service_e2e_test.cc"],
     deps = [
         "//src/ray/common:ray_syncer",
+        "//src/ray/util:network_util",
     ],
 )
 

@@ -1382,9 +1382,9 @@ memray==1.10.0 ; sys_platform != 'win32' \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   -r python/requirements.txt
-meson==1.8.0 \
-    --hash=sha256:0a9b23311271519bd03dca12d7d8b0eab582c3a2c5da433d465b6e519dc88e2f \
-    --hash=sha256:472b7b25da286447333d32872b82d1c6f1a34024fb8ee017d7308056c25fec1f
+meson==1.8.3 \
+    --hash=sha256:ef02b806ce0c5b6becd5bb5dc9fa67662320b29b337e7ace73e4354500590233 \
+    --hash=sha256:f118aa910fc0a137cc2dd0122232dbf82153d9a12fb5b0f5bb64896f6a157abf
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   -r python/requirements/llm/llm-requirements.txt
@@ -1626,6 +1626,14 @@ ninja==1.11.1.3 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   vllm
     #   xgrammar
+nixl==0.3.1 \
+    --hash=sha256:20428ad2668062a79045fae83cc5cba1f4019d4a2c7053cc8549c3a1533f8a75 \
+    --hash=sha256:70b8932b50ccf1a13ac8fa2e10a4b78290baae9f963bfecfa67684104331a94b \
+    --hash=sha256:8c144839484b3076f0b34ad8ceaeaff05c23399cf57ca85f2a94b44e1475a39b \
+    --hash=sha256:ff59996ad05a7e4ba6c8beba0f1d8ac2f9e53df696a15af0d3340028e2f16081
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 numba==0.61.2 \
     --hash=sha256:34fba9406078bac7ab052efbf0d13939426c753ad72946baaa5bf9ae0ebb8dd2 \
     --hash=sha256:3945615cd73c2c7eba2a85ccc9c1730c21cd3958bfcf5a44302abae0fb07bb60 \
@@ -1696,6 +1704,7 @@ numpy==1.26.4 \
     #   gymnasium
     #   imageio
     #   mistral-common
+    #   nixl
     #   numba
     #   opencv-python-headless
     #   pandas
@@ -3223,6 +3232,7 @@ torch==2.7.1+cpu \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   compressed-tensors
+    #   nixl
     #   torchaudio
     #   torchvision
     #   vllm
@@ -3270,11 +3280,12 @@ tqdm==4.67.1 \
     #   openai
     #   transformers
     #   vllm
-transformers==4.54.1 \
-    --hash=sha256:b2551bb97903f13bd90c9467d0a144d41ca4d142defc044a99502bb77c5c1052 \
-    --hash=sha256:c89965a4f62a0d07009d45927a9c6372848a02ab9ead9c318c3d082708bab529
+transformers==4.53.2 \
+    --hash=sha256:6c3ed95edfb1cba71c4245758f1b4878c93bf8cde77d076307dacb2cbbd72be2 \
+    --hash=sha256:db8f4819bb34f000029c73c3c557e7d06fc1b8e612ec142eecdae3947a9c78bf
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements/llm/llm-requirements.txt
     #   compressed-tensors
     #   vllm
     #   xgrammar

@@ -1,12 +1,13 @@
 import click
 from pathlib import Path
 from ci.raydepsets.workspace import Workspace, Depset, BuildArgSet
-from typing import List
 import subprocess
 import platform
+from typing import List, Optional
+
 import runfiles
-from typing import Optional
 from networkx import DiGraph, topological_sort
+
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
@@ -34,31 +35,27 @@ def cli():
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
 @click.option("--build-arg-set", default=None)
-def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
-    """
-    Load a dependency sets from a config file.
-
-    Args:
-        config_path: The path to the config file.
-        workspace_dir: The path to the workspace directory.
-        name: The name of the dependency set to load.
-        build_arg_set: The name of the build arg set to use.
-
-    User can specify a name and build arg set to load a single dependency set.
-    If no name is specified, all dependency sets will be loaded.
-    If no build arg set is specified, the defined dependency set will be loaded without build args.
-    If no workspace directory is specified, the current workspace directory will be used.
-    """
-    manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
-    build_arg_set_obj = None
+@click.option("--uv-cache-dir", default=None)
+def load(
+    config_path: str,
+    workspace_dir: str,
+    name: str,
+    build_arg_set: str,
+    uv_cache_dir: str,
+):
+    build_arg_set_name = None
+    manager = DependencySetManager(
+        config_path=config_path,
+        workspace_dir=workspace_dir,
+        uv_cache_dir=uv_cache_dir,
+    )
     if name:
         if build_arg_set:
             for arg_set in manager.config.build_arg_sets:
-                if arg_set.name == build_arg_set:
-                    build_arg_set_obj = arg_set
-                    break
+                build_arg_set_name = arg_set.name
+                break
 
-        manager.execute_single(manager.get_depset(name, build_arg_set_obj))
+        manager.execute_single(manager.get_depset(name, build_arg_set_name))
     else:
         manager.execute()
 
@@ -66,13 +63,16 @@ def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
 class DependencySetManager:
     def __init__(
         self,
-        config_path: Path = Path(__file__).parent / "ray.depsets.yaml",
-        workspace_dir: str = None,
+        config_path: str = None,
+        workspace_dir: Optional[str] = None,
+        uv_cache_dir: Optional[str] = None,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
         self.build_graph = DiGraph()
         self._build()
+        self._uv_binary = _uv_binary()
+        self._uv_cache_dir = uv_cache_dir
 
     def _build(self):
         for depset in self.config.depsets:
@@ -103,7 +103,7 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str, build_arg_set: BuildArgSet) -> Depset:
+    def get_depset(self, name: str, build_arg_set: BuildArgSet = None) -> Depset:
         for depset in self.config.depsets:
             if depset.name == name and (
                 build_arg_set is None or depset.build_arg_set.name == build_arg_set.name
@@ -114,7 +114,7 @@ class DependencySetManager:
         )
 
     def exec_uv_cmd(self, cmd: List[str], args: List[str]) -> str:
-        cmd = [uv_binary(), *cmd, *args]
+        cmd = [self._uv_binary, *cmd, *args]
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
@@ -171,6 +171,8 @@ class DependencySetManager:
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        if self._uv_cache_dir:
+            args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
@@ -183,7 +185,7 @@ class DependencySetManager:
                 args.extend([self.get_path(requirement)])
         if output:
             args.extend(["-o", self.get_path(output)])
-        self.exec_uv_cmd(["pip", "compile"], args)
+        self.exec_uv_cmd(["pip"], ["compile", *args])
 
     def subset(
         self,
@@ -294,7 +296,7 @@ def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return args
 
 
-def uv_binary():
+def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
     if system != "Linux" or platform.processor() != "x86_64":

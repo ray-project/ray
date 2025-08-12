@@ -99,6 +99,8 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': N",
             "'bytes_outputs_of_finished_tasks': N",
             "'rows_outputs_of_finished_tasks': N",
+            "'num_output_queue_blocks': N",
+            "'num_output_queue_bytes': N",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -154,6 +156,8 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': Z",
             "'bytes_outputs_of_finished_tasks': Z",
             "'rows_outputs_of_finished_tasks': Z",
+            "'num_output_queue_blocks': N",
+            "'num_output_queue_bytes': N",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -663,6 +667,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      rows_outputs_of_finished_tasks: N,\n"
+        "      num_output_queue_blocks: N,\n"
+        "      num_output_queue_bytes: N,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -790,6 +796,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      rows_outputs_of_finished_tasks: N,\n"
+        "      num_output_queue_blocks: N,\n"
+        "      num_output_queue_bytes: N,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -872,6 +880,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_outputs_of_finished_tasks: N,\n"
         "            bytes_outputs_of_finished_tasks: N,\n"
         "            rows_outputs_of_finished_tasks: N,\n"
+        "            num_output_queue_blocks: N,\n"
+        "            num_output_queue_bytes: N,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
