@@ -492,7 +492,7 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
     assert torch.equal(ret_val_src[0], td["action"])
     assert torch.equal(ret_val_src[1], td["reward"])
 
-    
+
 def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     """Test that passing GPU ObjectRefs inside lists as task arguments raises an error."""
 
@@ -519,7 +519,7 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     ):
         actor.double.remote([gpu_ref, normal_ref])
 
-        
+
 def test_app_error_inter_actor(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
