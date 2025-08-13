@@ -351,7 +351,7 @@ class AutoscalingState:
             )
         else:
             logger.debug("No metrics stores detected in autoscaler.")
-            return total_requests, report_count
+            return total_requests, 0
 
         queued_requests = merged_metrics.get_latest(QUEUED_REQUESTS_KEY) or 0.0
         queued_per_replica = (
