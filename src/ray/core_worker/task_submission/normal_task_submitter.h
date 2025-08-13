@@ -244,10 +244,6 @@ class NormalTaskSubmitter {
   /// Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<RayletClientInterface> local_raylet_client_;
 
-  /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>
-      remote_raylet_clients_ ABSL_GUARDED_BY(mu_);
-
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
