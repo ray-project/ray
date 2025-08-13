@@ -27,6 +27,7 @@ ray_cc_library(
         ":profile_event",
         ":reference_count",
         ":task_event_buffer",
+        ":task_metric",
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/common/cgroup:constants",
@@ -56,6 +57,14 @@ ray_cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "task_metric",
+    hdrs = ["task_metric.h"],
+    deps = [
+        "//src/ray/stats:stats_lib",
     ],
 )
 

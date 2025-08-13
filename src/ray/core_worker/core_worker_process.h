@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/core_worker/task_metric.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -177,6 +178,9 @@ class CoreWorkerProcessImpl {
 
   /// The proxy service handler that routes the RPC calls to the core worker.
   std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
+
+  /// Metrics
+  ray::stats::Gauge ray_metric_tasks_{GetTaskMetric()};
 };
 }  // namespace core
 }  // namespace ray
