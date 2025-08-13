@@ -103,13 +103,13 @@ class BroadcastJoinFunction:
             # - small_table is the originally LEFT dataset (smaller, broadcasted)
             # We need to maintain LEFT.join(RIGHT) semantics
             # So we do: small_table.join(batch) = LEFT.join(RIGHT_BATCH)
-            
+
             # For swapped datasets, we need to handle join types carefully:
             # - inner: works the same
             # - left_outer: becomes small_table.join(batch, "left outer") = LEFT.join(RIGHT_BATCH, "left outer")
             # - right_outer: becomes small_table.join(batch, "right outer") = LEFT.join(RIGHT_BATCH, "right outer")
             # - full_outer: becomes small_table.join(batch, "full outer") = LEFT.join(RIGHT_BATCH, "full outer")
-            
+
             joined_table = self.small_table.join(
                 batch,
                 join_type=arrow_join_type,
@@ -124,7 +124,7 @@ class BroadcastJoinFunction:
             # - batch comes from the originally LEFT dataset (larger)
             # - small_table is the originally RIGHT dataset (smaller, broadcasted)
             # We maintain LEFT.join(RIGHT) semantics: batch.join(small_table)
-            
+
             joined_table = batch.join(
                 self.small_table,
                 join_type=arrow_join_type,
