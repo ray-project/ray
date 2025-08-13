@@ -37,12 +37,14 @@ def instantiate_adapter_from_config(
         AttributeError: If the imported module doesn't contain the specified class.
 
     Example:
-        >>> config = TaskProcessorConfig(
-        ...     adapter="my.module.CustomAdapter",
-        ...     adapter_config={"param": "value"},
-        ...     queue_name="my_queue"
-        ... )
-        >>> adapter = instantiate_adapter_from_config(config)
+        .. code-block:: python
+
+            config = TaskProcessorConfig(
+                adapter="my.module.CustomAdapter",
+                adapter_config={"param": "value"},
+                queue_name="my_queue"
+            )
+            adapter = instantiate_adapter_from_config(config)
     """
 
     adapter = task_processor_config.adapter
