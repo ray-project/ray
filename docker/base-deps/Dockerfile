@@ -54,7 +54,7 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
-USER root
+
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 
 SHELL ["/bin/bash", "-c"]
