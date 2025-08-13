@@ -1,6 +1,7 @@
 import sys
 import json
 import base64
+from unittest.mock import MagicMock
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -30,13 +31,19 @@ from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 
+from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
+
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+_EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
+_EVENT_AGGREGATOR_AGENT_TARGET_ADDR = (
+    f"http://{_EVENT_AGGREGATOR_AGENT_TARGET_IP}:{_EVENT_AGGREGATOR_AGENT_TARGET_PORT}"
+)
 
 
 @pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+    return (_EVENT_AGGREGATOR_AGENT_TARGET_IP, _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
 @pytest.fixture
@@ -54,9 +61,7 @@ _with_aggregator_port = pytest.mark.parametrize(
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -84,6 +89,29 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = init_grpc_channel(f"{ip}:{grpc_port}", options=options)
     return EventAggregatorServiceStub(channel)
+
+
+@pytest.mark.parametrize(
+    (
+        "export_addr",
+        "expected_http_target_enabled",
+        "expected_event_processing_enabled",
+    ),
+    [
+        ("", False, False),
+        ("http://127.0.0.1:" + str(_EVENT_AGGREGATOR_AGENT_TARGET_PORT), True, True),
+    ],
+)
+def test_aggregator_agent_http_target_not_enabled(
+    export_addr,
+    expected_http_target_enabled,
+    expected_event_processing_enabled,
+):
+    dashboard_agent = MagicMock()
+    dashboard_agent.events_export_addr = export_addr
+    agent = AggregatorAgent(dashboard_agent)
+    assert agent._event_http_target_enabled == expected_http_target_enabled
+    assert agent._event_processing_enabled == expected_event_processing_enabled
 
 
 @_with_aggregator_port
@@ -136,9 +164,7 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -242,9 +268,7 @@ def test_aggregator_agent_receive_multiple_events(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -365,9 +389,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
             },
         },
