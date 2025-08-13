@@ -637,7 +637,11 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type);
+  // Preserve actor creation failure details by marking a distinct shutdown reason
+  // when initialization raised an exception and an exception payload is provided.
+  ShutdownReason reason = creation_task_exception_pb_bytes != nullptr
+                              ? ShutdownReason::kActorCreationFailed
+                              : ConvertExitTypeToShutdownReason(exit_type);
 
   shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
                                          reason,

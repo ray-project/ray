@@ -253,6 +253,8 @@ std::string ShutdownCoordinator::GetExitTypeString() const {
     return "INTENDED_SYSTEM_EXIT";
   case ShutdownReason::kUserError:
     return "USER_ERROR";
+  case ShutdownReason::kActorCreationFailed:
+    return "USER_ERROR";
   case ShutdownReason::kUnexpectedError:
     return "SYSTEM_ERROR";
   case ShutdownReason::kOutOfMemory:
