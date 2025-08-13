@@ -398,8 +398,7 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     # we're not overloading the OS by spawning excessive # of processes on small
     # clusters
     return min(
-        math.ceil(total_cluster_resources.cpu * 2),
-        DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+        math.ceil(total_cluster_resources.cpu * 2), DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
     )
 
 
