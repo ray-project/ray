@@ -268,12 +268,13 @@ CoreWorker::CoreWorker(
     instrumented_io_context &io_service,
     std::unique_ptr<rpc::ClientCallManager> client_call_manager,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-    std::shared_ptr<rpc::RayletClientPool> raylet_rpc_client_pool,
+    std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
     std::shared_ptr<gcs::GcsClient> gcs_client,
     std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client,
+    std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
     std::shared_ptr<ReferenceCounter> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
@@ -301,13 +302,14 @@ CoreWorker::CoreWorker(
       io_service_(io_service),
       client_call_manager_(std::move(client_call_manager)),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
-      raylet_rpc_client_pool_(std::move(raylet_rpc_client_pool)),
+      raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
       connected_(true),
       gcs_client_(std::move(gcs_client)),
       raylet_ipc_client_(std::move(raylet_ipc_client)),
+      local_raylet_rpc_client_(std::move(local_raylet_rpc_client)),
       io_thread_(io_thread),
       reference_counter_(std::move(reference_counter)),
       memory_store_(std::move(memory_store)),
@@ -1058,7 +1060,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG).WithField(object_id) << "Pinning put object";
-      GetLocalRayletClient()->PinObjectIDs(
+      local_raylet_rpc_client_->PinObjectIDs(
           rpc_address_,
           {object_id},
           /*generator_id=*/ObjectID::Nil(),
@@ -1257,7 +1259,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG).WithField(object_id) << "Pinning sealed object";
-    GetLocalRayletClient()->PinObjectIDs(
+    local_raylet_rpc_client_->PinObjectIDs(
         owner_address != nullptr ? *owner_address : rpc_address_,
         {object_id},
         generator_id,
@@ -1779,7 +1781,7 @@ Status CoreWorker::GetLocationFromOwner(
 }
 
 void CoreWorker::TriggerGlobalGC() {
-  GetLocalRayletClient()->GlobalGC(
+  local_raylet_rpc_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send global GC request: " << status;
@@ -2005,7 +2007,7 @@ void CoreWorker::PrestartWorkers(const std::string &serialized_runtime_env_info,
       *OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
   request.set_keep_alive_duration_secs(keep_alive_duration_secs);
   request.set_num_workers(num_workers);
-  GetLocalRayletClient()->PrestartWorkers(
+  local_raylet_rpc_client_->PrestartWorkers(
       request, [](const Status &status, const rpc::PrestartWorkersReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Failed to prestart workers: " << status;
@@ -3119,7 +3121,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     // Asynchronously ask the raylet to pin the object. Note that this can fail
     // if the raylet fails. We expect the owner of the object to handle that
     // case (e.g., by detecting the raylet failure and storing an error).
-    GetLocalRayletClient()->PinObjectIDs(
+    local_raylet_rpc_client_->PinObjectIDs(
         owner_address,
         {return_id},
         generator_id,
@@ -4093,7 +4095,7 @@ void CoreWorker::HandleRegisterMutableObjectReader(
     rpc::RegisterMutableObjectReaderRequest request,
     rpc::RegisterMutableObjectReaderReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  GetLocalRayletClient()->RegisterMutableObjectReader(
+  local_raylet_rpc_client_->RegisterMutableObjectReader(
       ObjectID::FromBinary(request.writer_object_id()),
       request.num_readers(),
       ObjectID::FromBinary(request.reader_object_id()),
@@ -4283,7 +4285,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::SendReplyCallback send_reply_callback) {
   const size_t num_objects_with_references = reference_counter_->Size();
   const size_t num_pending_tasks = task_manager_->NumPendingTasks();
-  const int64_t pins_in_flight = GetLocalRayletClient()->GetPinsInFlight();
+  const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't have object references and it doesn't
   // have any object pinning RPCs in flight and it doesn't have pending tasks.
   bool is_idle = (num_objects_with_references == 0) && (pins_in_flight == 0) &&
@@ -4653,12 +4655,6 @@ void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec,
       RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
     }
   }
-}
-
-std::shared_ptr<RayletClientInterface> CoreWorker::GetLocalRayletClient() const {
-  auto local_raylet_client = raylet_rpc_client_pool_->GetByID(GetCurrentNodeId());
-  RAY_CHECK(local_raylet_client != nullptr);
-  return local_raylet_client;
 }
 
 }  // namespace ray::core

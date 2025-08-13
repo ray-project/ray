@@ -98,6 +98,8 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
 
     auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
 
+    auto fake_local_raylet_rpc_client = std::make_shared<FakeRayletClient>();
+
     auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
 
     auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
@@ -180,6 +182,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
 
     auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
         rpc_address,
+        fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
         std::move(lease_policy),
@@ -223,6 +226,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
                                                 std::move(rpc_address),
                                                 std::move(mock_gcs_client),
                                                 std::move(fake_raylet_ipc_client),
+                                                std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
                                                 reference_counter_,
                                                 memory_store_,

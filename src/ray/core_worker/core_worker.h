@@ -175,12 +175,13 @@ class CoreWorker {
              instrumented_io_context &io_service,
              std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-             std::shared_ptr<rpc::RayletClientPool> raylet_rpc_client_pool,
+             std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              std::shared_ptr<ray::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
@@ -1699,8 +1700,6 @@ class CoreWorker {
                       ObjectID object_id,
                       void *py_future);
 
-  std::shared_ptr<RayletClientInterface> GetLocalRayletClient() const;
-
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1722,8 +1721,8 @@ class CoreWorker {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
-  // Shared raylet rpc client pool.
-  std::shared_ptr<rpc::RayletClientPool> raylet_rpc_client_pool_;
+  // Shared raylet client pool.
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
@@ -1742,6 +1741,9 @@ class CoreWorker {
 
   // Client to the local Raylet that goes over a local socket.
   std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client_;
+
+  // Client to the local Raylet that goes over a gRPC connection.
+  std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
