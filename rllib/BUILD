@@ -1103,6 +1103,7 @@ py_test(
     srcs = ["tuned_examples/iql/pendulum_iql.py"],
     args = [
         "--as-test",
+        "--num-cpus=32",
     ],
     # Include the offline data files.
     data = [
@@ -1126,6 +1127,7 @@ py_test(
     srcs = ["tuned_examples/iql/pendulum_iql.py"],
     args = [
         "--as-test",
+        "--num-cpus=32",
         "--num-gpus-per-learner=1",
     ],
     # Include the offline data files.
