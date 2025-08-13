@@ -10,7 +10,7 @@ ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
-ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin" 
+ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin"
 ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
