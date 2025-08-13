@@ -229,11 +229,11 @@ class DependencySetManager:
     ):
         args = []
         if setup_path:
-            args.extend(["--directory", setup_path])
+            args.extend(["--directory", self.get_path(setup_path)])
         if append_flags:
             args.extend(append_flags)
         if output:
-            args.extend(["-o", output])
+            args.extend(["-o", self.get_path(output)])
         self.exec_uv_cmd(["build"], ["--wheel", *args])
 
     def get_path(self, path: str) -> str:
