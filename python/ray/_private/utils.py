@@ -274,7 +274,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     """
     visible_accelerator_env_vars_overriden = {}
     not_override_accelerator_ids_when_num_accelerators_is_zero = os.environ.get(
-        ray._private.accelerators.NOT_OVERRIDE_ACCELERATOR_IDS_WHEN_NUM_ACCELERATORS_IS_ZERO_ENV_VAR,
+        ray._private.accelerators.RAY_EXPERIMENTAL_NO_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
@@ -370,9 +370,10 @@ def _get_docker_cpus(
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
     if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
-            with open(cpu_quota_file_name, "r") as quota_file, open(
-                cpu_period_file_name, "r"
-            ) as period_file:
+            with (
+                open(cpu_quota_file_name, "r") as quota_file,
+                open(cpu_period_file_name, "r") as period_file,
+            ):
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception:
             logger.exception("Unexpected error calculating docker cpu quota.")

@@ -1980,6 +1980,17 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
+    # Check and show accelerator override warning during driver initialization
+    not_override_accelerator_ids_when_num_accelerators_is_zero = os.environ.get(
+        ray._private.accelerators.RAY_EXPERIMENTAL_NO_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR,
+    )
+    if not not_override_accelerator_ids_when_num_accelerators_is_zero:
+        logger.warning(
+            "Tip: In future versions of Ray, Ray will no longer override accelerator "
+            "ID variables if num_gpus=0 or num_gpus=None (default). To enable this "
+            "behavior, set RAY_EXPERIMENTAL_NO_ACCEL_OVERRIDE_ON_ZERO=1"
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)

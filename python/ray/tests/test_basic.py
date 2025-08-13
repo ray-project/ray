@@ -683,9 +683,7 @@ print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
         not_override_check_script,
         dict(
             os.environ,
-            **{
-                "RAY_EXPERIMENTAL_NOT_OVERRIDE_ACCELERATOR_IDS_WHEN_NUM_ACCELERATORS_IS_ZERO": "1"
-            },
+            **{"RAY_EXPERIMENTAL_NO_ACCEL_OVERRIDE_ON_ZERO": "1"},
         ),
     )
 
