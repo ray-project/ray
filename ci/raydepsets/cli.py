@@ -76,16 +76,14 @@ class DependencySetManager:
             if depset.operation == "compile":
                 self.build_graph.add_node(depset_id, operation="compile", depset=depset)
             elif depset.operation == "subset":
+                source_depset_id = (depset.source_depset, depset.build_arg_set_name)
                 self.build_graph.add_node(depset_id, operation="subset", depset=depset)
-                self.build_graph.add_edge(
-                    (depset.source_depset, depset.build_arg_set_name), depset_id
-                )
+                self.build_graph.add_edge(source_depset_id, depset_id)
             elif depset.operation == "expand":
                 self.build_graph.add_node(depset_id, operation="expand", depset=depset)
                 for depset_name in depset.depsets:
-                    self.build_graph.add_edge(
-                        (depset_name, depset.build_arg_set_name), depset_id
-                    )
+                    source_depset_id = (depset_name, depset.build_arg_set_name)
+                    self.build_graph.add_edge(source_depset_id, depset_id)
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
 
@@ -95,12 +93,12 @@ class DependencySetManager:
             self.execute_single(depset)
 
     def get_depset_by_id(self, depset_id: Tuple[str, str]) -> Depset:
-        try:
-            return self.depset_map[depset_id]
-        except KeyError:
+        depset = self.depset_map.get(depset_id)
+        if not depset:
             raise KeyError(
                 f"Dependency set {depset_id[0]} with build arg set {depset_id[1]} not found"
             )
+        return depset
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
