@@ -477,11 +477,13 @@ class DataContext:
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
-    # Max number of aggregating actors that could be provisioned
+    # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
     #
-    # When unset defaults to `DataContext.min_parallelism`
-    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # When unset defaults to the smaller of
+    #   - Total # of CPUs available in the cluster * 2
+    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (64 by default)
+    max_hash_shuffle_aggregators: Optional[int] = None
 
     min_hash_shuffle_aggregator_wait_time_in_s: int = (
         DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S
