@@ -16,7 +16,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 #     targets=[
 #         Target(
 #             expr=f"sum(ray_data_{metric.name}"
-#             + "{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)",
+#             + "{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)",
 #             legend=legend,
 #         )
 #     ],
@@ -33,7 +33,7 @@ BYTES_SPILLED_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_spilled_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_spilled_bytes{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Spilled: {{dataset}}, {{operator}}",
         )
     ],
@@ -48,7 +48,7 @@ BYTES_FREED_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_freed_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_freed_bytes{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Freed: {{dataset}}, {{operator}}",
         )
     ],
@@ -63,7 +63,7 @@ OBJECT_STORE_MEMORY_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_current_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_current_bytes{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Current Usage: {{dataset}}, {{operator}}",
         )
     ],
@@ -78,7 +78,7 @@ CPU_USAGE_PANEL = Panel(
     unit="cores",
     targets=[
         Target(
-            expr='sum(ray_data_cpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_cpu_usage_cores{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="CPU Usage: {{dataset}}, {{operator}}",
         )
     ],
@@ -93,7 +93,7 @@ GPU_USAGE_PANEL = Panel(
     unit="cores",
     targets=[
         Target(
-            expr='sum(ray_data_gpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_gpu_usage_cores{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="GPU Usage: {{dataset}}, {{operator}}",
         )
     ],
@@ -108,7 +108,7 @@ BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_output_bytes{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_output_bytes{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Bytes Output / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -123,7 +123,7 @@ ROWS_OUTPUT_PER_SECOND_PANEL = Panel(
     unit="rows/sec",
     targets=[
         Target(
-            expr='sum(rate(ray_data_output_rows{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_output_rows{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Rows Output / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -139,7 +139,7 @@ INPUT_BLOCKS_RECEIVED_PANEL = Panel(
     unit="blocks/sec",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_inputs_received{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_num_inputs_received{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Blocks Received / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -154,7 +154,7 @@ INPUT_BYTES_RECEIVED_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_inputs_received{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_bytes_inputs_received{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Bytes Received / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -171,7 +171,7 @@ INPUT_BLOCKS_PROCESSED_PANEL = Panel(
     unit="blocks/sec",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_task_inputs_processed{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_num_task_inputs_processed{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Blocks Processed / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -188,7 +188,7 @@ INPUT_BYTES_PROCESSED_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_task_inputs_processed{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_bytes_task_inputs_processed{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Bytes Processed / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -203,7 +203,7 @@ INPUT_BYTES_SUBMITTED_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Bytes Submitted / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -219,7 +219,7 @@ BLOCKS_GENERATED_PANEL = Panel(
     unit="blocks/sec",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_num_task_outputs_generated{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Blocks Generated / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -234,7 +234,7 @@ BYTES_GENERATED_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_bytes_task_outputs_generated{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Bytes Generated / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -249,7 +249,7 @@ ROWS_GENERATED_PANEL = Panel(
     unit="rows/sec",
     targets=[
         Target(
-            expr='sum(rate(ray_data_rows_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_rows_task_outputs_generated{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Rows Generated / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -264,7 +264,7 @@ OUTPUT_BLOCKS_TAKEN_PANEL = Panel(
     unit="blocks/sec",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_outputs_taken{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_num_outputs_taken{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Blocks Taken / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -281,7 +281,7 @@ OUTPUT_BYTES_TAKEN_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_outputs_taken{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            expr='sum(rate(ray_data_bytes_outputs_taken{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, operator)',
             legend="Bytes Taken / Second: {{dataset}}, {{operator}}",
         )
     ],
@@ -296,7 +296,7 @@ AVERAGE_BYTES_PER_BLOCK_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='increase(ray_data_bytes_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            expr='increase(ray_data_bytes_task_outputs_generated{{{global_filters} operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters} operator=~"$Operator"}}[5m])',
             legend="Average Bytes Generated / Output Block: {{dataset}}, {{operator}}",
         )
     ],
@@ -311,7 +311,7 @@ AVERAGE_BLOCKS_PER_TASK_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr='increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
+            expr='increase(ray_data_num_task_outputs_generated{{{global_filters} operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters} operator=~"$Operator"}}[5m])',
             legend="Average Number of Output Blocks / Task: {{dataset}}, {{operator}}",
         )
     ],
@@ -328,7 +328,7 @@ OUTPUT_BYTES_BY_NODE_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr='sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
             legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -345,7 +345,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
     unit="blocks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr='sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
             legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -361,7 +361,7 @@ SUBMITTED_TASKS_PANEL = Panel(
     unit="tasks",
     targets=[
         Target(
-            expr='sum(ray_data_num_tasks_submitted{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_tasks_submitted{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Submitted Tasks: {{dataset}}, {{operator}}",
         )
     ],
@@ -376,7 +376,7 @@ RUNNING_TASKS_PANEL = Panel(
     unit="tasks",
     targets=[
         Target(
-            expr='sum(ray_data_num_tasks_running{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_tasks_running{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Running Tasks: {{dataset}}, {{operator}}",
         )
     ],
@@ -391,7 +391,7 @@ TASKS_WITH_OUTPUT_PANEL = Panel(
     unit="tasks",
     targets=[
         Target(
-            expr='sum(ray_data_num_tasks_have_outputs{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_tasks_have_outputs{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Tasks with output blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -406,7 +406,7 @@ FINISHED_TASKS_PANEL = Panel(
     unit="tasks",
     targets=[
         Target(
-            expr='sum(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_tasks_finished{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Finished Tasks: {{dataset}}, {{operator}}",
         )
     ],
@@ -421,7 +421,7 @@ FAILED_TASKS_PANEL = Panel(
     unit="tasks",
     targets=[
         Target(
-            expr='sum(ray_data_num_tasks_failed{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_tasks_failed{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Failed Tasks: {{dataset}}, {{operator}}",
         )
     ],
@@ -436,7 +436,7 @@ TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     unit="tasks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr='sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters} operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
             legend="Finished Tasks: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -451,7 +451,7 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_block_generation_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_block_generation_time{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Block Generation Time: {{dataset}}, {{operator}}",
         )
     ],
@@ -466,7 +466,7 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_task_submission_backpressure_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_task_submission_backpressure_time{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Backpressure Time: {{dataset}}, {{operator}}",
         )
     ],
@@ -482,7 +482,7 @@ TASK_COMPLETION_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='increase(ray_data_task_completion_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
+            expr='increase(ray_data_task_completion_time{{{global_filters} operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters} operator=~"$Operator"}}[5m])',
             legend="Task Completion Time: {{dataset}}, {{operator}}",
         ),
     ],
@@ -497,7 +497,7 @@ TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='increase(ray_data_task_output_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
+            expr='increase(ray_data_task_output_backpressure_time{{{global_filters} operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters} operator=~"$Operator"}}[5m])',
             legend="Task Output Backpressure Time: {{dataset}}, {{operator}}",
         ),
     ],
@@ -512,7 +512,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='increase(ray_data_task_completion_time_without_backpressure{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
+            expr='increase(ray_data_task_completion_time_without_backpressure{{{global_filters} operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters} operator=~"$Operator"}}[5m])',
             legend="Task Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
         ),
     ],
@@ -528,7 +528,7 @@ INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Number of Blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -543,7 +543,7 @@ INTERNAL_INQUEUE_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_internal_inqueue{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_internal_inqueue{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Size: {{dataset}}, {{operator}}",
         )
     ],
@@ -558,7 +558,7 @@ INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Number of Blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -573,7 +573,7 @@ INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Size: {{dataset}}, {{operator}}",
         )
     ],
@@ -588,7 +588,7 @@ EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr='sum(ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_external_inqueue_blocks{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Number of Blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -603,7 +603,7 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_external_inqueue_blocks{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Number of Bytes: {{dataset}}, {{operator}}",
         )
     ],
@@ -619,7 +619,7 @@ COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}, operator=~"$Operator"}} + ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters} operator=~"$Operator"}} + ray_data_num_external_inqueue_blocks{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Combined Blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -634,7 +634,7 @@ PENDING_TASK_INPUTS_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_pending_task_inputs{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_pending_task_inputs{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Size: {{dataset}}, {{operator}}",
         )
     ],
@@ -649,7 +649,7 @@ FREED_MEMORY_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_freed{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_freed{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Size: {{dataset}}, {{operator}}",
         )
     ],
@@ -664,7 +664,7 @@ SPILLED_MEMORY_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_obj_store_mem_spilled{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_obj_store_mem_spilled{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Bytes Size: {{dataset}}, {{operator}}",
         )
     ],
@@ -680,7 +680,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_iter_initialize_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr='sum(ray_data_iter_initialize_seconds{{{global_filters} operator=~"$Operator"}}) by (dataset)',
             legend="Seconds: {{dataset}}, {{operator}}",
         )
     ],
@@ -695,7 +695,7 @@ ITERATION_BLOCKED_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_iter_total_blocked_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr='sum(ray_data_iter_total_blocked_seconds{{{global_filters} operator=~"$Operator"}}) by (dataset)',
             legend="Seconds: {{dataset}}",
         )
     ],
@@ -710,7 +710,7 @@ ITERATION_USER_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_iter_user_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr='sum(ray_data_iter_user_seconds{{{global_filters} operator=~"$Operator"}}) by (dataset)',
             legend="Seconds: {{dataset}}",
         )
     ],
@@ -726,7 +726,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_sched_loop_duration_s{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr='sum(ray_data_sched_loop_duration_s{{{global_filters} operator=~"$Operator"}}) by (dataset)',
             legend="Scheduling Loop Duration: {{dataset}}",
         )
     ],
@@ -741,7 +741,7 @@ MAX_BYTES_TO_READ_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_max_bytes_to_read{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_max_bytes_to_read{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Max Bytes to Read: {{dataset}}, {{operator}}",
         )
     ],
@@ -757,7 +757,7 @@ CPU_BUDGET_PANEL = Panel(
     unit="cpu",
     targets=[
         Target(
-            expr='sum(ray_data_cpu_budget{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_cpu_budget{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Budget (CPU): {{dataset}}, {{operator}}",
         )
     ],
@@ -772,7 +772,7 @@ GPU_BUDGET_PANEL = Panel(
     unit="gpu",
     targets=[
         Target(
-            expr='sum(ray_data_gpu_budget{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_gpu_budget{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Budget (GPU): {{dataset}}, {{operator}}",
         )
     ],
@@ -787,7 +787,7 @@ MEMORY_BUDGET_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_memory_budget{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_memory_budget{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Budget (Memory): {{dataset}}, {{operator}}",
         )
     ],
@@ -802,7 +802,7 @@ OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_object_store_memory_budget{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_object_store_memory_budget{{{global_filters} operator=~"$Operator"}}) by (dataset, operator)',
             legend="Budget (Object Store Memory): {{dataset}}, {{operator}}",
         )
     ],
