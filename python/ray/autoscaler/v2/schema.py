@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+import time
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
@@ -239,6 +240,41 @@ class IPPRStatus:
     suggested_cpu: Optional[float] = None
     suggested_memory: Optional[float] = None
     raylet_id: Optional[str] = None
+
+    def update(
+        self,
+        raylet_id: str,
+        desired_cpu: Optional[float],
+        desired_memory: Optional[float],
+    ) -> None:
+        if desired_cpu is not None:
+            self.desired_cpu = desired_cpu
+        if desired_memory is not None:
+            self.desired_memory = desired_memory
+        self.raylet_id = raylet_id
+        self.resized_at = None
+        self.resized_status = "new"
+        self.resized_message = None
+
+    def is_new(self) -> bool:
+        return self.resized_status == "new" and self.raylet_id
+
+    def is_in_progress(self) -> bool:
+        return (
+            self.resized_status == "inprogress" or self.resized_status == "deferred"
+        ) and self.resized_at is not None
+
+    def is_finished(self) -> bool:
+        return self.resized_status is None
+
+    def is_timeout(self) -> bool:
+        return (
+            self.is_in_progress()
+            and self.resized_at + self.resize_timeout < time.time()
+        )
+
+    def is_failed(self) -> bool:
+        return self.resized_status == "error" or self.resized_status == "infeasible"
 
 
 @dataclass

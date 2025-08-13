@@ -901,9 +901,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return [
                 node.ippr_status
                 for node in self._nodes
-                if node.ippr_status is not None
-                and node.ippr_status.raylet_id
-                and node.ippr_status.resized_status == "new"
+                if node.ippr_status is not None and node.ippr_status.is_new()
             ]
 
         def get_launch_requests(self) -> List[LaunchRequest]:
@@ -1487,52 +1485,28 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for node in existing_nodes:
             if node.ippr_status is not None:
-                if node.ippr_status.resized_status == "deferred" and (
+                if (
                     node.ippr_status.suggested_cpu is not None
                     or node.ippr_status.suggested_memory is not None
                 ):
-                    if node.ippr_status.suggested_cpu is not None:
-                        logger.info(
-                            f"Downsizing cpu IPPR for {node.ippr_status.cloud_instance_id} to: {node.ippr_status.desired_cpu}"
-                        )
-                        node.ippr_status.desired_cpu = node.ippr_status.suggested_cpu
-                    else:
-                        logger.info(
-                            f"Downsizing memory IPPR for {node.ippr_status.cloud_instance_id} to: {node.ippr_status.desired_memory}"
-                        )
-                        node.ippr_status.desired_memory = (
-                            node.ippr_status.suggested_memory
-                        )
-                    node.ippr_status.raylet_id = node.ray_node_id
-                    node.ippr_status.resized_at = None
-                    node.ippr_status.resized_status = "new"
-                    node.ippr_status.resized_message = None
-                if (  # Revert failed or stuck IPPR
-                    node.ippr_status.resized_status == "error"
-                    or node.ippr_status.resized_status == "infeasible"
-                    or (
-                        (
-                            node.ippr_status.resized_status == "inprogress"
-                            or node.ippr_status.resized_status == "deferred"
-                        )
-                        and node.ippr_status.resized_at is not None
-                        and node.ippr_status.resize_timeout
-                        + node.ippr_status.resized_at
-                        < time.time()
+                    node.ippr_status.update(
+                        raylet_id=node.ray_node_id,
+                        desired_cpu=node.ippr_status.suggested_cpu,
+                        desired_memory=node.ippr_status.suggested_memory,
                     )
+                if (  # Revert failed or stuck IPPR
+                    node.ippr_status.is_failed() or node.ippr_status.is_timeout()
                 ):
                     logger.info(
                         f"Revert failed or stuck IPPR for {node.ippr_status.cloud_instance_id} with status {node.ippr_status}"
                     )
-                    node.ippr_status.desired_cpu = node.ippr_status.current_cpu
-                    node.ippr_status.desired_memory = node.ippr_status.current_memory
-                    node.ippr_status.raylet_id = node.ray_node_id
-                    node.ippr_status.resized_at = None
-                    node.ippr_status.resized_status = "new"
-                    node.ippr_status.resized_message = None
-                elif (  # Make the existing nodes aware of ongoing IPPR status
-                    node.ippr_status.resized_status is None
-                    or node.ippr_status.resized_status == "inprogress"
+                    node.ippr_status.update(
+                        raylet_id=node.ray_node_id,
+                        desired_cpu=node.ippr_status.current_cpu,
+                        desired_memory=node.ippr_status.current_memory,
+                    )
+                elif (  # Make the existing nodes aware of finished and ongoing IPPR statuses
+                    node.ippr_status.is_finished() or node.ippr_status.is_in_progress()
                 ):
                     node.update_total_resources(
                         {
@@ -1581,7 +1555,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         target_nodes = []
 
         for node in existing_nodes:
-            if node.ippr_status is not None and node.ippr_status.resized_status is None:
+            if node.ippr_status is not None and node.ippr_status.is_finished():
                 if (
                     node.ippr_status.current_cpu < node.ippr_status.max_cpu
                     or node.ippr_status.current_memory < node.ippr_status.max_memory
@@ -1605,12 +1579,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # No existing nodes can schedule any more requests.
                 break
 
-            best_node.ippr_status.desired_cpu = best_node.ippr_status.max_cpu
-            best_node.ippr_status.desired_memory = best_node.ippr_status.max_memory
-            best_node.ippr_status.raylet_id = best_node.ray_node_id
-            best_node.ippr_status.resized_at = None
-            best_node.ippr_status.resized_status = "new"
-            best_node.ippr_status.resized_message = None
+            best_node.ippr_status.update(
+                raylet_id=best_node.ray_node_id,
+                desired_cpu=best_node.ippr_status.max_cpu,
+                desired_memory=best_node.ippr_status.max_memory,
+            )
 
             target_nodes.append(best_node)
 
