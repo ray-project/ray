@@ -58,7 +58,6 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
     options.node_ip_address = "127.0.0.1";
-    options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback =
         [](const rpc::Address &caller_address,
            TaskType task_type,
