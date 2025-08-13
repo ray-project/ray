@@ -380,7 +380,7 @@ class AutoscalingState:
         """Get total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
 
-        If there are 0 running replicas, then returns the number
+        If there are 0 running replicas, then returns the aggregated number
         of requests queued at handles.
 
         This code assumes that the metrics are either emmited on handles
