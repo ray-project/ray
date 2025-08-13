@@ -1619,7 +1619,7 @@ class DeploymentRankManager:
         Returns:
             List of replicas that need to be reconfigured with new ranks
         """
-        target_ranks = list(range(len(active_replicas)))
+        target_ranks_set = set(range(len(active_replicas)))
 
         # Find which replicas need new ranks
         replicas_needing_ranks = []
@@ -1629,18 +1629,21 @@ class DeploymentRankManager:
             replica_id = replica.replica_id.unique_id
             current_rank = self._replica_ranks[replica_id]
 
-            if current_rank in target_ranks:
+            if current_rank in target_ranks_set:
                 # This replica can keep its rank
-                target_ranks.remove(current_rank)
+                target_ranks_set.remove(current_rank)  # O(1) operation
                 replicas_keeping_ranks.append(replica)
             else:
                 # This replica needs a new rank
                 replicas_needing_ranks.append(replica)
 
+        # Convert remaining target ranks to sorted list for deterministic assignment
+        available_ranks = sorted(target_ranks_set)
+
         # Assign new ranks to replicas that need them
-        for replica in replicas_needing_ranks:
+        for i, replica in enumerate(replicas_needing_ranks):
             replica_id = replica.replica_id.unique_id
-            new_rank = target_ranks.pop(0)  # Take the next available target rank
+            new_rank = available_ranks[i]  # O(1) operation
 
             logger.info(
                 f"Reassigning replica {replica_id}: rank {self._replica_ranks[replica_id]} -> {new_rank}"
