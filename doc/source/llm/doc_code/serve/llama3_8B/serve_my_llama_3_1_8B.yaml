@@ -1,0 +1,21 @@
+#serve_my_llama_3_1_8B.yaml
+applications:
+- name: my-small-llm-app
+  route_prefix: "/"
+  import_path: ray.serve.llm:build_openai_app
+  args:
+    llm_configs:
+      - model_loading_config:
+          model_id: my-llama-3.1-8B
+          # Or Qwen/Qwen2.5-7B for an ungated model
+          model_source: meta-llama/Llama-3.1-8B-Instruct
+        accelerator_type: L4
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 1
+            max_replicas: 2
+        engine_kwargs:
+          max_model_len: 8192
+          # We need to share our Hugging Face Token to the workers so they can access the gated Llama 3
+          # If your model is not gated, you can skip this
+          hf_token: <YOUR-TOKEN-HERE>
