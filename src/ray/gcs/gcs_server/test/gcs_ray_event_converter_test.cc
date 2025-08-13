@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
@@ -30,19 +32,20 @@ class GcsRayEventConverterTest : public ::testing::Test {
 
 TEST_F(GcsRayEventConverterTest, TestConvertToTaskEventData) {
   rpc::events::AddEventsRequest request;
-  rpc::AddTaskEventDataRequest task_event_data;
   GcsRayEventConverter converter;
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
+
+  // Convert empty request
+  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
 
   // Test empty request
-  converter.ConvertToTaskEventDataRequest(std::move(request), task_event_data);
-  EXPECT_EQ(task_event_data.data().events_by_task_size(), 0);
-  EXPECT_EQ(task_event_data.data().dropped_task_attempts_size(), 0);
+  EXPECT_EQ(task_event_data_requests.size(), 0);
 }
 
 TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   rpc::events::AddEventsRequest request;
-  rpc::AddTaskEventDataRequest task_event_data;
   GcsRayEventConverter converter;
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
 
   // Create a task definition event
   auto *event = request.mutable_events_data()->add_events();
@@ -74,9 +77,11 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   runtime_env->set_serialized_runtime_env("test_env");
 
   // Convert
-  converter.ConvertToTaskEventDataRequest(std::move(request), task_event_data);
+  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
 
   // Verify conversion
+  ASSERT_EQ(task_event_data_requests.size(), 1);
+  const auto &task_event_data = task_event_data_requests[0];
   EXPECT_EQ(task_event_data.data().events_by_task_size(), 1);
   const auto &converted_task = task_event_data.data().events_by_task(0);
   EXPECT_EQ(converted_task.task_id(), "test_task_id");
@@ -85,7 +90,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_EQ(task_event_data.data().job_id(), "test_job_id");
 
   // Verify task info
-  EXPECT_TRUE(converted_task.has_task_info());
+  ASSERT_TRUE(converted_task.has_task_info());
   const auto &task_info = converted_task.task_info();
   EXPECT_EQ(task_info.name(), "test_task_name");
   EXPECT_EQ(task_info.type(), rpc::TaskType::NORMAL_TASK);
@@ -102,7 +107,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
 
 TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   rpc::events::AddEventsRequest request;
-  rpc::AddTaskEventDataRequest task_event_data;
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
   // Add dropped task attempts to metadata
@@ -113,11 +118,13 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   dropped_attempt->set_attempt_number(2);
 
   // Convert
-  converter.ConvertToTaskEventDataRequest(std::move(request), task_event_data);
+  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
 
   // Verify dropped task attempts are copied
-  EXPECT_EQ(task_event_data.data().dropped_task_attempts_size(), 1);
-  const auto &converted_dropped = task_event_data.data().dropped_task_attempts(0);
+  ASSERT_FALSE(task_event_data_requests.empty());
+  EXPECT_EQ(task_event_data_requests[0].data().dropped_task_attempts_size(), 1);
+  const auto &converted_dropped =
+      task_event_data_requests[0].data().dropped_task_attempts(0);
   EXPECT_EQ(converted_dropped.task_id(), "dropped_task_id");
   EXPECT_EQ(converted_dropped.attempt_number(), 2);
 }
@@ -138,11 +145,10 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   // Set a RayErrorInfo
   exec_event.mutable_ray_error_info()->set_error_message("error");
 
-  // Set a task state: TaskStatus = 5 (SUBMITTED_TO_WORKER), timestamp = 42s 123456789ns
   google::protobuf::Timestamp ts;
   ts.set_seconds(42);
   ts.set_nanos(123456789);
-  (*exec_event.mutable_task_state())[5] = ts;
+  (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
 
   // Call the converter
   converter.ConvertToTaskEvents(std::move(exec_event), task_event);

@@ -466,6 +466,50 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
   }
 }
 
+TEST_F(GcsTaskManagerTest, TestHandleAddEventsMultiJobGrouping) {
+  // Prepare events for two jobs in a single AddEvents request
+  auto task_ids_job0 = GenTaskIDs(3);
+  auto task_ids_job1 = GenTaskIDs(2);
+
+  auto events_job0 = GenTaskEvents(task_ids_job0, /*attempt_number*/ 0, /*job_id*/ 0);
+  auto events_job1 = GenTaskEvents(task_ids_job1, /*attempt_number*/ 0, /*job_id*/ 1);
+
+  // Build RayEventsData including dropped attempts for each job
+  std::vector<rpc::TaskEvents> all_events;
+  all_events.insert(all_events.end(), events_job0.begin(), events_job0.end());
+  all_events.insert(all_events.end(), events_job1.begin(), events_job1.end());
+
+  std::vector<TaskAttempt> dropped_attempts;
+  dropped_attempts.emplace_back(GenTaskIDForJob(0), 0);
+  dropped_attempts.emplace_back(GenTaskIDForJob(1), 0);
+
+  auto ray_events_data = Mocker::GenRayEventsData(all_events, dropped_attempts);
+
+  // Send AddEvents once; converter should group by job id and GCS should record all
+  auto reply = SyncAddEvents(ray_events_data);
+  EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+
+  // Verify all events stored
+  EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(),
+            task_ids_job0.size() + task_ids_job1.size());
+
+  // Verify per-job data loss counters populated from dropped attempts
+  {
+    auto reply_job0 = SyncGetTaskEvents(/* task_ids */ {}, JobID::FromInt(0));
+    EXPECT_EQ(reply_job0.num_status_task_events_dropped(), 1);
+  }
+  {
+    auto reply_job1 = SyncGetTaskEvents(/* task_ids */ {}, JobID::FromInt(1));
+    EXPECT_EQ(reply_job1.num_status_task_events_dropped(), 1);
+  }
+
+  // Verify global counters reflect both drops
+  {
+    auto reply_all = SyncGetTaskEvents(/* task_ids */ {});
+    EXPECT_EQ(reply_all.num_status_task_events_dropped(), 2);
+  }
+}
+
 TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
   size_t num_task_events = 20;
   // Same task id and attempt
