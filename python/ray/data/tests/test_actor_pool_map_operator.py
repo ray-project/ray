@@ -4,6 +4,7 @@ import datetime
 import threading
 import time
 import unittest
+from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
@@ -162,6 +163,12 @@ class TestActorPool(unittest.TestCase):
             # Assert we can't scale down immediately after scale up
             assert not pool._can_apply(downscaling_request)
             assert pool._last_upscaled_at == time.time()
+
+            # Check that we can still scale down if downscaling request
+            # is a forced one
+            assert pool._can_apply(
+                replace(downscaling_request, force=True)
+            )
 
             # Advance clock
             f.tick(
