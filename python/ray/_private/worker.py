@@ -18,7 +18,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
-    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,

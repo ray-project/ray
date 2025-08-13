@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
-        GPUObject,
     )
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
