@@ -237,8 +237,9 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
         ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
+
     # End Sphinx tag: __end_on_replica_actor_died__
-    
+
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 
@@ -358,4 +359,5 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         input_text, replica_id.to_full_id_str(), time.time()
                     )
                 )
+
     # End Sphinx tag: __end_on_request_routed__

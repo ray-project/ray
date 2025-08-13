@@ -118,7 +118,7 @@ When a replica dies, the `on_replica_actor_died` callback is used to remove its 
 (mixin-components)=
 ## Mixin Components
 
-The `PrefixCacheAffinityRouter` inherits from two mixins. For more details about these and other available mixins, see [utility mixins for request routing](utility-mixins-for-request-routing). These mixins are used to optimize the list of candidate replicas against which to calculate prefix cache hit rate.
+The `PrefixCacheAffinityRouter` inherits from two mixins. For more details about these and other available mixins, see [utility mixins for request routing](custom-request-router-guide.md#utility-mixin). These mixins are used to optimize the list of candidate replicas against which to calculate prefix cache hit rate.
 
 The [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst) provides locality-aware routing to optimize network latency by preferring replicas on the same node. The [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) enables model multiplexing support by tracking which models are loaded on each replica and routing requests to replicas that already have the requested model in memory.
 
@@ -148,7 +148,7 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 Here's how to deploy an LLM application using the prefix cache-aware request router:
 
 ```{literalinclude} ../../llm/doc_code/serve/prefix_aware_router/prefix_aware_example.py
-:start-after: __begin_prefix_aware_deployment__
-:end-before: __end_prefix_aware_deployment__
+:start-after: __prefix_aware_example_start__
+:end-before: __prefix_aware_example_end__
 :language: python
 ```

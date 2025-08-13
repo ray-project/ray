@@ -58,7 +58,7 @@ llm_config = LLMConfig(
                 "eviction_threshold_chars": 500_000,
                 "eviction_target_chars": 400_000,
                 "eviction_interval_secs": 30,
-            }
+            },
         },
     },
     runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
