@@ -67,13 +67,14 @@ class SchedulingRequest:
     current_instances: List[AutoscalerInstance] = field(default_factory=list)
 
     ippr_capacities: Optional[Dict[str, Dict[str, float]]] = field(default_factory=dict)
+    ippr_statuses: Optional[Dict[str, IPPRStatus]] = field(default_factory=dict)
 
 
 @dataclass
 class SchedulingReply:
     # Instances to launch.
     to_launch: List[LaunchRequest] = field(default_factory=list)
-    to_scale: List[IPPRStatus] = field(default_factory=list)
+    to_ippr: List[IPPRStatus] = field(default_factory=list)
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
     # The infeasible resource bundles.
@@ -164,8 +165,9 @@ class SchedulingNode:
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
 
-    # IPPR status, queried from the cloud provider.
+    # IPPR status and capacity, queried from the cloud provider.
     ippr_status: Optional[IPPRStatus] = None
+    ippr_capacity: Optional[Dict[str, float]] = None
 
     # Node's labels, including static or dynamic labels.
     labels: Dict[str, str] = field(default_factory=dict)
@@ -204,7 +206,6 @@ class SchedulingNode:
         launch_config_hash: str = "",
         node_kind: NodeKind = NodeKind.WORKER,
         termination_request: Optional[TerminationRequest] = None,
-        ippr_status: Optional[IPPRStatus] = None,
     ):
         self.node_type = node_type
         self.total_resources = total_resources
@@ -225,7 +226,6 @@ class SchedulingNode:
         self.launch_config_hash = launch_config_hash
         self.node_kind = node_kind
         self.termination_request = termination_request
-        self.ippr_status = ippr_status
 
     def get_available_resources(self, resource_request_source: ResourceRequestSource):
         """Get the available resources for the given resource request source."""
@@ -298,7 +298,6 @@ class SchedulingNode:
                     **(instance.ray_node.labels or {}),
                     **(instance.ray_node.dynamic_labels or {}),
                 },
-                ippr_status=instance.ippr_status,
                 status=SchedulingNodeStatus.SCHEDULABLE,
                 im_instance_id=instance.im_instance.instance_id,
                 im_instance_status=instance.im_instance.status,
@@ -328,7 +327,6 @@ class SchedulingNode:
                 node_type=instance.im_instance.instance_type,
                 total_resources={},
                 available_resources={},
-                ippr_status=instance.ippr_status,
                 labels={},
                 status=SchedulingNodeStatus.TO_TERMINATE,
                 im_instance_id=instance.im_instance.instance_id,
@@ -389,6 +387,7 @@ class SchedulingNode:
         node_kind: NodeKind,
         im_instance_id: Optional[str] = None,
         im_instance_status: Optional[str] = None,
+        ippr_capacity: Optional[Dict[str, float]] = None,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -741,9 +740,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
 
-        _ippr_capacities: Optional[Dict[str, Dict[str, float]]] = field(
-            default_factory=dict
-        )
+        _ippr_capacities: Optional[Dict[NodeType, Dict[str, float]]] = None
 
         def __init__(
             self,
@@ -752,7 +749,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
-            ippr_capacities: Optional[Dict[str, Dict[str, float]]] = None,
+            ippr_capacities: Optional[Dict[NodeType, Dict[str, float]]] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -788,6 +785,13 @@ class ResourceDemandScheduler(IResourceScheduler):
                 )
                 if node:
                     nodes.append(node)
+                    if (
+                        req.ippr_statuses
+                        and instance.cloud_instance_id in req.ippr_statuses
+                    ):
+                        node.ippr_status = req.ippr_statuses[instance.cloud_instance_id]
+                    if req.ippr_capacities and node.node_type in req.ippr_capacities:
+                        node.ippr_capacity = req.ippr_capacities[node.node_type]
 
             return cls(
                 nodes=nodes,
@@ -860,7 +864,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                     continue
                 for key, value in node.total_resources.items():
                     cluster_resources[key] += value
-
             return cluster_resources
 
         def get_idle_timeout_s(self) -> Optional[float]:
@@ -886,19 +889,20 @@ class ResourceDemandScheduler(IResourceScheduler):
         def get_node_type_configs(self) -> Dict[NodeType, NodeTypeConfig]:
             return self._node_type_configs
 
-        def get_ippr_capacities(self) -> Dict[str, Dict[str, float]]:
-            return self._ippr_capacities or {}
-
         def __str__(self) -> str:
             return "ScheduleContext({} nodes, node_type_available={})".format(
                 len(self._nodes), dict(self._node_type_available)
             )
 
-        def get_scale_requests(self) -> List[IPPRStatus]:
+        def get_ippr_capacities(self) -> Dict[NodeType, Dict[str, float]]:
+            return self._ippr_capacities or {}
+
+        def get_ippr_requests(self) -> List[IPPRStatus]:
             return [
                 node.ippr_status
                 for node in self._nodes
                 if node.ippr_status is not None
+                and node.ippr_status.raylet_id
                 and node.ippr_status.resized_status == "new"
             ]
 
@@ -987,7 +991,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
             to_launch=ctx.get_launch_requests(),
-            to_scale=ctx.get_scale_requests(),
+            to_ippr=ctx.get_ippr_requests(),
             to_terminate=ctx.get_terminate_requests(),
         )
 
@@ -1475,7 +1479,6 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
-        ippr_capacities = ctx.get_ippr_capacities()
 
         # A list of nodes that are either:
         #   1. existing nodes in the cluster. or
@@ -1537,25 +1540,23 @@ class ResourceDemandScheduler(IResourceScheduler):
                             "memory": node.ippr_status.desired_memory,
                         }
                     )
-            else:
-                capacity = ippr_capacities.get(node.node_type)
-                if capacity is not None:
-                    node.update_total_resources(
-                        {
-                            "CPU": float(
-                                max(
-                                    capacity["CPU"],
-                                    node.total_resources["CPU"],
-                                )
-                            ),
-                            "memory": float(
-                                max(
-                                    capacity["memory"],
-                                    node.total_resources["memory"],
-                                )
-                            ),
-                        }
-                    )
+            elif node.ippr_capacity is not None:
+                node.update_total_resources(
+                    {
+                        "CPU": float(
+                            max(
+                                node.ippr_capacity["CPU"],
+                                node.total_resources["CPU"],
+                            )
+                        ),
+                        "memory": float(
+                            max(
+                                node.ippr_capacity["memory"],
+                                node.total_resources["memory"],
+                            )
+                        ),
+                    }
+                )
 
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
@@ -1626,20 +1627,21 @@ class ResourceDemandScheduler(IResourceScheduler):
             for node_type, num_available in node_type_available.items()
             if num_available > 0
         ]
+        ippr_capacities = ctx.get_ippr_capacities()
         for node in node_pools:
-            capacity = ippr_capacities.get(node.node_type)
-            if capacity is not None:
+            ippr_capacity = ippr_capacities.get(node.node_type)
+            if ippr_capacity is not None:
                 node.update_total_resources(
                     {
                         "CPU": float(
                             max(
-                                capacity["CPU"],
+                                ippr_capacity["CPU"],
                                 node.total_resources["CPU"],
                             )
                         ),
                         "memory": float(
                             max(
-                                capacity["memory"],
+                                ippr_capacity["memory"],
                                 node.total_resources["memory"],
                             )
                         ),

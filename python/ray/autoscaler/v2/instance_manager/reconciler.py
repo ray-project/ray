@@ -283,7 +283,6 @@ class Reconciler:
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
-            non_terminated_cloud_instances=non_terminated_cloud_instances,
             cloud_provider=cloud_provider,
         )
 
@@ -1070,7 +1069,6 @@ class Reconciler:
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider: ICloudInstanceProvider,
     ) -> None:
         """
@@ -1103,18 +1101,15 @@ class Reconciler:
 
         for im_instance in im_instances:
             ray_node = ray_nodes_by_id.get(im_instance.node_id)
-            ippr_status = None
-            cloud_instance_id = im_instance.cloud_instance_id or None
-            if cloud_instance_id:
-                cloud_instance = non_terminated_cloud_instances.get(cloud_instance_id)
-                if cloud_instance:
-                    ippr_status = cloud_instance.ippr_status
             autoscaler_instances.append(
                 AutoscalerInstance(
                     ray_node=ray_node,
                     im_instance=im_instance,
-                    cloud_instance_id=cloud_instance_id,
-                    ippr_status=ippr_status,
+                    cloud_instance_id=(
+                        im_instance.cloud_instance_id
+                        if im_instance.cloud_instance_id
+                        else None
+                    ),
                 )
             )
 
@@ -1135,6 +1130,7 @@ class Reconciler:
 
         if isinstance(cloud_provider, KubeRayProvider):
             sched_request.ippr_capacities = cloud_provider.get_ippr_capacities()
+            sched_request.ippr_statuses = cloud_provider.get_ippr_statuses()
 
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
@@ -1204,7 +1200,7 @@ class Reconciler:
                 )
 
         if isinstance(cloud_provider, KubeRayProvider):
-            cloud_provider.ippr_resize(reply.to_scale)
+            cloud_provider.do_ippr_requests(reply.to_ippr)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 

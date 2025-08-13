@@ -263,8 +263,6 @@ class AutoscalerInstance:
     # REQUESTED).
     ray_node: Optional[NodeState] = None
 
-    ippr_status: Optional[IPPRStatus] = None
-
     # The instance manager instance state. It would be None when the ray_node is not
     # None.
     # It could be None iff:
