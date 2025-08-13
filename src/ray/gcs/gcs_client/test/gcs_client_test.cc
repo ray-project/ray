@@ -371,13 +371,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resources;
   }
 
-  bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
-    std::promise<bool> promise;
-    gcs_client_->Errors().AsyncReportJobError(
-        *error_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool SubscribeToWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
@@ -652,13 +645,6 @@ TEST_P(GcsClientTest, TestWorkerInfo) {
   // Report a worker failure to GCS when this worker is actually exist.
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitForExpectedCount(worker_failure_count, 2);
-}
-
-TEST_P(GcsClientTest, TestErrorInfo) {
-  // Report a job error to GCS.
-  JobID job_id = JobID::FromInt(1);
-  auto error_table_data = Mocker::GenErrorTableData(job_id);
-  ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
