@@ -462,6 +462,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         return self._app.control.ping()
 
 
+@PublicAPI(stability="alpha")
 def get_task_adapter(config: TaskProcessorConfig) -> TaskProcessorAdapter:
     """
     Factory function to instantiate the appropriate TaskProcessorAdapter
