@@ -217,7 +217,7 @@ def test_prometheus_physical_stats_record(
 ):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
+    addr = addresses["node_ip_address"]
     prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
@@ -284,7 +284,7 @@ def test_prometheus_physical_stats_record(
 def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
+    addr = addresses["node_ip_address"]
     prom_addresses = [build_address(addr, metrics_export_port)]
 
     @ray.remote

@@ -1315,7 +1315,7 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     await asyncio.gather(*tasks)
 
     # Fetch the metrics from the dashboard.
-    addr = ray_context["raylet_ip_address"]
+    addr = ray_context["node_ip_address"]
     prom_addresses = [build_address(addr, dashboard_consts.DASHBOARD_METRIC_PORT)]
 
     def check_lag_metrics():

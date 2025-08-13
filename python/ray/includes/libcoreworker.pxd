@@ -379,7 +379,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool interactive
         c_string node_ip_address
         int node_manager_port
-        c_string raylet_ip_address
         c_string driver_name
         (CRayStatus(
             const CAddress &caller_address,

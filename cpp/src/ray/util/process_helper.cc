@@ -150,7 +150,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
-  options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
