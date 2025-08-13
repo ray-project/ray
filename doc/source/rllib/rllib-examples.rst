@@ -177,6 +177,11 @@ Curriculum learning
    This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
    ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
 
+- `Curriculum learning for Atari Pong <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/pong_curriculum_learning.py>`__:
+   Demonstrates curriculum learning for Atari Pong using the `frameskip` to increase difficulty of the task.
+   This approach enables gradual learning, allowing agents to master slower reactions (lower `frameskip`) before progressing to more faster ones (higher `frameskip`).
+   Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
 
 Debugging
 +++++++++
