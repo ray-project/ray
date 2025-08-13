@@ -1095,6 +1095,57 @@ py_test(
 #    args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1"]
 # )
 
+# IQL
+# Pendulum-v1 (enormous)
+py_test(
+    name = "learning_tests_pendulum_iql",
+    size = "large",
+    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=32",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    main = "tuned_examples/iql/pendulum_iql.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_continuous",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+# GPU training.
+py_test(
+    name = "learning_tests_pendulum_iql_gpu",
+    size = "large",
+    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=32",
+        "--num-gpus-per-learner=1",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    main = "tuned_examples/iql/pendulum_iql.py",
+    tags = [
+        "exclusive",
+        "gpu",
+        "learning_tests",
+        "learning_tests_continuous",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # MARWIL
 # CartPole
 py_test(
