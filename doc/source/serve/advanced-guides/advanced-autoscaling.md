@@ -146,13 +146,16 @@ application to be less sensitive to drops in traffic and scale down more
 conservatively, you can decrease `downscaling_factor` to slow down the pace of
 downscaling.
 
-* **metrics_interval_s [default_value=10]**: This controls how often each
+* **metrics_interval_s [default_value=10]* (DEPRECATED)*: This controls how often each
 replica sends reports on current ongoing requests to the autoscaler. Note that
 the autoscaler can't make new decisions if it doesn't receive updated metrics,
 so you most likely want to set `metrics_interval_s` to a value that is less than
 or equal to the upscale and downscale delay values. For instance, if you set
 `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only
-upscales roughly every 10 seconds.
+upscales roughly every 10 seconds. This attribute has been deprecated and is now
+controlled by the environment variables `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S`
+and `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` for replica and handle
+autoscaling metrics, respectively.
 
 * **look_back_period_s [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
@@ -172,6 +175,7 @@ build some intuition about multi-model autoscaling. Assume these deployments:
 * `Driver`: A driver deployment that fans out to the `HeavyLoad` and `LightLoad`
 deployments and aggregates the two outputs.
 
+In all cases `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` has been set to `2`.
 
 ### Attempt 1: One `Driver` replica
 
@@ -205,7 +209,6 @@ downstream deployments, allocating one fixed `Driver` replica is reasonable.
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -225,7 +228,6 @@ downstream deployments, allocating one fixed `Driver` replica is reasonable.
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -297,7 +299,6 @@ are as follows:
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -317,7 +318,6 @@ are as follows:
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -337,7 +337,6 @@ are as follows:
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 

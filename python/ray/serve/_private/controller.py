@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import time
+from collections.abc import Sequence
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
@@ -11,9 +12,11 @@ from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
-from ray.serve._private.autoscaling_state import AutoscalingStateManager
+from ray.serve._private.autoscaling_state import (
+    AutoscalingStateManager,
+    HandleMetricReport,
+)
 from ray.serve._private.common import (
-    DeploymentHandleSource,
     DeploymentID,
     NodeId,
     RequestProtocol,
@@ -269,29 +272,19 @@ class ServeController:
             replica_id, window_avg, send_timestamp
         )
 
-    def record_handle_metrics(
-        self,
-        deployment_id: str,
-        handle_id: str,
-        actor_id: Optional[str],
-        handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[str, float],
-        send_timestamp: float,
-    ):
+    def record_handle_metrics(self, report: HandleMetricReport) -> None:
         logger.debug(
-            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
-            f"{queued_requests} queued requests and {running_requests} running requests"
+            f"Received metrics from handle {report.handle_id} "
+            f"for deployment {report.deployment_id}: "
+            f"{report.queued_requests} queued requests "
+            f"and {report.running_requests} running requests"
         )
-        self.autoscaling_state_manager.record_request_metrics_for_handle(
-            deployment_id=deployment_id,
-            handle_id=handle_id,
-            actor_id=actor_id,
-            handle_source=handle_source,
-            queued_requests=queued_requests,
-            running_requests=running_requests,
-            send_timestamp=send_timestamp,
-        )
+        self.autoscaling_state_manager.record_request_metrics_for_handle(report)
+
+    def bulk_record_handle_metrics(self, reports: Sequence[HandleMetricReport]) -> None:
+        logger.debug(f"Received {len(reports)} bulk handle metrics reports")
+        for report in reports:
+            self.record_handle_metrics(report)
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()
