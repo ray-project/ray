@@ -3973,6 +3973,26 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/curriculum/pong_curriculum_learning",
+    size = "large",
+    srcs = ["examples/curriculum/pong_curriculum_learning.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=10",
+        "--num-cpus=11",
+        "--num-envs-per-env-runner=5",
+        "--stop-iters=20",
+        "--stop-reward=-21.0",
+    ],
+    main = "examples/curriculum/pong_curriculum_learning.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: debugging/
 # ....................................
 py_test(
