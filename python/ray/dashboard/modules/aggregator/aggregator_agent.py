@@ -2,16 +2,14 @@ import asyncio
 import signal
 import time
 import os
-import json
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
+from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 from urllib3.util import Retry
 from requests import Session
 from requests.adapters import HTTPAdapter
-
-from google.protobuf.json_format import MessageToJson
 
 try:
     import prometheus_client
@@ -29,6 +27,10 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2_grpc,
     events_base_event_pb2,
 )
+from ray._private.gcs_utils import create_gcs_channel
+from ray.core.generated import gcs_service_pb2_grpc
+
+from .ray_events_publisher import GCSPublisher, ExternalPublisher, NoopPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,13 @@ EVENT_SEND_ADDR = os.environ.get(
 )
 # Port of the external service to send events
 EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+# Timeout for the external service to send events
+EVENT_PUBLISH_TIMEOUT_SECONDS = ray_constants.env_integer(
+    f"{env_var_prefix}_EVENT_PUBLISH_TIMEOUT_SECONDS", 5
+)
+PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
+)
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -84,6 +93,28 @@ METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
 DEFAULT_EXPOSABLE_EVENT_TYPES = "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT"
 EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
+)
+# Destination publisher queues and retry controls
+PUBLISH_DEST_QUEUE_MAX_SIZE = ray_constants.env_integer(
+    f"{env_var_prefix}_PUBLISH_DEST_QUEUE_MAX_SIZE", 100
+)
+PUBLISH_MAX_RETRIES = ray_constants.env_integer(
+    f"{env_var_prefix}_PUBLISH_MAX_RETRIES", 5
+)
+PUBLISH_INITIAL_BACKOFF_SECONDS = ray_constants.env_float(
+    f"{env_var_prefix}_PUBLISH_INITIAL_BACKOFF_SECONDS", 0.01
+)
+PUBLISH_MAX_BACKOFF_SECONDS = ray_constants.env_float(
+    f"{env_var_prefix}_PUBLISH_MAX_BACKOFF_SECONDS", 5.0
+)
+PUBLISH_JITTER_RATIO = ray_constants.env_float(
+    f"{env_var_prefix}_PUBLISH_JITTER_RATIO", 0.1
+)
+GCS_PUBLISHER_NUM_WORKERS = ray_constants.env_integer(
+    f"{env_var_prefix}_GCS_PUBLISHER_NUM_WORKERS", 1
+)
+EXTERNAL_PUBLISHER_NUM_WORKERS = ray_constants.env_integer(
+    f"{env_var_prefix}_EXTERNAL_PUBLISHER_NUM_WORKERS", 1
 )
 
 # Metrics
@@ -123,6 +154,42 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
+    events_published_to_gcs = Counter(
+        f"{metrics_prefix}_events_published_to_gcs",
+        "Total number of events successfully published to GCS.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    metadata_dropped_at_event_aggregator = Counter(
+        f"{metrics_prefix}_metadata_dropped_at_event_aggregator",
+        "Total number of task metadata entries dropped at the event aggregator due to buffer being full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_failed_to_publish_to_gcs = Counter(
+        f"{metrics_prefix}_events_failed_to_publish_to_gcs",
+        "Total number of events failed to publish to GCS after retries.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_failed_to_publish_to_external = Counter(
+        f"{metrics_prefix}_events_failed_to_publish_to_external",
+        "Total number of events failed to publish to the external service after retries.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_dropped_in_gcs_publish_queue = Counter(
+        f"{metrics_prefix}_events_dropped_in_gcs_publish_queue",
+        "Total number of events dropped due to the GCS publish queue being full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_dropped_in_external_publish_queue = Counter(
+        f"{metrics_prefix}_events_dropped_in_external_publish_queue",
+        "Total number of events dropped due to the external publish queue being full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
 
 
 class AggregatorAgent(
@@ -131,7 +198,7 @@ class AggregatorAgent(
 ):
     """
     AggregatorAgent is a dashboard agent module that collects events sent with
-    gRPC from other components, buffers them, and periodically sends them to an
+    gRPC from other components, buffers them, and periodically sends them to GCS and an
     external service with HTTP POST requests for further processing or storage
     """
 
@@ -140,9 +207,14 @@ class AggregatorAgent(
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
         self._event_buffer = queue.Queue(maxsize=MAX_EVENT_BUFFER_SIZE)
+        self._task_metadata_buffer = TaskMetadataBuffer()
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
+        )
+        self._gcs_channel = create_gcs_channel(self.gcs_address)
+        self._gcs_event_stub = gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
+            self._gcs_channel
         )
 
         self._http_session = Session()
@@ -162,8 +234,6 @@ class AggregatorAgent(
         self._events_received_since_last_metrics_update = 0
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-        self._events_published_since_last_metrics_update = 0
-        self._events_filtered_out_since_last_metrics_update = 0
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -177,6 +247,38 @@ class AggregatorAgent(
             for event_type in EXPOSABLE_EVENT_TYPES.split(",")
             if event_type.strip()
         }
+
+        # Publishers
+        if PUBLISH_EVENTS_TO_GCS:
+            self._gcs_publisher = GCSPublisher(
+                gcs_event_stub=self._gcs_event_stub,
+                timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
+                queue_max_size=PUBLISH_DEST_QUEUE_MAX_SIZE,
+                num_workers=GCS_PUBLISHER_NUM_WORKERS,
+                stop_event=self._stop_event,
+                max_enqueue_interval_seconds=MAX_BUFFER_SEND_INTERVAL_SECONDS,
+                max_retries=PUBLISH_MAX_RETRIES,
+                initial_backoff=PUBLISH_INITIAL_BACKOFF_SECONDS,
+                max_backoff=PUBLISH_MAX_BACKOFF_SECONDS,
+                jitter_ratio=PUBLISH_JITTER_RATIO,
+            )
+        else:
+            self._gcs_publisher = NoopPublisher()
+        endpoint = f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}"
+        self._external_publisher = ExternalPublisher(
+            http_session=self._http_session,
+            endpoint=endpoint,
+            events_filter_fn=self._can_expose_event,
+            timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
+            queue_max_size=PUBLISH_DEST_QUEUE_MAX_SIZE,
+            num_workers=EXTERNAL_PUBLISHER_NUM_WORKERS,
+            stop_event=self._stop_event,
+            max_enqueue_interval_seconds=MAX_BUFFER_SEND_INTERVAL_SECONDS,
+            max_retries=PUBLISH_MAX_RETRIES,
+            initial_backoff=PUBLISH_INITIAL_BACKOFF_SECONDS,
+            max_backoff=PUBLISH_MAX_BACKOFF_SECONDS,
+            jitter_ratio=PUBLISH_JITTER_RATIO,
+        )
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -192,10 +294,15 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
-        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
-        # metadata (e.g. dropped task attempts) to help with event processing at the
-        # downstream
         events_data = request.events_data
+        task_events_metadata = (
+            events_data.task_events_metadata
+            if events_data.HasField("task_events_metadata")
+            else None
+        )
+
+        self._task_metadata_buffer.merge(task_events_metadata)
+
         for event in events_data.events:
             with self._lock:
                 self._events_received_since_last_metrics_update += 1
@@ -231,51 +338,53 @@ class AggregatorAgent(
             in self._exposable_event_types
         )
 
-    def _send_events_to_external_service(self, event_batch) -> None:
-        """
-        Sends a batch of events to the external service via HTTP POST request
-        """
-        if not event_batch:
-            return
+    # TODO: This is a temporary solution to drain the event buffer to publishers when stopping the agent.
+    # We need to find a better way to do this.
+    def _drain_event_buffer_to_publishers(self) -> None:
+        """Drain remaining events from the internal buffer and enqueue to publishers."""
+        draining_batch = []
+        while True:
+            try:
+                event_proto = self._event_buffer.get(block=False)
+                draining_batch.append(event_proto)
+            except Exception:
+                break
 
-        filtered_event_batch = [
-            event for event in event_batch if self._can_expose_event(event)
-        ]
-        if not filtered_event_batch:
-            # All events were filtered out, update metrics and return to avoid an empty POST.
-            with self._lock:
-                self._events_filtered_out_since_last_metrics_update += len(event_batch)
-            event_batch.clear()
-            return
-
-        # Convert protobuf objects to JSON dictionaries for HTTP POST
-        filtered_event_batch_json = [
-            json.loads(MessageToJson(event)) for event in filtered_event_batch
-        ]
-
-        try:
-            response = self._http_session.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=filtered_event_batch_json
+        # Drain task metadata
+        draining_task_metadata_batch = (
+            events_event_aggregator_service_pb2.TaskEventsMetadata()
+        )
+        metadata_batch = self._task_metadata_buffer.get()
+        while metadata_batch and len(metadata_batch.dropped_task_attempts) > 0:
+            draining_task_metadata_batch.dropped_task_attempts.extend(
+                metadata_batch.dropped_task_attempts
             )
-            response.raise_for_status()
-            with self._lock:
-                self._events_published_since_last_metrics_update += len(
-                    filtered_event_batch
-                )
-                self._events_filtered_out_since_last_metrics_update += len(
-                    event_batch
-                ) - len(filtered_event_batch)
-            event_batch.clear()
-        except Exception as e:
-            logger.error("Failed to send events to external service. Error: %s", e)
+            metadata_batch = self._task_metadata_buffer.get()
+
+        if draining_batch or draining_task_metadata_batch:
+            frozen_batch = tuple(draining_batch)
+            self._gcs_publisher.enqueue((frozen_batch, draining_task_metadata_batch))
+            if draining_batch:
+                self._external_publisher.enqueue(frozen_batch)
 
     def _publish_events(self) -> None:
         """
-        Continuously publishes events from the event buffer to the external service
+        Continuously builds batches from the event buffer and enqueues them to publishers.
+        If both destination queues are full, it waits briefly and retries to avoid
+        building more batches and growing memory.
         """
         event_batch = []
-
         while True:
+            # If both destination queues are full, wait a bit before pulling from buffer
+            if (
+                not self._gcs_publisher.has_capacity()
+                and not self._external_publisher.has_capacity()
+            ):
+                should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
+                if should_stop:
+                    break
+                continue
+
             while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
                 try:
                     event_proto = self._event_buffer.get(block=False)
@@ -284,16 +393,21 @@ class AggregatorAgent(
                     break
 
             if event_batch:
-                # Send the batch of events to the external service.
-                # If failed, event_batch will be reused in the next iteration.
-                # Retry sending with other events in the next iteration.
-                self._send_events_to_external_service(event_batch)
+                task_events_metadata = self._task_metadata_buffer.get()
+                frozen_batch = tuple(event_batch)
+                # Enqueue; each publisher handles buffer overflow themselves
+                self._gcs_publisher.enqueue((frozen_batch, task_events_metadata))
+                self._external_publisher.enqueue(frozen_batch)
+
+                # Reset local batch
+                event_batch.clear()
             else:
                 should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
                 if should_stop:
-                    # Send any remaining events before stopping.
-                    self._send_events_to_external_service(event_batch)
-                    return
+                    break
+
+        # On exit (stop), drain remaining buffer into publishers
+        self._drain_event_buffer_to_publishers()
 
     def _update_metrics(self) -> None:
         """
@@ -301,6 +415,10 @@ class AggregatorAgent(
         """
         if not prometheus_client:
             return
+
+        # Pull publisher stats without holding the aggregator lock to avoid blocking
+        gcs_stats = self._gcs_publisher.get_and_reset_stats()
+        external_stats = self._external_publisher.get_and_reset_stats()
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
@@ -310,14 +428,23 @@ class AggregatorAgent(
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
-            _events_published = self._events_published_since_last_metrics_update
-            _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
+            # Publisher stats
+            _events_published_to_gcs = gcs_stats.get("published", 0)
+            _events_failed_to_publish_to_gcs = gcs_stats.get("failed", 0)
+            _events_dropped_in_gcs_publish_queue = gcs_stats.get("queue_dropped", 0)
+
+            _events_published = external_stats.get("published", 0)
+            _events_filtered_out = external_stats.get("filtered_out", 0)
+            _events_failed_to_publish_to_external = external_stats.get("failed", 0)
+            _events_dropped_in_external_publish_queue = external_stats.get(
+                "queue_dropped", 0
+            )
+
+            # Now reset aggregator counters
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-            self._events_published_since_last_metrics_update = 0
-            self._events_filtered_out_since_last_metrics_update = 0
 
         labels = {
             "ip": self._ip,
@@ -335,6 +462,22 @@ class AggregatorAgent(
         )
         events_published.labels(**labels).inc(_events_published)
         events_filtered_out.labels(**labels).inc(_events_filtered_out)
+        events_published_to_gcs.labels(**labels).inc(_events_published_to_gcs)
+        events_failed_to_publish_to_gcs.labels(**labels).inc(
+            _events_failed_to_publish_to_gcs
+        )
+        events_failed_to_publish_to_external.labels(**labels).inc(
+            _events_failed_to_publish_to_external
+        )
+        events_dropped_in_gcs_publish_queue.labels(**labels).inc(
+            _events_dropped_in_gcs_publish_queue
+        )
+        events_dropped_in_external_publish_queue.labels(**labels).inc(
+            _events_dropped_in_external_publish_queue
+        )
+        metadata_dropped_at_event_aggregator.labels(**labels).inc(
+            self._task_metadata_buffer.get_and_reset_dropped_metadata_count()
+        )
 
     def _check_main_thread_liveness(self) -> None:
         """
@@ -366,17 +509,14 @@ class AggregatorAgent(
             self._cleanup_finished_event.wait()
             return
 
-        # Send any remaining events in the buffer
-        event_batch = []
-        while True:
-            try:
-                event_proto = self._event_buffer.get(block=False)
-                event_batch.append(event_proto)
-            except:  # noqa: E722
-                break
+        # drain remaining events in buffer
+        self._drain_event_buffer_to_publishers()
 
-        self._send_events_to_external_service(event_batch)
+        # Join publisher worker threads
+        self._gcs_publisher.join()
+        self._external_publisher.join()
 
+        # Join producer threads
         for thread in self._publisher_threads:
             thread.join()
 
@@ -411,6 +551,10 @@ class AggregatorAgent(
             )
             self._publisher_threads.append(thread)
             thread.start()
+
+        # Start destination publish worker threads
+        self._gcs_publisher.start()
+        self._external_publisher.start()
 
         while True:
             self._update_metrics()
