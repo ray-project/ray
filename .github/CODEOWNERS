@@ -41,6 +41,7 @@
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
 /doc/source/data/ @ray-project/ray-data
+/python/ray/dashboard/modules/metrics/dashboards/data_dashboard_panels.py @ray-project/ray-data
 
 # Ray workflows.
 /python/ray/workflow/ @ray-project/ray-core
@@ -107,3 +108,5 @@
 /.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci
+
+/.gemini/ @edoakes @aslonnie

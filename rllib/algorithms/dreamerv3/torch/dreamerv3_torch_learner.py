@@ -161,12 +161,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Do actor and critic's grad computations first, such that after those two,
         # we can zero out the gradients of the world model again (they will have values
         # in them from the actor/critic backwards).
-        for component in ["actor", "critic"]:
+        for component in ["actor", "critic", "world_model"]:
             optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
             optim.zero_grad(set_to_none=True)
             # Do the backward pass
             loss = self._temp_losses.pop(component.upper())
-            loss.backward(retain_graph=True)
+            loss.backward(retain_graph=component in ["actor", "critic"])
             optim_grads = {
                 pid: p.grad
                 for pid, p in self.filter_param_dict_for_optimizer(
@@ -176,23 +176,6 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             for ref, grad in optim_grads.items():
                 assert ref not in grads
                 grads[ref] = grad
-
-        # Now do the world model.
-        component = "world_model"
-        optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
-        optim.zero_grad(set_to_none=True)
-        # Do the backward pass
-        loss = self._temp_losses.pop(component.upper())
-        loss.backward()
-        wm_grads = {
-            pid: p.grad
-            for pid, p in self.filter_param_dict_for_optimizer(
-                self._params, optim
-            ).items()
-        }
-        for ref, grad in wm_grads.items():
-            assert ref not in grads
-            grads[ref] = grad
 
         return grads
 
@@ -707,7 +690,13 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         )
 
         # Get (B x T x probs) tensor from return distributions.
-        value_symlog_logits_HxB = dream_data["values_symlog_dreamed_logits_t0_to_HxBxT"]
+        # Use the value function outputs that don't graph-trace back through the
+        # world model. The other corresponding value function outputs
+        # which do trace back through the world model are only used for cont. actions
+        # for the actor loss (to compute the scaled value targets).
+        value_symlog_logits_HxB = dream_data[
+            "values_symlog_dreamed_logits_t0_to_HxBxT_wm_detached"
+        ]
         # Unfold time rank and cut last time index to match value targets.
         value_symlog_logits_t0_to_Hm1_B = value_symlog_logits_HxB.view(
             [H, B, value_symlog_logits_HxB.shape[-1]]
@@ -856,7 +845,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         for t in reversed(range(discount.shape[0])):
             Rs.append(intermediates[t] + discount[t] * config.gae_lambda * Rs[-1])
 
-        # Reverse along time axis and cut the last entry (value estimate at very end
+        # Reverse time axis and cut the last entry (value estimate at very end
         # cannot be learnt from as it's the same as the ... well ... value estimate).
         targets_t0toHm1_BxT = torch.stack(list(reversed(Rs))[:-1], dim=0)
         # targets.shape=[t0 to H-1,BxT]

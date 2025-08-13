@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -27,6 +28,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -177,7 +179,8 @@ class TaskManager : public TaskManagerInterface {
       int64_t max_lineage_bytes,
       worker::TaskEventBuffer &task_event_buffer,
       std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
-          client_factory)
+          client_factory,
+      std::shared_ptr<gcs::GcsClient> gcs_client)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -186,7 +189,8 @@ class TaskManager : public TaskManagerInterface {
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
-        get_actor_rpc_client_callback_(std::move(client_factory)) {
+        get_actor_rpc_client_callback_(std::move(client_factory)),
+        gcs_client_(std::move(gcs_client)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -608,7 +612,7 @@ class TaskManager : public TaskManagerInterface {
   /// directly by value.
   bool HandleTaskReturn(const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
+                        const NodeID &worker_node_id,
                         bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
@@ -788,6 +792,8 @@ class TaskManager : public TaskManagerInterface {
   std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(
       const ActorID &actor_id)>
       get_actor_rpc_client_callback_;
+
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   friend class TaskManagerTest;
 };
