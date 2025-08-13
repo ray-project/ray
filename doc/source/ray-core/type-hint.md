@@ -85,6 +85,6 @@ a: ObjectRef[int] = actor.calculate.remote(1, 2)
 print(ray.get(a))
 ```
 
-!!! note
-
-    We would love to make the typing of remote methods work without `@ray.method` decorator. If any community member has an idea, we welcome PRs.
+:::{note}
+We would love to make the typing of remote methods work without `@ray.method` decorator. If any community member has an idea, we welcome PRs.
+:::
