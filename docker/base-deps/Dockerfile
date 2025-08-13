@@ -10,7 +10,8 @@ ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
-ENV PATH "/home/ray/anaconda3/bin:$PATH"
+ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin" 
+ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
 
@@ -54,7 +55,7 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
-
+USER root
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 
 SHELL ["/bin/bash", "-c"]
@@ -127,9 +128,6 @@ sudo apt-get autoremove -y cmake zlib1g-dev
 # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
 if [[ ! -d /usr/local/cuda ]]; then
     sudo apt-get autoremove -y g++
-else
-    echo 'export PATH=$PATH:/usr/local/nvidia/bin' >> $HOME/.bashrc
-    echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/nvidia/lib64' >> $HOME/.bashrc
 fi
 
 sudo rm -rf /var/lib/apt/lists/*
