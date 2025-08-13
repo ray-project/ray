@@ -14,20 +14,19 @@
 
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
+#include <unordered_map>
+
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
 
-void GcsRayEventConverter::ConvertToTaskEventDataRequest(
-    rpc::events::AddEventsRequest &&request, rpc::AddTaskEventDataRequest &data) {
-  auto *task_event_data = data.mutable_data();
+void GcsRayEventConverter::ConvertToTaskEventDataRequests(
+    rpc::events::AddEventsRequest &&request,
+    std::vector<rpc::AddTaskEventDataRequest> &grouped_requests) {
+  std::unordered_map<std::string, size_t> job_id_to_index;
 
-  // Move dropped task attempts from the metadata
-  *task_event_data->mutable_dropped_task_attempts() =
-      std::move(request.events_data().task_events_metadata().dropped_task_attempts());
-
-  // Move RayEvents to TaskEvents
+  // convert RayEvents to TaskEvents and group by job id.
   for (auto &event : *request.mutable_events_data()->mutable_events()) {
     rpc::TaskEvents task_event;
     switch (event.event_type()) {
@@ -43,10 +42,33 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequest(
       // TODO(can-anyscale): Handle other event types
       break;
     }
-    *task_event_data->add_events_by_task() = std::move(task_event);
+
+    const std::string job_id_key = task_event.job_id();
+    auto it = job_id_to_index.find(job_id_key);
+    if (it == job_id_to_index.end()) {
+      size_t idx = grouped_requests.size();
+      grouped_requests.emplace_back();
+      auto *data = grouped_requests.back().mutable_data();
+      data->set_job_id(job_id_key);
+      data->add_events_by_task()->Swap(&task_event);
+      job_id_to_index.emplace(job_id_key, idx);
+    } else {
+      auto *data = grouped_requests[it->second].mutable_data();
+      data->add_events_by_task()->Swap(&task_event);
+    }
   }
-  if (task_event_data->events_by_task_size() > 0) {
-    task_event_data->set_job_id(task_event_data->events_by_task(0).job_id());
+
+  // Move dropped task attempts from the metadata into the first request only to avoid
+  // double counting. These are aggregated by job id (derived from task id) in the
+  // receiver so they can all be reported in the same request.
+  auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
+  if (metadata->dropped_task_attempts_size() > 0) {
+    if (grouped_requests.empty()) {
+      grouped_requests.emplace_back();
+    }
+    auto *first_task_event_data = grouped_requests.front().mutable_data();
+    first_task_event_data->mutable_dropped_task_attempts()->Swap(
+        metadata->mutable_dropped_task_attempts());
   }
 }
 
@@ -62,7 +84,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
   task_info->set_language(event.language());
   task_info->set_task_id(event.task_id());
   task_info->set_job_id(event.job_id());
-  *task_info->mutable_runtime_env_info() = std::move(event.runtime_env_info());
+  task_info->mutable_runtime_env_info()->Swap(event.mutable_runtime_env_info());
   task_info->set_parent_task_id(event.parent_task_id());
   if (!event.placement_group_id().empty()) {
     task_info->set_placement_group_id(event.placement_group_id());
@@ -82,7 +104,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
     task_info->set_func_or_class_name(
         function_descriptor.java_function_descriptor().function_name());
   }
-  *task_info->mutable_required_resources() = std::move(event.required_resources());
+  task_info->mutable_required_resources()->swap(*event.mutable_required_resources());
 }
 
 void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event,

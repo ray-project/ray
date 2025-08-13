@@ -531,6 +531,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHa
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
+  FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventsMultiJobGrouping);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
