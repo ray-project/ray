@@ -29,7 +29,7 @@ from ci.raydepsets.tests.utils import (
     save_packages_to_file,
 )
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
