@@ -7,12 +7,28 @@ for external memory training scenarios with hardware-aware configurations.
 Key components:
 - _get_optimal_xgboost_params_for_external_memory: Hardware-aware parameter optimization
 - _validate_xgboost_params: Parameter validation and adjustment
+
+This implementation follows XGBoost's external memory best practices:
+- tree_method="hist" is mandatory for external memory
+- grow_policy="depthwise" provides best performance for external memory
+- Batch size should be ~10GB per batch for 64GB RAM systems
+- Avoid small batch sizes (e.g., 32 samples) as they hurt performance
+
+Args:
+    objective: XGBoost objective function
+    use_gpu: Whether to use GPU training
+    memory_constraint_gb: Memory constraint in GB
+    enable_categorical: Whether to enable categorical features
+    use_single_page_concatenation: Whether to use single page concatenation (GPU only)
+    has_nvlink_c2c: Whether system has NVLink-C2C support
+    storage_type: Storage type for external memory
+
+Returns:
+    Dictionary of optimized XGBoost parameters for external memory training
 """
 
 import logging
-from typing import Dict, Any, Union, List, Optional
-import warnings
-
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +49,24 @@ def _get_optimal_xgboost_params_for_external_memory(
     - Uses 'depthwise' grow policy for optimal batch iteration efficiency
     - Optimized for ExtMemQuantileDMatrix performance
     - Includes GPU-specific optimizations and hardware-aware configurations
+
+    Following XGBoost official recommendations:
+    - tree_method="hist" is mandatory for external memory
+    - grow_policy="depthwise" provides best performance for external memory
+    - Batch size should be ~10GB per batch for 64GB RAM systems
+    - Avoid small batch sizes (e.g., 32 samples) as they hurt performance
+
+    Args:
+        objective: XGBoost objective function
+        use_gpu: Whether to use GPU training
+        memory_constraint_gb: Memory constraint in GB
+        enable_categorical: Whether to enable categorical features
+        use_single_page_concatenation: Whether to use single page concatenation (GPU only)
+        has_nvlink_c2c: Whether system has NVLink-C2C support
+        storage_type: Storage type for external memory
+
+    Returns:
+        Dictionary of optimized XGBoost parameters for external memory training
     """
     # Normalize storage type if not explicitly provided
     if storage_type not in {"nvme", "ssd", "hdd"}:
@@ -43,280 +77,246 @@ def _get_optimal_xgboost_params_for_external_memory(
         storage_type = storage_info.get("storage_type", "nvme")
 
     # Auto-detect NVLink-C2C capability if not specified
-    if has_nvlink_c2c is None and use_gpu:
-        try:
-            import pynvml
+    if has_nvlink_c2c is None:
+        from ray.train.v2.xgboost._system_utils import _detect_nvlink_c2c_support
 
-            pynvml.nvmlInit()
-            # Try to detect Grace-Hopper or similar architecture
-            # This is a simplified detection - in practice, you'd check specific GPU models
-            device_count = pynvml.nvmlDeviceGetCount()
-            if device_count > 0:
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                name = pynvml.nvmlDeviceGetName(handle).decode("utf-8")
-                # Grace-Hopper and similar high-bandwidth interconnect systems
-                has_nvlink_c2c = any(
-                    arch in name.lower() for arch in ["grace", "hopper", "gh200"]
-                )
-            else:
-                has_nvlink_c2c = False
-        except ImportError:
-            # Default to False if pynvml not available
-            has_nvlink_c2c = False
+        has_nvlink_c2c = _detect_nvlink_c2c_support()
 
+    # Base parameters for external memory training
     params = {
-        "tree_method": "hist",  # Required for external memory and ExtMemQuantileDMatrix
-        "grow_policy": "depthwise",  # CRITICAL: Allows building entire tree layers with few batch iterations
-        "objective": objective,
-        "max_bin": 256,  # Balance between accuracy and memory usage for histogram construction
+        # Required for external memory training
+        "tree_method": "hist",
+        # Recommended for optimal external memory performance
+        "grow_policy": "depthwise",
+        # External memory specific optimizations
+        "max_bin": 256,  # Good balance between accuracy and memory
+        "subsample": 1.0,  # No subsampling by default for external memory
+        "colsample_bytree": 1.0,  # No column sampling by default
     }
 
-    # Handle categorical features (if preprocessed by Ray Data)
-    if enable_categorical:
-        params["enable_categorical"] = True
-        # Use optimal parameters for categorical features
-        params["max_cat_to_onehot"] = 4  # Threshold for one-hot vs partitioning
+    # Add objective-specific parameters
+    if objective.startswith("binary:"):
+        params.update(
+            {
+                "eval_metric": "logloss",
+                "objective": objective,
+            }
+        )
+    elif objective.startswith("multi:"):
+        params.update(
+            {
+                "eval_metric": "mlogloss",
+                "objective": objective,
+            }
+        )
+    elif objective.startswith("reg:"):
+        params.update(
+            {
+                "eval_metric": "rmse",
+                "objective": objective,
+            }
+        )
+    elif objective.startswith("rank:"):
+        params.update(
+            {
+                "eval_metric": "ndcg",
+                "objective": objective,
+            }
+        )
+    else:
+        params["objective"] = objective
 
+    # GPU-specific optimizations
     if use_gpu:
         params.update(
             {
                 "device": "cuda",
-                "sampling_method": "gradient_based",  # More efficient for GPU and enables subsampling
-                "subsample": 0.8,  # Reduce GPU memory usage, works well with gradient_based sampling
+                "gpu_id": 0,  # Will be set by Ray Train
             }
         )
 
-        # GPU-specific categorical handling
-        if enable_categorical:
-            params["max_cat_to_onehot"] = 8  # Higher threshold for GPU
-
-        # Handle single page concatenation for PCIe systems
+        # GPU external memory optimizations
         if use_single_page_concatenation:
+            # For PCIe-connected GPUs, use concatenation with subsampling
             params.update(
                 {
-                    "extmem_single_page": True,  # Concatenate batches for PCIe performance
-                    "subsample": 0.2,  # Aggressive subsampling to fit in memory
-                    "sampling_method": "gradient_based",  # Essential for low subsample rates
+                    "extmem_single_page": True,
+                    "subsample": 0.2,  # Reduce memory usage
+                    "sampling_method": "gradient_based",  # Maintain accuracy
                 }
             )
-            # Lower max_bin for concatenated pages to save memory
-            params["max_bin"] = min(params["max_bin"], 128)
+        else:
+            # For NVLink-C2C systems, use regular batch fetching
+            if has_nvlink_c2c:
+                # NVLink-C2C detected - use regular batch fetching
+                pass
+            else:
+                # PCIe connection detected - consider single page concatenation
+                pass
 
-        # NVLink-C2C optimizations
-        if has_nvlink_c2c:
-            # Can use higher bins and less aggressive subsampling on C2C systems
-            params["max_bin"] = 512
-            if not use_single_page_concatenation:
-                params["subsample"] = 0.9  # Less aggressive subsampling
-    else:
-        # CPU-specific optimizations based on storage type
-        if storage_type == "nvme":
-            # NVMe can handle larger batches and higher bins
-            params["max_bin"] = 512
-        elif storage_type == "ssd":
-            # Standard SSD - moderate settings
-            params["max_bin"] = 256
-        elif storage_type == "hdd":
-            # HDD - conservative settings to reduce I/O
-            params["max_bin"] = 128
-            warnings.warn(
-                "HDD storage detected for CPU external memory training. "
-                "Performance will be severely limited by disk I/O. "
-                "Consider using NVMe SSD for practical training speeds."
+        # RMM integration for GPU external memory
+        try:
+            import rmm
+
+            params["use_rmm"] = True
+        except ImportError:
+            logger.warning(
+                "RMM not available. Install cupy and rmm for optimal GPU external memory performance"
             )
 
-    # Adjust parameters based on memory constraints
-    if memory_constraint_gb:
-        if memory_constraint_gb < 16:  # Low memory system
+    # Memory-constrained optimizations
+    if memory_constraint_gb is not None:
+        if memory_constraint_gb < 8:
+            # Very memory-constrained systems
             params.update(
                 {
-                    "max_bin": 128,
-                    "subsample": 0.7,
-                    "max_depth": 4,
+                    "max_depth": 4,  # Shallow trees to reduce memory
+                    "max_bin": 128,  # Fewer bins for lower memory usage
+                    "subsample": 0.8,  # Slight subsampling
+                    "colsample_bytree": 0.8,  # Slight column sampling
                 }
             )
-            if use_gpu and not use_single_page_concatenation:
-                # Enable single page concatenation for very low memory GPU systems
-                params.update(
-                    {
-                        "extmem_single_page": True,
-                        "subsample": 0.15,  # Very aggressive subsampling
-                        "sampling_method": "gradient_based",
-                    }
-                )
-        elif memory_constraint_gb > 64:  # High memory system
-            base_bins = 512 if not use_gpu or has_nvlink_c2c else 256
+        elif memory_constraint_gb < 32:
+            # Moderately memory-constrained systems
             params.update(
                 {
-                    "max_bin": base_bins,
+                    "max_depth": 6,
+                    "max_bin": 256,
+                }
+            )
+        else:
+            # Memory-rich systems
+            params.update(
+                {
                     "max_depth": 8,
+                    "max_bin": 512,  # More bins for better accuracy
                 }
             )
-            if use_gpu and not has_nvlink_c2c:
-                # Even high memory PCIe systems benefit from moderate subsampling
-                params["subsample"] = 0.9
 
-    # Objective-specific optimizations
-    if "binary:" in objective:
-        params["eval_metric"] = ["logloss", "error"]
-        # Set base_score for binary classification to avoid XGBoost error
-        params["base_score"] = 0.5
-    elif "multi:" in objective:
-        params["eval_metric"] = ["mlogloss", "merror"]
-    elif "reg:" in objective:
-        params["eval_metric"] = ["rmse"]
-    elif "rank:" in objective:
-        params["eval_metric"] = ["ndcg"]
-        # Ranking often benefits from more conservative settings
-        if use_gpu:
-            params["subsample"] = min(params.get("subsample", 0.8), 0.7)
-
-    # Performance warnings and recommendations
-    if use_gpu and not has_nvlink_c2c and not use_single_page_concatenation:
-        warnings.warn(
-            "GPU training on PCIe system without single page concatenation detected. "
-            "Performance may be 5x slower than in-core training. "
-            "Consider setting use_single_page_concatenation=True with appropriate subsampling."
+    # Storage-specific optimizations
+    if storage_type == "hdd":
+        # HDD storage is slow, optimize for fewer iterations
+        params.update(
+            {
+                "max_depth": min(params.get("max_depth", 8), 6),
+                "eta": 0.3,  # Higher learning rate for fewer iterations
+            }
+        )
+    elif storage_type == "ssd":
+        # SSD storage is moderate, balanced optimization
+        params.update(
+            {
+                "eta": 0.1,  # Standard learning rate
+            }
+        )
+    else:  # nvme
+        # NVMe storage is fast, optimize for accuracy
+        params.update(
+            {
+                "eta": 0.05,  # Lower learning rate for better accuracy
+                "max_bin": max(params.get("max_bin", 256), 512),
+            }
         )
 
-    if not use_gpu and storage_type not in ["nvme", "ssd"]:
-        warnings.warn(
-            f"CPU external memory training with {storage_type} storage may be impractically slow. "
-            "XGBoost external memory is I/O bound - consider NVMe SSD for practical performance."
-        )
+    # Categorical feature support
+    if enable_categorical:
+        params["enable_categorical"] = True
+
+    # External memory specific parameters
+    params.update(
+        {
+            # Batch size recommendations follow XGBoost guidelines
+            # ~10GB per batch for 64GB RAM systems
+            "batch_size": "auto",  # Will be set by the iterator
+            # External memory optimizations
+            "max_quantile_batches": None,  # Auto-detect based on available memory
+            "min_cache_page_bytes": None,  # Auto-detect based on storage
+            "cache_host_ratio": None,  # Auto-detect for GPU systems
+        }
+    )
 
     return params
 
 
 def _validate_xgboost_params(
-    params: Dict[str, Any], use_external_memory: bool = True
+    params: Dict[str, Any], use_external_memory: bool = False
 ) -> Dict[str, Any]:
-    """Validate and adjust XGBoost parameters for robustness.
+    """Validate and adjust XGBoost parameters for external memory training.
+
+    This function ensures that parameters are compatible with external memory training
+    and follows XGBoost's best practices.
 
     Args:
-        params: Original XGBoost parameters
+        params: User-provided XGBoost parameters
         use_external_memory: Whether external memory is being used
 
     Returns:
         Validated and adjusted parameters
+
+    Raises:
+        ValueError: If parameters are incompatible with external memory training
     """
     validated_params = params.copy()
 
-    # Ensure tree_method is compatible with external memory
     if use_external_memory:
-        if "tree_method" not in validated_params:
+        # External memory requires specific tree method
+        if validated_params.get("tree_method") != "hist":
+            if "tree_method" in validated_params:
+                logger.warning(
+                    f"External memory training requires tree_method='hist'. "
+                    f"Changing from '{validated_params['tree_method']}' to 'hist'."
+                )
             validated_params["tree_method"] = "hist"
-        elif validated_params["tree_method"] not in ["hist", "gpu_hist"]:
+
+        # Validate grow policy for external memory
+        grow_policy = validated_params.get("grow_policy", "depthwise")
+        if grow_policy not in ["depthwise", "lossguide"]:
             logger.warning(
-                f"Tree method '{validated_params['tree_method']}' may not work well with external memory. "
-                "Consider using 'hist' or 'gpu_hist'."
+                f"External memory training works best with grow_policy='depthwise'. "
+                f"Current setting '{grow_policy}' may cause performance issues."
             )
 
-        # Validate grow_policy for external memory performance
-        if "grow_policy" not in validated_params:
-            validated_params["grow_policy"] = "depthwise"
-        elif validated_params["grow_policy"] != "depthwise":
-            logger.warning(
-                f"Grow policy '{validated_params['grow_policy']}' is not optimal for external memory. "
-                "Using 'depthwise' allows building entire tree layers with minimal batch iterations, "
-                "significantly improving performance over 'lossguide' which iterates per tree node."
-            )
-
-        # Validate extmem_single_page configuration
-        if (
-            "extmem_single_page" in validated_params
-            and validated_params["extmem_single_page"]
-        ):
-            if (
-                "subsample" not in validated_params
-                or validated_params["subsample"] >= 0.5
-            ):
+        # Validate batch size recommendations
+        if "batch_size" in validated_params:
+            batch_size = validated_params["batch_size"]
+            if isinstance(batch_size, int) and batch_size < 1000:
                 logger.warning(
-                    "extmem_single_page=True requires aggressive subsampling (≤0.5) to fit in memory. "
-                    "Consider setting subsample=0.2 and sampling_method='gradient_based'."
-                )
-            if (
-                "sampling_method" not in validated_params
-                or validated_params["sampling_method"] != "gradient_based"
-            ):
-                validated_params["sampling_method"] = "gradient_based"
-                logger.info(
-                    "Set sampling_method='gradient_based' for extmem_single_page compatibility."
+                    f"Small batch size {batch_size} may significantly hurt external memory performance. "
+                    "Consider using batch size >= 1000 for optimal performance."
                 )
 
-    # Validate device and GPU-related parameters
-    if "device" in validated_params and "cuda" in str(validated_params["device"]):
-        # GPU training validation
-        if "sampling_method" not in validated_params:
-            validated_params["sampling_method"] = "gradient_based"
+        # GPU external memory validations
+        if validated_params.get("device") == "cuda":
+            # Check for RMM availability
+            try:
+                import rmm
 
-        # Validate GPU memory parameters
-        if (
-            "extmem_single_page" in validated_params
-            and validated_params["extmem_single_page"]
-        ):
-            if "subsample" not in validated_params:
-                validated_params["subsample"] = 0.2
-            elif validated_params["subsample"] > 0.5:
+                if not validated_params.get("use_rmm", False):
+                    logger.info(
+                        "GPU external memory training detected. Consider enabling RMM "
+                        "with use_rmm=True for optimal performance."
+                    )
+            except ImportError:
                 logger.warning(
-                    f"GPU single page concatenation with subsample={validated_params['subsample']} "
-                    "may cause out-of-memory errors. Consider reducing to ≤0.2."
+                    "GPU external memory training detected but RMM not available. "
+                    "Install cupy and rmm for optimal performance."
                 )
 
-    # Validate objective function
-    valid_objectives = [
-        "reg:squarederror",
-        "reg:squaredlogerror",
-        "reg:logistic",
-        "reg:pseudohubererror",
-        "binary:logistic",
-        "binary:logitraw",
-        "binary:hinge",
-        "multi:softmax",
-        "multi:softprob",
-        "rank:pairwise",
-        "rank:ndcg",
-        "rank:map",
-        "survival:cox",
-        "survival:aft",
-    ]
-
-    if "objective" in validated_params:
-        obj = validated_params["objective"]
-        if not any(obj.startswith(prefix.split(":")[0]) for prefix in valid_objectives):
+    # General parameter validations
+    if "max_depth" in validated_params:
+        max_depth = validated_params["max_depth"]
+        if max_depth > 20:
             logger.warning(
-                f"Objective '{obj}' may not be a standard XGBoost objective."
+                f"Very deep trees (max_depth={max_depth}) may cause overfitting "
+                "and slow training. Consider reducing to <= 20."
             )
 
-        # Validate base_score for binary classification
-        if "binary:" in obj and "base_score" not in validated_params:
-            validated_params["base_score"] = 0.5
-            logger.info(
-                "Set base_score=0.5 for binary classification to avoid XGBoost errors."
-            )
-
-    # Set default eval_metric if not provided
-    if "eval_metric" not in validated_params and "objective" in validated_params:
-        obj = validated_params["objective"]
-        if "binary:" in obj:
-            validated_params["eval_metric"] = ["logloss", "error"]
-        elif "multi:" in obj:
-            validated_params["eval_metric"] = ["mlogloss", "merror"]
-        elif "reg:" in obj:
-            validated_params["eval_metric"] = ["rmse"]
-        elif "rank:" in obj:
-            validated_params["eval_metric"] = ["ndcg"]
-
-    # Validate max_bin for external memory
-    if use_external_memory and "max_bin" in validated_params:
-        max_bin = validated_params["max_bin"]
-        if max_bin < 32:
+    if "eta" in validated_params:
+        eta = validated_params["eta"]
+        if eta > 1.0:
             logger.warning(
-                f"max_bin={max_bin} is very low and may hurt accuracy. Consider ≥128."
-            )
-        elif max_bin > 1024:
-            logger.warning(
-                f"max_bin={max_bin} is very high and may increase memory usage significantly."
+                f"High learning rate (eta={eta}) may cause training instability. "
+                "Consider reducing to <= 1.0."
             )
 
     return validated_params

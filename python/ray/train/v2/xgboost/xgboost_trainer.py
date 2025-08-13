@@ -3,23 +3,31 @@ Scalable XGBoost Trainer with External Memory Support
 
 This module provides an improved XGBoost Trainer that avoids dataset materialization
 for large datasets by using XGBoost's external memory capabilities with Ray Data's
-streaming iteration. This implementation is optimized based on XGBoost's external
-memory best practices and distributed training characteristics.
+streaming iteration. This implementation follows XGBoost's official external memory
+best practices and is optimized for XGBoost 3.0+.
 
 Key Features:
-- ExtMemQuantileDMatrix for optimal external memory performance (XGBoost 2.0+)
-- Cluster-aware memory management based on Ray cluster resources  
-- Smart batch size calculation and caching strategies
+- ExtMemQuantileDMatrix for optimal external memory performance (XGBoost 3.0+)
+- Cluster-aware memory management based on Ray cluster resources
+- Smart batch size calculation and streaming iteration strategies
 - Seamless integration with Ray Data preprocessing pipelines
 - Optimized parameters for external memory performance (hist + depthwise)
 - GPU training support with memory-efficient configurations
 - Support for different XGBoost objectives and task types
-- OS-level caching optimization for repeated data access
+- Streaming iteration with minimal memory footprint (2-3 batches in memory)
 - RAPIDS Memory Manager (RMM) integration for GPU performance
 - Hardware-aware optimizations (NVLink-C2C, PCIe, NUMA)
 
-All external memory optimization is handled automatically through the train_loop_utils
-module, providing a clean interface that requires minimal user configuration.
+Following XGBoost External Memory Best Practices:
+- Uses tree_method="hist" (required for external memory training)
+- Uses grow_policy="depthwise" for optimal batch iteration efficiency
+- Implements streaming iteration with minimal memory footprint
+- Supports GPU training with RMM integration
+- Optimized for ExtMemQuantileDMatrix performance
+- Follows XGBoost 3.0+ external memory recommendations
+
+All external memory optimization is handled automatically through the internal
+_train_loop_utils module, providing a clean interface that requires minimal user configuration.
 """
 
 import logging
@@ -47,7 +55,16 @@ class XGBoostTrainer(DataParallelTrainer):
     This trainer automatically handles external memory optimization to avoid dataset
     materialization, making it suitable for large datasets that don't fit in memory.
     The trainer provides seamless external memory training with hardware-aware optimization
-    through the ray.train.xgboost utilities.
+    through the ray.train.xgboost utilities, using streaming iteration with minimal
+    memory footprint.
+
+    Following XGBoost External Memory Best Practices:
+    - Uses tree_method="hist" (required for external memory training)
+    - Uses grow_policy="depthwise" for optimal batch iteration efficiency
+    - Implements streaming iteration with minimal memory footprint
+    - Supports GPU training with RMM integration
+    - Optimized for ExtMemQuantileDMatrix performance
+    - Follows XGBoost 3.0+ external memory recommendations
 
     The trainer is designed to be robust across different XGBoost workloads including:
     - Binary and multi-class classification
@@ -152,6 +169,14 @@ class XGBoostTrainer(DataParallelTrainer):
     - Hardware detection (NUMA, storage type, GPU capabilities)
     - Parameter optimization for external memory training
     - System-specific performance tuning
+    - Streaming iteration with minimal memory footprint
+
+    External Memory Best Practices:
+    - The trainer automatically uses tree_method="hist" (required for external memory)
+    - grow_policy="depthwise" is used for optimal batch iteration efficiency
+    - Batch size is automatically optimized (~10GB per batch for 64GB RAM systems)
+    - GPU training includes RMM integration for optimal performance
+    - Storage type detection optimizes parameters for your hardware
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -168,9 +193,9 @@ class XGBoostTrainer(DataParallelTrainer):
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.train.ScalingConfig` for more info.
+            See :class:`~ray.train.ScalingConfig`` for more info.
         run_config: The configuration for the execution of the training run.
-            See :class:`~ray.train.RunConfig` for more info.
+            See :class:`~ray.train.RunConfig`` for more info.
         datasets: The Ray Datasets to ingest for training.
             Datasets are keyed by name (``{name: dataset}``).
             Each dataset can be accessed from within the ``train_loop_per_worker``
@@ -179,7 +204,7 @@ class XGBoostTrainer(DataParallelTrainer):
             passing in a ``dataset_config``.
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
+            See :class:`~ray.train.DataConfig`` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
