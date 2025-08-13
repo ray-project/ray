@@ -54,7 +54,7 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
-
+USER root
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 
 SHELL ["/bin/bash", "-c"]
@@ -127,6 +127,9 @@ sudo apt-get autoremove -y cmake zlib1g-dev
 # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
 if [[ ! -d /usr/local/cuda ]]; then
     sudo apt-get autoremove -y g++
+else
+    echo 'export PATH=$PATH:/usr/local/nvidia/bin' >> $HOME/.bashrc
+    echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/nvidia/lib64' >> $HOME/.bashrc
 fi
 
 sudo rm -rf /var/lib/apt/lists/*
