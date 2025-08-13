@@ -135,6 +135,10 @@ def _get_storage_performance_info() -> Dict[str, Any]:
     Analyzes the storage setup and provides guidance for external memory training
     based on storage type and performance characteristics.
 
+    .. note::
+        This function currently relies on Linux-specific commands (``df``, ``findmnt``)
+        and may not work on other operating systems.
+
     Returns:
         Dictionary with storage info and performance recommendations
     """

@@ -29,6 +29,13 @@ class _RayDataExternalMemoryIterator:
 
     This avoids full dataset materialization while maintaining distributed data sharding
     and preprocessing capabilities. Based on XGBoost's DataIter interface for external memory.
+
+    .. warning::
+        To support multiple epochs of training, this iterator caches all data batches
+        in memory on the first pass. For very large datasets, this can lead to high
+        memory usage and potential out-of-memory errors. Ensure that worker nodes
+        have enough RAM to hold all batches of the dataset shard, or reduce
+        batch size accordingly.
     """
 
     def __init__(
@@ -59,7 +66,6 @@ class _RayDataExternalMemoryIterator:
         self.batch_size = batch_size
         self._batches = None
         self._current_batch_idx = 0
-        self._memory_estimates = None
 
     def _initialize_batches(self):
         """Lazily initialize the batch iterator to avoid early materialization."""
@@ -308,14 +314,22 @@ def _create_external_memory_dmatrix(
             self.iterator = None
 
         def __del__(self):
-            """Clean up temporary directory."""
+            """Clean up temporary directory.
+
+            Note: __del__ is not guaranteed to run; this is a best-effort cleanup. Any
+            exceptions during cleanup are logged as warnings.
+            """
             try:
                 import shutil
 
                 if hasattr(self, "temp_dir") and os.path.exists(self.temp_dir):
                     shutil.rmtree(self.temp_dir)
-            except Exception:
-                pass  # Ignore cleanup errors
+            except Exception as e:
+                logger.warning(
+                    "Failed to clean up temporary directory %s: %s",
+                    getattr(self, "temp_dir", "<unknown>"),
+                    e,
+                )
 
     # Create Ray Data iterator
     ray_iterator = _RayDataExternalMemoryIterator(

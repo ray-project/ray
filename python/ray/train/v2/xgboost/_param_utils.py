@@ -7,17 +7,12 @@ for external memory training scenarios with hardware-aware configurations.
 Key components:
 - _get_optimal_xgboost_params_for_external_memory: Hardware-aware parameter optimization
 - _validate_xgboost_params: Parameter validation and adjustment
-- _validate_external_memory_config: Comprehensive external memory configuration validation
 """
 
 import logging
 from typing import Dict, Any, Union, List, Optional
 import warnings
 
-from ray.train.v2.xgboost._system_utils import (
-    _get_storage_performance_info,
-    _detect_numa_configuration,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +34,14 @@ def _get_optimal_xgboost_params_for_external_memory(
     - Optimized for ExtMemQuantileDMatrix performance
     - Includes GPU-specific optimizations and hardware-aware configurations
     """
+    # Normalize storage type if not explicitly provided
+    if storage_type not in {"nvme", "ssd", "hdd"}:
+        # Lazy import to avoid unused import at module level
+        from ray.train.v2.xgboost._system_utils import _get_storage_performance_info
+
+        storage_info = _get_storage_performance_info()
+        storage_type = storage_info.get("storage_type", "nvme")
+
     # Auto-detect NVLink-C2C capability if not specified
     if has_nvlink_c2c is None and use_gpu:
         try:
