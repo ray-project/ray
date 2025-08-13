@@ -19,6 +19,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:exponential_backoff",
+        "//src/ray/util:network_util",
         "@boost//:asio",
     ],
 )
@@ -51,7 +52,6 @@ ray_cc_library(
         ":gcs_callback",
         ":gcs_pb_util",
         ":gcs_redis_client",
-        "//:node_manager_fbs",
-        "//:node_manager_rpc",
+        "//src/ray/rpc:node_manager_client",
     ],
 )

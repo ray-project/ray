@@ -126,6 +126,7 @@ MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = (2) * (2**30)
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_API_SERVER_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
@@ -571,6 +572,11 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 # Recommended: report only the node level metrics to prometheus. This means that the
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
+
+# Whether GPU metrics collection via `nvidia-smi` is enabled.
+# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
+# Defaults to False to use pynvml to collect usage.
+RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
 
 # Whether enable OpenTelemetry as the metrics collection backend on the driver
 # component. This flag is only used during the migration of the  metric collection

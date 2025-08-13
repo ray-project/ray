@@ -32,6 +32,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/stats/metric.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -205,7 +206,6 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  /// \return Void.
   void Push(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pull a bundle of objects. This will attempt to make all objects in the
@@ -280,14 +280,12 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  /// \return Void.
   void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
   /// \param spilled_url The url of the spilled object.
-  /// \return Void.
   void PushFromFilesystem(const ObjectID &object_id,
                           const NodeID &node_id,
                           const std::string &spilled_url);
@@ -353,7 +351,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param end_time_us The time when the object manager finished sending the
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
-  /// \return Void.
   void HandleSendFinished(const ObjectID &object_id,
                           const NodeID &node_id,
                           uint64_t chunk_index,
@@ -501,6 +498,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
+
+  /// Metrics
+  ray::stats::Gauge ray_metric_object_store_available_memory_{
+      /*name=*/"object_store_available_memory",
+      /*description=*/"Amount of memory currently available in the object store.",
+      /*unit=*/"bytes"};
 };
 
 }  // namespace ray

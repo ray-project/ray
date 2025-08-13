@@ -355,7 +355,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.9.2",
+                "vllm>=0.10.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -383,7 +383,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
@@ -629,13 +629,12 @@ def build(build_python, build_java, build_cpp):
         #
         # And we put it here so that does not change behavior of
         # conda-forge build.
-        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
-            bazel_flags.append("--incompatible_strict_action_env")
+        bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
-    bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
+    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
+    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -645,6 +644,7 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.append("--config=tsan")
 
     bazel_bin = _find_bazel_bin()
+    # Build all things first.
     subprocess.check_call(
         [bazel_bin]
         + bazel_precmd_flags
@@ -654,6 +654,12 @@ def build(build_python, build_java, build_cpp):
         + bazel_targets,
         env=bazel_env,
     )
+    # Then run the actions.
+    for action in bazel_targets:
+        subprocess.check_call(
+            [bazel_bin] + bazel_precmd_flags + ["run"] + bazel_flags + [action],
+            env=bazel_env,
+        )
 
 
 def _walk_thirdparty_dir(directory):
@@ -759,6 +765,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
