@@ -482,9 +482,7 @@ depsets:
                 output=".",
                 append_flags=["--python", "3.11"],
             )
-            output_file = (
-                Path(tmpdir) / "dummy_wheel" / "dummy_package-0.1.0-py3-none-any.whl"
-            )
+            output_file = Path(tmpdir) / "dummy_package-0.1.0-py3-none-any.whl"
             assert output_file.is_file()
 
 

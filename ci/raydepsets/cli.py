@@ -171,7 +171,7 @@ class DependencySetManager:
                 args.extend([self.get_path(requirement)])
         if output:
             args.extend(["-o", self.get_path(output)])
-        self.exec_uv_cmd(["pip"], ["compile", *args])
+        self.exec_uv_cmd(["pip", "compile"], args)
 
     def subset(
         self,
