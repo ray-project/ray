@@ -19,17 +19,6 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: debug wheel"
-    tags:
-      - linux_wheels
-      - oss
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
-    depends_on:
-      - manylinux
-      - forge
-
   - label: ":tapioca: build: jar"
     key: java_wheels
     tags:
