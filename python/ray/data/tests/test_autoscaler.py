@@ -80,14 +80,14 @@ def test_actor_pool_scaling():
         yield
         setattr(mock, attr, original)
 
-    def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str]):
+    def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str], force: bool = False):
         nonlocal actor_pool, op, op_state
 
         assert autoscaler._derive_target_scaling_config(
             actor_pool=actor_pool,
             op=op,
             op_state=op_state,
-        ) == ActorPoolScalingRequest(delta=delta, reason=expected_reason)
+        ) == ActorPoolScalingRequest(delta=delta, force=force, reason=expected_reason)
 
     # Should scale up since the util above the threshold.
     assert actor_pool.get_pool_util() == 1.5
@@ -141,6 +141,7 @@ def test_actor_pool_scaling():
             assert_autoscaling_action(
                 delta=-1,
                 expected_reason="consumed all inputs",
+                force=True,
             )
 
     # Should scale down only once all inputs have been already dispatched AND
@@ -150,6 +151,7 @@ def test_actor_pool_scaling():
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,
+                    force=True,
                     expected_reason="consumed all inputs",
                 )
 
