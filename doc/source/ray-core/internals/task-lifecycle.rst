@@ -63,16 +63,16 @@ Once a leased worker is obtained, the task execution starts.
 
 1. ``NormalTaskSubmitter`` `sends <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L568>`__ a ``PushTask`` RPC to the leased worker with the ``TaskSpecification`` to execute.
 2. The executor `receives <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3885>`__ the ``PushTask`` RPC and executes (`1 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3948>`__ -> `2 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/task_receiver.cc#L62>`__ -> `3 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L520>`__ -> `4 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3420>`__ -> `5 <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L2318>`__) the task.
-3. First step of executing the task is `getting <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3789>`__ all the pass-by-reference arguments from the local plasma store.
+3. First step of executing the task is `getting <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3789>`__ all the pass-by-reference arguments from the local plasma store (data is already pulled from remote plasma store to the local plasma store during scheduling).
 4. Then the executor `gets <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L2206>`__ the pickled function bytes from GCS key-value store and unpickles it.
 5. The next step is `unpickling <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L1871>`__ the arguments.
 6. Finally, the user function is `called <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L1925>`__.
 
-Geting the return value
------------------------
+Getting the return value
+------------------------
 
 After the user function is executed, the caller can get the return values.
 
 1. After the user function returns, the executor `gets and stores <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/python/ray/_raylet.pyx#L4308>`__ all the return values. If the return value is a `small <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3271>`__ object, it is returned directly to the caller as part of the ``PushTask`` RPC response. If the return value is a `big <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/core_worker.cc#L3279>`__ object, it is put in the local plasma store and the reference is returned to the caller.
 2. When the caller `receives <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L579>`__ the ``PushTask`` RPC response, it `stores <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/task_manager.cc#L511>`__ the return values (actual data if the return value is small or a special value indicating the data is in plasma store if the return value is big) in the local memory store.
-3. When the return value is added to the local memory store, ``ray.get()`` is unblocked and returns the value directly if the object is small, or it will get from the local plasma store if the object is big.
+3. When the return value is added to the local memory store, ``ray.get()`` is unblocked and returns the value directly if the object is small, or it will get from the local plasma store (pull from remote plasma store first if needed) if the object is big.
