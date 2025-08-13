@@ -54,7 +54,7 @@ For a detailed explanation of these methods and their parameters, see the [simpl
 
 The first component evaluates whether the current load is balanced across replicas:
 
-```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+```{literalinclude} ../../../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
 :start-after: __begin_load_balance_component__
 :end-before: __end_load_balance_component__
 :language: python
@@ -73,7 +73,7 @@ This distributed architecture allows the prefix information to persist across ro
 
 The core prefix matching component implements the routing decision logic in the `_prefix_match_best_replicas` method. When load is balanced, it performs prefix matching to find the best replica:
 
-```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+```{literalinclude} ../../../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
 :start-after: __begin_prefix_match_component__
 :end-before: __end_prefix_match_component__
 :language: python
@@ -89,7 +89,7 @@ This logic implements the three-tier strategy:
 
 The prefix-aware router extends the proven Power of Two Choices algorithm, falling back to it when prefix-based routing would degenerate. `PrefixCacheAffinityRouter` integrates this component in the `choose_replicas` method:
 
-```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+```{literalinclude} ../../../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
 :start-after: __begin_pow2_router_base__
 :end-before: __end_pow2_router_base__
 :language: python
@@ -100,7 +100,7 @@ The prefix-aware router extends the proven Power of Two Choices algorithm, falli
 
 The router uses the `on_request_routed()` callback to update the prefix tree with routing decisions:
 
-```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+```{literalinclude} ../../../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
 :start-after: __begin_on_request_routed__
 :end-before: __end_on_request_routed__
 :language: python
@@ -108,7 +108,7 @@ The router uses the `on_request_routed()` callback to update the prefix tree wit
 ```
 
 When a replica dies, the `on_replica_actor_died` callback is used to remove its entries from the shared prefix tree:
-```{literalinclude} ../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
+```{literalinclude} ../../../../python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_aware_router.py
 :start-after: __begin_on_replica_actor_died__
 :end-before: __end_on_replica_actor_died__
 :language: python
@@ -147,7 +147,7 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 
 Here's how to deploy an LLM application using the prefix cache-aware request router:
 
-```{literalinclude} ../../python/ray/serve/doc_code/prefix_aware_request_router.py
+```{literalinclude} ../../llm/doc_code/serve/prefix_aware_router/prefix_aware_example.py
 :start-after: __begin_prefix_aware_deployment__
 :end-before: __end_prefix_aware_deployment__
 :language: python
