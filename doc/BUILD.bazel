@@ -238,7 +238,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/vllm_example.py"
+        "source/serve/doc_code/vllm_example.py",
     ],
     extra_srcs = [],
     tags = [
@@ -288,7 +288,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     data = [
         "source/llm/doc_code/serve/qwen/llm_config_example.yaml",
-        "source/llm/doc_code/serve/llama3_8B/serve_my_llama_3_1_8B.yaml
+        "source/llm/doc_code/serve/llama3_8B/serve_my_llama_3_1_8B.yaml",
     ],
     tags = [
         "exclusive",
