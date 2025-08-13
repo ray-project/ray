@@ -222,40 +222,36 @@ class TrainContext(ABC):
         pass
 
 
-class TrainContextWithRayTrain(TrainContext):
-    """Implementation of TrainContext for distributed training."""
+class TrainContextWithRayTrainController(TrainContext):
+    """Implementation of TrainContext for jobs launched with ray train controller."""
 
     def get_experiment_name(self) -> str:
-        """Experiment name for the corresponding trial."""
         return get_internal_train_context().get_experiment_name()
 
     def get_world_size(self) -> int:
-        """Get the current world size (i.e. total number of workers) for this run."""
         return get_internal_train_context().get_world_size()
 
     def get_world_rank(self) -> int:
-        """Get the world rank of this worker."""
         return get_internal_train_context().get_world_rank()
 
     def get_local_rank(self) -> int:
-        """Get the local rank of this worker (rank of the worker on its node)."""
         return get_internal_train_context().get_local_rank()
 
     def get_local_world_size(self) -> int:
-        """Get the local world size of this node (i.e. number of workers on this node)."""
         return get_internal_train_context().get_local_world_size()
 
     def get_node_rank(self) -> int:
-        """Get the rank of this node."""
         return get_internal_train_context().get_node_rank()
 
     def get_storage(self):
-        """Returns the storage context for distributed training."""
         return get_internal_train_context().get_storage()
 
 
-class TrainContextWithoutRayTrain(TrainContext):
-    """Implementation of TrainContext for local (non-distributed) training."""
+class TrainContextWithoutRayTrainController(TrainContext):
+    """Implementation of TrainContext for jobs launched without ray train controller.
+
+    This is more for testing purposes.
+    """
 
     def __init__(
         self,
@@ -268,35 +264,26 @@ class TrainContextWithoutRayTrain(TrainContext):
         self.local_world_size = local_world_size
 
     def get_experiment_name(self) -> str:
-        """Experiment name for the corresponding trial."""
         return self.experiment_name
 
     def get_world_size(self) -> int:
-        """Get the current world size (always 1 for local training)."""
         return self.local_world_size
 
     def get_world_rank(self) -> int:
-        """Get the world rank of this worker (always 0 for local training)."""
         return self.local_rank
 
     def get_local_rank(self) -> int:
-        """Get the local rank of this worker (always 0 for local training)."""
         return self.local_rank
 
     def get_local_world_size(self) -> int:
-        """Get the local world size of this node (always 1 for local training)."""
         return self.local_world_size
 
     def get_node_rank(self) -> int:
-        """Get the rank of this node (always 0 for local training)."""
+        """For non-ray-train-controller jobs, we only use one node."""
         return 0
 
     def get_storage(self):
-        """Returns a basic storage context for local training."""
-        # For local training, we might want to return a simple storage implementation
-        # This would need to be implemented based on the actual StorageContext interface
-        # For now, we'll raise NotImplementedError to indicate this needs implementation
         raise NotImplementedError(
             "Local storage context not yet implemented. "
-            "Please use DistributedTrainContext for full storage support."
+            "Please use TrainContextWithRayTrain for full storage support."
         )

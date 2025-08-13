@@ -179,6 +179,9 @@ class TorchTrainer(DataParallelTrainer):
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        running_without_ray_train_controller: Whether the training job is running
+            without the ray train controller. If set to True, the trainer will be
+            running locally without the ray train controller.
     """
 
     def __init__(
@@ -194,19 +197,19 @@ class TorchTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        running_without_ray_train: bool = False,
+        running_without_ray_train_controller: Optional[bool] = False,
     ):
 
         from ray.train.torch.config import TorchConfig
 
-        self.running_without_ray_train = running_without_ray_train
+        self.running_without_ray_train_controller = running_without_ray_train_controller
 
-        if self.running_without_ray_train:
-            from ray.train.v2._internal.execution.torch_without_ray_train import (
-                TorchBackendWithoutRayTrain,
+        if self.running_without_ray_train_controller:
+            from ray.train.v2._internal.execution.torch_without_ray_train_controller import (
+                TorchBackendWithoutRayTrainController,
             )
 
-            self.backend_without_ray_train = TorchBackendWithoutRayTrain(
+            self.backend_without_ray_train = TorchBackendWithoutRayTrainController(
                 datasets=datasets
             )
 
@@ -228,7 +231,7 @@ class TorchTrainer(DataParallelTrainer):
         )
 
     def fit(self) -> Result:
-        if self.running_without_ray_train:
+        if self.running_without_ray_train_controller:
             return self.backend_without_ray_train.fit(self._get_train_func())
         else:
             return super(TorchTrainer, self).fit()

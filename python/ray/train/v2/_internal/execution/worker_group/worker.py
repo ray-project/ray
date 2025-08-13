@@ -31,7 +31,7 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.train_fn_utils import (
-    RayTrainTrainFnUtils,
+    TrainFnUtilsWithRayTrainController,
     set_train_fn_utils,
 )
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
@@ -224,7 +224,7 @@ class RayTrainWorker:
         set_train_context(context)
 
         # user facing train fn utils
-        set_train_fn_utils(RayTrainTrainFnUtils())
+        set_train_fn_utils(TrainFnUtilsWithRayTrainController())
 
         for callback in self._callbacks:
             callback.after_init_train_context()

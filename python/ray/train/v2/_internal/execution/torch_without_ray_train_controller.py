@@ -2,22 +2,26 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from ray.data import DataIterator
-from ray.train.trainer import GenDataset
 from ray.train import Checkpoint, Result
+from ray.train.trainer import GenDataset
 from ray.train.v2._internal.execution.train_fn_utils import (
     TrainFnUtils,
-    set_train_fn_utils,
     get_train_fn_utils,
+    set_train_fn_utils,
 )
 from ray.train.v2.api.context import (
     TrainContext as ExternalTrainContext,
-    TrainContextWithoutRayTrain,
+    TrainContextWithoutRayTrainController,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class TorchWithoutRayTrainTrainFnUtils(TrainFnUtils):
+class TorchWithoutRayTrainControllerFnUtils(TrainFnUtils):
+    """TrainFnUtils for jobs launched without ray train controller.
+    This is more for testing purposes, and some functionality is missing.
+    """
+
     def __init__(
         self,
         experiment_name: str,
@@ -25,7 +29,7 @@ class TorchWithoutRayTrainTrainFnUtils(TrainFnUtils):
         local_rank: int,
         dataset_shards: Optional[Dict[str, DataIterator]] = None,
     ):
-        self._context = TrainContextWithoutRayTrain(
+        self._context = TrainContextWithoutRayTrainController(
             experiment_name=experiment_name,
             local_world_size=local_world_size,
             local_rank=local_rank,
@@ -53,39 +57,39 @@ class TorchWithoutRayTrainTrainFnUtils(TrainFnUtils):
     def get_context(self) -> ExternalTrainContext:
         return self._context
 
-    def is_running_with_ray_train(self) -> bool:
+    def is_running_with_ray_train_controller(self) -> bool:
         return False
 
-    def get_last_metrics(self) -> Optional[Dict[str, Any]]:
+    def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
+        """return the last metrics reported by the training function.
+        This function should only be called by TorchBackendWithoutRayTrainController
+        """
         return self._last_metrics
 
 
-class TorchBackendWithoutRayTrain:
+class TorchBackendWithoutRayTrainController:
     def __init__(self, datasets: Optional[Dict[str, GenDataset]] = None):
         if datasets is not None:
-            # TODO(xgui): Support Ray Data Datasets for no-ray-train mode.
-            raise NotImplementedError(
-                "Ray Data Datasets are not supported for no-ray-train mode yet."
-            )
+            datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
 
         self.local_world_size = 1
         self.local_rank = 0
 
         set_train_fn_utils(
-            TorchWithoutRayTrainTrainFnUtils(
+            TorchWithoutRayTrainControllerFnUtils(
                 experiment_name="train-without-ray-train",
                 local_world_size=self.local_world_size,
                 local_rank=self.local_rank,
-                dataset_shards=None,
+                datasets=datasets,
             )
         )
 
     def fit(self, train_func: Callable[[], None]) -> Result:
         train_func()
         train_fn_utils = get_train_fn_utils()
-        assert isinstance(train_fn_utils, TorchWithoutRayTrainTrainFnUtils)
+        assert isinstance(train_fn_utils, TorchWithoutRayTrainControllerFnUtils)
         return Result(
-            metrics=train_fn_utils.get_last_metrics(),
+            metrics=train_fn_utils._get_last_metrics(),
             checkpoint=None,
             path=None,
             error=None,

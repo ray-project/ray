@@ -21,9 +21,6 @@ from ray.train.torch.train_loop_utils import (
     _WrappedDataLoader,
     get_devices as get_devices_v1,
 )
-from ray.train.v2._internal.execution.torch_without_ray_train import (
-    TorchWithoutRayTrainTrainFnUtils,
-)
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -46,7 +43,7 @@ def get_device() -> torch.device:
 
 
 def get_devices() -> List[torch.device]:
-    if get_train_fn_utils().is_running_with_ray_train():
+    if get_train_fn_utils().is_running_with_ray_train_controller():
         return get_devices_v1()
     else:
         if torch.cuda.is_available():
