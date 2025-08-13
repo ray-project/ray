@@ -22,7 +22,6 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.train import UserCallback
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -51,7 +50,17 @@ class ScalingConfig(ScalingConfigV1):
             of accelerators.
             See :ref:`the available accelerator types <accelerator_types>`.
             Ensure that your cluster has instances with the specified accelerator type
-            or is able to autoscale to fulfill the request.
+            or is able to autoscale to fulfill the request. This field is required
+            when `use_tpu` is True and `num_workers` is greater than 1.
+        use_tpu: [Experimental] If True, training will be done on TPUs (1 TPU VM
+            per worker). Defaults to False. The number of TPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument. This arg enables SPMD execution of the training workload.
+        topology: [Experimental] If specified, Ray Train will launch the training
+            coordinator and workers on nodes with the specified topology. Topology is
+            auto-detected for TPUs and added as Ray node labels. This arg enables
+            SPMD execution of the training workload. This field is required
+            when `use_tpu` is True and `num_workers` is greater than 1.
 
     Example:
 
@@ -73,16 +82,61 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
+    use_tpu: Union[bool] = False
+    topology: Optional[str] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
+        if self.use_gpu and self.use_tpu:
+            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
+
+        if not self.use_tpu and self.num_tpus_per_worker > 0:
+            raise ValueError(
+                "`use_tpu` is False but `TPU` was found in "
+                "`resources_per_worker`. Either set `use_tpu` to True or "
+                "remove `TPU` from `resources_per_worker."
+            )
+
+        if self.use_tpu and self.num_tpus_per_worker == 0:
+            raise ValueError(
+                "`use_tpu` is True but `TPU` is set to 0 in "
+                "`resources_per_worker`. Either set `use_tpu` to False or "
+                "request a positive number of `TPU` in "
+                "`resources_per_worker."
+            )
+
+        if self.use_tpu and self.num_workers > 1:
+            if not self.topology:
+                raise ValueError(
+                    "`topology` must be specified in ScalingConfig when `use_tpu=True` "
+                    " and `num_workers` > 1."
+                )
+            if not self.accelerator_type:
+                raise ValueError(
+                    "`accelerator_type` must be specified in ScalingConfig when "
+                    "`use_tpu=True` and `num_workers` > 1."
+                )
+
         super().__post_init__()
+
+    @property
+    def _resources_per_worker_not_none(self):
+        if self.resources_per_worker is None:
+            if self.use_tpu:
+                return {"TPU": 1}
+
+        return super()._resources_per_worker_not_none
 
     @property
     def _trainer_resources_not_none(self):
         return {}
+
+    @property
+    def num_tpus_per_worker(self):
+        """The number of TPUs to set per worker."""
+        return self._resources_per_worker_not_none.get("TPU", 0)
 
 
 @dataclass

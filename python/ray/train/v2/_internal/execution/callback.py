@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.train.v2.api.callback import RayTrainCallback
+from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
@@ -77,6 +78,28 @@ class ControllerCallback(RayTrainCallback):
         """Called immediately after `TrainController.run` is called,
         before the control loop starts executing."""
         pass
+
+    # TODO(matthewdeng): Revisit this callback interface for better extensibility.
+    # This hook was added for the specific use case of setting a `bundle_label_selector`
+    # for new worker groups (e.g., for TPU reservations). The current interface is
+    # tightly coupled to this purpose and limits its reuse for other use-cases.
+    def on_controller_start_worker_group(
+        self, *, scaling_config: ScalingConfig, num_workers: int
+    ) -> Optional[Dict[str, str]]:
+        """Called by the TrainController before the worker group is started.
+
+        This hook can be used to perform setup that modifies the worker group's
+        placement, such as reserving an accelerator slice.
+
+        Args:
+            scaling_config: The scaling configuration for the run.
+            num_workers: The number of workers to be started.
+
+        Returns:
+            An optional dictionary defining a `bundle_label_selector`
+            to gang schedule the worker group on the reserved TPU slice.
+        """
+        return None
 
     def before_controller_shutdown(self):
         """Called before `TrainController.run` exits,
