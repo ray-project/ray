@@ -86,18 +86,19 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              RAY_LOG(ERROR).WithField(worker_id).WithField(node_id).WithField(
                  "worker_address", worker_ip_address)
                  << "Failed to report worker failure";
+           } else {
+             if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
+               stats::UnintentionalWorkerFailures.Record(1);
+             }
+             // Only publish worker_id and raylet_id in address as they are the only
+             // fields used by sub clients.
+             rpc::WorkerDeltaData worker_failure;
+             worker_failure.set_worker_id(
+                 worker_failure_data->worker_address().worker_id());
+             worker_failure.set_raylet_id(
+                 worker_failure_data->worker_address().raylet_id());
+             gcs_publisher_.PublishWorkerFailure(worker_id, std::move(worker_failure));
            }
-           if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
-             stats::UnintentionalWorkerFailures.Record(1);
-           }
-           // Only publish worker_id and raylet_id in address as they are the only
-           // fields used by sub clients.
-           rpc::WorkerDeltaData worker_failure;
-           worker_failure.set_worker_id(
-               worker_failure_data->worker_address().worker_id());
-           worker_failure.set_raylet_id(
-               worker_failure_data->worker_address().raylet_id());
-           gcs_publisher_.PublishWorkerFailure(worker_id, std::move(worker_failure));
            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
          };
 
@@ -108,8 +109,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          Status status = gcs_table_storage_.WorkerTable().Put(
              worker_id, *worker_failure_data, {std::move(on_done), io_context_});
          if (!status.ok()) {
-           // TODO(dayshah): This will never actually happen, all the AsyncPut operations
-           // always return Status::OK(). Should be changed to return void
+           // TODO(dayshah): https://github.com/ray-project/ray/issues/55545
          }
 
          if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||

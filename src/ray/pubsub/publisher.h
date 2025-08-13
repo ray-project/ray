@@ -21,7 +21,6 @@
 #include <memory>
 #include <queue>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,7 +30,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
@@ -366,8 +364,7 @@ class Publisher : public PublisherInterface {
   /// to it anymore.
   ///
   /// \param subscriber_id The node id of the subscriber to unsubscribe.
-  /// \return True if erased. False otherwise.
-  bool UnregisterSubscriber(const SubscriberID &subscriber_id);
+  void UnregisterSubscriber(const SubscriberID &subscriber_id);
 
   /// Flushes all inflight pollings and unregisters all subscribers.
   void UnregisterAll();
@@ -422,7 +419,7 @@ class Publisher : public PublisherInterface {
   /// Private fields
   ///
 
-  int UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
+  void UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.

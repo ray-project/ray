@@ -461,9 +461,9 @@ bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
   return subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
 }
 
-bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
+void Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
   absl::MutexLock lock(&mutex_);
-  return UnregisterSubscriberInternal(subscriber_id);
+  UnregisterSubscriberInternal(subscriber_id);
 }
 
 void Publisher::UnregisterAll() {
@@ -479,24 +479,20 @@ void Publisher::UnregisterAll() {
   }
 }
 
-int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+void Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
   RAY_LOG(DEBUG) << "Unregistering subscriber " << subscriber_id.Hex();
-  int erased = 0;
   for (auto &index : subscription_index_map_) {
-    if (index.second.EraseSubscriber(subscriber_id)) {
-      erased += 1;
-    }
+    index.second.EraseSubscriber(subscriber_id);
   }
 
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
-    return erased;
+    return;
   }
   auto &subscriber = it->second;
   // Flush the long polling connection because otherwise the reply could be leaked.
   subscriber->PublishIfPossible(/*force_noop=*/true);
   subscribers_.erase(it);
-  return erased;
 }
 
 void Publisher::CheckDeadSubscribers() {

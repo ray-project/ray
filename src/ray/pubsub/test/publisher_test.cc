@@ -967,8 +967,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   publisher_->CheckDeadSubscribers();
 
   // Connection should be replied (removed) when the subscriber is unregistered.
-  int erased = publisher_->UnregisterSubscriber(subscriber_id_);
-  ASSERT_EQ(erased, 0);
+  publisher_->UnregisterSubscriber(subscriber_id_);
   ASSERT_TRUE(publisher_->CheckNoLeaks());
 
   // New subscriber is registsered for some reason. Since there's no new long polling
@@ -978,8 +977,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
   current_time_ += subscriber_timeout_ms_;
   publisher_->CheckDeadSubscribers();
-  erased = publisher_->UnregisterSubscriber(subscriber_id_);
-  ASSERT_EQ(erased, 0);
+  publisher_->UnregisterSubscriber(subscriber_id_);
   ASSERT_TRUE(publisher_->CheckNoLeaks());
 }
 
@@ -1091,8 +1089,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
   ASSERT_EQ(long_polling_connection_replied, false);
-  int erased = publisher_->UnregisterSubscriber(subscriber_id_);
-  ASSERT_TRUE(erased);
+  publisher_->UnregisterSubscriber(subscriber_id_);
   // Make sure the long polling request is replied to avoid memory leak.
   ASSERT_EQ(long_polling_connection_replied, true);
 
@@ -1102,16 +1099,14 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
-  erased = publisher_->UnregisterSubscriber(subscriber_id_);
-  ASSERT_FALSE(erased);
+  publisher_->UnregisterSubscriber(subscriber_id_);
   ASSERT_EQ(long_polling_connection_replied, true);
 
   // Test when connect wasn't done.
   long_polling_connection_replied = false;
   publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
-  erased = publisher_->UnregisterSubscriber(subscriber_id_);
-  ASSERT_TRUE(erased);
+  publisher_->UnregisterSubscriber(subscriber_id_);
   ASSERT_EQ(long_polling_connection_replied, false);
   ASSERT_TRUE(publisher_->CheckNoLeaks());
 }
