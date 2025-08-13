@@ -10,6 +10,7 @@ from ray.util.annotations import DeveloperAPI
 class ActorPoolScalingRequest:
 
     delta: int
+    force: bool = field(default=False)
     reason: Optional[str] = field(default=None)
 
     @classmethod
@@ -22,9 +23,9 @@ class ActorPoolScalingRequest:
         return ActorPoolScalingRequest(delta=delta, reason=reason)
 
     @classmethod
-    def downscale(cls, *, delta: int, reason: Optional[str] = None):
+    def downscale(cls, *, delta: int, force: bool = False, reason: Optional[str] = None):
         assert delta < 0, "For scale down delta is expected to be negative!"
-        return ActorPoolScalingRequest(delta=delta, reason=reason)
+        return ActorPoolScalingRequest(delta=delta, force=force, reason=reason)
 
 
 @DeveloperAPI
