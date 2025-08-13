@@ -4,7 +4,7 @@ from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
     get_env_float_non_negative,
-    get_env_float_warning_till_2_50,
+    get_env_float_warning,
     get_env_int,
     get_env_int_positive,
     get_env_str,
@@ -132,14 +132,14 @@ DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
 
 # HTTP Proxy health check configs
-PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_warning_till_2_50(
+PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_warning(
     "RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", 10.0
 )
 
-PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_warning_till_2_50(
+PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_warning(
     "RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", 10.0
 )
-PROXY_READY_CHECK_TIMEOUT_S = get_env_float_warning_till_2_50(
+PROXY_READY_CHECK_TIMEOUT_S = get_env_float_warning(
     "RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0
 )
 
@@ -148,7 +148,7 @@ PROXY_READY_CHECK_TIMEOUT_S = get_env_float_warning_till_2_50(
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # The minimum drain period for a HTTP proxy.
-PROXY_MIN_DRAINING_PERIOD_S = get_env_float_warning_till_2_50(
+PROXY_MIN_DRAINING_PERIOD_S = get_env_float_warning(
     "RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", 30.0
 )
 # The time in seconds that the http proxy state waits before
@@ -167,7 +167,7 @@ CLIENT_POLLING_INTERVAL_S = 1.0
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S = 0.1
 
 # Timeout for GCS internal KV service
-RAY_SERVE_KV_TIMEOUT_S = get_env_float_warning_till_2_50("RAY_SERVE_KV_TIMEOUT_S", None)
+RAY_SERVE_KV_TIMEOUT_S = get_env_float_warning("RAY_SERVE_KV_TIMEOUT_S", None)
 
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
