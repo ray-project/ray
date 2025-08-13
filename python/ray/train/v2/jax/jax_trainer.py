@@ -92,18 +92,6 @@ class JaxTrainer(DataParallelTrainer):
           avoid driver-side TPU lock issues.
 
     Args:
-        train_loop_per_worker: The training function to execute.
-        train_loop_config: Configurations to pass into
-            ``train_loop_per_worker`` if it accepts an argument.
-        jax_config: Configuration for setting up the JAX backend.
-        scaling_config: Configuration for how to scale data parallel training
-            with SPMD.
-        dataset_config: Optional configuration for datasets.
-        run_config: Configuration for the execution of the training run.
-        datasets: Any Datasets to use for training. Use
-            the key "train" to denote which dataset is the training dataset.
-        resume_from_checkpoint: A checkpoint to resume training from.
-
         train_loop_per_worker: The training function to execute on each worker.
             This function can either take in zero arguments or a single ``Dict``
             argument which is set by defining ``train_loop_config``.
@@ -134,9 +122,6 @@ class JaxTrainer(DataParallelTrainer):
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
