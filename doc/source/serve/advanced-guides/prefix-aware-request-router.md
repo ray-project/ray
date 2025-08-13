@@ -39,7 +39,7 @@ The router maintains a distributed prefix tree actor that:
 (building-prefix-aware-components)=
 ## Building Prefix-Aware Router Components
 
-This section breaks down the key components of `PrefixCacheAffinityRouter` and shows how they work together. For a more basic example, see [custom request router guide](custom-request-router-guide).
+This section breaks down the key components of `PrefixCacheAffinityRouter` and shows how they work together. For a more basic example, see {ref}`custom-request-router-guide`.
 
 ### Base RequestRouter Foundation
 
@@ -118,7 +118,7 @@ When a replica dies, the `on_replica_actor_died` callback is used to remove its 
 (mixin-components)=
 ## Mixin Components
 
-The `PrefixCacheAffinityRouter` inherits from two mixins. For more details about these and other available mixins, see [utility mixins for request routing](custom-request-router-guide.md#utility-mixin). These mixins are used to optimize the list of candidate replicas against which to calculate prefix cache hit rate.
+The `PrefixCacheAffinityRouter` inherits from two mixins. For more details about these and other available mixins, see {ref}`utility-mixin`. These mixins are used to optimize the list of candidate replicas against which to calculate prefix cache hit rate.
 
 The [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst) provides locality-aware routing to optimize network latency by preferring replicas on the same node. The [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) enables model multiplexing support by tracking which models are loaded on each replica and routing requests to replicas that already have the requested model in memory.
 

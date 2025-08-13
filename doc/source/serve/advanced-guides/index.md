@@ -33,5 +33,5 @@ Use these advanced guides for more options and configurations:
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)
 - [Use Custom Algorithm for Request Routing](custom-request-router)
-- [PrefixAwarePow2RequestRouter for LLM Inference Optimization](prefix-aware-request-router)
+- [PrefixCacheAffinityRouter for LLM Inference Optimization](prefix-aware-request-router)
 - [Troubleshoot multi-node GPU setups for serving LLMs](multi-node-gpu-troubleshooting)
