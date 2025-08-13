@@ -737,7 +737,7 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   return_object->set_in_plasma(true);
   return_object->set_size(object_size);
   rpc::Address worker_addr;
-  worker_addr.set_raylet_id(node_id.Binary());
+  worker_addr.set_node_id(node_id.Binary());
   manager_.AddPendingTask(rpc::Address(), spec, "", 0);
   manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr, false);
 }

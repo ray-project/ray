@@ -289,7 +289,7 @@ class CoreWorker {
 
   int64_t GetTaskDepth() const { return worker_context_->GetTaskDepth(); }
 
-  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
 
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.

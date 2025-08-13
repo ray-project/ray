@@ -701,7 +701,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   }
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
-  worker_data->mutable_worker_address()->set_raylet_id(rpc_address_.raylet_id());
+  worker_data->mutable_worker_address()->set_node_id(rpc_address_.node_id());
   worker_data->mutable_worker_address()->set_ip_address(rpc_address_.ip_address());
   worker_data->mutable_worker_address()->set_port(rpc_address_.port());
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -953,7 +953,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      object.GetSize(),
                                      /*is_reconstructable=*/false,
                                      /*add_local_ref=*/true,
-                                     NodeID::FromBinary(rpc_address_.raylet_id()));
+                                     NodeID::FromBinary(rpc_address_.node_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
     RemoveLocalReference(*object_id);
@@ -1037,7 +1037,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        /*add_local_ref=*/true,
-                                       NodeID::FromBinary(rpc_address_.raylet_id()));
+                                       NodeID::FromBinary(rpc_address_.node_id()));
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
@@ -4272,7 +4272,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       request.object_size(),
       /*is_reconstructable=*/false,
       /*add_local_ref=*/false,
-      /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
+      /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
