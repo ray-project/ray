@@ -5,14 +5,7 @@ import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.util.collective.types import TensorTransportMetadata
-from ray.experimental.gpu_object_manager.gpu_object_communicator import (
-    get_tensor_transport_metadata,
-    get_collective_metadata,
-    send_object,
-    recv_object,
-)
 from ray._private import ray_constants
-
 
 if TYPE_CHECKING:
     from ray.experimental.gpu_object_manager.gpu_object_store import (
@@ -102,12 +95,18 @@ class GPUObjectManager:
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
         )
+        from ray.experimental.collective import get_tensor_transport_manager
 
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
         obj_id = obj_ref.hex()
-        tensor_meta = get_tensor_transport_metadata(src_actor, obj_id, tensor_transport)
+        tensor_transport_manager = get_tensor_transport_manager(
+            tensor_transport_backend
+        )
+        tensor_meta = tensor_transport_manager.get_tensor_transport_metadata(
+            src_actor, obj_id, tensor_transport
+        )
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
@@ -169,6 +168,8 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
+        from ray.experimental.collective import get_tensor_transport_manager
+
         gpu_object_refs = set()
         for arg in task_args:
             # If an ObjectRef is managed, it means the actual value is a list of tensors stored
@@ -195,20 +196,24 @@ class GPUObjectManager:
                 continue
 
             obj_id = obj_ref.hex()
-
-            tensor_transport_metadata = get_collective_metadata(
-                src_actor,
-                dst_actor,
-                tensor_meta,
-                gpu_object_meta.tensor_transport_backend,
+            tensor_transport_manager = get_tensor_transport_manager(
+                gpu_object_meta.tensor_transport_backend
             )
-            send_object(
+            tensor_transport_metadata = (
+                tensor_transport_manager.get_collective_metadata(
+                    src_actor,
+                    dst_actor,
+                    tensor_meta,
+                    gpu_object_meta.tensor_transport_backend,
+                )
+            )
+            tensor_transport_manager.send_object(
                 src_actor,
                 obj_id,
                 tensor_transport_metadata,
                 gpu_object_meta.tensor_transport_backend,
             )
-            recv_object(
+            tensor_transport_manager.recv_object(
                 dst_actor,
                 obj_id,
                 tensor_transport_metadata,
