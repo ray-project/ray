@@ -183,7 +183,7 @@ class InMemoryMetricsStore:
         self,
         keys: Iterable[Hashable],
         aggregate_fn: Callable[[Iterable[float]], float],
-    ) -> Tuple[Optional[float], int]:
+    ) -> Optional[Tuple[float, int]]:
         """Reduce the entire set of timeseries values across the specified keys.
 
         Args:
@@ -193,13 +193,13 @@ class InMemoryMetricsStore:
         Returns:
             A tuple of (float, int) where the first element is the aggregated value
             and the second element is the number of valid keys used.
-            Returns (None, 0) if no valid keys have data.
+            Returns None if no values are available.
         """
         report_count = 0
 
         # This is used to count the number of valid keys that have data without
         # iterating over the keys multiple times.
-        def _count_valid_keys():
+        def values():
             nonlocal report_count
             for key in keys:
                 series = self.data.get(key, ())
@@ -209,11 +209,11 @@ class InMemoryMetricsStore:
                 for ts in series:
                     yield ts.value
 
-        it = _count_valid_keys()
+        it = values()
         _empty = object()
         first = next(it, _empty)
         if first is _empty:
-            return None, 0
+            return None
 
         agg_result = aggregate_fn(chain((first,), it))
         return agg_result, report_count
@@ -230,39 +230,42 @@ class InMemoryMetricsStore:
     def aggregate_min(
         self,
         keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate min value across the specified keys."""
         return self._aggregate_reduce(keys, min)
 
     def aggregate_max(
         self,
         keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate max value across the specified keys."""
         return self._aggregate_reduce(keys, max)
 
     def aggregate_sum(
         self,
         keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate sum value across the specified keys."""
         return self._aggregate_reduce(keys, sum)
 
     def aggregate_avg(
         self,
         keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
+    ) -> Optional[Tuple[float, int]]:
         """Aggregate average value across the specified keys."""
         return self._aggregate_reduce(keys, statistics.mean)
 
 
 def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetricsStore:
+    merged = stores[0]
     if len(stores) == 1:
-        return stores[0]
+        return merged
     else:
-        merged = InMemoryMetricsStore()
-        merged.data[QUEUED_REQUESTS_KEY] = [TimeStampedValue(time.time(), 0.0)]
-        for store in stores:
+        if QUEUED_REQUESTS_KEY not in merged.data:
+            merged.data[QUEUED_REQUESTS_KEY] = [
+                TimeStampedValue(timestamp=0, value=0.0)
+            ]
+        for store in stores[1:]:
             for key, timeseries in store.data.items():
                 if key == QUEUED_REQUESTS_KEY:
                     # Sum queued requests across handle metrics.
