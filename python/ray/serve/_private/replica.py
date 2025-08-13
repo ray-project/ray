@@ -9,6 +9,7 @@ import random
 import threading
 import time
 import traceback
+import urllib
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -27,6 +28,7 @@ from typing import (
     Union,
 )
 
+import aiohttp
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
@@ -390,7 +392,7 @@ class ReplicaMetricsManager:
         return time_since_last > randomized_period
 
     async def get_autoscaling_metrics(
-        self, prometheus_metrics: Optional[List[Tuple[str, str]]]
+        self, prometheus_metrics: Optional[List[Tuple[str, Optional[str]]]]
     ) -> Dict[str, Any]:
         """Get the autoscaling metrics for the replica."""
         if self._record_autoscaling_metrics_thread is None:
@@ -424,10 +426,9 @@ class ReplicaMetricsManager:
             self._last_record_autoscaling_metrics_time = time.time()
 
             if prometheus_metrics:
-                # Use anyio.to_thread to query prometheus endpoint at localhost:9090
-                # This returns the actual result, not an ObjectRef
-                prometheus_result = await to_thread.run_sync(
-                    self._query_prometheus_metrics, prometheus_metrics
+                # Query prometheus endpoint at localhost:9090 using aiohttp
+                prometheus_result = await self._query_prometheus_metrics(
+                    prometheus_metrics
                 )
                 # Merge the prometheus results with existing metrics
                 self._autoscaling_metrics.update(prometheus_result)
@@ -438,62 +439,64 @@ class ReplicaMetricsManager:
 
         return self._autoscaling_metrics
 
-    def _query_prometheus_metrics(
-        self, prometheus_metrics: List[Tuple[str, str]]
+    async def _query_prometheus_metrics(
+        self, prometheus_metrics: List[Tuple[str, Optional[str]]]
     ) -> Dict[str, Any]:
         """Query the local prometheus endpoint for metrics.
 
-        This method runs in a separate thread using anyio.to_thread to avoid blocking
-        the event loop during HTTP requests.
+        This method uses aiohttp to make async HTTP requests to the prometheus endpoint.
         """
-        import json
-        import urllib.parse
-        import urllib.request
 
         metrics_result = {}
-
         logger.info(
             f"Querying prometheus metrics {prometheus_metrics}",
             extra={"log_to_stderr": False},
         )
 
-        for metric_name, promql_expression in prometheus_metrics:
+        async def fetch_metric(session, metric_name, promql_expression):
             try:
-                # Construct the query URL for the prometheus endpoint
+                if not promql_expression:
+                    promql_expression = metric_name
+
                 query_params = urllib.parse.urlencode({"query": promql_expression})
+                logger.debug(
+                    f"Sending query to prometheus http://localhost:9090/api/v1/query?{query_params} metric_name {metric_name} promql_expression {promql_expression}"
+                )
                 url = f"http://localhost:9090/api/v1/query?{query_params}"
 
-                # Make the HTTP request
-                with urllib.request.urlopen(url, timeout=5) as response:
+                timeout = aiohttp.ClientTimeout(
+                    total=self._autoscaling_metrics_timeout_s
+                )
+                async with session.get(url, timeout=timeout) as response:
                     if response.status == 200:
-                        data = json.loads(response.read().decode("utf-8"))
-
-                        # Extract the metric value from the response
+                        data = await response.json()
                         if data.get("status") == "success" and data.get("data", {}).get(
                             "result"
                         ):
-                            # Get the first result value
                             result = data["data"]["result"][0]
                             if "value" in result and len(result["value"]) >= 2:
-                                # Prometheus returns [timestamp, value]
-                                metric_value = float(result["value"][1])
-                                metrics_result[metric_name] = metric_value
-                            else:
-                                metrics_result[metric_name] = 0.0
-                        else:
-                            metrics_result[metric_name] = 0.0
+                                return metric_name, float(result["value"][1])
+                        return metric_name, 0.0
                     else:
-                        logger.warning(
-                            f"Failed to query prometheus for metric {metric_name}: "
-                            f"HTTP {response.status}"
+                        logger.error(
+                            f"Failed to query prometheus for metric {metric_name}: HTTP {response.status}"
                         )
-                        metrics_result[metric_name] = 0.0
-
+                        return metric_name, 0.0
             except Exception as e:
-                logger.warning(
-                    f"Error querying prometheus for metric {metric_name}: {e}"
-                )
-                metrics_result[metric_name] = 0.0
+                logger.error(f"Error querying prometheus for metric {metric_name}: {e}")
+                return metric_name, 0.0
+
+        async with aiohttp.ClientSession() as session:
+            # Create a list of tasks for all metrics
+            tasks = [
+                fetch_metric(session, metric_name, promql_expression)
+                for metric_name, promql_expression in prometheus_metrics
+            ]
+            # Run all tasks concurrently
+            results = await asyncio.gather(*tasks)
+
+            # Update metrics_result with all results
+            metrics_result.update(dict(results))
 
         return metrics_result
 
@@ -510,7 +513,7 @@ class ReplicaMetricsManager:
         """Add autoscaling metrics point using periodic fetching mechanism."""
 
         prometheus_metrics = self._autoscaling_config.prometheus_custom_metrics
-        # TODO: external_metrics = self._autoscaling_config.external_metrics
+        # TODO arcyleung: external_metrics = self._autoscaling_config.external_metrics
 
         # Get the prometheus metrics from using the periodic fetching mechanism
         if prometheus_metrics:
@@ -526,15 +529,11 @@ class ReplicaMetricsManager:
         all_metrics = {
             **{self._replica_id: self._num_ongoing_requests},
             **autoscaling_metrics,
-            # TODO: **external_metrics
+            # TODO arcyleung: **external_metrics
         }
 
         logger.info(
-            f"Adding metrics point, {self._autoscaling_config} prometheus custom metrics: {self._autoscaling_config.prometheus_custom_metrics}",
-            extra={"log_to_stderr": False},
-        )
-        logger.info(
-            f"all_metrics: {all_metrics}",
+            f"Adding metrics point, {all_metrics}",
             extra={"log_to_stderr": False},
         )
 

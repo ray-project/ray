@@ -89,7 +89,7 @@ def stop_vllm_container(container_name: str):
         "prometheus_custom_metrics": [
             (
                 "ray_node_cpu_utilization",
-                "sum(ray_resources{Name='CPU',State='USED'}) by (instance)",
+                None,
             ),
         ],
     },

@@ -241,7 +241,8 @@ class AutoscalingConfig(BaseModel):
     custom_policy: Optional[
         AutoscalingPolicyConfig
     ] = None  # this policy is deployment scoped
-    prometheus_custom_metrics: Optional[List[Tuple[str, str]]] = None
+    # List of []
+    prometheus_custom_metrics: Optional[List[Tuple[str, Optional[str]]]] = None
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
