@@ -85,6 +85,7 @@ class NormalTaskSubmitter {
  public:
   explicit NormalTaskSubmitter(
       rpc::Address rpc_address,
+      std::shared_ptr<RayletClientInterface> local_raylet_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
@@ -99,6 +100,7 @@ class NormalTaskSubmitter {
       const TensorTransportGetter &tensor_transport_getter,
       boost::asio::steady_timer cancel_timer)
       : rpc_address_(std::move(rpc_address)),
+        local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
@@ -238,6 +240,9 @@ class NormalTaskSubmitter {
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
+
+  /// Client that can be used to lease and return workers from the local raylet.
+  std::shared_ptr<RayletClientInterface> local_raylet_client_;
 
   /// Cache of gRPC clients to remote raylets.
   absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>

@@ -504,6 +504,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
       rpc_address,
+      local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
       std::move(lease_policy),

@@ -519,6 +519,7 @@ class NormalTaskSubmitterTest : public testing::Test {
     }
     return NormalTaskSubmitter(
         address,
+        raylet_client,
         client_pool,
         raylet_client_pool,
         std::move(lease_policy),
@@ -1465,6 +1466,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   instrumented_io_context io_context;
   NormalTaskSubmitter submitter(
       address,
+      raylet_client,
       client_pool,
       raylet_client_pool,
       std::move(lease_policy),

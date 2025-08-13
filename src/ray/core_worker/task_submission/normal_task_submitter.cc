@@ -257,8 +257,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
     backlog_report.set_backlog_size(backlog.second.second);
     backlog_reports.emplace_back(backlog_report);
   }
-  raylet_client_pool_->GetByID(local_node_id_)
-      ->ReportWorkerBacklog(worker_id_, backlog_reports);
+  local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
