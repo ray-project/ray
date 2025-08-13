@@ -490,7 +490,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     // - (1) are not already dead.
     // - (2) have their driver running on the dead node.
     for (auto &data : result) {
-      auto driver_node_id = NodeID::FromBinary(data.second.driver_address().raylet_id());
+      auto driver_node_id = NodeID::FromBinary(data.second.driver_address().node_id());
       if (!data.second.is_dead() && driver_node_id == node_id) {
         MarkJobAsFinished(data.second, [data](Status status) {
           if (!status.ok()) {

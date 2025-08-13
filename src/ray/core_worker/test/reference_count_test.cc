@@ -295,7 +295,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   static rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
-    address.set_raylet_id(NodeID::FromRandom().Binary());
+    address.set_node_id(NodeID::FromRandom().Binary());
     address.set_worker_id(WorkerID::FromRandom().Binary());
     return address;
   }
