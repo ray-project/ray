@@ -713,6 +713,35 @@ class HTTPOptionsSchema(BaseModel):
         "before closing them when no requests are ongoing. Defaults to "
         f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
+    ssl_keyfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL key file for HTTPS. If provided with ssl_certfile, "
+        "the HTTP server will use HTTPS. Cannot be updated once Serve has started.",
+    )
+    ssl_certfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL certificate file for HTTPS. If provided with "
+        "ssl_keyfile, the HTTP server will use HTTPS. Cannot be updated once Serve "
+        "has started.",
+    )
+    ssl_keyfile_password: Optional[str] = Field(
+        default=None,
+        description="Password for the SSL key file, if encrypted.",
+    )
+    ssl_ca_certs: Optional[str] = Field(
+        default=None,
+        description="Path to the CA certificate file for verifying client certificates.",
+    )
+    
+    @validator("ssl_certfile")
+    def validate_ssl_config(cls, v, values):
+        ssl_keyfile = values.get("ssl_keyfile")
+        if (v and not ssl_keyfile) or (ssl_keyfile and not v):
+            raise ValueError(
+                "Both ssl_keyfile and ssl_certfile must be provided together "
+                "to enable HTTPS."
+            )
+        return v
 
 
 @PublicAPI(stability="stable")
