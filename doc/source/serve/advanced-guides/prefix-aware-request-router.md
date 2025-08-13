@@ -58,6 +58,7 @@ The first component evaluates whether the current load is balanced across replic
 :start-after: __begin_load_balance_component__
 :end-before: __end_load_balance_component__
 :language: python
+:caption: prefix_aware_router.py
 ```
 
 This component prioritizes load balancing over cache locality when replicas become too imbalanced.
@@ -77,7 +78,7 @@ The core prefix matching component implements the routing decision logic in the 
 :start-after: __begin_prefix_match_component__
 :end-before: __end_prefix_match_component__
 :language: python
-:linenos:
+:caption: prefix_aware_router.py
 ```
 
 This logic implements the three-tier strategy:
@@ -93,6 +94,7 @@ The prefix-aware router extends the proven Power of Two Choices algorithm, falli
 :start-after: __begin_pow2_router_base__
 :end-before: __end_pow2_router_base__
 :language: python
+:caption: prefix_aware_router.py
 ```
 
 
@@ -104,7 +106,7 @@ The router uses the `on_request_routed()` callback to update the prefix tree wit
 :start-after: __begin_on_request_routed__
 :end-before: __end_on_request_routed__
 :language: python
-:linenos:
+:caption: prefix_aware_router.py
 ```
 
 When a replica dies, the `on_replica_actor_died` callback is used to remove its entries from the shared prefix tree:
@@ -112,7 +114,7 @@ When a replica dies, the `on_replica_actor_died` callback is used to remove its 
 :start-after: __begin_on_replica_actor_died__
 :end-before: __end_on_replica_actor_died__
 :language: python
-:linenos:
+:caption: prefix_aware_router.py
 ```
 
 (mixin-components)=
@@ -151,4 +153,5 @@ Here's how to deploy an LLM application using the prefix cache-aware request rou
 :start-after: __prefix_aware_example_start__
 :end-before: __prefix_aware_example_end__
 :language: python
+:caption: prefix_aware_example.py
 ```
