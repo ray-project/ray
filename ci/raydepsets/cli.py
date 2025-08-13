@@ -120,7 +120,6 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
-                build_arg_set=depset.build_arg_set,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
@@ -131,7 +130,6 @@ class DependencySetManager:
                 depsets=depset.depsets,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
-                build_arg_set=depset.build_arg_set,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
