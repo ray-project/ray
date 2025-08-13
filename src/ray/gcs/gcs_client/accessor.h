@@ -541,9 +541,7 @@ class ErrorInfoAccessor {
   /// natural way to do this is to have finer-grained time stamps.
   ///
   /// \param data_ptr The error message that will be reported to GCS.
-  /// \param callback Callback that will be called when report is complete.
-  virtual void AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                                   const StatusCallback &callback);
+  virtual void AsyncReportJobError(rpc::ErrorTableData data_ptr);
 
  private:
   GcsClient *client_impl_;

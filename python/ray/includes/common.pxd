@@ -668,7 +668,7 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
-    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+    c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(

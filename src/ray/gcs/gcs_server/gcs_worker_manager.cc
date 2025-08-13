@@ -40,7 +40,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   GetWorkerInfo(
       worker_id,
       {[this, reply, send_reply_callback, worker_id, request = std::move(request)](
-           const std::optional<rpc::WorkerTableData> &result) {
+           std::optional<rpc::WorkerTableData> result) {
          const auto &worker_address = request.worker_failure().worker_address();
          const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
          std::string message =
@@ -63,10 +63,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                   "are lots of this logs, that might indicate there are "
                   "unexpected failures in the cluster.";
          }
-         auto worker_failure_data = std::make_shared<rpc::WorkerTableData>();
-         if (result) {
-           worker_failure_data->CopyFrom(*result);
-         }
+         auto worker_failure_data =
+             result.has_value()
+                 ? std::make_shared<rpc::WorkerTableData>(std::move(*result))
+                 : std::make_shared<rpc::WorkerTableData>();
          worker_failure_data->MergeFrom(request.worker_failure());
          worker_failure_data->set_is_alive(false);
 
@@ -75,30 +75,29 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          }
 
          auto on_done = [this,
-                         worker_address,
-                         worker_id,
                          node_id,
+                         worker_id,
                          worker_failure_data,
                          reply,
-                         send_reply_callback](const Status &status) {
+                         send_reply_callback,
+                         worker_ip_address =
+                             worker_address.ip_address()](const Status &status) {
            if (!status.ok()) {
              RAY_LOG(ERROR).WithField(worker_id).WithField(node_id).WithField(
-                 "worker_address", worker_address.ip_address())
+                 "worker_address", worker_ip_address)
                  << "Failed to report worker failure";
-           } else {
-             if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
-               stats::UnintentionalWorkerFailures.Record(1);
-             }
-             // Only publish worker_id and raylet_id in address as they are the only
-             // fields used by sub clients.
-             rpc::WorkerDeltaData worker_failure;
-             worker_failure.set_worker_id(
-                 worker_failure_data->worker_address().worker_id());
-             worker_failure.set_raylet_id(
-                 worker_failure_data->worker_address().raylet_id());
-             RAY_CHECK_OK(
-                 gcs_publisher_.PublishWorkerFailure(worker_id, worker_failure, nullptr));
            }
+           if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
+             stats::UnintentionalWorkerFailures.Record(1);
+           }
+           // Only publish worker_id and raylet_id in address as they are the only
+           // fields used by sub clients.
+           rpc::WorkerDeltaData worker_failure;
+           worker_failure.set_worker_id(
+               worker_failure_data->worker_address().worker_id());
+           worker_failure.set_raylet_id(
+               worker_failure_data->worker_address().raylet_id());
+           gcs_publisher_.PublishWorkerFailure(worker_id, std::move(worker_failure));
            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
          };
 
@@ -107,9 +106,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          // message, so we delete the get operation. Related issues:
          // https://github.com/ray-project/ray/pull/11599
          Status status = gcs_table_storage_.WorkerTable().Put(
-             worker_id, *worker_failure_data, {on_done, io_context_});
+             worker_id, *worker_failure_data, {std::move(on_done), io_context_});
          if (!status.ok()) {
-           on_done(status);
+           // TODO(dayshah): This will never actually happen, all the AsyncPut operations
+           // always return Status::OK(). Should be changed to return void
          }
 
          if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||

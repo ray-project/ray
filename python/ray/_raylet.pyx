@@ -2911,7 +2911,7 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
-        c_log_lines = PythonGetLogBatchLines(log_batch)
+        c_log_lines = PythonGetLogBatchLines(move(log_batch))
 
         log_lines = []
         for c_log_line in c_log_lines:

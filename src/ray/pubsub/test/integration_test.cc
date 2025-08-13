@@ -47,7 +47,8 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
       rpc::PubsubLongPollingReply *reply) override {
     auto *reactor = context->DefaultReactor();
     publisher_->ConnectToSubscriber(*request,
-                                    reply,
+                                    reply->mutable_publisher_id(),
+                                    reply->mutable_pub_messages(),
                                     [reactor](ray::Status status,
                                               std::function<void()> success_cb,
                                               std::function<void()> failure_cb) {
