@@ -57,21 +57,25 @@ def _get_env_value(
     default: Optional[T],
     value_type: Type[T],
     validation_func: Optional[Callable[[T], bool]] = None,
-    requirement_in_error: str = None,
+    failed_validation_req_str: str = None,
 ) -> Optional[T]:
     """Get environment variable with type conversion and validation.
+
+    This function retrieves an environment variable, converts it to the specified type,
+    and optionally validates the converted value.
 
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
-        value_type: Type to convert the environment variable value to.
-        validation_func: Optional validation function that takes the converted
-            value and returns a boolean indicating if the value is valid.
-        requirement_in_error: Error message to use if type conversion fails
-            or validation check fails.
+               If None, the function will return None without validation.
+        value_type: Type to convert the environment variable value to (e.g., int, float, str).
+        validation_func: Optional function that takes the converted value and returns
+                       a boolean indicating whether the value is valid.
+        failed_validation_req_str: Description of the expected value characteristics
+                                 (e.g., "positive", "non negative") used in error messages.
 
     Returns:
-        The converted and validated environment variable,
+        The environment variable value converted to the specified type and validated,
         or the default value if the environment variable is not set.
 
     Raises:
@@ -92,7 +96,7 @@ def _get_env_value(
     if validation_func and not validation_func(value):
         raise ValueError(
             f"Got unexpected value `{value}` for `{name}` environment variable! "
-            f"Expected {requirement_in_error} `{value_type.__name__}`."
+            f"Expected {failed_validation_req_str} `{value_type.__name__}`."
         )
 
     return value
@@ -233,7 +237,7 @@ def get_env_float_warning_till_2_50(
     PROXY_MIN_DRAINING_PERIOD_S
     RAY_SERVE_KV_TIMEOUT_S
 
-    todo: after the 2.49.0 release - delete this function and use get_env_float_positive instead
+    todo: remove the function after 2.49.0 release - use get_env_float_positive instead
     """
     current_version = packaging_version.parse(ray.__version__)
     removal_version = packaging_version.parse("2.50.0")
