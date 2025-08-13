@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
+#include <google/protobuf/map.h>
 
 #include "ray/util/logging.h"
 
@@ -127,21 +128,31 @@ void GcsRayEventConverter::GenerateTaskInfoEntry(
     rpc::Language language,
     rpc::TaskInfoEntry *task_info) {
   task_info->set_language(language);
-  *task_info->mutable_runtime_env_info() = std::move(runtime_env_info);
-  if (language == rpc::Language::CPP &&
-      function_descriptor.has_cpp_function_descriptor()) {
-    task_info->set_func_or_class_name(
-        function_descriptor.cpp_function_descriptor().function_name());
-  } else if (language == rpc::Language::PYTHON &&
-             function_descriptor.has_python_function_descriptor()) {
-    task_info->set_func_or_class_name(
-        function_descriptor.python_function_descriptor().function_name());
-  } else if (language == rpc::Language::JAVA &&
-             function_descriptor.has_java_function_descriptor()) {
-    task_info->set_func_or_class_name(
-        function_descriptor.java_function_descriptor().function_name());
+  task_info->mutable_runtime_env_info()->Swap(&runtime_env_info);
+  switch (language) {
+  case rpc::Language::CPP:
+    if (function_descriptor.has_cpp_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          function_descriptor.cpp_function_descriptor().function_name());
+    }
+    break;
+  case rpc::Language::PYTHON:
+    if (function_descriptor.has_python_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          function_descriptor.python_function_descriptor().function_name());
+    }
+    break;
+  case rpc::Language::JAVA:
+    if (function_descriptor.has_java_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          function_descriptor.java_function_descriptor().function_name());
+    }
+    break;
+  default:
+    // Other languages are not handled.
+    break;
   }
-  *task_info->mutable_required_resources() = std::move(required_resources);
+  task_info->mutable_required_resources()->swap(required_resources);
 }
 
 }  // namespace gcs
