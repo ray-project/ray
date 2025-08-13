@@ -343,7 +343,9 @@ RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = get_env_float(
 )
 
 # The default autoscaling policy to use if none is specified.
-DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+DEFAULT_AUTOSCALING_POLICY_NAME = (
+    "ray.serve.autoscaling_policy:default_autoscaling_policy"
+)
 
 # Feature flag to enable collecting all queued and ongoing request
 # metrics at handles instead of replicas. ON by default.
