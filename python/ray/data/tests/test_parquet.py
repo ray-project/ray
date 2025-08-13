@@ -2169,6 +2169,60 @@ def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
     assert ds_read.count() == min_rows_per_file
 
 
+def test_read_parquet_with_zero_row_groups(shutdown_only, tmp_path):
+    """Test reading a parquet file with 0 row groups."""
+    # Create an empty parquet file (0 row groups)
+    empty_path = os.path.join(tmp_path, "empty.parquet")
+    schema = pa.schema({"id": pa.int64()})
+    with pq.ParquetWriter(empty_path, schema):
+        pass
+
+    parquet_file = pq.ParquetFile(empty_path)
+    assert parquet_file.num_row_groups == 0
+
+    # Test reading the empty parquet file
+    dataset = ray.data.read_parquet(empty_path)
+    assert dataset.count() == 0
+
+
+@pytest.mark.parametrize(
+    "partition_info",
+    [
+        {"partition_cols": None, "output_dir": "test_output"},
+        {
+            "partition_cols": ["id_mod"],
+            "output_dir": "test_output_partitioned",
+        },
+    ],
+    ids=["no_partitioning", "with_partitioning"],
+)
+def test_parquet_write_parallel_overwrite(
+    ray_start_regular_shared, tmp_path, partition_info
+):
+    """Test parallel Parquet write with overwrite mode."""
+
+    partition_cols = partition_info["partition_cols"]
+    output_dir = partition_info["output_dir"]
+
+    # Create dataset with 1000 rows
+    df_data = {"id": range(1000), "value": [f"value_{i}" for i in range(1000)]}
+    if partition_cols:
+        df_data["id_mod"] = [i % 10 for i in range(1000)]  # 10 partitions
+    df = pd.DataFrame(df_data)
+    ds = ray.data.from_pandas(df)
+
+    # Repartition to ensure multiple write tasks
+    ds = ds.repartition(10)
+
+    # Write with overwrite mode
+    path = os.path.join(tmp_path, output_dir)
+    ds.write_parquet(path, mode="overwrite", partition_cols=partition_cols)
+
+    # Read back and verify
+    result = ray.data.read_parquet(path)
+    assert result.count() == 1000
+
+
 if __name__ == "__main__":
     import sys
 

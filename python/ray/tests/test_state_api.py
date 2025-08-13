@@ -27,6 +27,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, ActorID, JobID, TaskID
+from ray._common.network_utils import parse_address
 from ray._private.test_utils import (
     run_string_as_driver,
     find_free_port,
@@ -170,7 +171,7 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         name="abc",
         pid=1234,
         class_name=class_name,
-        address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
+        address=Address(node_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
         job_id=b"123",
         node_id=None,
         ray_namespace="",
@@ -207,7 +208,7 @@ def generate_worker_data(
 ):
     return WorkerTableData(
         worker_address=Address(
-            raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+            node_id=id, ip_address="127.0.0.1", port=124, worker_id=id
         ),
         is_alive=True,
         timestamp=1234,
@@ -371,7 +372,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
@@ -2198,7 +2199,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
@@ -3713,7 +3714,7 @@ def test_get_id_not_found(shutdown_only):
 
 
 def test_core_state_api_usage_tags(shutdown_only):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
     gcs_client = GcsClient(address=ctx.address_info["gcs_address"])

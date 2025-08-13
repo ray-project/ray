@@ -606,11 +606,11 @@ bool LocalTaskManager::PoppedWorkerHandler(
         << "This node has available resources, but no worker processes "
            "to grant the lease: status "
         << status;
-    if (status == PopWorkerStatus::RuntimeEnvCreationFailed ||
-        status == PopWorkerStatus::ArgumentListTooLong) {
-      // In case of runtime env creation or worker startup failure, we cancel this task
-      // directly and raise an exception to user eventually. The task will be removed
-      // from the dispatch queue in `CancelTask`.
+    if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
+      // In case of runtime env creation failed, we cancel this task
+      // directly and raise a `RuntimeEnvSetupError` exception to user
+      // eventually. The task will be removed from dispatch queue in
+      // `CancelTask`.
       CancelTasks(
           [task_id](const auto &work) {
             return task_id == work->task.GetTaskSpecification().TaskId();
@@ -681,7 +681,7 @@ void LocalTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_ip_address(
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();
 }
@@ -969,7 +969,7 @@ void LocalTaskManager::Dispatch(
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
-  reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+  reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;

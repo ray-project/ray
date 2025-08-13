@@ -23,12 +23,14 @@ from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
-    CStatusCode,
-    CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
     CGetClusterStatusReply,
+    CStatusOr,
+    CGcsNodeState,
+    CNodeSelector,
+    CGcsNodeInfo,
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
@@ -74,7 +76,7 @@ cdef class InnerGcsClient:
         cdef c_pair[c_string, int] pair = self.inner.get().GetGcsServerAddress()
         host = pair.first.decode("utf-8")
         port = pair.second
-        return f"{host}:{port}"
+        return build_address(host, port)
 
     @property
     def cluster_id(self) -> ray.ClusterID:
@@ -271,28 +273,34 @@ cdef class InnerGcsClient:
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[CNodeID] c_node_ids;
             c_vector[c_bool] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
+        for node_id in node_ids:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
-                c_node_ips, timeout_ms, results)
+                c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[CNodeID] c_node_ids;
             fut = incremented_fut()
+        c_node_ids.reserve(len(node_ids));
+        for node_id in node_ids:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             self.inner.get().Nodes().AsyncCheckAlive(
-                c_node_ips, timeout_ms,
+                c_node_ids, timeout_ms,
                 MultiItemPyCallback[c_bool](
                     &convert_multi_bool,
                     assign_and_decrement_fut,
@@ -308,6 +316,7 @@ cdef class InnerGcsClient:
             c_vector[CNodeID] c_node_ids
             c_vector[c_string] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
             c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
@@ -316,13 +325,23 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
-        self, timeout: Optional[int | float] = None
+        self, timeout: Optional[int | float] = None,
+        state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        cdef c_vector[CGcsNodeInfo] reply
-        cdef CRayStatus status
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[CGcsNodeInfo] reply
+            CRayStatus status
+            optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
+            optional[CGcsNodeState] c_state_filter = nullopt
+            optional[CNodeSelector] c_node_selector = nullopt
+        if state_filter is not None:
+            c_state_filter.emplace(<CGcsNodeState>state_filter)
         with nogil:
-            status = self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
+            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
+        status = status_or.value().status()
+        if status_or.value().ok():
+            reply = move(status_or.value().value())
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
@@ -330,10 +349,10 @@ cdef class InnerGcsClient:
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            optional[CNodeID] c_node_id
+            c_vector[CNodeID] c_node_ids
             fut = incremented_fut()
         if node_id:
-            c_node_id = (<NodeID>node_id).native()
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             self.inner.get().Nodes().AsyncGetAll(
                 MultiItemPyCallback[CGcsNodeInfo](
@@ -341,7 +360,7 @@ cdef class InnerGcsClient:
                     assign_and_decrement_fut,
                     fut),
                 timeout_ms,
-                c_node_id)
+                c_node_ids)
         return asyncio.wrap_future(fut)
 
     #############################################################

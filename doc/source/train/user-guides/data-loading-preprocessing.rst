@@ -45,7 +45,7 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: PyTorch
 
         .. code-block:: python
-            :emphasize-lines: 14,21,29,31-33,53
+            :emphasize-lines: 14,21,29,33-35,53
 
             import torch
             import ray
@@ -149,7 +149,7 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: HuggingFace Transformers
 
         .. code-block:: python
-            :emphasize-lines: 7-8,13-14,17-18,30-31,41
+            :emphasize-lines: 7-8,13-14,17-18,24,30-31,41
 
             import ray
             import ray.train

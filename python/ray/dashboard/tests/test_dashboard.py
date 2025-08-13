@@ -25,7 +25,12 @@ import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
 from ray._common.utils import get_or_create_event_loop
-from ray._private import ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
+from ray._common.network_utils import build_address, parse_address
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
@@ -326,7 +331,7 @@ def test_agent_report_unexpected_raylet_death_large_file(
 )
 def test_dashboard_address_local(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_ip = webui_url.split(":")[0]
+    webui_ip = parse_address(webui_url)[0]
     assert not ipaddress.ip_address(webui_ip).is_unspecified
     assert webui_ip == "127.0.0.1"
 
@@ -345,7 +350,7 @@ def test_dashboard_address_local(ray_start_with_dashboard):
 )
 def test_dashboard_address_global(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_ip = webui_url.split(":")[0]
+    webui_ip = parse_address(webui_url)[0]
     assert not ipaddress.ip_address(webui_ip).is_unspecified
     assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
@@ -387,7 +392,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             node_ip, http_port, _ = json.loads(agent_addr)
 
             response = requests.get(
-                f"http://{node_ip}:{http_port}"
+                f"http://{build_address(node_ip, http_port)}"
                 f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
             response.raise_for_status()
@@ -911,7 +916,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    host, port = address_info["webui_url"].split(":")
+    host, port = parse_address(address_info["webui_url"])
     temp_dir = "/tmp/ray"
     session_dir = "/tmp/ray/session_latest"
     log_dir = "/tmp/ray/session_latest/logs"
@@ -1049,7 +1054,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     logger.info("Agent works.")
 
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
+    agent_url = build_address(node.node_ip_address, node.dashboard_agent_listen_port)
 
     # Check that Serve-dependent features fail
     try:
@@ -1134,8 +1139,8 @@ async def test_dashboard_module_load(tmpdir):
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
         temp_dir=str(tmpdir),
         session_dir=str(tmpdir),
         minimal=False,
@@ -1311,7 +1316,7 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
 
     # Fetch the metrics from the dashboard.
     addr = ray_context["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
+    prom_addresses = [build_address(addr, dashboard_consts.DASHBOARD_METRIC_PORT)]
 
     def check_lag_metrics():
         metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(

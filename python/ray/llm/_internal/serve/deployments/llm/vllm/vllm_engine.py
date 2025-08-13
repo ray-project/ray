@@ -7,6 +7,7 @@ from starlette.datastructures import State
 from starlette.requests import Request
 from transformers.dynamic_module_utils import init_hf_modules
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
@@ -26,7 +27,6 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    FrontendArgs,
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -56,7 +56,11 @@ def _get_vllm_engine_config(
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    from vllm.usage.usage_lib import UsageContext
+
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
@@ -273,7 +277,7 @@ class VLLMEngine(LLMEngine):
             ref = (
                 ray.remote(
                     num_cpus=0,
-                    num_gpus=1,
+                    num_gpus=0.001,
                     accelerator_type=self.llm_config.accelerator_type,
                 )(_get_vllm_engine_config)
                 .options(
@@ -324,7 +328,7 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm import envs as vllm_envs
 
-        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
+        # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
                 vllm_engine_args, vllm_engine_config, placement_group
@@ -339,12 +343,11 @@ class VLLMEngine(LLMEngine):
 
         custom_stat_loggers = None
         if self.llm_config.log_engine_metrics:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
-                RayPrometheusStatLogger,
-            )
+            from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
 
-            # V1 AsyncLLM does not yet support add_logger
-            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            # V1 AsyncLLM does not yet support add_logger: https://github.com/vllm-project/vllm/issues/17702
+            # Use `disable_log_stats: False` and `log_engine_metrics: False` as
+            # a workaround to enable PrometheusStatLogger instead.
             custom_stat_loggers = [RayPrometheusStatLogger]
 
         executor_class = Executor.get_class(vllm_engine_config)
@@ -361,19 +364,9 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        # TODO (Kourosh): We should uncomment this logic when
-        # https://github.com/vllm-project/vllm/pull/20636 is
-        # included in our vLLM release.
-        # if disk_lora_model.model_id in self._oai_models.lora_requests:
-        #     # Lora is already loaded, return
-        #     return
-
         self._validate_openai_serving_models()
 
-        if any(
-            lora_request.lora_name == disk_lora_model.model_id
-            for lora_request in self._oai_models.lora_requests  # type: ignore[attr-defined]
-        ):
+        if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
 

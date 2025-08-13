@@ -912,8 +912,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    url = get_application_url("HTTP")
-    r = httpx.post(url, timeout=10)
+    r = httpx.post("http://localhost:8000/", timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text
 
     @serve.deployment

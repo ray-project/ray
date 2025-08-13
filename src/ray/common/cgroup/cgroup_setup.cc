@@ -84,6 +84,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "ray/util/filesystem.h"
 #include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {

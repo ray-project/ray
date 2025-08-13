@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -130,8 +131,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers,
-             bool is_from_worker) override {
+             std::vector<plasma::ObjectBuffer> *object_buffers) override {
     for (const auto &id : object_ids) {
       auto &buffers = objects_in_plasma_[id];
       plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
@@ -140,10 +140,6 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
                                           buffers.second.data(), buffers.second.size())};
       object_buffers->emplace_back(shm_buffer);
     }
-    return Status::OK();
-  }
-
-  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) override {
     return Status::OK();
   }
 
@@ -255,7 +251,7 @@ TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_addre
                                              /*is_asyncio=*/false,
                                              /*concurrency_groups=*/{},
                                              /*extension_data=*/"",
-                                             /*execute_out_of_order=*/false,
+                                             /*allow_out_of_order_execution=*/false,
                                              /*root_detached_actor_id=*/actor_id);
   return task_spec_builder;
 }
@@ -384,7 +380,9 @@ class NodeManagerTest : public ::testing::Test {
       : client_call_manager_(io_service_, /*record_stats=*/false),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
-        }) {
+        }),
+        raylet_client_pool_(
+            [](const auto &) { return std::make_shared<FakeRayletClient>(); }) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -487,6 +485,7 @@ class NodeManagerTest : public ::testing::Test {
                                                   *mock_gcs_client_,
                                                   client_call_manager_,
                                                   worker_rpc_pool_,
+                                                  raylet_client_pool_,
                                                   *core_worker_subscriber_,
                                                   *cluster_resource_scheduler_,
                                                   *local_task_manager_,
@@ -506,6 +505,7 @@ class NodeManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   rpc::ClientCallManager client_call_manager_;
   rpc::CoreWorkerClientPool worker_rpc_pool_;
+  rpc::RayletClientPool raylet_client_pool_;
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::MockSubscriber> core_worker_subscriber_;
@@ -675,7 +675,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
   const auto owner_node_id = NodeID::FromRandom();
   rpc::Address owner_address;
-  owner_address.set_raylet_id(owner_node_id.Binary());
+  owner_address.set_node_id(owner_node_id.Binary());
   const auto actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
   const auto task_spec_builder =

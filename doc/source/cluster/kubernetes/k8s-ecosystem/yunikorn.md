@@ -12,7 +12,7 @@ This feature requires KubeRay version 1.2.2 or newer, and it's in alpha testing.
 
 :::
 
-## Step 1: Create a Kubernetes cluster with KinD
+## Step 1: Create a Kubernetes cluster with Kind
 Run the following command in a terminal:
 
 ```shell

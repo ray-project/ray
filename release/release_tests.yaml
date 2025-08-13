@@ -2058,7 +2058,7 @@
 
   cluster:
     byod: {}
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
@@ -2649,14 +2649,12 @@
 # --------------------------
 # DreamerV3
 # --------------------------
-# TODO (sven): Move algo and this test to pytorch
-- name: rllib_learning_tests_pong_dreamerv3_tf2
+- name: rllib_learning_tests_pong_dreamerv3_torch
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: false
+  stable: true
 
-  # https://github.com/ray-project/ray/issues/46612
   frequency: weekly
   team: rllib
   cluster:
@@ -2666,11 +2664,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 1gpu_4cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
-    timeout: 43200  # 12h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ale_py:ALE/Pong-v5 --num-learners=1 --stop-reward=15.0 --as-release-test
+    timeout: 36000  # 10h
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k_dreamerv3.py --framework=torch --env=ale_py:ALE/Pong-v5 --num-learners=4 --stop-reward=18.0 --as-release-test
 
   alert: default
 
@@ -2680,7 +2678,38 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: 1gpu_4cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_pendulum_dreamerv3_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_dreamerv3_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 3600  # 1h
+    script: python learning_tests/tuned_examples/dreamerv3/pendulum_dreamerv3.py --framework=torch --num-learners=2 --stop-reward=-200.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_32cpus_gce.yaml
 
 # --------------------------
 # IMPALA
@@ -2704,7 +2733,7 @@
 
   run:
     timeout: 1800
-    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
+    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.0 --as-release-test
 
   alert: default
 
@@ -2973,6 +3002,40 @@
   run:
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
+
+- name: gpu_object_GPU
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/gpu_object_microbenchmark.py
+
+- name: gpu_object_GPU_multinode
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/gpu_object_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   group: core-daily-test
