@@ -504,6 +504,26 @@ class ObjectManager : public ObjectManagerInterface,
       /*name=*/"object_store_available_memory",
       /*description=*/"Amount of memory currently available in the object store.",
       /*unit=*/"bytes"};
+
+  ray::stats::Gauge ray_metric_object_store_used_memory_{
+      /*name=*/"object_store_used_memory",
+      /*description=*/"Amount of memory currently occupied in the object store.",
+      /*unit=*/"bytes"};
+
+  ray::stats::Gauge ray_metric_object_store_fallback_memory_{
+      /*name=*/"object_store_fallback_memory",
+      /*description=*/"Amount of memory in fallback allocations in the filesystem.",
+      /*unit=*/"bytes"};
+
+  ray::stats::Gauge ray_metric_object_store_local_objects_{
+      /*name=*/"object_store_num_local_objects",
+      /*description=*/"Number of objects currently in the object store.",
+      /*unit=*/"objects"};
+
+  ray::stats::Gauge ray_metric_object_manager_pull_requests_{
+      /*name=*/"object_manager_num_pull_requests",
+      /*description=*/"Number of active pull requests for objects.",
+      /*unit=*/"requests"};
 };
 
 }  // namespace ray

@@ -205,7 +205,7 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         },
         "RedisRequestContext.Callback");
     auto end_time = absl::Now();
-    ray::stats::GcsLatency().Record(
+    request_cxt->ray_metric_gcs_latency_.Record(
         absl::ToDoubleMilliseconds(end_time - request_cxt->start_time_));
     delete request_cxt;
   }
