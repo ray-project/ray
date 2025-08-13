@@ -1008,9 +1008,9 @@ grpcio==1.66.2 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   grpcio-tools
-gymnasium==1.0.0 \
-    --hash=sha256:9d2b66f30c1b34fe3c2ce7fae65ecf365d0e9982d2b3d860235e773328a3b403 \
-    --hash=sha256:b6f40e1e24c5bd419361e1a5b86a9117d2499baecc3a660d44dfff4c465393ad
+gymnasium==1.1.1 \
+    --hash=sha256:8bd9ea9bdef32c950a444ff36afc785e1d81051ec32d30435058953c20d2456d \
+    --hash=sha256:9c167ec0a2b388666e37f63b2849cd2552f7f5b71938574c637bb36487eb928a
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
