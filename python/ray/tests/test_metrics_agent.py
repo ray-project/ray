@@ -422,7 +422,7 @@ def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
     addr = ray.init()
     dashboard_export_addr = build_address(
-        addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
+        addr["node_ip_address"], DASHBOARD_METRIC_PORT
     )
 
     def verify_node_metrics():
@@ -494,7 +494,7 @@ def test_metrics_export_event_aggregator_agent(
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
     metrics_export_port = cluster.head_node.metrics_export_port
-    addr = cluster.head_node.raylet_ip_address
+    addr = cluster.head_node.node_ip_address
     prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
@@ -560,8 +560,7 @@ def test_metrics_export_event_aggregator_agent(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply is not None
+    stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)

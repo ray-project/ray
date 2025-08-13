@@ -2394,7 +2394,7 @@ def connect(
 
     Args:
         node (ray._private.node.Node): The node to connect.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2584,7 +2584,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
