@@ -265,7 +265,8 @@ class NormalTaskSubmitter {
   /// to the raylet.
   int64_t lease_timeout_ms_;
 
-  /// The local node ID.
+  /// The local node ID. Used to make sure that we use the local lease client
+  /// if a remote raylet tells us to spill the task back to the local raylet.
   const NodeID local_node_id_;
 
   /// The local worker ID.
