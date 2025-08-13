@@ -28,7 +28,8 @@ class GPUObjectMeta(NamedTuple):
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
 
 
-@PublicAPI(stability="alpha")
+# TODO(swang): Uncomment and add an API docs page.
+# @PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
     Wait for the tensor to be freed from this actor's GPU object store.
