@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
+
 #include <google/protobuf/map.h>
 
 #include "ray/util/logging.h"
