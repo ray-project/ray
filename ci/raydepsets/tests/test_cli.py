@@ -473,6 +473,20 @@ depsets:
             assert depset.name == "ray_base_test_depset"
             assert depset.build_arg_set_name is None
 
+    def test_build_wheel(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.build_wheel(
+                setup_path="dummy_wheel",
+                output=".",
+                append_flags=["--python", "3.11"],
+            )
+            output_file = (
+                Path(tmpdir) / "dummy_wheel" / "dummy_package-0.1.0-py3-none-any.whl"
+            )
+            assert output_file.is_file()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

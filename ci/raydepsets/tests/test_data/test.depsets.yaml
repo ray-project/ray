@@ -49,8 +49,5 @@ depsets:
     output: requirements_compiled_expand_general.txt
   - name: build_wheel_depset
     operation: build_wheel
-    setup_path: python
+    setup_path: dummy_wheel
     output: dist
-    python_version: ${PYTHON_VERSION}
-    build_arg_sets:
-      - py311_cpu

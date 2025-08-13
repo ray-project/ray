@@ -102,6 +102,8 @@ class DependencySetManager:
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: List[str], args: List[str]) -> str:
+        if self._uv_cache_dir:
+            args.extend(["--cache-dir", self._uv_cache_dir])
         cmd = [self._uv_binary, *cmd, *args]
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
@@ -157,8 +159,6 @@ class DependencySetManager:
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
-        if self._uv_cache_dir:
-            args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
