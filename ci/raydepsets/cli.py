@@ -95,7 +95,6 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.name == name:
                 return depset
-
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
