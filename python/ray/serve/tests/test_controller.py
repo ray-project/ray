@@ -9,7 +9,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -79,7 +79,7 @@ def test_deploy_app_custom_exception(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "policy", [None, DEFAULT_AUTOSCALING_POLICY, default_autoscaling_policy]
+    "policy", [None, DEFAULT_AUTOSCALING_POLICY_NAME, default_autoscaling_policy]
 )
 def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     """Test the result from get_serve_instance_details is json serializable."""

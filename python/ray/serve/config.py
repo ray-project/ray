@@ -17,7 +17,7 @@ from ray._common.pydantic_compat import (
 )
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -163,11 +163,12 @@ DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
 @PublicAPI(stability="alpha")
-class AutoscalingPolicyConfig(BaseModel):
+class AutoscalingPolicy(BaseModel):
     name: Union[str, Callable] = Field(
-        default=DEFAULT_AUTOSCALING_POLICY,
-        description="Name of the policy function or the import path of the policy",
-    )  # Name of the policy function or the import path of the policy if user passed a string
+        default=DEFAULT_AUTOSCALING_POLICY_NAME,
+        description="Name of the policy function or the import path of the policy. "
+        "Will be the concatenation of the policy module and the policy name if user passed a callable.",
+    )
 
 
 @PublicAPI(stability="stable")
@@ -230,10 +231,8 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
-    # Custom autoscaling config. This policy is deployment scoped. Defaults to the request-based autoscaler.
-    _policy: Optional[AutoscalingPolicyConfig] = Field(
-        default_factory=AutoscalingPolicyConfig
-    )
+    # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
+    _policy: AutoscalingPolicy = Field(default_factory=AutoscalingPolicy)
 
     # This is to make `_policy` a normal field until its GA ready.
     class Config:
@@ -296,12 +295,12 @@ class AutoscalingConfig(BaseModel):
             policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
 
         if not policy_name:
-            policy_name = DEFAULT_AUTOSCALING_POLICY
+            policy_name = DEFAULT_AUTOSCALING_POLICY_NAME
 
         if not self._serialized_policy_def:
             self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
 
-        self._policy = AutoscalingPolicyConfig(name=policy_name)
+        self._policy = AutoscalingPolicy(name=policy_name)
 
     @classmethod
     def default(cls):
