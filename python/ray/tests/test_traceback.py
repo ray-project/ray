@@ -40,9 +40,9 @@ def scrub_traceback(ex):
     ex = re.sub(r"\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
-    # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.
+    # Also remove the "io_ray" prefix, which may appear on Windows.
     ex = re.sub(
-        r"(com_github_ray_project_ray.)?python\.ray\.tests\.test_traceback",
+        r"(io_ray.)?python\.ray\.tests\.test_traceback",
         "test_traceback",
         ex,
     )

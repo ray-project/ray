@@ -1,7 +1,7 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
-    name = "dep_res_test",
+    name = "dependency_resolver_test",
     size = "small",
     srcs = ["dependency_resolver_test.cc"],
     tags = ["team:core"],
@@ -15,7 +15,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "ooo_submit_queue_test",
+    name = "out_of_order_actor_submit_queue_test",
     size = "small",
     srcs = ["out_of_order_actor_submit_queue_test.cc"],
     tags = ["team:core"],
@@ -28,7 +28,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "da_transport_test",
+    name = "direct_actor_transport_test",
     srcs = ["direct_actor_transport_test.cc"],
     tags = ["team:core"],
     deps = [
@@ -40,7 +40,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "at_submitter_test",
+    name = "actor_task_submitter_test",
     srcs = ["actor_task_submitter_test.cc"],
     tags = ["team:core"],
     deps = [
@@ -58,7 +58,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "nt_submitter_test",
+    name = "normal_task_submitter_test",
     size = "small",
     srcs = ["normal_task_submitter_test.cc"],
     tags = ["team:core"],

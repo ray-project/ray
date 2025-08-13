@@ -249,22 +249,22 @@ java_test(
 # More detail please see https://github.com/ray-project/ray/pull/21641.
 java_proto_compile(
     name = "common_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:common_proto"],
+    deps = ["@io_ray//src/ray/protobuf:common_proto"],
 )
 
 java_proto_compile(
     name = "runtime_env_common_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:runtime_env_common_proto"],
+    deps = ["@io_ray//src/ray/protobuf:runtime_env_common_proto"],
 )
 
 java_proto_compile(
     name = "gcs_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:gcs_proto"],
+    deps = ["@io_ray//src/ray/protobuf:gcs_proto"],
 )
 
 java_proto_compile(
     name = "serve_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:serve_proto"],
+    deps = ["@io_ray//src/ray/protobuf:serve_proto"],
 )
 
 filegroup(
