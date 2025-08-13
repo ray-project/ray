@@ -24,25 +24,16 @@ class Depset:
     depsets: Optional[List[str]] = None
 
 
-def _substitute_build_args(
-    obj: Any, build_arg_set_key: str, build_arg_set: BuildArgSet
-):
-    build_args = {
-        "BUILD_ARG_SET": build_arg_set_key,
-        **build_arg_set.build_args,
-    }
+def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
     if isinstance(obj, str):
-        return Template(obj).substitute(build_args)
+        return Template(obj).substitute(build_arg_set.build_args)
     elif isinstance(obj, dict):
         return {
-            key: _substitute_build_args(value, build_arg_set_key, build_arg_set)
+            key: _substitute_build_args(value, build_arg_set)
             for key, value in obj.items()
         }
     elif isinstance(obj, list):
-        return [
-            _substitute_build_args(item, build_arg_set_key, build_arg_set)
-            for item in obj
-        ]
+        return [_substitute_build_args(item, build_arg_set) for item in obj]
     else:
         return obj
 
@@ -79,9 +70,7 @@ class Config:
                     build_arg_set = build_arg_sets[build_arg_set_key]
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_key} not found")
-                    depset_yaml = _substitute_build_args(
-                        depset, build_arg_set_key, build_arg_set
-                    )
+                    depset_yaml = _substitute_build_args(depset, build_arg_set)
                     depsets.append(_dict_to_depset(depset_yaml))
             else:
                 depsets.append(_dict_to_depset(depset))

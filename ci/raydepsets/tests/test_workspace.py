@@ -36,16 +36,13 @@ def test_substitute_build_args():
             "CUDA_VERSION": "cu128",
         },
     )
-    build_arg_set_key = "py311_cpu"
     depset_dict = {
         "name": "test_depset_${PYTHON_VERSION}_${CUDA_VERSION}",
         "operation": "compile",
         "requirements": ["requirements_test.txt"],
         "output": "requirements_compiled_test_${PYTHON_VERSION}_${CUDA_VERSION}.txt",
     }
-    substituted_depset = _substitute_build_args(
-        depset_dict, build_arg_set_key, build_arg_set
-    )
+    substituted_depset = _substitute_build_args(depset_dict, build_arg_set)
     assert substituted_depset["output"] == "requirements_compiled_test_py311_cu128.txt"
     assert substituted_depset["name"] == "test_depset_py311_cu128"
 
