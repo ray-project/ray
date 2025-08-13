@@ -747,6 +747,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             self._get_node_to_running_replicas()
         )
 
+        # _running_replicas preserves insertion order (oldest → newest).
+        # Reverse once so we have newest → oldest.
+        ordered_running_replicas = list(self._running_replicas[deployment_id].items())
+        ordered_running_replicas.reverse()
+
+        # Bucket the (newest-first) replicas by node for fast lookup.
+        replicas_grouped_by_node: Dict[str, List[ReplicaID]] = defaultdict(list)
+        for replica_id, replica_node_id in ordered_running_replicas:
+            replicas_grouped_by_node[replica_node_id].append(replica_id)
+
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
         def key(node_and_num_running_replicas_of_all_deployments):
@@ -762,13 +772,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ):
             if node_id not in node_to_running_replicas_of_target_deployment:
                 continue
-            for running_replica in node_to_running_replicas_of_target_deployment[
-                node_id
-            ]:
+
+            # Newest-first list for this node.
+            for replica_id in replicas_grouped_by_node.get(node_id, []):
+                replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
-                else:
-                    replicas_to_stop.add(running_replica)
 
         return replicas_to_stop
 
