@@ -144,8 +144,6 @@ class HCCLGroup(BaseGroup):
         master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
-        # Do not globally set device by rank; tensor-level device context is used.
-        # torch_npu.npu.set_device(rank)
         dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
