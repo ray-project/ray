@@ -119,8 +119,9 @@ class Chunker:
 class Embedder:
     def __init__(self, model_name: str):
         self.model = SentenceTransformer(
-            model_name, device="cuda" if torch.cuda.is_available() else "cpu",
-            trust_remote_code=True
+            model_name,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            trust_remote_code=True,
         )
 
     def __call__(self, batch: Dict[str, ndarray]) -> Dict[str, ndarray]:
@@ -133,13 +134,17 @@ class Embedder:
 def count_parquet_rows(dataset_path: str) -> int:
     """
     Count the number of rows in a parquet file without reading the data into memory.
-    
+
     https://stackoverflow.com/a/79118602/4212158
     """
     import pyarrow.dataset as ds
 
     dataset = ds.dataset(dataset_path, format="parquet")
-    row_count = sum(row_group.num_rows for fragment in dataset.get_fragments() for row_group in fragment.row_groups)
+    row_count = sum(
+        row_group.num_rows
+        for fragment in dataset.get_fragments()
+        for row_group in fragment.row_groups
+    )
     return row_count
 
 
