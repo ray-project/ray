@@ -23,7 +23,9 @@ class ActorPoolScalingRequest:
         return ActorPoolScalingRequest(delta=delta, reason=reason)
 
     @classmethod
-    def downscale(cls, *, delta: int, force: bool = False, reason: Optional[str] = None):
+    def downscale(
+        cls, *, delta: int, force: bool = False, reason: Optional[str] = None
+    ):
         assert delta < 0, "For scale down delta is expected to be negative!"
         return ActorPoolScalingRequest(delta=delta, force=force, reason=reason)
 

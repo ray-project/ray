@@ -64,9 +64,7 @@ class DefaultAutoscaler(Autoscaler):
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
             return ActorPoolScalingRequest.downscale(
-                delta=-1,
-                force=True,
-                reason="consumed all inputs"
+                delta=-1, force=True, reason="consumed all inputs"
             )
 
         if actor_pool.current_size() < actor_pool.min_size():

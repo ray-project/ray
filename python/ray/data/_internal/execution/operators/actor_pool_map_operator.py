@@ -815,17 +815,17 @@ class _ActorPool(AutoscalingActorPool):
             # scaling up, ie if actor pool just scaled down, it'd still be able
             # to scale back up immediately.
             if (
-                not config.force and
-                self._last_upscaled_at is not None and (
-                    time.time() <= self._last_upscaled_at + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+                not config.force
+                and self._last_upscaled_at is not None
+                and (
+                    time.time()
+                    <= self._last_upscaled_at
+                    + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
                 )
             ):
                 # NOTE: To avoid spamming logs unnecessarily, debounce log is produced once
                 #       per upscaling event
-                if (
-                    self._last_upscaled_at
-                    != self._last_downscaling_debounce_warning_ts
-                ):
+                if self._last_upscaled_at != self._last_downscaling_debounce_warning_ts:
                     logger.debug(
                         f"Ignoring scaling down request (request={config}; reason=debounced from scaling up at {self._last_upscaled_at})"
                     )
