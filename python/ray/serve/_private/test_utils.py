@@ -15,6 +15,7 @@ from starlette.requests import Request
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.network_utils import build_address
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -763,13 +764,13 @@ def get_application_urls(
             ip = "localhost" if use_localhost else target.ip
             if protocol == RequestProtocol.HTTP:
                 scheme = "ws" if is_websocket else "http"
-                url = f"{scheme}://{ip}:{target.port}{route_prefix}"
+                url = f"{scheme}://{build_address(ip, target.port)}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
                 if is_websocket:
                     raise ValueError(
                         "is_websocket=True is not supported with gRPC protocol."
                     )
-                url = f"{ip}:{target.port}"
+                url = build_address(ip, target.port)
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
             url = url.rstrip("/")
