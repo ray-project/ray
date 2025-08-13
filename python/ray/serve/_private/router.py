@@ -43,9 +43,9 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import (
+    QUEUED_REQUESTS_KEY,
     InMemoryMetricsStore,
     MetricsPusher,
-    QUEUED_REQUESTS_KEY,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter

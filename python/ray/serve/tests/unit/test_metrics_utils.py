@@ -5,9 +5,9 @@ import pytest
 
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private.metrics_utils import (
+    QUEUED_REQUESTS_KEY,
     InMemoryMetricsStore,
     MetricsPusher,
-    QUEUED_REQUESTS_KEY,
     consolidate_metrics_stores,
 )
 from ray.serve._private.test_utils import MockAsyncTimer
