@@ -1,4 +1,0 @@
-import ray
-
-NIL_NODE_ID = ray.NodeID.nil().hex()
-RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS = 1

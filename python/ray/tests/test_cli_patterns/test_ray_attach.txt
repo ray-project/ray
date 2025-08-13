@@ -1,3 +1,0 @@
-Checking AWS environment settings
-Fetched IP: .+
-ubuntu@ip-.+:~\$ exit

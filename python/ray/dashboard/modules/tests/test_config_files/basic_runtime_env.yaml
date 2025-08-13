@@ -1,5 +1,0 @@
-py_modules:
-  - "pm1"
-  - "pm2"
-
-working_dir: "wd"
