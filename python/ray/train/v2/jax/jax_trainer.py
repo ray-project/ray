@@ -108,6 +108,9 @@ class JaxTrainer(DataParallelTrainer):
             with SPMD. ``num_workers`` should be set to the number of TPU hosts
             and ``topology`` should be set to the TPU topology.
             See :class:`~ray.train.ScalingConfig` for more info.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Dataset are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
         datasets: The Ray Datasets to ingest for training.
@@ -116,9 +119,6 @@ class JaxTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Dataset are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
