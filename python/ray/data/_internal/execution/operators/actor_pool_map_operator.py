@@ -815,6 +815,7 @@ class _ActorPool(AutoscalingActorPool):
             # scaling up, ie if actor pool just scaled down, it'd still be able
             # to scale back up immediately.
             if (
+                not config.force and
                 self._last_upscaled_at is not None and (
                     time.time() <= self._last_upscaled_at + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
                 )
