@@ -1,3 +1,4 @@
+import importlib
 import inspect
 import logging
 from functools import wraps
@@ -5,10 +6,101 @@ from typing import Callable, Optional
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import TaskProcessorConfig
-from ray.serve.task_processor import TaskProcessorAdapter, get_task_adapter
+from ray.serve.task_processor import TaskProcessorAdapter
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="alpha")
+def instantiate_adapter_from_config(
+    task_processor_config: TaskProcessorConfig,
+) -> TaskProcessorAdapter:
+    """
+    Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
+
+    1. String path: A fully qualified module path to an adapter class
+       Example: "ray.serve.task_processor.CeleryTaskProcessorAdapter"
+
+    2. Class reference: A direct reference to an adapter class
+       Example: CeleryTaskProcessorAdapter
+
+    Args:
+        task_processor_config: Configuration object containing adapter specification.
+
+    Returns:
+        An initialized TaskProcessorAdapter instance ready for use.
+
+    Raises:
+        ValueError: If the adapter string path is malformed or cannot be imported.
+        TypeError: If the adapter is not a string or callable class.
+        AttributeError: If the imported module doesn't contain the specified class.
+
+    Example:
+        >>> config = TaskProcessorConfig(
+        ...     adapter="my.module.CustomAdapter",
+        ...     adapter_config={"param": "value"},
+        ...     queue_name="my_queue"
+        ... )
+        >>> adapter = instantiate_adapter_from_config(config)
+    """
+
+    adapter = task_processor_config.adapter
+
+    # Handle string-based adapter specification (module path)
+    if isinstance(adapter, str):
+        try:
+            if "." not in adapter:
+                raise ValueError(
+                    f"Adapter string '{adapter}' must be a fully qualified path (e.g., 'module.submodule.ClassName')"
+                )
+
+            module_path, class_name = adapter.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+
+            if not hasattr(module, class_name):
+                raise AttributeError(
+                    f"Module '{module_path}' has no attribute '{class_name}'"
+                )
+
+            adapter_class = getattr(module, class_name)
+
+            if not callable(adapter_class):
+                raise TypeError(f"'{adapter}' is not a callable class")
+
+        except ValueError as e:
+            raise e
+        except ImportError as e:
+            raise ValueError(f"Failed to import module '{module_path}': {e}")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load adapter from '{adapter}': {type(e).__name__}: {e}"
+            )
+
+    elif callable(adapter):
+        adapter_class = adapter
+
+    else:
+        raise TypeError(
+            f"Adapter must be either a string path or a callable class, got {type(adapter).__name__}: {adapter}"
+        )
+
+    try:
+        adapter_instance = adapter_class(config=task_processor_config)
+    except Exception as e:
+        raise RuntimeError(f"Failed to instantiate {adapter_class.__name__}: {e}")
+
+    if not isinstance(adapter_instance, TaskProcessorAdapter):
+        raise TypeError(
+            f"{adapter_class.__name__} must inherit from TaskProcessorAdapter, got {type(adapter_instance).__name__}"
+        )
+
+    try:
+        adapter_instance.initialize(config=task_processor_config)
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize {adapter_class.__name__}: {e}")
+
+    return adapter_instance
 
 
 @PublicAPI(stability="alpha")
@@ -49,7 +141,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
             def __init__(self, *args, **kwargs):
                 target_cls.__init__(self, *args, **kwargs)
 
-                self._adapter = get_task_adapter(task_processor_config)
+                self._adapter = instantiate_adapter_from_config(task_processor_config)
 
                 for name, method in inspect.getmembers(
                     target_cls, predicate=inspect.isfunction

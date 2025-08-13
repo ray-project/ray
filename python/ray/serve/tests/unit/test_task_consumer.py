@@ -1,7 +1,7 @@
 import sys
 import uuid
 from typing import Any, Dict, List
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -64,20 +64,21 @@ def config():
             broker_url="fake://",
             backend_url="fake://",
         ),
+        adapter=MockTaskProcessorAdapter,
     )
 
 
-@pytest.fixture
-def mock_adapter_factory():
-    """Mock the get_task_adapter factory to return MockTaskProcessorAdapter."""
+# @pytest.fixture
+# def mock_adapter_factory():
+#     """Mock the get_task_adapter factory to return MockTaskProcessorAdapter."""
 
-    def _mock_factory(config):
-        adapter = MockTaskProcessorAdapter(config)
-        adapter.initialize(config)
-        return adapter
+#     def _mock_factory(config):
+#         adapter = MockTaskProcessorAdapter(config)
+#         adapter.initialize(config)
+#         return adapter
 
-    with patch("ray.serve.task_consumer.get_task_adapter", side_effect=_mock_factory):
-        yield _mock_factory
+#     with patch("ray.serve.task_consumer.get_task_adapter", side_effect=_mock_factory):
+#         yield _mock_factory
 
 
 class TestTaskHandlerDecorator:
@@ -172,7 +173,7 @@ class TestTaskConsumerDecorator:
 
         self._verify_and_cleanup(instance, expected_calls)
 
-    def test_task_consumer_basic(self, config, mock_adapter_factory):
+    def test_task_consumer_basic(self, config):
         """Test basic functionality of the task_consumer decorator."""
 
         def make_consumer(cfg):
@@ -188,7 +189,7 @@ class TestTaskConsumerDecorator:
             config, make_consumer, lambda inst: [(inst.my_task, "my_task")]
         )
 
-    def test_task_consumer_multiple_handlers(self, config, mock_adapter_factory):
+    def test_task_consumer_multiple_handlers(self, config):
         """Test with multiple task handlers."""
 
         def make_consumer(cfg):
@@ -210,7 +211,7 @@ class TestTaskConsumerDecorator:
             lambda inst: [(inst.task1, "task1"), (inst.task2, "task2")],
         )
 
-    def test_task_consumer_custom_names(self, config, mock_adapter_factory):
+    def test_task_consumer_custom_names(self, config):
         """Test task handlers with and without custom names."""
 
         def make_consumer(cfg):
@@ -232,7 +233,7 @@ class TestTaskConsumerDecorator:
             lambda inst: [(inst.task1, "custom_task"), (inst.task2, "task2")],
         )
 
-    def test_task_consumer_init_args(self, config, mock_adapter_factory):
+    def test_task_consumer_init_args(self, config):
         """Test that __init__ arguments are passed correctly."""
 
         @task_consumer(task_processor_config=config)
@@ -244,7 +245,7 @@ class TestTaskConsumerDecorator:
         assert instance.value == 42
         self._verify_and_cleanup(instance)
 
-    def test_task_consumer_no_handlers(self, config, mock_adapter_factory):
+    def test_task_consumer_no_handlers(self, config):
         """Test with a class that has no task handlers."""
 
         def make_consumer(cfg):
@@ -257,7 +258,7 @@ class TestTaskConsumerDecorator:
 
         self._run_consumer_test(config, make_consumer, lambda inst: [])
 
-    def test_task_consumer_inheritance(self, config, mock_adapter_factory):
+    def test_task_consumer_inheritance(self, config):
         """Test that inherited task handlers are registered."""
 
         def make_consumer(cfg):
@@ -283,7 +284,7 @@ class TestTaskConsumerDecorator:
             ],
         )
 
-    def test_task_consumer_no_args_decorator(self, config):
+    def test_task_consumer_no_args_decorator(self):
         """Test using @task_consumer without arguments raises TypeError."""
         with pytest.raises(TypeError):
 

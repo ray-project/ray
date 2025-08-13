@@ -9,7 +9,7 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig
 from ray.serve.task_consumer import (
-    get_task_adapter,
+    instantiate_adapter_from_config,
     task_consumer,
     task_handler,
 )
@@ -17,8 +17,10 @@ from ray.serve.task_consumer import (
 
 @ray.remote
 def send_request_to_queue(processor_config: TaskProcessorConfig, data):
-    celery_adapter = get_task_adapter(config=processor_config)
-    result = celery_adapter.enqueue_task_sync("process_request", args=[data])
+    adapter_instance = instantiate_adapter_from_config(
+        task_processor_config=processor_config
+    )
+    result = adapter_instance.enqueue_task_sync("process_request", args=[data])
     assert result.id is not None
     return result.id
 
@@ -153,10 +155,12 @@ class TestTaskConsumerWithRayServe:
         task_id_ref = send_request_to_queue.remote(processor_config, "test_data_1")
         task_id = ray.get(task_id_ref)
 
-        celery_adapter = get_task_adapter(config=processor_config)
+        adapter_instance = instantiate_adapter_from_config(
+            task_processor_config=processor_config
+        )
 
         def assert_result():
-            result = celery_adapter.get_task_status_sync(task_id)
+            result = adapter_instance.get_task_status_sync(task_id)
 
             if (
                 result.status == "FAILURE"

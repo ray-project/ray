@@ -2,7 +2,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
 from ray._common.pydantic_compat import (
@@ -1232,9 +1232,11 @@ class TaskProcessorConfig(BaseModel):
     queue_name: str = Field(
         ..., description="The name of the queue to use for task processing."
     )
-    adapter_config: Union[CeleryAdapterConfig] = Field(
-        ..., description="The adapter config. Currently only Celery is supported."
+    adapter: Union[str, Callable] = Field(
+        default="ray.serve.task_processor.CeleryTaskProcessorAdapter",
+        description="The adapter to use for task processing. By default, Celery is used.",
     )
+    adapter_config: Any = Field(..., description="The adapter config.")
     max_retries: Optional[int] = Field(
         default=3,
         description="The maximum number of times to retry a task before marking it as failed.",

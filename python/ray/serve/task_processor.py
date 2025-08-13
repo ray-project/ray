@@ -460,30 +460,3 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Control.ping
         """
         return self._app.control.ping()
-
-
-@PublicAPI(stability="alpha")
-def get_task_adapter(config: TaskProcessorConfig) -> TaskProcessorAdapter:
-    """
-    Factory function to instantiate the appropriate TaskProcessorAdapter
-    based on the provided config.
-
-    Currently only Celery is supported.
-
-    Args:
-        config: The configuration object for the task processor.
-
-    Returns:
-        An instance of a TaskProcessorAdapter subclass.
-
-    Raises:
-        ValueError: If the adapter_config type is not recognized.
-    """
-
-    if isinstance(config.adapter_config, CeleryAdapterConfig):
-        adapter = CeleryTaskProcessorAdapter(config=config)
-        adapter.initialize(config=config)
-
-        return adapter
-    else:
-        raise ValueError(f"Unknown adapter_config type: {type(config.adapter_config)}")
