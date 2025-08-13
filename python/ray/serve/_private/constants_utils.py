@@ -56,8 +56,8 @@ def _get_env_value(
     name: str,
     default: Optional[T],
     value_type: Type[T],
-    value_requirement: Optional[Callable[[T], bool]] = None,
-    error_message: str = None,
+    validation_func: Optional[Callable[[T], bool]] = None,
+    requirement_in_error: str = None,
 ) -> Optional[T]:
     """Get environment variable with type conversion and validation.
 
@@ -65,9 +65,9 @@ def _get_env_value(
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
         value_type: Type to convert the environment variable value to.
-        value_requirement: Optional validation function that takes the converted
+        validation_func: Optional validation function that takes the converted
             value and returns a boolean indicating if the value is valid.
-        error_message: Error message to use if type conversion fails
+        requirement_in_error: Error message to use if type conversion fails
             or validation check fails.
 
     Returns:
@@ -76,14 +76,8 @@ def _get_env_value(
 
     Raises:
         ValueError: If the environment variable value cannot be converted to the specified
-            type, or if it or default value fails the optional validation check.
+            type, or if it fails the optional validation check.
     """
-    if value_requirement and default is not None and not value_requirement(default):
-        raise ValueError(
-            f"Got unexpected default value `{default}` for `{name}` environment variable! "
-            f"Expected {error_message} `{value_type.__name__}`."
-        )
-
     raw = os.environ.get(name, default)
     if raw is None:
         return None
@@ -95,10 +89,10 @@ def _get_env_value(
             f"Environment variable `{name}` value `{raw}` cannot be converted to `{value_type.__name__}`!"
         ) from e
 
-    if value_requirement and not value_requirement(value):
+    if validation_func and not validation_func(value):
         raise ValueError(
             f"Got unexpected value `{value}` for `{name}` environment variable! "
-            f"Expected {error_message} `{value_type.__name__}`."
+            f"Expected {requirement_in_error} `{value_type.__name__}`."
         )
 
     return value
@@ -247,7 +241,6 @@ def get_env_float_warning_till_2_50(
     env_value = get_env_float(name, default)
 
     if current_version < removal_version:
-        print(env_value)
         if env_value is not None and env_value <= 0:
             # warning message if unexpected value
             warnings.warn(
