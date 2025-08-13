@@ -249,9 +249,9 @@ def get_env_float_warning_till_2_50(
             # warning message if unexpected value
             warnings.warn(
                 f"Got unexpected value `{env_value}` for `{name}` environment variable! "
-                f"Starting from version {removal_version}, the environment variable `{name}` will require a positive value. "
+                f"Starting from version `{removal_version}`, the environment variable `{name}` will require a positive value. "
                 f"Either set a positive value or remove this variable to use the default value `{default}`. "
-                f"Your current Ray version is {current_version}.",
+                f"Your current Ray version is `{current_version}`.",
                 FutureWarning,
                 stacklevel=2,
             )
