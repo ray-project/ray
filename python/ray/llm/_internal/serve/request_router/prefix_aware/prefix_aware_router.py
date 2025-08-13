@@ -197,6 +197,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     highest_queue_len - lowest_queue_len > self._imbalanced_threshold
                 )
                 # End Sphinx tag: __end_load_balance_component__
+                # Start Sphinx tag: __begin_prefix_match_component__
                 if not is_imbalanced:
                     # Convert candidate replica IDs to strings for prefix matching.
                     candidate_replica_ids_strings = [
@@ -223,6 +224,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                             and len(matched_tenant_id_strings) > 0
                         ):
                             chosen_replica_id_strings = matched_tenant_id_strings
+                # End Sphinx tag: __end_prefix_match_component__
         return [
             [
                 self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
@@ -230,11 +232,13 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             ]
         ]
 
+    # Start Sphinx tag: __begin_on_replica_actor_died__
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
         ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
-
+    # End Sphinx tag: __end_on_replica_actor_died__
+    
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 
@@ -285,7 +289,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        # Start Sphinx tag: __begin_router_foundation__
+        # Start Sphinx tag: __begin_pow2_router_base__
         # Get fallback replicas from PowerOfTwoChoicesRequestRouter
         fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
@@ -294,7 +298,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         )
         if pending_request is None or not fallback_replicas:
             return fallback_replicas
-        # End Sphinx tag: __end_router_foundation__
+        # End Sphinx tag: __end_pow2_router_base__
 
         if (
             pending_request is not None
@@ -328,6 +332,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         return fallback_replicas
 
+    # Start Sphinx tag: __begin_on_request_routed__
     def on_request_routed(
         self,
         pending_request: PendingRequest,
@@ -353,3 +358,4 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         input_text, replica_id.to_full_id_str(), time.time()
                     )
                 )
+    # End Sphinx tag: __end_on_request_routed__
