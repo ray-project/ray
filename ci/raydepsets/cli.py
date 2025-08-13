@@ -223,7 +223,7 @@ class DependencySetManager:
 
     def build_wheel(
         self,
-        setup_path: str,
+        setup_path: Optional[str],
         output: str,
         append_flags: Optional[List[str]] = None,
     ):
