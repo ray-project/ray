@@ -37,6 +37,9 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+if TYPE_CHECKING:
+    import torch
+
 import colorama
 
 import ray
