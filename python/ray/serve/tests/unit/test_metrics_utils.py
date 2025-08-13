@@ -164,14 +164,14 @@ class TestInMemoryMetricsStore:
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
-        assert s.aggregate_avg(["m1"]) is None
-        assert s.aggregate_max(["m1"]) is None
-        assert s.aggregate_min(["m1"]) is None
+        assert s.aggregate_avg(["m1"]) == (None, 0)
+        assert s.aggregate_max(["m1"]) == (None, 0)
+        assert s.aggregate_min(["m1"]) == (None, 0)
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
         assert s.aggregate_avg(["m1"]) == (1, 1)
         s.prune_keys_and_compact_data(10)
-        assert s.aggregate_avg(["m1"]) is None
+        assert s.aggregate_avg(["m1"]) == (None, 0)
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
@@ -193,7 +193,7 @@ class TestInMemoryMetricsStore:
         assert s.aggregate_avg(["m1", "m2"]) == (1, 1)
         assert s.aggregate_max(["m1", "m2"]) == (1, 1)
         assert s.aggregate_min(["m1", "m2"]) == (1, 1)
-        assert s.aggregate_avg(["m2"]) is None
+        assert s.aggregate_avg(["m2"]) == (None, 0)
 
     def test_prune_keys_and_compact_data(self):
         s = InMemoryMetricsStore()
