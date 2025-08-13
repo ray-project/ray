@@ -21,9 +21,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
-    from ray.tune.search.sample import Domain
-
-SampleRange = Union["Domain", Dict[str, List]]
 
 logger = logging.getLogger(__name__)
 

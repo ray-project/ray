@@ -103,6 +103,40 @@ class JaxTrainer(DataParallelTrainer):
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
+
+        train_loop_per_worker: The training function to execute on each worker.
+            This function can either take in zero arguments or a single ``Dict``
+            argument which is set by defining ``train_loop_config``.
+            Within this function you can use any of the
+            :ref:`Ray Train Loop utilities <train-loop-api>`.
+        train_loop_config: A configuration ``Dict`` to pass in as an argument to
+            ``train_loop_per_worker``.
+            This is typically used for specifying hyperparameters. Passing large
+            datasets via `train_loop_config` is not recommended and may introduce
+            large overhead and unknown issues with serialization and deserialization.
+        jax_config: The configuration for setting up the JAX backend.
+            If set to None, a default configuration with TPUs will be used.
+        scaling_config: Configuration for how to scale data parallel training
+            with SPMD. ``num_workers`` should be set to the number of TPU hosts
+            and ``topology`` should be set to the TPU topology.
+            See :class:`~ray.train.ScalingConfig` for more info.
+        run_config: The configuration for the execution of the training run.
+            See :class:`~ray.train.RunConfig` for more info.
+        datasets: The Ray Datasets to ingest for training.
+            Datasets are keyed by name (``{name: dataset}``).
+            Each dataset can be accessed from within the ``train_loop_per_worker``
+            by calling ``ray.train.get_dataset_shard(name)``.
+            Sharding and additional configuration can be done by
+            passing in a ``dataset_config``.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Dataset are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
+        resume_from_checkpoint: A checkpoint to resume training from.
+            This checkpoint can be accessed from within ``train_loop_per_worker``
+            by calling ``ray.train.get_checkpoint()``.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(

@@ -192,6 +192,7 @@ def reserve_tpu_slice(
             "Ensure that TPU slice metadata is available and correctly configured on multi-host nodes."
         )
 
+    # TODO: return both the slice name and reference to the PG reservation.
     return slice_name
 
 

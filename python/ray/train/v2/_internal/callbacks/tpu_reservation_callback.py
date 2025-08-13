@@ -27,9 +27,7 @@ class TPUReservationCallback(ControllerCallback):
         """
         bundle_label_selector = None
 
-        if scaling_config.use_tpu and (
-            num_workers > 1 or scaling_config.num_workers > 1
-        ):
+        if scaling_config.use_tpu and num_workers > 1:
             assert scaling_config.accelerator_type is not None
             assert scaling_config.topology is not None
 
