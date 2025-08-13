@@ -207,7 +207,9 @@ class _TrainSession:
         self.result_queue = queue.Queue(1)
 
         # Queue for sending results from training actor to main thread.
-        self._inter_actor_result_queue = ray_queue.Queue(1)
+        self._inter_actor_result_queue: ray_queue.Queue[
+            _TrainingResult
+        ] = ray_queue.Queue(1)
 
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
