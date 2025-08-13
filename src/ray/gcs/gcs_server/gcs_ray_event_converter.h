@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "gtest/gtest_prod.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -43,6 +44,15 @@ class GcsRayEventConverter {
   /// \param task_event The output TaskEvents to populate.
   void ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
                            rpc::TaskEvents &task_event);
+
+  /// Convert a TaskExecutionEvent to a TaskEvents.
+  ///
+  /// \param event The TaskExecutionEvent to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
+                           rpc::TaskEvents &task_event);
+
+  FRIEND_TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent);
 };
 
 }  // namespace gcs
