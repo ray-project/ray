@@ -200,6 +200,6 @@ EOF
 # https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
 # and here:
 # https://gitlab.com/nvidia/container-images/cuda/-/issues/27
-ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:/usr/local/nvidia/bin"
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
