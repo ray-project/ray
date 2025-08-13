@@ -326,7 +326,13 @@ struct Mocker {
       rpc::events::TaskDefinitionEvent task_definition_event;
       task_definition_event.set_task_id(task_event.task_id());
       task_definition_event.set_task_attempt(task_event.attempt_number());
-      task_definition_event.set_job_id(JobID::FromInt(0).Binary());
+      task_definition_event.set_job_id(task_event.job_id());
+      if (task_event.has_task_info()) {
+        const auto &task_info = task_event.task_info();
+        task_definition_event.set_task_type(task_info.type());
+        task_definition_event.set_task_name(task_info.name());
+        task_definition_event.set_language(task_info.language());
+      }
       ray_event.set_event_id(task_event.task_id());
       ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
       ray_event.set_message("test");

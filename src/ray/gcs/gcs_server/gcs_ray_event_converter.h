@@ -29,12 +29,13 @@ class GcsRayEventConverter {
   GcsRayEventConverter() = default;
   ~GcsRayEventConverter() = default;
 
-  /// Convert an AddEventsRequest to an AddTaskEventDataRequest.
+  /// Convert an AddEventsRequest to a list of AddTaskEventDataRequest objects,
+  /// grouping entries by job id.
   ///
   /// \param request The AddEventsRequest to convert.
-  /// \param data The output AddTaskEventDataRequest to populate.
-  void ConvertToTaskEventDataRequest(rpc::events::AddEventsRequest &&request,
-                                     rpc::AddTaskEventDataRequest &data);
+  /// \return A list of AddTaskEventDataRequest grouped by job id.
+  void ConvertToTaskEventDataRequests(rpc::events::AddEventsRequest &&request,
+                                      std::vector<rpc::AddTaskEventDataRequest> &data);
 
  private:
   /// Convert a TaskDefinitionEvent to a TaskEvents.

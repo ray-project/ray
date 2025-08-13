@@ -661,10 +661,13 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  rpc::AddTaskEventDataRequest task_event_data;
-  ray_event_converter_->ConvertToTaskEventDataRequest(std::move(request),
-                                                      task_event_data);
-  RecordTaskEventData(task_event_data);
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
+  ray_event_converter_->ConvertToTaskEventDataRequests(std::move(request),
+                                                       task_event_data_requests);
+
+  for (auto &task_event_data : task_event_data_requests) {
+    RecordTaskEventData(task_event_data);
+  }
 
   // Processed all the task events
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
