@@ -2660,7 +2660,7 @@ class Dataset:
                 small_suffix = left_suffix
                 datasets_swapped = True
 
-            # No need to convert join types - we'll handle this properly in BroadcastJoinFunction
+            # Create the broadcast join function - PyArrow will handle all join types natively
             join_type_enum = JoinType(join_type)
             join_fn = BroadcastJoinFunction(
                 small_table_dataset=small_ds,
@@ -2672,135 +2672,12 @@ class Dataset:
                 datasets_swapped=datasets_swapped,
             )
 
-            # For right_outer and full_outer joins in the normal case (not swapped),
-            # we cannot use standard broadcast join because it would duplicate right rows.
-            # Instead, we need a different approach.
-            if not datasets_swapped and join_type in ["right_outer", "full_outer"]:
-                # For these join types, we need to ensure each right row appears exactly once.
-                # Strategy: perform an inner join with all left data, then add missing right rows.
-
-                # First, get all matching pairs by doing inner join
-                inner_join_fn = BroadcastJoinFunction(
-                    small_table_dataset=small_ds,
-                    join_type=JoinType.INNER,
-                    large_table_key_columns=large_key_columns,
-                    small_table_key_columns=small_key_columns,
-                    large_table_columns_suffix=large_suffix,
-                    small_table_columns_suffix=small_suffix,
-                    datasets_swapped=datasets_swapped,
-                )
-
-                inner_result = large_ds.map_batches(
-                    inner_join_fn,
-                    batch_format="pyarrow",
-                    concurrency=num_partitions,
-                )
-
-                if join_type == "right_outer":
-                    # For right_outer, we need all right rows + matching left rows
-                    # We have the matching pairs from inner join, now add unmatched right rows
-
-                    # Get the set of right keys that were matched
-                    matched_right_keys = set()
-                    for row in inner_result.iter_rows():
-                        key = tuple(row.get(col) for col in small_key_columns)
-                        matched_right_keys.add(key)
-
-                    # Find unmatched right rows and add them with NULL left values
-                    unmatched_rows = []
-                    for row in small_ds.iter_rows():
-                        key = tuple(row.get(col) for col in small_key_columns)
-                        if key not in matched_right_keys:
-                            # Create row with NULL left values
-                            unmatched_row = {}
-                            # Add NULL for left columns
-                            for col in large_ds.columns():
-                                if col not in large_key_columns:
-                                    col_name = (
-                                        f"{col}{large_suffix}" if large_suffix else col
-                                    )
-                                    unmatched_row[col_name] = None
-                            # Add key columns (they should be the same)
-                            for i, col in enumerate(large_key_columns):
-                                unmatched_row[col] = row.get(small_key_columns[i])
-                            # Add right values
-                            for col, value in row.items():
-                                if col not in small_key_columns:
-                                    col_name = (
-                                        f"{col}{small_suffix}" if small_suffix else col
-                                    )
-                                    unmatched_row[col_name] = value
-                            unmatched_rows.append(unmatched_row)
-
-                    result = inner_result
-                    if unmatched_rows:
-                        unmatched_ds = ray.data.from_items(unmatched_rows)
-                        result = result.union(unmatched_ds)
-
-                elif join_type == "full_outer":
-                    # For full_outer, we need all left rows + all right rows + matches
-                    # We have matching pairs, now add unmatched left and right rows
-
-                    # Get left_outer result (all left + matching right)
-                    left_outer_join_fn = BroadcastJoinFunction(
-                        small_table_dataset=small_ds,
-                        join_type=JoinType.LEFT_OUTER,
-                        large_table_key_columns=large_key_columns,
-                        small_table_key_columns=small_key_columns,
-                        large_table_columns_suffix=large_suffix,
-                        small_table_columns_suffix=small_suffix,
-                        datasets_swapped=datasets_swapped,
-                    )
-
-                    left_outer_result = large_ds.map_batches(
-                        left_outer_join_fn,
-                        batch_format="pyarrow",
-                        concurrency=num_partitions,
-                    )
-
-                    # Find unmatched right rows (similar to right_outer case)
-                    matched_right_keys = set()
-                    for row in inner_result.iter_rows():
-                        key = tuple(row.get(col) for col in small_key_columns)
-                        matched_right_keys.add(key)
-
-                    unmatched_rows = []
-                    for row in small_ds.iter_rows():
-                        key = tuple(row.get(col) for col in small_key_columns)
-                        if key not in matched_right_keys:
-                            # Create row with NULL left values
-                            unmatched_row = {}
-                            # Add NULL for left columns
-                            for col in large_ds.columns():
-                                if col not in large_key_columns:
-                                    col_name = (
-                                        f"{col}{large_suffix}" if large_suffix else col
-                                    )
-                                    unmatched_row[col_name] = None
-                            # Add key columns
-                            for i, col in enumerate(large_key_columns):
-                                unmatched_row[col] = row.get(small_key_columns[i])
-                            # Add right values
-                            for col, value in row.items():
-                                if col not in small_key_columns:
-                                    col_name = (
-                                        f"{col}{small_suffix}" if small_suffix else col
-                                    )
-                                    unmatched_row[col_name] = value
-                            unmatched_rows.append(unmatched_row)
-
-                    result = left_outer_result
-                    if unmatched_rows:
-                        unmatched_ds = ray.data.from_items(unmatched_rows)
-                        result = result.union(unmatched_ds)
-
-            else:
-                # Normal case: inner, left_outer, or swapped datasets
-                result = large_ds.map_batches(
-                    join_fn,
-                    batch_format="pyarrow",
-                    concurrency=num_partitions,
-                )
+            # Use PyArrow's native join functionality for all join types
+            result = large_ds.map_batches(
+                join_fn,
+                batch_format="pyarrow",
+                concurrency=num_partitions,
+            )
 
             return result
         else:

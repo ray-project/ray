@@ -89,7 +89,7 @@ class BroadcastJoinFunction:
         if isinstance(batch, dict):
             batch = pa.table(batch)
 
-        # Perform the join using PyArrow's native API
+        # Get the appropriate PyArrow join type
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
 
         # Determine whether to coalesce keys based on whether key column names are the same
@@ -101,38 +101,18 @@ class BroadcastJoinFunction:
             # When datasets are swapped:
             # - batch comes from the originally RIGHT dataset (larger)
             # - small_table is the originally LEFT dataset (smaller, broadcasted)
-            # We want to maintain LEFT.join(RIGHT) semantics
-
-            # For swapped datasets, we need to think carefully about join semantics:
-            # Original call: LEFT.join(RIGHT, join_type)
-            # After swap: we map over RIGHT batches with LEFT broadcasted
-            # We need: LEFT.join(RIGHT_BATCH) to produce the same result as LEFT.join(RIGHT)
-
-            if arrow_join_type == "left outer":
-                # LEFT.join(RIGHT, "left outer") -> all LEFT + matching RIGHT
-                # We do: LEFT.join(RIGHT_BATCH, "left outer") -> all LEFT + matching RIGHT_BATCH
-                # This is correct because left outer always includes all left rows
-                actual_join_type = "left outer"
-            elif arrow_join_type == "right outer":
-                # LEFT.join(RIGHT, "right outer") -> all RIGHT + matching LEFT
-                # Since we're processing RIGHT in batches, we can't use "right outer" because
-                # that would only give us the current RIGHT_BATCH rows, missing other RIGHT rows
-                # Instead, we use "inner" to only get matching rows from this batch
-                actual_join_type = "inner"
-            elif arrow_join_type == "full outer":
-                # LEFT.join(RIGHT, "full outer") -> all LEFT + all RIGHT + matches
-                # Since we're processing RIGHT in batches, we can't get "all RIGHT" from one batch
-                # We use "left outer" to get all LEFT + matching RIGHT_BATCH
-                # Note: This approach has issues with duplicating LEFT rows across batches
-                # The right solution is to not broadcast for full outer when datasets are swapped
-                actual_join_type = "left outer"
-            else:  # inner
-                actual_join_type = "inner"
-
-            # Perform small_table.join(batch) = LEFT.join(RIGHT_BATCH)
+            # We need to maintain LEFT.join(RIGHT) semantics
+            # So we do: small_table.join(batch) = LEFT.join(RIGHT_BATCH)
+            
+            # For swapped datasets, we need to handle join types carefully:
+            # - inner: works the same
+            # - left_outer: becomes small_table.join(batch, "left outer") = LEFT.join(RIGHT_BATCH, "left outer")
+            # - right_outer: becomes small_table.join(batch, "right outer") = LEFT.join(RIGHT_BATCH, "right outer")
+            # - full_outer: becomes small_table.join(batch, "full outer") = LEFT.join(RIGHT_BATCH, "full outer")
+            
             joined_table = self.small_table.join(
                 batch,
-                join_type=actual_join_type,
+                join_type=arrow_join_type,
                 keys=list(self.small_table_key_columns),
                 right_keys=list(self.large_table_key_columns),
                 left_suffix=self.small_table_columns_suffix,
@@ -144,8 +124,7 @@ class BroadcastJoinFunction:
             # - batch comes from the originally LEFT dataset (larger)
             # - small_table is the originally RIGHT dataset (smaller, broadcasted)
             # We maintain LEFT.join(RIGHT) semantics: batch.join(small_table)
-
-            # Perform batch.join(small_table) = LEFT_BATCH.join(RIGHT)
+            
             joined_table = batch.join(
                 self.small_table,
                 join_type=arrow_join_type,
