@@ -128,12 +128,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Put(
-      job_id, mutable_job_table_data, {std::move(on_done), io_context_});
-  if (!status.ok()) {
-    // TODO(dayshah): This can't happen because
-    // Put always return Status::OK - https://github.com/ray-project/ray/issues/55545
-  }
+  RAY_UNUSED(gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {std::move(on_done), io_context_}));
 }
 
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,

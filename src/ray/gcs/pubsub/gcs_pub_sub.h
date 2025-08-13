@@ -65,7 +65,7 @@ class GcsPublisher {
   /// Actually rpc::WorkerDeltaData is not a delta message.
   void PublishWorkerFailure(const WorkerID &id, rpc::WorkerDeltaData message);
 
-  void PublishError(const std::string &id, rpc::ErrorTableData message);
+  void PublishError(std::string id, rpc::ErrorTableData message);
 
   /// Prints debugging info for the publisher.
   std::string DebugString() const;

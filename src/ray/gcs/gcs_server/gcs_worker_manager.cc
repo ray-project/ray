@@ -105,11 +105,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          // receives the worker registration information first and then the worker failure
          // message, so we delete the get operation. Related issues:
          // https://github.com/ray-project/ray/pull/11599
-         Status status = gcs_table_storage_.WorkerTable().Put(
-             worker_id, *worker_failure_data, {std::move(on_done), io_context_});
-         if (!status.ok()) {
-           // TODO(dayshah): https://github.com/ray-project/ray/issues/55545
-         }
+         RAY_UNUSED(gcs_table_storage_.WorkerTable().Put(
+             worker_id, *worker_failure_data, {std::move(on_done), io_context_}));
 
          if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
              request.worker_failure().exit_type() ==

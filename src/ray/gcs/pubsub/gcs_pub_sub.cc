@@ -57,10 +57,10 @@ void GcsPublisher::PublishWorkerFailure(const WorkerID &id,
   publisher_->Publish(std::move(msg));
 }
 
-void GcsPublisher::PublishError(const std::string &id, rpc::ErrorTableData message) {
+void GcsPublisher::PublishError(std::string id, rpc::ErrorTableData message) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
-  msg.set_key_id(id);
+  msg.set_key_id(std::move(id));
   *msg.mutable_error_info_message() = std::move(message);
   publisher_->Publish(std::move(msg));
 }

@@ -831,48 +831,48 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   }
 }
 
-// TEST_F(PublisherTest, TestMultiSubscribers) {
-//   absl::flat_hash_set<ObjectID> batched_ids;
-//   int reply_invoked = 0;
-//   send_reply_callback =
-//       [this, &batched_ids, &reply_invoked](
-//           Status status, std::function<void()> success, std::function<void()> failure)
-//           {
-//         for (int i = 0; i < reply.pub_messages_size(); i++) {
-//           const auto &msg = reply.pub_messages(i);
-//           const auto oid =
-//               ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-//           batched_ids.emplace(oid);
-//         }
-//         reply = rpc::PubsubLongPollingReply();
-//         reply_invoked += 1;
-//       };
+TEST_F(PublisherTest, TestMultiSubscribers) {
+  absl::flat_hash_set<ObjectID> batched_ids;
+  int reply_invoked = 0;
+  reply = rpc::PubsubLongPollingReply();
+  send_reply_callback =
+      [this, &batched_ids, &reply_invoked](
+          Status status, std::function<void()> success, std::function<void()> failure) {
+        for (int i = 0; i < reply.pub_messages_size(); i++) {
+          const auto &msg = reply.pub_messages(i);
+          const auto oid =
+              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+          batched_ids.emplace(oid);
+        }
+        reply.Clear();
+        reply_invoked += 1;
+      };
 
-//   std::vector<NodeID> subscribers;
-//   const auto oid = ObjectID::FromRandom();
-//   int num_nodes = 5;
-//   for (int i = 0; i < num_nodes; i++) {
-//     subscribers.push_back(NodeID::FromRandom());
-//   }
+  std::vector<NodeID> subscribers;
+  const auto oid = ObjectID::FromRandom();
+  int num_nodes = 5;
+  for (int i = 0; i < num_nodes; i++) {
+    subscribers.push_back(NodeID::FromRandom());
+  }
 
-//   // There will be one object per node.
-//   for (int i = 0; i < num_nodes; i++) {
-//     publisher_->RegisterSubscription(
-//         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
-//   }
-//   ASSERT_EQ(batched_ids.size(), 0);
+  // There will be one object per node.
+  for (int i = 0; i < num_nodes; i++) {
+    publisher_->RegisterSubscription(
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  }
+  ASSERT_EQ(batched_ids.size(), 0);
 
-//   // Check all of nodes are publishing objects properly.
-//   for (int i = 0; i < num_nodes; i++) {
-//     publisher_->ConnectToSubscriber(request_,
-//                                     reply.mutable_publisher_id(),
-//                                     reply.mutable_pub_messages(),
-//                                     send_reply_callback);
-//   }
-//   publisher_->Publish(GeneratePubMessage(oid));
-//   ASSERT_EQ(batched_ids.size(), 1);
-//   ASSERT_EQ(reply_invoked, 5);
-// }
+  // Check all of nodes are publishing objects properly.
+  for (int i = 0; i < num_nodes; i++) {
+    publisher_->ConnectToSubscriber(request_,
+                                    reply.mutable_publisher_id(),
+                                    reply.mutable_pub_messages(),
+                                    send_reply_callback);
+  }
+  publisher_->Publish(GeneratePubMessage(oid));
+  ASSERT_EQ(batched_ids.size(), 1);
+  ASSERT_EQ(reply_invoked, 5);
+}
 
 TEST_F(PublisherTest, TestBatch) {
   // Test if published objects are batched properly.
