@@ -372,7 +372,16 @@ def test_invalid_join_not_matching_key_columns(
     )
 
 
-def test_default_shuffle_aggregator_args():
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "num_cpus": 4,
+        }
+    ],
+    indirect=True,
+)
+def test_default_shuffle_aggregator_args(ray_start_regular):
     parent_op_mock = MagicMock(PhysicalOperator)
     parent_op_mock._output_dependencies = []
 
@@ -395,7 +404,7 @@ def test_default_shuffle_aggregator_args():
     )
 
     assert {
-        "num_cpus": 0.125,
+        "num_cpus": 0.025,    # 4 cores * 10% / 16
         "memory": 939524096,
         "scheduling_strategy": "SPREAD",
     } == args
@@ -409,7 +418,7 @@ def test_default_shuffle_aggregator_args():
     )
 
     assert {
-        "num_cpus": 0.5,
+        "num_cpus": 0.025,    # 4 cores * 10% / 16
         "memory": 1744830464,
         "scheduling_strategy": "SPREAD",
     } == args
@@ -423,7 +432,7 @@ def test_default_shuffle_aggregator_args():
     )
 
     assert {
-        "num_cpus": 0.5,
+        "num_cpus": 0.025,    # 4 cores * 10% / 16
         "memory": 13958643712,
         "scheduling_strategy": "SPREAD",
     } == args
