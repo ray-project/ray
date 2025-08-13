@@ -22,8 +22,8 @@ class AnyscaleDockerContainer(DockerContainer):
         gce_credentials = get_global_config()["aws2gce_credentials"]
         cmds = [
             # build docker image
-            f"./ci/build/build-anyscale-docker.sh "
-            f"{ray_image} {anyscale_image} {requirement} {aws_registry}",
+            "./ci/build/build-anyscale-docker.sh "
+            + f"{ray_image} {anyscale_image} {requirement} {aws_registry}",
             # gcloud login
             f"./release/gcloud_docker_login.sh {gce_credentials}",
             "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
