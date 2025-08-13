@@ -11,7 +11,8 @@ cd /c/rayci
 {
   echo "build --announce_rc";
   echo "build --config=ci";
-  echo "startup --output_user_root=c:/raytmp";
+  # Set a shorter output_base to avoid long file paths that Windows can't handle.
+  echo "startup --output_base=c:/bzl";
   echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
 } >> ~/.bazelrc
 
