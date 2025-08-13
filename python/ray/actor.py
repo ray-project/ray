@@ -1415,10 +1415,26 @@ class ActorClass(Generic[T]):
                 updated_options["runtime_env"]
             )
 
-        new_actor_cls = ActorClass.__new__(ActorClass)
-        new_actor_cls.__ray_metadata__ = actor_cls.__ray_metadata__
-        new_actor_cls._default_options = updated_options
-        return new_actor_cls
+        class ActorOptionWrapper:
+            def remote(self, *args, **kwargs):
+                return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
+
+            @DeveloperAPI
+            def bind(self, *args, **kwargs):
+                """
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
+                """
+                from ray.dag.class_node import ClassNode
+
+                return ClassNode(
+                    actor_cls.__ray_metadata__.modified_class,
+                    args,
+                    kwargs,
+                    updated_options,
+                )
+
+        return ActorOptionWrapper()
 
     @wrap_auto_init
     @_tracing_actor_creation
