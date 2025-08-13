@@ -79,9 +79,9 @@ def test_deploy_app_custom_exception(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "policy", [None, DEFAULT_AUTOSCALING_POLICY_NAME, default_autoscaling_policy]
+    "policy_name", [None, DEFAULT_AUTOSCALING_POLICY_NAME, default_autoscaling_policy]
 )
-def test_get_serve_instance_details_json_serializable(serve_instance, policy):
+def test_get_serve_instance_details_json_serializable(serve_instance, policy_name):
     """Test the result from get_serve_instance_details is json serializable."""
 
     controller = _get_global_client()._controller
@@ -89,9 +89,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "_policy": {"name": policy},
+        "_policy": {"name": policy_name},
     }
-    if policy is None:
+    if policy_name is None:
         autoscaling_config.pop("_policy")
 
     @serve.deployment(autoscaling_config=autoscaling_config)
