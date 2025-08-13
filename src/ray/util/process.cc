@@ -82,6 +82,32 @@ void SetFdCloseOnExec(int fd) {
 }
 #endif
 
+#if defined(__linux__)
+// A helper function to robustly read a specific number of bytes from a file descriptor.
+// This handles partial reads and interruptions by signals.
+static inline ssize_t ReadBytesFromFd(int fd, void *buffer, size_t count) {
+  ssize_t total_bytes_read = 0;
+  while (total_bytes_read < (ssize_t)count) {
+    ssize_t bytes_read = read(fd,
+                              reinterpret_cast<char *>(buffer) + total_bytes_read,
+                              count - total_bytes_read);
+    if (bytes_read == 0) {
+      // EOF reached before all bytes were read.
+      return total_bytes_read;
+    }
+    if (bytes_read == -1) {
+      if (errno == EINTR) {
+        continue;  // Interrupted by signal, retry.
+      } else {
+        return -1;  // A real read error occurred.
+      }
+    }
+    total_bytes_read += bytes_read;
+  }
+  return total_bytes_read;
+}
+#endif
+
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
   // It should be changed when Process adds Unicode support on Windows.
@@ -124,7 +150,6 @@ class ProcessFD {
                             const ProcessEnvironment &env,
                             bool pipe_to_stdin) {
     ec = std::error_code();
-    intptr_t fd;
     pid_t pid;
     ProcessEnvironment new_env;
     for (char *const *e = environ; *e; ++e) {
@@ -142,6 +167,7 @@ class ProcessFD {
     }
 #ifdef _WIN32
 
+    intptr_t fd;
     (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
     for (size_t i = 0; argv[i]; ++i) {
@@ -189,8 +215,165 @@ class ProcessFD {
     new_env_ptrs.push_back(static_cast<char *>(NULL));
     char **envp = &new_env_ptrs[0];
 
-    // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
-    // file descriptors into the child process, as that can be problematic.
+    intptr_t fd = -1;
+
+#if defined(__linux__)
+    // Pipe for getting startup status (PID and potential errno) from the child.
+    int status_pipe[2];
+    if (pipe(status_pipe) == -1) {
+      ec = std::error_code(errno, std::system_category());
+      return ProcessFD(-1, -1);
+    }
+
+    // Pipe for parent lifetime tracking, connected to child's stdin.
+    int parent_lifetime_pipe[2] = {-1, -1};
+    if (pipe_to_stdin) {
+      if (pipe(parent_lifetime_pipe) == -1) {
+        close(status_pipe[0]);
+        close(status_pipe[1]);
+        ec = std::error_code(errno, std::system_category());
+        return ProcessFD(-1, -1);
+      }
+    }
+
+    pid = fork();
+
+    if (pid == 0) {
+      // --- Child Process (or Intermediate Process if decoupled) ---
+      close(status_pipe[0]);  // Child only writes to the status pipe.
+      if (pipe_to_stdin) {
+        close(parent_lifetime_pipe[1]);  // Child only reads from the lifetime pipe.
+      }
+
+      signal(SIGCHLD, SIG_DFL);
+
+      if (decouple) {
+        if (fork() != 0) {
+          // --- Intermediate Parent ---
+          // This process must close ALL inherited pipe FDs before exiting
+          // to prevent leaking them to the grandchild or holding pipes open.
+          close(status_pipe[1]);
+          if (pipe_to_stdin) {
+            close(parent_lifetime_pipe[0]);
+          }
+          _exit(0);
+        }
+      }
+
+      // --- Grandchild (if decoupled) or Direct Child (if not) ---
+      if (pipe_to_stdin) {
+        if (dup2(parent_lifetime_pipe[0], STDIN_FILENO) == -1) {
+          _exit(errno);
+        }
+        // After dup2, this original FD is no longer needed.
+        close(parent_lifetime_pipe[0]);
+      }
+
+      // If execve succeeds, this FD will be closed automatically.
+      if (!decouple) {
+        // Only set FD_CLOEXEC in the non-decouple case
+        SetFdCloseOnExec(status_pipe[1]);
+      }
+
+      if (decouple) {
+        pid_t my_pid = getpid();
+        if (write(status_pipe[1], &my_pid, sizeof(my_pid)) != sizeof(my_pid)) {
+          _exit(errno);
+        }
+      }
+
+      execvpe(argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
+
+      // If execvpe returns, an error occurred. Write errno to the pipe.
+      int err = errno;
+      (void)!write(status_pipe[1], &err, sizeof(err));
+      _exit(err);
+
+    } else if (pid > 0) {
+      // --- Parent Process ---
+      close(status_pipe[1]);  // Parent only reads from the status pipe.
+      if (pipe_to_stdin) {
+        close(parent_lifetime_pipe[0]);  // Parent only writes to the lifetime pipe.
+      }
+
+      if (!decouple) {
+        // Simple case for non-decoupled process
+        int err_from_child;
+        ssize_t bytes_read =
+            ReadBytesFromFd(status_pipe[0], &err_from_child, sizeof(err_from_child));
+        if (bytes_read == 0) {
+          // Success: exec'd, pipe closed by CLOEXEC.
+          ec = std::error_code();
+        } else {
+          // Failure: got an error from child or pipe broke.
+          if (bytes_read == sizeof(err_from_child)) {
+            // We received a full error code from the child.
+            ec = std::error_code(err_from_child, std::system_category());
+          } else {
+            // The pipe was closed before we could read the full error.
+            // This can happen if the child crashes.
+            // If read() returned an error, use that errno. Otherwise, use EPIPE.
+            ec = std::error_code(bytes_read < 0 ? errno : EPIPE, std::system_category());
+          }
+          while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
+            continue;
+          }
+          pid = -1;
+        }
+        close(status_pipe[0]);
+      } else {
+        while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
+          continue;
+        }
+
+        // Read the grandchild's PID from the pipe.
+        ssize_t bytes_read_pid = ReadBytesFromFd(status_pipe[0], &pid, sizeof(pid));
+        if (bytes_read_pid != sizeof(pid)) {
+          // If we can't get the PID, it's a startup failure.
+          ec = std::error_code(ECHILD, std::system_category());
+          pid = -1;
+          close(status_pipe[0]);
+        } else {
+          // We got the PID. Now, do a NON-BLOCKING read to check for an exec error.
+          int flags = fcntl(status_pipe[0], F_GETFL, 0);
+          fcntl(status_pipe[0], F_SETFL, flags | O_NONBLOCK);
+          int exec_errno = 0;
+          ssize_t bytes_read_errno =
+              read(status_pipe[0], &exec_errno, sizeof(exec_errno));
+          fcntl(status_pipe[0], F_SETFL, flags);  // Restore original flags.
+
+          if (bytes_read_errno == sizeof(exec_errno)) {
+            // We got an error code back. Launch failed.
+            ec = std::error_code(exec_errno, std::system_category());
+            pid = -1;
+            close(status_pipe[0]);
+          } else {
+            // No error code was present. Launch was successful.
+            // For backward compatibility with tests, we need to keep the pipe
+            // open but NOT mark it with FD_CLOEXEC, so that child processes
+            // inherit it and it stays open until all descendants exit.
+            ec = std::error_code();
+            fd = status_pipe[0];
+
+            // Remove the FD_CLOEXEC flag that was set earlier
+            flags = fcntl(fd, F_GETFD, 0);
+            if (flags != -1) {
+              fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC);
+            }
+          }
+        }
+      }
+    } else {
+      // --- Fork Failed ---
+      ec = std::error_code(errno, std::system_category());
+      close(status_pipe[0]);
+      close(status_pipe[1]);
+      if (pipe_to_stdin) {
+        close(parent_lifetime_pipe[0]);
+        close(parent_lifetime_pipe[1]);
+      }
+    }
+#else   // macOS and other non-Linux POSIX
     int pipefds[2];  // Create pipe to get PID & track lifetime
     int parent_lifetime_pipe[2];
 
@@ -222,11 +405,9 @@ class ProcessFD {
 
     // Create a pipe and redirect the read pipe to a child's stdin.
     // Child can use it to detect the parent's lifetime.
-    // See the below link for details.
-    // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
     if (pipe_to_stdin) {
       if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
-        // Child. Close sthe write end of the pipe from child.
+        // Child. Close the write end of the pipe from child.
         close(parent_lifetime_pipe[1]);
         parent_lifetime_pipe[1] = -1;
         SetFdCloseOnExec(parent_lifetime_pipe[0]);
@@ -270,7 +451,7 @@ class ProcessFD {
       // Parent process case
       if (decouple) {
         int s;
-        (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return value
+        (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return
         int r = read(pipefds[0], &pid, sizeof(pid));
         (void)r;  // can't do much if this fails, so ignore return value
       }
@@ -280,7 +461,8 @@ class ProcessFD {
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
-#endif
+#endif  // defined(__linux__)
+#endif  // _WIN32
     return ProcessFD(pid, fd);
   }
 };

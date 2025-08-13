@@ -9,6 +9,7 @@ import sys
 import pytest
 
 import ray
+from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 
@@ -165,6 +166,34 @@ def test_runtime_env_config(start_cluster_shared):
         run(runtime_env)
         runtime_env = RuntimeEnv(config=RuntimeEnvConfig(**good_config))
         run(runtime_env)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="The process spawning and error code passing behavior is Linux-specific",
+)
+def test_large_runtime_env_fails_fast(start_cluster_shared):
+    """
+    Tests that a task with a runtime_env that is too large fails quickly
+    instead of hanging. This is a regression test for GitHub issue #47432.
+    """
+    cluster, address = start_cluster_shared
+    ray.init(address)
+
+    # Create a runtime_env with a very large environment variable to trigger
+    # a E2BIG error.
+    large_env_vars = {"MY_HUGE_VAR": "X" * 4096 * 100}
+    runtime_env = {"env_vars": large_env_vars}
+
+    @ray.remote
+    def f():
+        # This code should not be reached.
+        return 1
+
+    # The E2BIG error from the raylet is propagated to the
+    # driver, which should raise a RuntimeEnvSetupError.
+    with pytest.raises(RuntimeEnvSetupError, match="Worker command arguments too long"):
+        ray.get(f.options(runtime_env=runtime_env).remote())
 
 
 if __name__ == "__main__":
