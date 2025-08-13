@@ -68,7 +68,8 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
           << front_msg->DebugString();
       // Clear the oldest message first, because presumably newer messages are more
       // useful. Clearing the shared message should be ok, since Publisher is single
-      // threaded.
+      // threaded. NOTE: calling Clear() does not release memory from the underlying
+      // protobuf message object.
       *front_msg = rpc::PubMessage();
     } else {
       // No message to drop.
