@@ -29,7 +29,7 @@ from ci.raydepsets.tests.utils import (
     save_packages_to_file,
 )
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
@@ -297,8 +297,6 @@ class TestCli(unittest.TestCase):
         expected_flags = DEFAULT_UV_FLAGS.copy()
         expected_flags.remove("--unsafe-package")
         expected_flags.remove("ray")
-        expected_flags.remove("--unsafe-package")
-        expected_flags.remove("grpcio-tools")
         expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
