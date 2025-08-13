@@ -22,6 +22,7 @@ from ray._private.client_mode_hook import (
     disable_client_hook,
     enable_client_mode,
 )
+from ray._common.network_utils import build_address
 from ray._private.test_utils import run_string_as_driver
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
@@ -48,7 +49,9 @@ from ray.util.client.ray_client_helpers import (
 
 # Client server port of the shared Ray instance
 SHARED_CLIENT_SERVER_PORT = 25555
-SHARED_CLIENT_SERVER_ADDRESS = f"ray://localhost:{SHARED_CLIENT_SERVER_PORT}"
+SHARED_CLIENT_SERVER_ADDRESS = (
+    f"ray://{build_address('localhost', SHARED_CLIENT_SERVER_PORT)}"
+)
 
 
 @pytest.fixture(scope="module")

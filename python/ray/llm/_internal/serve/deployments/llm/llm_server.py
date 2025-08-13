@@ -204,6 +204,7 @@ class LLMServer(_LLMServerBase):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+            self._push_telemetry_report()
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
@@ -251,7 +252,8 @@ class LLMServer(_LLMServerBase):
 
         await self.engine.start()
 
-        # Push telemetry reports for the model in the current deployment.
+    def _push_telemetry_report(self):
+        """Push telemetry reports for the model in the current deployment."""
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
@@ -428,4 +430,4 @@ class LLMDeployment(LLMServer):
     # to give developers an ability to test the implementation outside the Ray Serve.
     # But in practice we should always test the LLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.
-    ...
+    pass

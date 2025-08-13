@@ -2429,6 +2429,8 @@ urllib3==1.26.19
     #   sentry-sdk
 utilsforecast==0.2.0
     # via statsforecast
+uv==0.8.9
+    # via -r python/requirements/test-requirements.txt
 uvicorn==0.22.0
     # via
     #   -r python/requirements.txt
