@@ -18,8 +18,8 @@ from langchain_text_splitters import (
 
 from benchmark import Benchmark, BenchmarkMetric
 
-
-SOURCE_DIRECTORY_S3 = "s3://air-example-data/common-pile-mirror/arxiv_papers/"
+# Subset of the data so that benchmark completes in ~20 minutes.
+SOURCE_DIRECTORY_S3 = "s3://air-example-data/common-pile-mirror/arxiv_papers/arxiv_papers-train-00001-of-00042.parquet"
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}/"
 
@@ -33,18 +33,6 @@ def parse_args():
         type=str,
         default=SOURCE_DIRECTORY_S3,
         help="S3 URI of source documents",
-    )
-    parser.add_argument(
-        "--read-concurrency",
-        type=int,
-        default=None,
-        help="Number of concurrent readers for input files",
-    )
-    parser.add_argument(
-        "--num-blocks",
-        type=int,
-        default=None,
-        help="Number of blocks to override for input file reading",
     )
     parser.add_argument(
         "--chunk-concurrency",
@@ -62,18 +50,18 @@ def parse_args():
         help="Chunking method",
     )
     parser.add_argument(
-        "--chunk-size", type=int, default=2048, help="Chunk size for text splitting"
+        "--chunk-size", type=int, default=1200, help="Chunk size for text splitting"
     )
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        default=200,
+        default=100,
         help="Chunk overlap for text splitting",
     )
     parser.add_argument(
         "--embed-batch-size",
         type=int,
-        default=8,
+        default=256,
         help="Batch size for embedding inference",
     )
     parser.add_argument(
@@ -88,7 +76,7 @@ def parse_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="Salesforce/SFR-Embedding-2_R",
+        default="Salesforce/SFR-Embedding-Code-400M_R",
         help="Embedding model name",
     )
     parser.add_argument(
@@ -131,7 +119,8 @@ class Chunker:
 class Embedder:
     def __init__(self, model_name: str):
         self.model = SentenceTransformer(
-            model_name, device="cuda" if torch.cuda.is_available() else "cpu"
+            model_name, device="cuda" if torch.cuda.is_available() else "cpu",
+            trust_remote_code=True
         )
 
     def __call__(self, batch: Dict[str, ndarray]) -> Dict[str, ndarray]:
@@ -141,12 +130,23 @@ class Embedder:
         return batch
 
 
+def count_parquet_rows(dataset_path: str) -> int:
+    """
+    Count the number of rows in a parquet file without reading the data into memory.
+    
+    https://stackoverflow.com/a/79118602/4212158
+    """
+    import pyarrow.dataset as ds
+
+    dataset = ds.dataset(dataset_path, format="parquet")
+    row_count = sum(row_group.num_rows for fragment in dataset.get_fragments() for row_group in fragment.row_groups)
+    return row_count
+
+
 def main(args):
     ds = ray.data.read_parquet(
         args.source_directory,
         include_paths=True,
-        concurrency=args.read_concurrency,
-        override_num_blocks=args.num_blocks,
     )
     # Record start time after metadata fetching
     start_time_without_metadata_fetching = time.time()
@@ -161,6 +161,7 @@ def main(args):
         concurrency=args.chunk_concurrency,
         num_cpus=args.chunk_cpus,
     )
+    ds = ds.repartition(target_num_rows_per_block=1_000)
     ds = ds.map_batches(
         Embedder,
         fn_constructor_kwargs={"model_name": args.model_name},
@@ -169,9 +170,9 @@ def main(args):
         num_gpus=args.num_gpus,
     )
     start = time.time()
-    ds.write_parquet(WRITE_PATH)
+    ds.write_parquet(WRITE_PATH, num_rows_per_file=5_000)
     duration = time.time() - start
-    count = ds.count()
+    count = count_parquet_rows(WRITE_PATH)
     throughput = count / duration if duration > 0 else 0.0
 
     # Compute metrics for time and throughput without metadata fetch
