@@ -183,7 +183,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 f"{self} doesn't have an env! Can't call `sample()` on it."
             )
 
-        assert not (num_timesteps is not None and num_episodes is not None)
+        assert not (num_timesteps is not None and num_episodes is not None), "Provide "\
+            "either `num_timesteps` or `num_episodes`. Both provided here:"\
+            f"{num_timesteps=}, {num_episodes=}"\
 
         # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
@@ -214,7 +216,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     * self.num_envs
                 )
 
-            # Sample n timesteps.
+            # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
                 samples = self._sample(
                     num_timesteps=num_timesteps,
@@ -222,15 +224,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     random_actions=random_actions,
                     force_reset=force_reset,
                 )
-            # Sample m episodes.
+            # Sample "num_episodes" episodes.
             elif num_episodes is not None:
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
                 )
-            # For complete episodes mode, sample as long as the number of timesteps
-            # done is smaller than the `train_batch_size`.
+            # For batch_mode="complete_episodes" (env_runners configuration), continue sampling as long as the number of timesteps done is smaller than the `train_batch_size`.
             else:
                 samples = self._sample(
                     num_episodes=self.num_envs,
@@ -346,7 +347,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                     )
                 # In case all environments had been terminated `to_module` will be
-                # empty and no actions are needed b/c we reset all environemnts.
+                # empty and no actions are needed b/c we reset all environments.
                 else:
                     to_env = {}
             shared_data["vector_env_episodes_map"] = {}
@@ -361,6 +362,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
+                logging.warning(f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner.")
                 return self._sample(
                     num_timesteps=num_timesteps,
                     num_episodes=num_episodes,
