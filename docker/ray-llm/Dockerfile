@@ -47,34 +47,34 @@ sudo apt-get update
 # kmod needed by nvidia-installer, pkg-config needed by GDRCopy, librdmacm-dev needed by UCX
 sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
-(
-    echo "Installing GDRCopy"
-    cd "${TEMP_DIR}"
-    [[ -d "/lib/modules/${KVER}" ]] || sudo apt-get install linux-headers-${KVER} -y
-    NV_DRIVER_VERSION="570.153.02"
-    wget "https://us.download.nvidia.com/XFree86/Linux-x86_64/${NV_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run" -q
-    sh NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run -x
-    sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
-        --silent \
-        --no-questions \
-        --no-install-compat32-libs \
-        --kernel-source-path="/lib/modules/${KVER}/build" \
-        --utility-prefix="/usr"
+# (
+#     echo "Installing GDRCopy"
+#     cd "${TEMP_DIR}"
+#     [[ -d "/lib/modules/${KVER}" ]] || sudo apt-get install linux-headers-${KVER} -y
+#     NV_DRIVER_VERSION="570.153.02"
+#     wget "https://us.download.nvidia.com/XFree86/Linux-x86_64/${NV_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run" -q
+#     sh NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run -x
+#     sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
+#         --silent \
+#         --no-questions \
+#         --no-install-compat32-libs \
+#         --kernel-source-path="/lib/modules/${KVER}/build" \
+#         --utility-prefix="/usr"
 
-    (
-        wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz" -q
-        tar xzf v2.5.tar.gz; rm v2.5.tar.gz
-        cd gdrcopy-2.5
-        sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
-    )
+#     (
+#         wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz" -q
+#         tar xzf v2.5.tar.gz; rm v2.5.tar.gz
+#         cd gdrcopy-2.5
+#         sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
+#     )
 
-    # Uninstall the driver, this driver might have conflict with the library
-    # version on host. Remove it from container.
-    sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
-        --uninstall \
-        --silent \
-        --no-questions
-)
+#     # Uninstall the driver, this driver might have conflict with the library
+#     # version on host. Remove it from container.
+#     sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
+#         --uninstall \
+#         --silent \
+#         --no-questions
+# )
 
 UCX_VERSION="1.18.1"
 (
