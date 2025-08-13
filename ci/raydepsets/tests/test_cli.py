@@ -331,7 +331,7 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 6
+            assert len(manager.build_graph.nodes()) == 7
             assert len(manager.build_graph.edges()) == 3
             # assert that the compile depsets are first
             assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"

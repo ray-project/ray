@@ -23,6 +23,7 @@ class Depset:
     append_flags: List[str]
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
+    setup_path: Optional[str] = None
     build_arg_set_name: Optional[str] = None
 
 
@@ -52,6 +53,7 @@ def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> D
         build_arg_set_name=build_arg_set_name,
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
+        setup_path=depset.get("setup_path"),
     )
 
 

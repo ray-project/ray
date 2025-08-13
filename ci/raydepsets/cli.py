@@ -83,6 +83,10 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            elif depset.operation == "build_wheel":
+                self.build_graph.add_node(
+                    depset.name, operation="build_wheel", depset=depset
+                )
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
 
@@ -97,8 +101,8 @@ class DependencySetManager:
                 return depset
         raise KeyError(f"Dependency set {name} not found")
 
-    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = [self._uv_binary, "pip", cmd, *args]
+    def exec_uv_cmd(self, cmd: List[str], args: List[str]) -> str:
+        cmd = [self._uv_binary, *cmd, *args]
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
@@ -134,6 +138,12 @@ class DependencySetManager:
                 name=depset.name,
                 output=depset.output,
             )
+        elif depset.operation == "build_wheel":
+            self.build_wheel(
+                setup_path=depset.setup_path,
+                output=depset.output,
+                append_flags=depset.append_flags,
+            )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(
@@ -161,7 +171,7 @@ class DependencySetManager:
                 args.extend([self.get_path(requirement)])
         if output:
             args.extend(["-o", self.get_path(output)])
-        self.exec_uv_cmd("compile", args)
+        self.exec_uv_cmd(["pip"], ["compile", *args])
 
     def subset(
         self,
@@ -210,6 +220,21 @@ class DependencySetManager:
             append_flags=append_flags,
             override_flags=override_flags,
         )
+
+    def build_wheel(
+        self,
+        setup_path: str,
+        output: str,
+        append_flags: Optional[List[str]] = None,
+    ):
+        args = []
+        if setup_path:
+            args.extend(["--directory", setup_path])
+        if append_flags:
+            args.extend(append_flags)
+        if output:
+            args.extend(["-o", output])
+        self.exec_uv_cmd(["build"], ["--wheel", *args])
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
