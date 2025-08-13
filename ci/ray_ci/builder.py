@@ -172,7 +172,7 @@ def build_anyscale(
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload=False
-        ).run()
+        ).run(use_base_extra=True)
         AnyscaleDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
         ).run()

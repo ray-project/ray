@@ -12,8 +12,8 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - raycudabase
-      - raycpubase
+      - raycudabaseextra
+      - raycpubaseextra
     matrix:
       setup:
         python:
@@ -35,7 +35,7 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - ray-llmbase
+      - ray-llmbaseextra
     matrix:
       - "3.11"
 
@@ -48,7 +48,7 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - ray-mlcudabase
+      - ray-mlcudabaseextra
     matrix:
       # This list should be kept in sync with the list of supported Python in
       # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
