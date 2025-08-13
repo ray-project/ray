@@ -207,7 +207,7 @@ class _TrainSession:
         self.result_queue = queue.Queue(1)
 
         # Queue for sending results from training actor to main thread.
-        self.training_actor_result_queue = ray_queue.Queue(1)
+        self._inter_actor_result_queue = ray_queue.Queue(1)
 
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
@@ -323,13 +323,13 @@ class _TrainSession:
         """Get result from result queue. Pass result from training actor result queue if needed."""
         result = None
         try:
-            training_actor_result = self.training_actor_result_queue.get(
+            training_actor_result = self._inter_actor_result_queue.get(
                 block=block, timeout=_RESULT_FETCH_TIMEOUT
             )
             if training_actor_result:
                 # Must release continue_lock to allow report to work.
                 self.continue_lock.release()
-                self.report(training_actor_result)
+                self.report(training_actor_result.metrics)
         except ray_queue.Empty:
             pass
         try:

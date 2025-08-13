@@ -81,7 +81,9 @@ def test_e2e(
 
     tuner = ray.tune.Tuner(
         ray.tune.with_resources(
-            launch_training, {TRAIN_DRIVER_RESOURCE_NAME: 0.01, "cpu": 1}
+            # We need 1 cpu for the ray.util.queue.Queue.
+            launch_training,
+            {TRAIN_DRIVER_RESOURCE_NAME: 0.01, "cpu": 1},
         ),
         param_space={
             # Search over parameters passed into each train worker.
