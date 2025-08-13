@@ -56,6 +56,7 @@ from ray.data.block import (
     BlockType,
     to_stats,
 )
+from ray.data.context import DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
 
 logger = logging.getLogger(__name__)
 
@@ -387,6 +388,21 @@ class HashShuffleProgressBarMixin(abc.ABC):
         self.reduce_bar.close()
 
 
+def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources) -> int:
+    # Max number of aggregators is determined as the smaller of:
+    #   - Total # of CPUs available in the cluster * 4
+    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (64 by default)
+    #
+    # Limiting to no more than 4x of available CPUs while might potentially reduce
+    # concurrency (by reducing number of aggregators), helps to make sure that
+    # we're not overloading the OS by spawning excessive # of processes on small
+    # clusters
+    return min(
+        math.ceil(total_cluster_resources.cpu * 4),
+        DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    )
+
+
 class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
@@ -446,10 +462,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         # Determine max number of shuffle aggregators (defaults to
         # `DataContext.min_parallelism`)
-        max_shuffle_aggregators = (
-            data_context.max_hash_shuffle_aggregators
-            or data_context.default_hash_shuffle_parallelism
-        )
+        if data_context.max_hash_shuffle_aggregators is not None:
+            max_shuffle_aggregators = data_context.max_hash_shuffle_aggregators
+        else:
+            max_shuffle_aggregators = _derive_max_shuffle_aggregators(
+                _get_total_cluster_resources()
+            )
+
         # Cap number of aggregators to not exceed max configured
         num_aggregators = min(num_partitions, max_shuffle_aggregators)
 
@@ -1011,19 +1030,16 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # 2. Fetch total available cluster resources
         #
         # NOTE: If cluster configuration is not available fallback to `ray.cluster_resources()`
-        total_cluster_resources = (
-            ray._private.state.state.get_max_resources_from_cluster_config()
-            or ray.cluster_resources()
-        )
+        total_cluster_resources = _get_total_cluster_resources()
 
-        if total_cluster_resources and (total_cluster_resources.get("CPU") or 0) > 0:
+        if total_cluster_resources.cpu > 0:
             # NOTE: For shuffling operations we aim to allocate no more than
             #       10% of CPUs, but no more than 0.25 CPU per partition
             #
             # TODO finalization stage of shuffle operation always executes standalone,
             #      hence there's no need to allocate actual CPU resources to it as
             #      there are no other ops to contend w/ it
-            return min(0.25, (total_cluster_resources["CPU"] * 0.1) / num_partitions)
+            return min(0.25, (total_cluster_resources.cpu * 0.1) / num_partitions)
 
         # 3. Fallback to defaults if the first two options are not available
         return self._get_default_num_cpus_per_partition()
@@ -1416,3 +1432,18 @@ class HashShuffleAggregator:
         # TODO break down blocks to target size
         yield block
         yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+
+
+def _get_total_cluster_resources() -> ExecutionResources:
+    """Retrieves total available cluster resources:
+
+    1. If AutoscalerV2 is used, then corresponding max configured resources of
+        the corresponding `ClusterConfig` is returned.
+    2. In case `ClusterConfig` is not set then falls back to currently available
+        cluster resources (retrieved by `ray.cluster_resources()`)
+
+    """
+    return ExecutionResources.from_resource_dict(
+        ray._private.state.state.get_max_resources_from_cluster_config()
+        or ray.cluster_resources()
+    )
