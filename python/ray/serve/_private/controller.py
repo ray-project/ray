@@ -1107,7 +1107,7 @@ class ServeController:
         """
         self.deployment_state_manager.record_request_routing_info(info)
 
-    def get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
         """Get the current rank mapping for all replicas in a deployment.
 
         Args:

@@ -130,8 +130,6 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
-   serve.get_replica_rank
-   serve.get_world_size
    serve.grpc_util.RayServegRPCContext
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException

@@ -1434,6 +1434,236 @@ class ReplicaStateContainer:
         return repr(self._replicas)
 
 
+class DeploymentRankManager:
+    """Manages replica ranks for a deployment.
+
+    This class handles rank assignment, release, consistency checking, and reassignment.
+    It maintains the rank system invariants and provides a clean interface for rank operations.
+    """
+
+    def __init__(self):
+        # Maps replica_id to assigned rank
+        self._replica_ranks: Dict[str, int] = {}
+        # Set of available ranks (initially empty, grows as target replicas change)
+        self._available_ranks: Set[int] = set()
+        # Next rank to assign (increments as new replicas are created)
+        self._next_rank: int = 0
+
+    def assign_rank(self, replica_id: str) -> int:
+        """Assign a rank to a new replica.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            The assigned rank
+
+        Raises:
+            RuntimeError: If the replica already has a rank assigned
+        """
+        if replica_id in self._replica_ranks:
+            raise RuntimeError(
+                f"Replica {replica_id} already has a rank assigned: {self._replica_ranks[replica_id]}"
+            )
+
+        # First try to reuse an available rank
+        if self._available_ranks:
+            rank = min(self._available_ranks)
+            self._available_ranks.remove(rank)
+        else:
+            # Otherwise use the next available rank
+            rank = self._next_rank
+            self._next_rank += 1
+
+        self._replica_ranks[replica_id] = rank
+        return rank
+
+    def release_rank(self, replica_id: str) -> None:
+        """Release a rank when a replica is stopped.
+
+        Args:
+            replica_id: The unique ID of the replica whose rank should be released
+        """
+        if replica_id in self._replica_ranks:
+            rank = self._replica_ranks.pop(replica_id)
+            self._available_ranks.add(rank)
+
+    def recover_rank(self, replica_id: str, rank: int) -> None:
+        """Recover a rank from a live replica during controller restart.
+
+        Args:
+            replica_id: The unique ID of the replica
+            rank: The rank to recover
+
+        Raises:
+            RuntimeError: If the replica already has a rank or the rank is invalid
+            ValueError: If the rank is invalid (negative)
+        """
+        if replica_id in self._replica_ranks:
+            raise RuntimeError(f"Replica {replica_id} already has a rank assigned")
+
+        self._replica_ranks[replica_id] = rank
+
+        # Update available ranks tracking
+        if rank in self._available_ranks:
+            self._available_ranks.remove(rank)
+
+        # Update next_rank to ensure we don't assign duplicates
+        if rank >= self._next_rank:
+            self._next_rank = rank + 1
+
+    def get_replica_rank(self, replica_id: str) -> Optional[int]:
+        """Get the rank assigned to a replica.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            The assigned rank, or None if no rank is assigned
+        """
+        if replica_id not in self._replica_ranks:
+            raise RuntimeError(f"Replica {replica_id} has no rank assigned")
+        return self._replica_ranks.get(replica_id)
+
+    def get_replica_ranks_mapping(self) -> Dict[str, int]:
+        """Get a copy of the current replica ranks mapping.
+
+        Returns:
+            A copy of the replica_id to rank mapping
+        """
+        return self._replica_ranks.copy()
+
+    def check_rank_consistency_and_reassign_minimally(
+        self,
+        active_replicas: List["DeploymentReplica"],
+    ) -> List["DeploymentReplica"]:
+        """Verify rank system invariants and reassign ranks when needed.
+
+        This method ensures:
+        1. All active replicas have ranks
+        2. No duplicate ranks exist
+        3. Ranks are contiguous when at target replica count
+
+        Args:
+            active_replicas: List of currently active replicas
+
+        Returns:
+            List of replicas that need to be reconfigured with new ranks
+
+        Raises:
+            RuntimeError: If rank system invariants are violated
+        """
+        if not active_replicas:
+            return []
+
+        active_replica_ids = {
+            replica.replica_id.unique_id for replica in active_replicas
+        }
+
+        # Check for stale ranks - this should never happen
+        stale_replica_ids = set(self._replica_ranks.keys()) - active_replica_ids
+        if stale_replica_ids:
+            logger.error(
+                f"Found stale ranks for replicas: {stale_replica_ids}. "
+                "This should never happen. Please report this as a bug."
+            )
+            raise RuntimeError("Controller rank system is in an invalid state.")
+
+        # Verify system invariants - all active replicas must have ranks
+        unranked_replica_ids = active_replica_ids - set(self._replica_ranks.keys())
+        if unranked_replica_ids:
+            logger.error(
+                f"Found active replicas without ranks: {unranked_replica_ids}. "
+                "This should never happen. Please report this as a bug."
+            )
+            raise RuntimeError("Controller rank system is in an invalid state.")
+
+        # Check for duplicate ranks - this should never happen
+        rank_counts = {}
+        for replica_id, rank in self._replica_ranks.items():
+            if replica_id in active_replica_ids:  # Only check active replicas
+                rank_counts[rank] = rank_counts.get(rank, 0) + 1
+                if rank_counts[rank] > 1:
+                    logger.error(
+                        f"Found duplicate rank {rank} assigned to multiple replicas. "
+                        "This should never happen. Please report this as a bug."
+                    )
+                    raise RuntimeError("Controller rank system is in an invalid state.")
+
+        # Check if we need to reassign ranks for contiguity
+        # Only force contiguity when at target replica count (e.g., after autoscaling down)
+        current_ranks = sorted(self._replica_ranks.values())
+        expected_ranks = list(range(len(active_replicas)))
+
+        if current_ranks != expected_ranks:
+            logger.info(
+                f"Deployment at target replica count but ranks are not contiguous. "
+                f"Current: {current_ranks}, Expected: {expected_ranks}. "
+                "Performing minimal reassignment."
+            )
+            return self._perform_minimal_rank_reassignment(active_replicas)
+
+        return []
+
+    def _perform_minimal_rank_reassignment(
+        self, active_replicas: List["DeploymentReplica"]
+    ) -> List["DeploymentReplica"]:
+        """Perform minimal rank reassignment to achieve contiguity.
+
+        This method reassigns ranks while minimizing the number of replicas that need
+        to be reconfigured. It prioritizes keeping existing ranks when possible.
+
+        Args:
+            active_replicas: List of currently active replicas
+
+        Returns:
+            List of replicas that need to be reconfigured with new ranks
+        """
+        target_ranks = list(range(len(active_replicas)))
+
+        # Find which replicas need new ranks
+        replicas_needing_ranks = []
+        replicas_keeping_ranks = []
+
+        for replica in active_replicas:
+            replica_id = replica.replica_id.unique_id
+            current_rank = self._replica_ranks[replica_id]
+
+            if current_rank in target_ranks:
+                # This replica can keep its rank
+                target_ranks.remove(current_rank)
+                replicas_keeping_ranks.append(replica)
+            else:
+                # This replica needs a new rank
+                replicas_needing_ranks.append(replica)
+
+        # Assign new ranks to replicas that need them
+        for replica in replicas_needing_ranks:
+            replica_id = replica.replica_id.unique_id
+            new_rank = target_ranks.pop(0)  # Take the next available target rank
+
+            logger.info(
+                f"Reassigning replica {replica_id}: rank {self._replica_ranks[replica_id]} -> {new_rank}"
+            )
+
+            # Update the rank mapping
+            self._replica_ranks[replica_id] = new_rank
+
+        # Log the reassignment summary
+        logger.info(
+            f"Minimal reassignment complete: {len(replicas_keeping_ranks)} replicas kept ranks, "
+            f"{len(replicas_needing_ranks)} replicas reassigned"
+        )
+
+        return replicas_needing_ranks
+
+    def clear(self) -> None:
+        """Clear all rank data. Used for testing and reset."""
+        self._replica_ranks.clear()
+        self._available_ranks.clear()
+        self._next_rank = 0
+
+
 class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
 
@@ -1474,13 +1704,7 @@ class DeploymentState:
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
-        # Rank management for scatter-gather operations across replicas
-        # Maps replica_id to assigned rank
-        self._replica_ranks: Dict[str, int] = {}
-        # Set of available ranks (initially empty, grows as target replicas change)
-        self._available_ranks: Set[int] = set()
-        # Next rank to assign (ensures contiguous ranks starting from 0)
-        self._next_rank: int = 0
+        self._rank_manager = DeploymentRankManager()
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -1974,13 +2198,9 @@ class DeploymentState:
                 ):
                     replicas_changed = True
                 # Get current rank for the replica
-                current_rank = self.get_replica_rank(replica.replica_id.unique_id)
-                if current_rank is None:
-                    # replica should always have a rank since we assign on startup
-                    raise ValueError(
-                        f"Replica {replica.replica_id} has no rank assigned during "
-                        "reconfigure. This is a invalid state in the rank system."
-                    )
+                current_rank = self._rank_manager.get_replica_rank(
+                    replica.replica_id.unique_id
+                )
                 actor_updating = replica.reconfigure(
                     self._target_state.version, rank=current_rank
                 )
@@ -2100,8 +2320,7 @@ class DeploymentState:
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
                     # Assign rank during replica creation (startup process)
-                    assigned_rank = self._get_next_available_rank()
-                    self._replica_ranks[replica_id.unique_id] = assigned_rank
+                    assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
 
                     logger.info(
                         f"Assigned rank {assigned_rank} to new replica {replica_id.unique_id} during startup"
@@ -2128,26 +2347,6 @@ class DeploymentState:
             )
 
         return upscale, downscale
-
-    def _get_next_available_rank(self) -> int:
-        """Get the next available rank for a new replica.
-
-        Returns the lowest available rank, either from the available ranks pool
-        or by incrementing the next rank counter.
-
-        Returns:
-            The next available rank.
-        """
-        if self._available_ranks:
-            # Reuse the lowest available rank
-            rank = min(self._available_ranks)
-            self._available_ranks.remove(rank)
-            return rank
-        else:
-            # No available ranks, assign the next sequential rank
-            rank = self._next_rank
-            self._next_rank += 1
-            return rank
 
     def check_curr_status(self) -> Tuple[bool, bool]:
         """Check the current deployment status.
@@ -2248,7 +2447,10 @@ class DeploymentState:
                     # from the replica actor. The invariant is that the rank is assigned
                     # during startup and before the replica is added to the replicas
                     # data structure with RUNNING state.
-                    self._recover_replica_rank(replica)
+                    # Recover rank from the replica actor during controller restart
+                    replica_id = replica.replica_id.unique_id
+                    recovered_rank = replica._actor.rank
+                    self._rank_manager.recover_rank(replica_id, recovered_rank)
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
@@ -2296,23 +2498,6 @@ class DeploymentState:
                     self._replicas.add(original_state, replica)
 
         return slow_replicas
-
-    def _recover_replica_rank(self, replica: DeploymentReplica):
-        replica_id = replica.replica_id.unique_id
-        recovered_rank = replica._actor.rank
-
-        assert (
-            replica_id not in self._replica_ranks
-        ), f"Replica {replica_id} already has a rank assigned"
-        assert recovered_rank is not None, f"Replica {replica_id} has no rank recovered"
-
-        self._replica_ranks[replica_id] = recovered_rank
-        # Update available ranks tracking
-        if recovered_rank in self._available_ranks:
-            self._available_ranks.remove(recovered_rank)
-        # Update next_rank to ensure we don't assign duplicates
-        if recovered_rank >= self._next_rank:
-            self._next_rank = recovered_rank + 1
 
     def record_replica_startup_failure(self, error_msg: str):
         """Record that a replica failed to start."""
@@ -2498,7 +2683,10 @@ class DeploymentState:
                 # Release rank only after replica is successfully stopped
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
-                self.release_replica_rank(replica_id)
+                self._rank_manager.release_rank(replica_id)
+                logger.info(
+                    f"Released rank from replica {replica_id} in deployment {self._id}"
+                )
 
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
 
@@ -2509,25 +2697,21 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
-        if not self._has_outdated_version_replicas():
-            self._check_rank_consistency_and_reassign_minimally()
+        active_replicas = self._replicas.get()
+        if (
+            not self._has_outdated_version_replicas()
+            and len(active_replicas) == self._target_state.target_num_replicas
+        ):
+            if active_replicas:
+                replicas_to_reconfigure = (
+                    self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                        active_replicas,
+                    )
+                )
 
-    def release_replica_rank(self, replica_id: str):
-        """Release a replica's rank when it dies.
-
-        Args:
-            replica_id: The unique ID of the replica whose rank should be released.
-        """
-        assert (
-            replica_id in self._replica_ranks
-        ), f"Replica {replica_id} has no rank assigned"
-
-        rank = self._replica_ranks[replica_id]
-        del self._replica_ranks[replica_id]
-        self._available_ranks.add(rank)
-        logger.info(
-            f"Released rank {rank} from replica {replica_id} in deployment {self._id}"
-        )
+                # Reconfigure replicas that had their ranks reassigned
+                if replicas_to_reconfigure:
+                    self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
 
     def _has_outdated_version_replicas(self) -> bool:
         """Check if there are any replicas with outdated versions.
@@ -2537,165 +2721,35 @@ class DeploymentState:
         """
         return self._replicas.count(exclude_version=self._target_state.version) > 0
 
-    def _check_rank_consistency_and_reassign_minimally(self):
-        """Verify rank system invariants and reassign ranks when needed."""
-        active_replicas = self._replicas.get()
-
-        if not active_replicas:
-            return
-
-        active_replica_ids = {
-            replica.replica_id.unique_id for replica in active_replicas
-        }
-
-        # Check for stale ranks, this should never happen.
-        stale_replica_ids = set(self._replica_ranks.keys()) - active_replica_ids
-        if stale_replica_ids:
-            logger.error(
-                f"Found stale ranks replicas: {stale_replica_ids}. This should never happen. "
-                "Please report this as a bug."
-            )
-            raise RuntimeError("Controller rank system is in an invalid state.")
-
-        # Verify system invariants.
-        unranked_replica_ids = active_replica_ids - set(self._replica_ranks.keys())
-        if unranked_replica_ids:
-            logger.error(
-                f"Found active replicas without ranks: {unranked_replica_ids}. "
-                "This should never happen. Please report this as a bug."
-            )
-            raise RuntimeError("Controller rank system is in an invalid state.")
-
-        # Check for duplicate ranks, this should never happen.
-        current_ranks = list(self._replica_ranks.values())
-        duplicates = [
-            rank for rank in set(current_ranks) if current_ranks.count(rank) > 1
-        ]
-        if duplicates:
-            logger.error(
-                f"Found duplicate ranks: {duplicates}. This should never happen. "
-                "Please report this as a bug."
-            )
-            raise RuntimeError("Controller rank system is in an invalid state.")
-
-        # Reassign ranks if at target count but not contiguous
-        expected_ranks = set(range(len(active_replicas)))
-        actual_ranks = set(current_ranks)
-
-        if (
-            actual_ranks != expected_ranks
-            and len(active_replicas) == self._target_state.target_num_replicas
-        ):
-            # If we are at target count but ranks are not contiguous, we need to
-            # perform a minimal rank reassignment.
-            self._perform_minimal_rank_reassignment(active_replicas)
-
-    def _perform_minimal_rank_reassignment(
-        self, active_replicas: List[DeploymentReplica]
-    ):
-        """Perform minimal rank reassignment to fix consistency issues.
-
-        This is a minimal reassignment that only changes the rank of the replicas
-        that are not in the expected rank range.
-        """
-        expected_count = len(active_replicas)
-        expected_ranks = set(range(expected_count))
-
-        # Map of replica_id -> current_rank
-        current_assignments = dict(self._replica_ranks)
-
-        # Find which ranks are correctly assigned and which replicas can keep their ranks
-        replicas_to_keep: Dict[
-            str, int
-        ] = {}  # replica_id -> rank (these keep their current ranks)
-        replicas_to_reassign: List[
-            DeploymentReplica
-        ] = []  # replica objects that need new ranks
-
-        for replica in active_replicas:
-            replica_id = replica.replica_id.unique_id
-            current_rank = current_assignments.get(replica_id)
-
-            # If replica has a valid rank (in expected range)
-            if current_rank in expected_ranks:
-                replicas_to_keep[replica_id] = current_rank
-            else:
-                replicas_to_reassign.append(replica)
-
-        # Find available ranks for reassignment
-        available_ranks = expected_ranks - set(self._replica_ranks.values())
-        available_ranks = sorted(available_ranks)
-
-        if len(available_ranks) != len(replicas_to_reassign):
-            logger.error(
-                f"Rank reassignment logic error: {len(available_ranks)} available ranks, {len(replicas_to_reassign)} replicas to reassign. "
-                "This should never happen. Please report this as a bug."
-            )
-            raise RuntimeError("Controller rank system is in an invalid state.")
-
-        # Clear all rank assignments and rebuild
-        self._replica_ranks.clear()
-        self._available_ranks = set(range(expected_count))
-
-        # Restore the ranks for replicas that keep their assignments
-        for replica_id, rank in replicas_to_keep.items():
-            self._replica_ranks[replica_id] = rank
-            self._available_ranks.discard(rank)
-
-        # Assign new ranks to replicas that need reassignment
-        reassignment_changes = []
-        for i, replica in enumerate(replicas_to_reassign):
-            replica_id = replica.replica_id.unique_id
-            old_rank = current_assignments.get(replica_id)
-            new_rank = available_ranks[i]
-
-            self._replica_ranks[replica_id] = new_rank
-            self._available_ranks.discard(new_rank)
-
-            reassignment_changes.append((replica_id, old_rank, new_rank))
-
-        # Apply the reassignments via reconfigure
-        if reassignment_changes:
-            self._reconfigure_replicas_with_ranks(reassignment_changes)
-
-    def _reconfigure_replicas_with_ranks(
-        self, rank_changes: List[Tuple[str, int, int]]
+    def _reconfigure_replicas_with_new_ranks(
+        self, replicas_to_reconfigure: List["DeploymentReplica"]
     ):
         """Reconfigure replicas with their new ranks after reassignment.
 
         This uses the reconfigure() mechanism to update replicas with their new ranks.
         """
-        if not rank_changes:
+        if not replicas_to_reconfigure:
             return
 
         logger.info(
-            f"Reconfiguring {len(rank_changes)} replicas with rank changes in deployment {self._id}"
+            f"Reconfiguring {len(replicas_to_reconfigure)} replicas with rank changes in deployment {self._id}"
         )
 
-        # Create a mapping of replica_id to new_rank for easy lookup
-        # Include both rank changes and new rank assignments (where old_rank is None)
-        rank_updates = {}
-        for replica_id, old_rank, new_rank in rank_changes:
-            rank_updates[replica_id] = new_rank
-
-        # Find the corresponding replica objects and reconfigure them with new ranks
         updated_count = 0
-
-        # Is it safe to assume that the replicas are in the RUNNING state?
-        for replica in self._replicas.get(states=[ReplicaState.RUNNING]):
+        for replica in replicas_to_reconfigure:
             replica_id = replica.replica_id.unique_id
-            if replica_id in rank_updates:
-                new_rank = rank_updates[replica_id]
-                # Use reconfigure() to update rank
-                # World size is calculated automatically from deployment config
-                _ = replica.reconfigure(
-                    self._target_state.version,
-                    rank=new_rank,
-                )
-                updated_count += 1
+            new_rank = self._rank_manager.get_replica_rank(replica_id)
+
+            # Use reconfigure() to update rank
+            # World size is calculated automatically from deployment config
+            _ = replica.reconfigure(
+                self._target_state.version,
+                rank=new_rank,
+            )
+            updated_count += 1
 
         logger.info(
-            f"Successfully reconfigured {updated_count} replicas with new ranks {rank_updates} in deployment {self._id}"
+            f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
         )
 
     def _choose_pending_migration_replicas_to_stop(
@@ -2823,7 +2877,7 @@ class DeploymentState:
         Returns:
             The rank of the replica, or None if not assigned.
         """
-        return self._replica_ranks.get(replica_id)
+        return self._rank_manager.get_replica_rank(replica_id)
 
     def get_replica_ranks_mapping(self) -> Dict[str, int]:
         """Get the current mapping of replica IDs to ranks.
@@ -2831,7 +2885,7 @@ class DeploymentState:
         Returns:
             Dictionary mapping replica_id to rank.
         """
-        return self._replica_ranks.copy()
+        return self._rank_manager.get_replica_ranks_mapping()
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])

@@ -172,42 +172,6 @@ def get_replica_context() -> ReplicaContext:
     return internal_replica_context
 
 
-@PublicAPI(stability="alpha")
-def get_replica_rank() -> Optional[int]:
-    """Get the rank of the current replica within its deployment.
-
-    Ranks are integers starting from 0 up to (num_replicas-1) and are
-    scoped to a deployment. They are useful for scatter-gather operations
-    across replicas similar to how NCCL operates.
-
-    Returns:
-        The rank of the current replica (0 to num_replicas-1), or None if
-        rank assignment failed.
-
-    Raises:
-        RayServeException: if not called from within a deployment.
-    """
-    replica_context = get_replica_context()
-    return replica_context.rank
-
-
-@PublicAPI(stability="alpha")
-def get_world_size() -> int:
-    """Get the total number of replicas in the current deployment.
-
-    This is the "world size" for scatter-gather operations - the total
-    number of replicas that participate in collective operations.
-
-    Returns:
-        The current number of running replicas in the deployment.
-
-    Raises:
-        RayServeException: if not called from within a deployment.
-    """
-    replica_context = get_replica_context()
-    return replica_context.world_size
-
-
 @PublicAPI(stability="stable")
 def ingress(app: Union[ASGIApp, Callable]) -> Callable:
     """Wrap a deployment class with an ASGI application for HTTP request parsing.

@@ -34,7 +34,7 @@ def get_replica_ranks(deployment_name: str) -> Dict[str, int]:
     deployment_id = DeploymentID(name=deployment_name, app_name=SERVE_DEFAULT_APP_NAME)
 
     # Use the public API method on the controller
-    return ray.get(controller.get_replica_ranks_mapping.remote(deployment_id))
+    return ray.get(controller._get_replica_ranks_mapping.remote(deployment_id))
 
 
 def get_running_replica_ids(deployment_name: str) -> List[str]:
@@ -95,8 +95,9 @@ def test_basic_rank_assignment(serve_instance, num_replicas):
             self.world_size = None
 
         def __call__(self):
-            self.replica_rank = serve.get_replica_rank()
-            self.world_size = serve.get_world_size()
+            context = serve.get_replica_context()
+            self.replica_rank = context.rank
+            self.world_size = context.world_size
             return {
                 "rank": self.replica_rank,
                 "world_size": self.world_size,
@@ -152,9 +153,10 @@ def test_rank_assignment_with_autoscaling(serve_instance):
     class AutoscalingRankTracker:
         async def __call__(self):
             await signal_actor.wait.remote()
+            context = serve.get_replica_context()
             return {
-                "rank": serve.get_replica_rank(),
-                "world_size": serve.get_world_size(),
+                "rank": context.rank,
+                "world_size": context.world_size,
             }
 
     handle = serve.run(AutoscalingRankTracker.bind())
@@ -209,9 +211,10 @@ def test_rank_persistence_across_controller_restart(serve_instance):
     @serve.deployment(num_replicas=3)
     class PersistentRankTracker:
         def __call__(self):
+            context = serve.get_replica_context()
             return {
-                "rank": serve.get_replica_rank(),
-                "world_size": serve.get_world_size(),
+                "rank": context.rank,
+                "world_size": context.world_size,
             }
 
     serve.run(PersistentRankTracker.bind())
@@ -261,9 +264,10 @@ def test_rank_api_functions(serve_instance):
     @serve.deployment(num_replicas=3)
     class APITestTracker:
         def get_rank_info(self):
+            context = serve.get_replica_context()
             return {
-                "rank": serve.get_replica_rank(),
-                "world_size": serve.get_world_size(),
+                "rank": context.rank,
+                "world_size": context.world_size,
             }
 
         def __call__(self):
@@ -301,9 +305,10 @@ def test_single_replica_deployment(serve_instance):
     @serve.deployment(num_replicas=1)
     class SingleReplicaTracker:
         def __call__(self):
+            context = serve.get_replica_context()
             return {
-                "rank": serve.get_replica_rank(),
-                "world_size": serve.get_world_size(),
+                "rank": context.rank,
+                "world_size": context.world_size,
             }
 
     handle = serve.run(SingleReplicaTracker.bind())
@@ -330,10 +335,11 @@ def test_multiple_deployments_independent_ranks(serve_instance):
     @serve.deployment(name="deployment1", num_replicas=2)
     class RankTracker1:
         def __call__(self):
+            context = serve.get_replica_context()
             return {
                 "deployment": "deployment1",
-                "rank": serve.get_replica_rank(),
-                "world_size": serve.get_world_size(),
+                "rank": context.rank,
+                "world_size": context.world_size,
             }
 
     @serve.deployment(name="deployment2", num_replicas=3)
@@ -342,10 +348,11 @@ def test_multiple_deployments_independent_ranks(serve_instance):
             self.rank_tracker1 = rank_tracker1
 
         def __call__(self):
+            context = serve.get_replica_context()
             return {
                 "deployment": "deployment2",
-                "rank": serve.get_replica_rank(),
-                "world_size": serve.get_world_size(),
+                "rank": context.rank,
+                "world_size": context.world_size,
             }
 
     serve.run(RankTracker2.bind(RankTracker1.bind()))

@@ -14,8 +14,6 @@ try:
         get_deployment_handle,
         get_multiplexed_model_id,
         get_replica_context,
-        get_replica_rank,
-        get_world_size,
         ingress,
         multiplexed,
         run,
@@ -62,6 +60,4 @@ __all__ = [
     "status",
     "get_app_handle",
     "get_deployment_handle",
-    "get_replica_rank",
-    "get_world_size",
 ]
