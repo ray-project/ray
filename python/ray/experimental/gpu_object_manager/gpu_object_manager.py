@@ -5,7 +5,6 @@ import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray._private import ray_constants
-from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
