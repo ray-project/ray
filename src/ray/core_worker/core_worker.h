@@ -46,7 +46,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/task_receiver.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/ipc/raylet_ipc_client.h"
 #include "ray/pubsub/publisher.h"
@@ -288,7 +288,7 @@ class CoreWorker {
 
   int64_t GetTaskDepth() const { return worker_context_->GetTaskDepth(); }
 
-  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
 
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
@@ -1927,18 +1927,5 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
-};
-
-// Lease request rate-limiter based on cluster node size.
-// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
-class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
- public:
-  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
-  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeInfo &data);
-
- private:
-  const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
 };
 }  // namespace ray::core
