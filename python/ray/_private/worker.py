@@ -16,6 +16,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -101,7 +102,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
-    import torch
+    from ray.experimental.gpu_object_manager import GPUObject
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -870,7 +871,7 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        out_of_band_tensors: Dict[str, List["torch.Tensor"]] = {}
+        gpu_objects: Dict[str, GPUObject] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
@@ -881,9 +882,11 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            out_of_band_tensors[
-                object_id
-            ] = self.gpu_object_manager.get_out_of_band_tensors(object_id)
+            if object_id not in gpu_objects:
+                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                    object_id
+                )
+            gpu_objects[object_id].num_readers += 1
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -892,7 +895,7 @@ class Worker:
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(
-                serialized_objects, object_refs, out_of_band_tensors
+                serialized_objects, object_refs, gpu_objects
             )
 
     def get_objects(
@@ -1082,6 +1085,18 @@ class Worker:
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
+
+
+_connect_or_shutdown_lock = threading.RLock()
+
+
+def with_connect_or_shutdown_lock(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with _connect_or_shutdown_lock:
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 @PublicAPI
@@ -1977,6 +1992,7 @@ _post_init_hooks = []
 
 @PublicAPI
 @client_mode_hook
+@with_connect_or_shutdown_lock
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -2354,6 +2370,7 @@ def is_initialized() -> bool:
 
 
 # TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
+@with_connect_or_shutdown_lock
 def connect(
     node,
     session_name: str,
@@ -2377,7 +2394,7 @@ def connect(
 
     Args:
         node (ray._private.node.Node): The node to connect.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2567,7 +2584,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,

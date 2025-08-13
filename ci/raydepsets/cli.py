@@ -1,12 +1,13 @@
-import click
-from pathlib import Path
-from ci.raydepsets.workspace import Workspace, Depset
-from typing import List
-import subprocess
 import platform
+import subprocess
+from pathlib import Path
+from typing import List, Optional
+
+import click
 import runfiles
-from typing import Optional
 from networkx import DiGraph, topological_sort
+
+from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
@@ -15,7 +16,6 @@ DEFAULT_UV_FLAGS = """
     --emit-index-url
     --emit-find-links
     --unsafe-package ray
-    --unsafe-package grpcio-tools
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
