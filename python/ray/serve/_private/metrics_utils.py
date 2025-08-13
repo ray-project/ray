@@ -1,14 +1,28 @@
 import asyncio
 import bisect
 import logging
+import statistics
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
+from itertools import chain
+from typing import (
+    Callable,
+    DefaultDict,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+)
 
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+
+QUEUED_REQUESTS_KEY = "queued"
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -152,7 +166,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[float]:
+    ) -> List[TimeStampedValue]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -165,52 +179,105 @@ class InMemoryMetricsStore:
         )
         return datapoints[idx:]
 
-    def window_average(
-        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    def _aggregate_reduce(
+        self,
+        keys: Iterable[Hashable],
+        aggregate_fn: Callable[[Iterable[float]], float],
+    ) -> Optional[Tuple[float, int]]:
+        """Reduce the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+            aggregate_fn: Function to apply across all float values, e.g., sum, max.
+
+        Returns:
+            A tuple of (float, int) where the first element is the aggregated value
+            and the second element is the number of valid keys used.
+            Returns None if no values are available.
+        """
+        report_count = 0
+
+        # This is used to count the number of valid keys that have data without
+        # iterating over the keys multiple times.
+        def values():
+            nonlocal report_count
+            for key in keys:
+                series = self.data.get(key, ())
+                if not series:
+                    continue
+                report_count += 1
+                for ts in series:
+                    yield ts.value
+
+        it = values()
+        _empty = object()
+        first = next(it, _empty)
+        if first is _empty:
+            return None
+
+        agg_result = aggregate_fn(chain((first,), it))
+        return agg_result, report_count
+
+    def get_latest(
+        self,
+        key: Hashable,
     ) -> Optional[float]:
-        """Perform a window average operation for metric `key`
+        """Get the latest value for a given key."""
+        if not self.data.get(key, None):
+            return None
+        return self.data[key][-1].value
 
-        Args:
-            key: the metric name.
-            window_start_timestamp_s: the unix epoch timestamp for the
-              start of the window. The computed average will use all datapoints
-              from this timestamp until now.
-            do_compact: whether or not to delete the datapoints that's
-              before `window_start_timestamp_s` to save memory. Default is
-              true.
-        Returns:
-            The average of all the datapoints for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
-        """
-        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+    def aggregate_min(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Optional[Tuple[float, int]]:
+        """Aggregate min value across the specified keys."""
+        return self._aggregate_reduce(keys, min)
 
-        if do_compact:
-            self.data[key] = points_after_idx
+    def aggregate_max(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Optional[Tuple[float, int]]:
+        """Aggregate max value across the specified keys."""
+        return self._aggregate_reduce(keys, max)
 
-        if len(points_after_idx) == 0:
-            return
-        return sum(point.value for point in points_after_idx) / len(points_after_idx)
+    def aggregate_sum(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Optional[Tuple[float, int]]:
+        """Aggregate sum value across the specified keys."""
+        return self._aggregate_reduce(keys, sum)
 
-    def max(
-        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
-    ):
-        """Perform a max operation for metric `key`.
+    def aggregate_avg(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Optional[Tuple[float, int]]:
+        """Aggregate average value across the specified keys."""
+        return self._aggregate_reduce(keys, statistics.mean)
 
-        Args:
-            key: the metric name.
-            window_start_timestamp_s: the unix epoch timestamp for the
-              start of the window. The computed average will use all datapoints
-              from this timestamp until now.
-            do_compact: whether or not to delete the datapoints that's
-              before `window_start_timestamp_s` to save memory. Default is
-              true.
-        Returns:
-            Max value of the data points for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
-        """
-        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
 
-        if do_compact:
-            self.data[key] = points_after_idx
+def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetricsStore:
+    merged = stores[0]
+    if len(stores) == 1:
+        return merged
+    else:
+        if QUEUED_REQUESTS_KEY not in merged.data:
+            merged.data[QUEUED_REQUESTS_KEY] = [
+                TimeStampedValue(timestamp=0, value=0.0)
+            ]
+        for store in stores[1:]:
+            for key, timeseries in store.data.items():
+                if key == QUEUED_REQUESTS_KEY:
+                    # Sum queued requests across handle metrics.
+                    merged.data[QUEUED_REQUESTS_KEY][-1].value += timeseries[-1].value
+                elif key not in merged.data or (
+                    timeseries
+                    and (
+                        not merged.data[key]
+                        or timeseries[-1].timestamp > merged.data[key][-1].timestamp
+                    )
+                ):
+                    # Replace if not present or if newer datapoints are available
+                    merged.data[key] = timeseries.copy()
 
-        return max((point.value for point in points_after_idx), default=None)
+    return merged

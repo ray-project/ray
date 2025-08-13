@@ -42,7 +42,11 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.metrics_utils import (
+    InMemoryMetricsStore,
+    MetricsPusher,
+    QUEUED_REQUESTS_KEY,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
 from ray.serve._private.request_router.pow_2_router import (
@@ -60,9 +64,6 @@ from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-QUEUED_REQUESTS_KEY = "queued"
 
 
 class RouterMetricsManager:
@@ -330,10 +331,11 @@ class RouterMetricsManager:
         running_requests = dict()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
+            self.metrics_store.prune_keys_and_compact_data(
+                time.time() - look_back_period
+            )
             running_requests = {
-                replica_id: self.metrics_store.window_average(
-                    replica_id, time.time() - look_back_period
-                )
+                replica_id: self.metrics_store.aggregate_sum([replica_id])[0]
                 # If data hasn't been recorded yet, return current
                 # number of queued and ongoing requests.
                 or num_requests

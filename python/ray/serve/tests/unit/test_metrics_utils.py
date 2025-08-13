@@ -4,7 +4,12 @@ import sys
 import pytest
 
 from ray._common.test_utils import async_wait_for_condition
-from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.metrics_utils import (
+    InMemoryMetricsStore,
+    MetricsPusher,
+    QUEUED_REQUESTS_KEY,
+    consolidate_metrics_stores,
+)
 from ray.serve._private.test_utils import MockAsyncTimer
 
 
@@ -141,8 +146,10 @@ class TestInMemoryMetricsStore:
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
+        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert s.aggregate_max(["m1"]) == (2, 1)
+        assert s.aggregate_min(["m1"]) == (1, 1)
+        assert s.get_latest("m1") == 2
 
     def test_out_of_order_insert(self):
         s = InMemoryMetricsStore()
@@ -151,53 +158,42 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 3}, timestamp=3)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 3
-        assert s.max("m1", window_start_timestamp_s=0) == 5
+        assert s.aggregate_avg(["m1"]) == (3, 1)
+        assert s.aggregate_max(["m1"]) == (5, 1)
+        assert s.aggregate_min(["m1"]) == (1, 1)
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
-        assert s.window_average("m1", window_start_timestamp_s=0) is None
-        assert s.max("m1", window_start_timestamp_s=0) is None
+        assert s.aggregate_avg(["m1"]) is None
+        assert s.aggregate_max(["m1"]) is None
+        assert s.aggregate_min(["m1"]) is None
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1
-        assert (
-            s.window_average("m1", window_start_timestamp_s=10, do_compact=False)
-            is None
-        )
-
-    def test_compaction_window(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=1)
-        s.add_metrics_point({"m1": 2}, timestamp=2)
-
-        assert (
-            s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1.5
-        )
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-        # First record should be removed.
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-    def test_compaction_max(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=2)
-        s.add_metrics_point({"m1": 2}, timestamp=1)
-
-        assert s.max("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1
+        assert s.aggregate_avg(["m1"]) == (1, 1)
+        s.prune_keys_and_compact_data(10)
+        assert s.aggregate_avg(["m1"]) is None
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1, "m2": -1}, timestamp=1)
         s.add_metrics_point({"m1": 2, "m2": -2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
-        assert s.max("m2", window_start_timestamp_s=0) == -1
+        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert s.aggregate_avg(["m2"]) == (-1.5, 1)
+        assert s.aggregate_avg(["m1", "m2"]) == (0, 2)
+        assert s.aggregate_max(["m1"]) == (2, 1)
+        assert s.aggregate_max(["m2"]) == (-1, 1)
+        assert s.aggregate_max(["m1", "m2"]) == (2, 2)
+        assert s.aggregate_min(["m1"]) == (1, 1)
+        assert s.aggregate_min(["m2"]) == (-2, 1)
+        assert s.aggregate_min(["m1", "m2"]) == (-2, 2)
+
+    def test_empty_key_mix(self):
+        s = InMemoryMetricsStore()
+        s.add_metrics_point({"m1": 1}, timestamp=1)
+        assert s.aggregate_avg(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_max(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_min(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_avg(["m2"]) is None
 
     def test_prune_keys_and_compact_data(self):
         s = InMemoryMetricsStore()
@@ -209,6 +205,27 @@ class TestInMemoryMetricsStore:
         assert len(s.data["m1"]) == 2 and s.data["m1"] == s._get_datapoints("m1", 1.1)
         assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
         assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
+
+    def test_consolidate_metrics_stores(self):
+        s1 = InMemoryMetricsStore()
+        s2 = InMemoryMetricsStore()
+        s3 = InMemoryMetricsStore()
+        s1.add_metrics_point({"m1": 1, "m3": 3, QUEUED_REQUESTS_KEY: 1}, timestamp=1)
+        s2.add_metrics_point({"m1": 2, "m2": 2, QUEUED_REQUESTS_KEY: 1}, timestamp=2)
+        # Earliest timestamps are ignored be later stores.
+        s3.add_metrics_point(
+            {"m1": 100, "m2": 100, "m3": 100, QUEUED_REQUESTS_KEY: 100}, timestamp=0
+        )
+        consolidated = consolidate_metrics_stores(s1, s2, s3)
+
+        # Earliest store overrides the latest store for each key.
+        assert consolidated.aggregate_avg(["m1"]) == (2, 1)
+        # New keys are added from later stores.
+        assert consolidated.aggregate_avg(["m2"]) == (2, 1)
+        # New keys are added from earlier stores.
+        assert consolidated.aggregate_avg(["m3"]) == (3, 1)
+        # QUEUED_REQUESTS_KEY is summed across stores.
+        assert consolidated.get_latest(QUEUED_REQUESTS_KEY) == 102
 
 
 if __name__ == "__main__":
