@@ -16,7 +16,6 @@ DEFAULT_UV_FLAGS = """
     --emit-index-url
     --emit-find-links
     --unsafe-package ray
-    --unsafe-package grpcio-tools
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
@@ -68,7 +67,7 @@ def load(
         uv_cache_dir=uv_cache_dir,
     )
     if name:
-        manager.execute_single(_get_depset(manager.config.depsets, name, build_arg_set))
+        manager.execute_single(_get_depset(manager.config.depsets, name))
     else:
         manager.execute()
 
@@ -134,7 +133,6 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
-                build_arg_set=depset.build_arg_set,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
@@ -145,7 +143,6 @@ class DependencySetManager:
                 depsets=depset.depsets,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
-                build_arg_set=depset.build_arg_set,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 name=depset.name,
@@ -186,12 +183,11 @@ class DependencySetManager:
         requirements: List[str],
         name: str,
         output: str = None,
-        build_arg_set: Optional[str] = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = _get_depset(self.config.depsets, source_depset, build_arg_set)
+        source_depset = _get_depset(self.config.depsets, source_depset)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -209,7 +205,6 @@ class DependencySetManager:
         constraints: List[str],
         name: str,
         output: str = None,
-        build_arg_set: Optional[str] = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
     ):
@@ -217,7 +212,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = _get_depset(self.config.depsets, depset_name, build_arg_set)
+            depset = _get_depset(self.config.depsets, depset_name)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
@@ -241,26 +236,11 @@ class DependencySetManager:
                 )
 
 
-def _get_depset(
-    depsets: List[Depset], name: str, build_arg_set: Optional[str] = None
-) -> Depset:
+def _get_depset(depsets: List[Depset], name: str) -> Depset:
     for depset in depsets:
-        if depset.name != name:
-            continue
-
-        if build_arg_set:
-            if depset.build_arg_set_name and depset.build_arg_set_name == build_arg_set:
-                return depset
-        elif build_arg_set is None and depset.build_arg_set_name is None:
+        if depset.name == name:
             return depset
-        else:
-            raise KeyError(
-                f"Dependency set {name} has an existing build_arg_set: {depset.build_arg_set_name} but no build_arg_set was provided"
-            )
-
-    raise KeyError(
-        f"Dependency set {name} with build_arg_set {build_arg_set} not found"
-    )
+    raise KeyError(f"Dependency set {name} not found")
 
 
 def _flatten_flags(flags: List[str]) -> List[str]:
