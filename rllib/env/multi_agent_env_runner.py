@@ -183,10 +183,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 f"{self} doesn't have an env! Can't call `sample()` on it."
             )
 
-        assert not (num_timesteps is not None and num_episodes is not None), "Provide "\
-            "either `num_timesteps` or `num_episodes`. Both provided here:"\
-            f"{num_timesteps=}, {num_episodes=}"\
-
+        assert not (num_timesteps is not None and num_episodes is not None), (
+            "Provide "
+            "either `num_timesteps` or `num_episodes`. Both provided here:"
+            f"{num_timesteps=}, {num_episodes=}"
+        )
         # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
@@ -362,7 +363,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
-                logging.warning(f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner.")
+                logging.warning(
+                    f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner."
+                )
                 return self._sample(
                     num_timesteps=num_timesteps,
                     num_episodes=num_episodes,
