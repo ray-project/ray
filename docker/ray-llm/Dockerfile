@@ -161,7 +161,9 @@ NVSHMEM_VERSION="3.2.5-1"
     export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
     cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${NVSHMEM_HOME}"
-    sudo cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
+    cmake --build "${EP_DIR}/nvshmem_build"
+
+    sudo "$(which cmake)" --install "${EP_DIR}/nvshmem_build" --prefix "${NVSHMEM_HOME}"
 )
 
 # Install PPLX Kernels
