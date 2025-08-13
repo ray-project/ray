@@ -5965,6 +5965,25 @@ class Dataset:
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
+    def explain(self) -> str:
+        """Returns a string containing logical plan and physical plan.
+
+        Example:
+        >>> import ray
+        >>> from ray.data import Dataset
+        >>> ds: Dataset = ray.data.range(10)
+        >>> ds = ds.map(lambda x: x + 1)
+        >>> print(ds.explain())
+        -------- Logical Plan --------
+        Map(<lambda>)
+        +- ReadRange
+        -------- Physical Plan --------
+        Map(<lambda>)
+        +- ReadRange->SplitBlocks(2)
+            +- Input
+        """
+        return self._plan.explain()
+
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
 

@@ -9,7 +9,7 @@ import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
-from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
@@ -111,6 +111,47 @@ class ExecutionPlan:
             f")"
         )
 
+    def explain(self) -> str:
+        """Return a string representation of the logical and physical plan."""
+        from ray.data._internal.logical.optimizers import get_execution_plan
+
+        logical_plan = self._logical_plan
+        logical_plan_str, _ = self.generate_plan_string(logical_plan.dag)
+        logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
+
+        physical_plan = get_execution_plan(self._logical_plan)
+        physical_plan_str, _ = self.generate_plan_string(physical_plan.dag)
+        physical_plan_str = "-------- Physical Plan --------\n" + physical_plan_str
+
+        return logical_plan_str + physical_plan_str
+
+    @staticmethod
+    def generate_plan_string(
+        op: Operator,
+        curr_str: str = "",
+        depth: int = 0,
+        including_source: bool = True,
+    ):
+        """Traverse (DFS) the Plan DAG and
+        return a string representation of the operators."""
+        if (including_source == False) and isinstance(op, SourceOperator):
+            return curr_str, depth
+
+        curr_max_depth = depth
+        op_name = op.name
+        if depth == 0:
+            curr_str += f"{op_name}\n"
+        else:
+            trailing_space = " " * ((depth - 1) * 3)
+            curr_str += f"{trailing_space}+- {op_name}\n"
+
+        for input in op.input_dependencies:
+            curr_str, input_max_depth = ExecutionPlan.generate_plan_string(
+                input, curr_str, depth + 1, including_source
+            )
+            curr_max_depth = max(curr_max_depth, input_max_depth)
+        return curr_str, curr_max_depth
+
     def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
         """Create a cosmetic string representation of this execution plan.
 
@@ -128,35 +169,9 @@ class ExecutionPlan:
         plan_str = ""
         plan_max_depth = 0
         if not self.has_computed_output():
-
-            def generate_logical_plan_string(
-                op: LogicalOperator,
-                curr_str: str = "",
-                depth: int = 0,
-            ):
-                """Traverse (DFS) the LogicalPlan DAG and
-                return a string representation of the operators."""
-                if isinstance(op, SourceOperator):
-                    return curr_str, depth
-
-                curr_max_depth = depth
-                op_name = op.name
-                if depth == 0:
-                    curr_str += f"{op_name}\n"
-                else:
-                    trailing_space = " " * ((depth - 1) * 3)
-                    curr_str += f"{trailing_space}+- {op_name}\n"
-
-                for input in op.input_dependencies:
-                    curr_str, input_max_depth = generate_logical_plan_string(
-                        input, curr_str, depth + 1
-                    )
-                    curr_max_depth = max(curr_max_depth, input_max_depth)
-                return curr_str, curr_max_depth
-
             # generate_logical_plan_string(self._logical_plan.dag)
-            plan_str, plan_max_depth = generate_logical_plan_string(
-                self._logical_plan.dag
+            plan_str, plan_max_depth = self.generate_plan_string(
+                self._logical_plan.dag, including_source=False
             )
 
             if self._snapshot_bundle is not None:

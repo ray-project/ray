@@ -535,6 +535,42 @@ def test_dataset_repr(ray_start_regular_shared):
     )
 
 
+def test_dataset_explain(ray_start_regular_shared):
+    ds = ray.data.range(10, override_num_blocks=10)
+    ds = ds.map(lambda x: x)
+    assert ds.explain() == (
+        "-------- Logical Plan --------\n"
+        "Map(<lambda>)\n"
+        "+- ReadRange\n"
+        "-------- Physical Plan --------\n"
+        "ReadRange->Map(<lambda>)\n"
+        "+- Input\n"
+    )
+    ds = ds.filter(lambda x: x["id"] > 0)
+    assert ds.explain() == (
+        "-------- Logical Plan --------\n"
+        "Filter(<lambda>)\n"
+        "+- Map(<lambda>)\n"
+        "   +- ReadRange\n"
+        "-------- Physical Plan --------\n"
+        "ReadRange->Map(<lambda>)->Filter(<lambda>)\n"
+        "+- Input\n"
+    )
+    ds = ds.random_shuffle().map(lambda x: x)
+    assert ds.explain() == (
+        "-------- Logical Plan --------\n"
+        "Map(<lambda>)\n"
+        "+- RandomShuffle\n"
+        "   +- Filter(<lambda>)\n"
+        "      +- Map(<lambda>)\n"
+        "         +- ReadRange\n"
+        "-------- Physical Plan --------\n"
+        "Map(<lambda>)\n"
+        "+- ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle\n"
+        "   +- Input\n"
+    )
+
+
 @pytest.mark.parametrize("lazy", [False, True])
 def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, override_num_blocks=20)
