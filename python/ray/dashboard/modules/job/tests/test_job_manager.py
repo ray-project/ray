@@ -413,10 +413,11 @@ async def check_job_succeeded(job_manager, job_id):
 
 
 async def check_job_failed(job_manager, job_id, expected_error_type=None):
-    status = await job_manager.get_job_status(job_id)
+    data = await job_manager.get_job_info(job_id)
+    status = data.status
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
     if expected_error_type:
-        assert status.error_type == expected_error_type
+        assert data.error_type == expected_error_type
     return status == JobStatus.FAILED
 
 
