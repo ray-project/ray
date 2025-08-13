@@ -1,3 +1,4 @@
+import random
 import time
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
@@ -227,8 +228,10 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
                 raise e
 
             # Exponential backoff with jitter
-            # Max total wait time is ~2.3 seconds for 5 attempts.
-            delay = base_delay * (2**attempt) + (time.time() % 0.2)
+            exponential_delay = base_delay * (2**attempt)
+            jitter = random.uniform(0, 0.5)
+            delay = exponential_delay + jitter
+            # Max total wait time is ~3.5 seconds for 5 attempts.
             time.sleep(delay)
 
     assert telemetry_agent is not None
