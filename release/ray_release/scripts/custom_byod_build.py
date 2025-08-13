@@ -1,4 +1,3 @@
-import sys
 import click
 from ray_release.byod.build import build_anyscale_custom_byod_image
 
@@ -8,7 +7,6 @@ from ray_release.byod.build import build_anyscale_custom_byod_image
 @click.option("--base-image", type=str, required=True)
 @click.option("--post-build-script", type=str, required=True)
 def main(image_name: str, base_image: str, post_build_script: str):
-    print("Calling build_anyscale_custom_byod_image")
     build_anyscale_custom_byod_image(image_name, base_image, post_build_script)
 
 
