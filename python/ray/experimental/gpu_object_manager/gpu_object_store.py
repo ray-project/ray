@@ -1,10 +1,15 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 import threading
+import time
+import logging
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import Backend
+from ray._private import ray_constants
+
+logger = logging.getLogger(__name__)
 
 
 try:
@@ -221,7 +226,8 @@ class GPUObjectStore:
     def _wait_object(self, obj_id: str, timeout: Optional[float] = None) -> None:
         """Helper method to wait for the GPU object to be present in the GPU object store.
         If the object is not present after the optional timeout, raise a
-        TimeoutError.
+        TimeoutError. Issues a warning after FETCH_WARN_TIMEOUT_SECONDS if the object
+        is still not available.
 
         Args:
             obj_id: The object ID to wait for.
@@ -229,16 +235,43 @@ class GPUObjectStore:
                 present in the GPU object store. If not specified, wait
                 indefinitely.
         """
+        if timeout is None:
+            # If timeout is None, fallback to using the default timeout.
+            timeout = ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+
         with self._object_present_cv:
+
+            start_time = time.time()
+            warn_timeout = ray_constants.FETCH_WARN_TIMEOUT_SECONDS
+
             present = self._object_present_cv.wait_for(
-                lambda: obj_id in self._gpu_object_store, timeout=timeout
+                lambda: obj_id in self._gpu_object_store, timeout=warn_timeout
             )
+
             if not present:
-                raise TimeoutError(
-                    f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
+                # Object not found after warning timeout - issue warning
+                elapsed = time.time() - start_time
+                logger.warning(
+                    f"ObjectRef({obj_id}) is still not available in GPU object store after "
+                    f"{elapsed:.1f}s. Transfer may be taking longer than expected. "
+                    f"Will continue waiting for {timeout - elapsed:.1f}s more."
                 )
 
-    def pop_object(self, obj_id: str) -> GPUObject:
+                remaining_timeout = timeout - elapsed
+
+                present = self._object_present_cv.wait_for(
+                    lambda: obj_id in self._gpu_object_store,
+                    timeout=remaining_timeout,
+                )
+
+                if not present:
+                    raise TimeoutError(
+                        f"ObjectRef({obj_id}) not found in GPU object store after {timeout:.1f}s, "
+                        f"transfer may have failed. Please report this issue on GitHub: "
+                        f"https://github.com/ray-project/ray/issues/new/choose"
+                    )
+
+    def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
             assert (
                 obj_id in self._gpu_object_store
