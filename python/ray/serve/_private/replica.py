@@ -764,7 +764,7 @@ class ReplicaBase(ABC):
             )
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
-                self._version, deployment_config
+                self._version, deployment_config, route_prefix
             )
 
             self._metrics_manager.set_autoscaling_config(
@@ -791,7 +791,6 @@ class ReplicaBase(ABC):
             # Keeps existing prefix for unrelated reconfigures.
             if route_prefix is not None:
                 self._route_prefix = route_prefix
-                self._version.route_prefix_for_hashing = route_prefix
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None

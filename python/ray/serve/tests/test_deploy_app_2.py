@@ -567,7 +567,8 @@ def test_change_route_prefix(serve_instance):
     # has the same PID (replica wasn't restarted).
     def check_switched():
         # Old route should be gone
-        resp = httpx.get("http://localhost:8000/old")
+        url = get_application_url(exclude_route_prefix=True)
+        resp = httpx.get(f"{url}/old")
         assert "Path '/old' not found." in resp.text
 
         # Response from new route should be same PID
