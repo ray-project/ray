@@ -65,7 +65,7 @@ ObjectInfo CreateObjectInfo(ObjectID object_id, int64_t object_size) {
   info.object_id = object_id;
   info.data_size = Random<int64_t>(object_size);
   info.metadata_size = object_size - info.data_size;
-  info.owner_raylet_id = NodeID::FromRandom();
+  info.owner_node_id = NodeID::FromRandom();
   info.owner_ip_address = "random_ip";
   info.owner_port = Random<int>();
   info.owner_worker_id = WorkerID::FromRandom();

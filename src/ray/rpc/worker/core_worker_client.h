@@ -40,7 +40,7 @@ struct hash<ray::rpc::Address> {
     size_t hash_value = std::hash<int32_t>()(addr.port());
     hash_value ^= std::hash<std::string>()(addr.ip_address());
     hash_value ^= std::hash<std::string>()(addr.worker_id());
-    hash_value ^= std::hash<std::string>()(addr.raylet_id());
+    hash_value ^= std::hash<std::string>()(addr.node_id());
     return hash_value;
   }
 };
