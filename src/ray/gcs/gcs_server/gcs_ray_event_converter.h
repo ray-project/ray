@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "gtest/gtest_prod.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"

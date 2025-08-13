@@ -95,7 +95,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &
   task_state_update->set_node_id(event.node_id());
   task_state_update->set_worker_id(event.worker_id());
   task_state_update->set_worker_pid(event.worker_pid());
-  *task_state_update->mutable_error_info() = std::move(event.ray_error_info());
+  task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
 
   for (const auto &[state, timestamp] : event.task_state()) {
     int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();

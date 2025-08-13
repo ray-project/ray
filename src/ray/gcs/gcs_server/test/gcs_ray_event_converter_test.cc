@@ -138,11 +138,10 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   // Set a RayErrorInfo
   exec_event.mutable_ray_error_info()->set_error_message("error");
 
-  // Set a task state: TaskStatus = 5 (SUBMITTED_TO_WORKER), timestamp = 42s 123456789ns
   google::protobuf::Timestamp ts;
   ts.set_seconds(42);
   ts.set_nanos(123456789);
-  (*exec_event.mutable_task_state())[5] = ts;
+  (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
 
   // Call the converter
   converter.ConvertToTaskEvents(std::move(exec_event), task_event);
