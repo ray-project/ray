@@ -87,7 +87,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                  << "Failed to report worker failure";
            } else {
              if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
-               stats::UnintentionalWorkerFailures.Record(1);
+               ray_metric_unintentional_worker_failures_.Record(1);
              }
              // Only publish worker_id and node_id in address as they are the only
              // fields used by sub clients.

@@ -116,14 +116,14 @@ void SchedulerStats::ComputeStats() {
   num_tasks_to_dispatch_ = num_tasks_to_dispatch;
 }
 
-void SchedulerStats::RecordMetrics() const {
+void SchedulerStats::RecordMetrics() {
   /// This method intentionally doesn't call ComputeStats() because
   /// that function is expensive. ComputeStats is called by ComputeAndReportDebugStr
   /// method and they are always periodically called by node manager.
-  stats::NumSpilledTasks.Record(metric_tasks_spilled_ +
-                                local_task_manager_.GetNumTaskSpilled());
+  ray_metric_num_spilled_tasks_.Record(metric_tasks_spilled_ +
+                                       local_task_manager_.GetNumTaskSpilled());
   local_task_manager_.RecordMetrics();
-  stats::NumInfeasibleSchedulingClasses.Record(
+  ray_metric_num_infeasible_scheduling_classes_.Record(
       cluster_task_manager_.infeasible_tasks_.size());
   /// Worker startup failure
   ray::stats::STATS_scheduler_failed_worker_startup_total.Record(

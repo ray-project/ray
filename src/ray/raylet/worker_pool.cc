@@ -129,11 +129,11 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
-  stats::NumWorkersStarted.Record(0);
-  stats::NumWorkersStartedFromCache.Record(0);
-  stats::NumCachedWorkersSkippedJobMismatch.Record(0);
-  stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
-  stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
+  ray_metric_num_workers_started_.Record(0);
+  ray_metric_num_workers_started_from_cache_.Record(0);
+  ray_metric_num_cached_workers_skipped_job_mismatch_.Record(0);
+  ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(0);
+  ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(0);
   // We used to ignore SIGCHLD here. The code is moved to raylet main.cc to support the
   // subreaper feature.
   for (const auto &entry : worker_commands) {
@@ -529,7 +529,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   auto start = std::chrono::high_resolution_clock::now();
   // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  stats::NumWorkersStarted.Record(1);
+  ray_metric_num_workers_started_.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
   if (!IsIOWorkerType(worker_type)) {
@@ -1420,11 +1420,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     }
     skip_reason_count[reason]++;
     if (reason == WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH) {
-      stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
+      ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(1);
     } else if (reason == WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH) {
-      stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(1);
+      ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(1);
     } else if (reason == WorkerUnfitForTaskReason::ROOT_MISMATCH) {
-      stats::NumCachedWorkersSkippedJobMismatch.Record(1);
+      ray_metric_num_cached_workers_skipped_job_mismatch_.Record(1);
     }
     return false;
   };
@@ -1463,7 +1463,7 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
   }
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
             worker->GetAssignedJobId() == pop_worker_request->job_id);
-  stats::NumWorkersStartedFromCache.Record(1);
+  ray_metric_num_workers_started_from_cache_.Record(1);
   PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
 }
 
