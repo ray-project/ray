@@ -231,6 +231,17 @@ class TorchTrainer(DataParallelTrainer):
         )
 
     def fit(self) -> Result:
+        """Run the training loop.
+        If running_without_ray_train_controller is True, the training loop will be run locally without the ray train controller.
+        Otherwise, will escalate to :meth:`~ray.train.v2.api.data_parallel_trainer.DataParallelTrainer.fit`.
+
+        Returns:
+            A Result object containing the training result.
+
+        Raises:
+            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
+        """
         if self.running_without_ray_train_controller:
             return self.backend_without_ray_train.fit(self._get_train_func())
         else:

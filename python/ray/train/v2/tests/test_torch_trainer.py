@@ -62,7 +62,7 @@ def test_torch_linear_without_ray_train(ray_start_4_cpus):
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers),
-        running_without_ray_train=True,
+        running_without_ray_train_controller=True,
     )
     result = trainer.fit()
     assert result.metrics is not None

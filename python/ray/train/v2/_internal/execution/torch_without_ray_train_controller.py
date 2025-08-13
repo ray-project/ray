@@ -9,6 +9,7 @@ from ray.train.v2._internal.execution.train_fn_utils import (
     get_train_fn_utils,
     set_train_fn_utils,
 )
+from ray.train.v2._internal.util import date_str
 from ray.train.v2.api.context import (
     TrainContext as ExternalTrainContext,
     TrainContextWithoutRayTrainController,
@@ -77,12 +78,15 @@ class TorchBackendWithoutRayTrainController:
 
         set_train_fn_utils(
             TorchWithoutRayTrainControllerFnUtils(
-                experiment_name="train-without-ray-train",
+                experiment_name=self._get_experiment_name(),
                 local_world_size=self.local_world_size,
                 local_rank=self.local_rank,
-                datasets=datasets,
+                dataset_shards=datasets,
             )
         )
+
+    def _get_experiment_name(self) -> str:
+        return f"train_without_ray_train_controller-{date_str()}"
 
     def fit(self, train_func: Callable[[], None]) -> Result:
         train_func()
