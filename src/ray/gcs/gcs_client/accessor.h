@@ -540,8 +540,8 @@ class ErrorInfoAccessor {
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param data_ptr The error message that will be reported to GCS.
-  virtual void AsyncReportJobError(rpc::ErrorTableData data_ptr);
+  /// \param data The error message that will be reported to GCS.
+  virtual void AsyncReportJobError(rpc::ErrorTableData data);
 
  private:
   GcsClient *client_impl_;

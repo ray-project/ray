@@ -374,7 +374,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
     std::promise<bool> promise;
     gcs_client_->Errors().AsyncReportJobError(
-        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
+        *error_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 

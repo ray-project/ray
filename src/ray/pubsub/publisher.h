@@ -174,7 +174,7 @@ class SubscriberState {
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
         last_connection_update_time_ms_(get_time_ms_()),
-        publisher_id_(publisher_id) {}
+        publisher_id_binary_(publisher_id.Binary()) {}
 
   ~SubscriberState() {
     // Force a push to close the long-polling.
@@ -187,8 +187,6 @@ class SubscriberState {
 
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory.
-  ///
-  /// \param send_reply_callback A callback to reply to the long polling subscriber.
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
       std::string *publisher_id,
@@ -196,8 +194,6 @@ class SubscriberState {
       rpc::SendReplyCallback send_reply_callback);
 
   /// Queue the pubsub message to publish to the subscriber.
-  ///
-  /// \param pub_message A message to publish.
   void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /// Publish all queued messages if possible.
@@ -235,7 +231,7 @@ class SubscriberState {
   const int64_t publish_batch_size_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
-  PublisherID publisher_id_;
+  std::string publisher_id_binary_;
 };
 
 }  // namespace pub_internal
@@ -468,7 +464,6 @@ class Publisher : public PublisherInterface {
   int64_t next_sequence_id_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// A unique identifier identifies the publisher_id.
-  /// TODO(scv119) add docs about the semantics.
   const PublisherID publisher_id_;
 };
 

@@ -113,13 +113,11 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
 
     RAY_CHECK_LE(head_nodes.size(), 1UL);
     if (head_nodes.size() == 1) {
-      OnNodeFailure(
-          head_nodes[0],
-          [this, node_id, node_info, on_done = std::move(on_done)](const Status &status) {
-            RAY_CHECK_OK(status);
-            RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                node_id, node_info, {on_done, io_context_}));
-          });
+      OnNodeFailure(head_nodes[0],
+                    [this, node_id, node_info, on_done = std::move(on_done)]() {
+                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                          node_id, node_info, {on_done, io_context_}));
+                    });
     } else {
       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
           node_id, node_info, {std::move(on_done), io_context_}));
@@ -444,8 +442,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
-void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
-                                   const StatusCallback &node_table_updated_callback) {
+void GcsNodeManager::OnNodeFailure(
+    const NodeID &node_id, const std::function<void()> &node_table_updated_callback) {
   auto maybe_node = GetAliveNode(node_id);
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
@@ -454,24 +452,27 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
     node->set_end_time_ms(current_sys_time_ms());
 
     AddDeadNodeToCache(node);
-    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
-    node_info_delta->set_node_id(node->node_id());
-    node_info_delta->set_state(node->state());
-    node_info_delta->set_end_time_ms(node->end_time_ms());
-    node_info_delta->mutable_death_info()->CopyFrom(node->death_info());
+    rpc::GcsNodeInfo node_info_delta;
+    node_info_delta.set_node_id(node->node_id());
+    node_info_delta.set_state(node->state());
+    node_info_delta.set_end_time_ms(node->end_time_ms());
+    node_info_delta.mutable_death_info()->CopyFrom(node->death_info());
 
-    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta, node](
-                       const Status &status) {
+    auto on_done = [this,
+                    node_id,
+                    node_table_updated_callback,
+                    node_info_delta = std::move(node_info_delta),
+                    node](const Status &status) mutable {
       WriteNodeExportEvent(*node);
       if (node_table_updated_callback != nullptr) {
-        node_table_updated_callback(Status::OK());
+        node_table_updated_callback();
       }
-      gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta);
+      gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_delta));
     };
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeTable().Put(node_id, *node, {on_done, io_context_}));
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+        node_id, *node, {std::move(on_done), io_context_}));
   } else if (node_table_updated_callback != nullptr) {
-    node_table_updated_callback(Status::OK());
+    node_table_updated_callback();
   }
 }
 

@@ -79,8 +79,8 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     // The first message in the queue has been published to all subscribers, or
     // it has been dropped due to memory cap. Subtract it from memory
     // accounting.
-    pending_messages_.pop();
     total_size_ -= front_msg_size;
+    pending_messages_.pop();
   }
 
   pending_messages_.emplace(msg, msg_size);
@@ -284,8 +284,7 @@ void SubscriberState::ConnectToSubscriber(
     google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
     rpc::SendReplyCallback send_reply_callback) {
   int64_t max_processed_sequence_id = request.max_processed_sequence_id();
-  if (request.publisher_id().empty() ||
-      publisher_id_ != PublisherID::FromBinary(request.publisher_id())) {
+  if (request.publisher_id().empty() || publisher_id_binary_ != request.publisher_id()) {
     // in case the publisher_id mismatches, we should ignore the
     // max_processed_sequence_id.
     max_processed_sequence_id = 0;
@@ -325,7 +324,7 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
 
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->pub_messages->empty());
-  *long_polling_connection_->publisher_id = publisher_id_.Binary();
+  *long_polling_connection_->publisher_id = publisher_id_binary_;
   int64_t num_total_bytes = 0;
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {

@@ -45,15 +45,10 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
   pubsub_req.set_subscriber_id(std::move(*request.mutable_subscriber_id()));
   pubsub_req.set_publisher_id(std::move(*request.mutable_publisher_id()));
   pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
-  gcs_publisher_.GetPublisher().ConnectToSubscriber(
-      pubsub_req,
-      reply->mutable_publisher_id(),
-      reply->mutable_pub_messages(),
-      [reply_cb = std::move(send_reply_callback)](ray::Status status,
-                                                  std::function<void()> success_cb,
-                                                  std::function<void()> failure_cb) {
-        reply_cb(std::move(status), std::move(success_cb), std::move(failure_cb));
-      });
+  gcs_publisher_.GetPublisher().ConnectToSubscriber(pubsub_req,
+                                                    reply->mutable_publisher_id(),
+                                                    reply->mutable_pub_messages(),
+                                                    std::move(send_reply_callback));
 }
 
 // Similar for HandleGcsSubscriberPoll() above, needs to use
