@@ -258,8 +258,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
     backlog_reports.emplace_back(backlog_report);
   }
   raylet_client_pool_->GetByID(local_node_id_)
-      ->ReportWorkerBacklog(WorkerID::FromBinary(rpc_address_.worker_id()),
-                            backlog_reports);
+      ->ReportWorkerBacklog(worker_id_, backlog_reports);
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(

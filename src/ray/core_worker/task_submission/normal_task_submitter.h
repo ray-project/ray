@@ -105,6 +105,7 @@ class NormalTaskSubmitter {
         task_manager_(task_manager),
         lease_timeout_ms_(lease_timeout_ms),
         local_node_id_(local_node_id),
+        worker_id_(WorkerID::FromBinary(rpc_address.worker_id())),
         worker_type_(worker_type),
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
@@ -259,9 +260,11 @@ class NormalTaskSubmitter {
   /// to the raylet.
   int64_t lease_timeout_ms_;
 
-  /// The local node ID. Used to make sure that we use the local lease client
-  /// if a remote raylet tells us to spill the task back to the local raylet.
+  /// The local node ID.
   const NodeID local_node_id_;
+
+  /// The local worker ID.
+  const WorkerID worker_id_;
 
   /// The type of this core worker process.
   const WorkerType worker_type_;
