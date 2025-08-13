@@ -28,7 +28,7 @@ class GPUObjectMeta(NamedTuple):
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
 
 
-# TODO(swang): Uncomment and add an API docs page.
+# TODO(swang): Uncomment and add an API docs page and example usage.
 # @PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
@@ -42,36 +42,6 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     actor's GPU object store, then Ray may end up sending invalid data to other
     tasks. Call this function to ensure that the `ray.ObjectRef` has gone out of
     scope and therefore the tensor is safe to write to again.
-
-    Examples:
-        >>> import ray
-        >>> import torch
-        >>> @ray.remote(enable_tensor_transport=True)
-        ... class MyActor:
-        ...     @ray.method(tensor_transport="gloo")
-        ...     def zeros(self):
-        ...         # The actor keeps a reference to the tensor.
-        ...         self.tensor = torch.zeros(10, 10)
-        ...         return self.tensor
-        ...     def increment_saved(self):
-        ...         ray.experimental.wait_tensor_freed(self.tensor)
-        ...         # Ray no longer stores the tensor, so it is
-        ...         # safe to modify the tensor now.
-        ...         self.tensor += 1
-        ...         return self.tensor
-        ...     def read(self, tensor: torch.Tensor):
-        ...         return tensor
-        >>> actors = [MyActor.remote(), MyActor.remote()]
-        >>> ray.experimental.collective.create_collective_group(
-        ...     actors,
-        ...     backend="gloo")
-        >>> ref = actors[0].zeros.remote()
-        >>> tensor0_ref = actors[0].increment_saved.remote()
-        >>> tensor1_ref = actors[1].read.remote(ref)
-        >>> # The wait call on the sender will block until `ref` is out of scope.
-        >>> del ref
-        >>> assert torch.allclose(ray.get(tensor0_ref), ray.get(tensor1_ref) + 1)
-
 
     Args:
         tensor: The tensor to wait to be freed.
