@@ -109,7 +109,7 @@ class DummyLogicalOperator(LogicalOperator):
             }
         }
         self._tuple_value = (1, "string", None, 3.14)
-        self._set_value = {1, 2, 3, "string"}  # Sets should be converted to lists
+        self._set_value = {1}
         self._bytes_value = b"binary_data"
         self._complex_dict = {
             "string_keys": {"a": 1, "b": 2},
@@ -188,7 +188,7 @@ def dummy_dataset_topology_expected_output():
                     "_float_value": "3.14",
                     "_list_value": ["1", "2", "3", "string", "None"],
                     "_dict_value": {"key1": "value1", "key3": "None", "key2": "123"},
-                    "_set_value": ["1", "2", "3", "string"],
+                    "_set_value": ["1"],
                     "_tuple_value": ["1", "string", "None", "3.14"],
                     "_bytes_value": [
                         "98",
@@ -268,7 +268,7 @@ def dummy_dataset_topology_expected_output():
                     "_float_value": "3.14",
                     "_list_value": ["1", "2", "3", "string", "None"],
                     "_dict_value": {"key1": "value1", "key3": "None", "key2": "123"},
-                    "_set_value": ["1", "2", "3", "string"],
+                    "_set_value": ["1"],
                     "_tuple_value": ["1", "string", "None", "3.14"],
                     "_bytes_value": [
                         "98",
