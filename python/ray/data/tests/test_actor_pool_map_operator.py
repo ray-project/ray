@@ -166,9 +166,7 @@ class TestActorPool(unittest.TestCase):
 
             # Check that we can still scale down if downscaling request
             # is a forced one
-            assert pool._can_apply(
-                replace(downscaling_request, force=True)
-            )
+            assert pool._can_apply(replace(downscaling_request, force=True))
 
             # Advance clock
             f.tick(

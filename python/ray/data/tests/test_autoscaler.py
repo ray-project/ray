@@ -80,7 +80,9 @@ def test_actor_pool_scaling():
         yield
         setattr(mock, attr, original)
 
-    def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str], force: bool = False):
+    def assert_autoscaling_action(
+        *, delta: int, expected_reason: Optional[str], force: bool = False
+    ):
         nonlocal actor_pool, op, op_state
 
         assert autoscaler._derive_target_scaling_config(
