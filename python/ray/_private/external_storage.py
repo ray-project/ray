@@ -11,8 +11,7 @@ from typing import IO, List, Optional, Tuple, Union
 
 import ray
 from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
-
-# from ray._raylet import ObjectRef
+from ray._raylet import CoreWorker, ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
 logger = logging.getLogger(__name__)
@@ -92,10 +91,10 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     def __init__(self):
         # NOTE(edoakes): do not access this field directly. Use the `core_worker`
         # property instead to handle initialization race conditions.
-        self._core_worker: Optional["ray._raylet.CoreWorker"] = None
+        self._core_worker: Optional[CoreWorker] = None
 
     @property
-    def core_worker(self) -> "ray._raylet.CoreWorker":
+    def core_worker(self) -> CoreWorker:
         """Get the core_worker initialized in this process.
 
         In rare cases, the core worker may not be fully initialized by the time an I/O
@@ -134,7 +133,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     def _write_multiple_objects(
         self,
         f: IO,
-        object_refs: List["ray.ObjectRef"],
+        object_refs: List[ObjectRef],
         owner_addresses: List[str],
         url: str,
     ) -> List[str]:
@@ -225,7 +224,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def restore_spilled_objects(
-        self, object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
     ) -> int:
         """Restore objects from the external storage.
 
@@ -340,7 +339,7 @@ class FileSystemStorage(ExternalStorage):
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
-        self, object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
     ):
         total = 0
         for i in range(len(object_refs)):
@@ -503,7 +502,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             )
 
     def restore_spilled_objects(
-        self, object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
     ):
         from smart_open import open
 
@@ -628,7 +627,7 @@ def spill_objects(object_refs, owner_addresses):
 
 
 def restore_spilled_objects(
-    object_refs: List["ray.ObjectRef"], url_with_offset_list: List[str]
+    object_refs: List[ObjectRef], url_with_offset_list: List[str]
 ):
     """Restore objects from the external storage.
 
@@ -648,7 +647,7 @@ def delete_spilled_objects(urls: List[str]):
     _external_storage.delete_spilled_objects(urls)
 
 
-def _get_unique_spill_filename(object_refs: List["ray.ObjectRef"]):
+def _get_unique_spill_filename(object_refs: List[ObjectRef]):
     """Generate a unqiue spill file name.
 
     Args:
