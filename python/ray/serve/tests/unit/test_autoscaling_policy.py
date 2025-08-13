@@ -227,6 +227,17 @@ class TestReplicaQueueLengthPolicy:
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state={},
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
         new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
 
@@ -273,6 +284,17 @@ class TestReplicaQueueLengthPolicy:
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
         new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
 
@@ -326,6 +348,17 @@ class TestReplicaQueueLengthPolicy:
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
@@ -438,6 +471,17 @@ class TestReplicaQueueLengthPolicy:
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
 
         # new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
@@ -499,6 +543,20 @@ class TestReplicaQueueLengthPolicy:
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            target_num_replicas=None,
+            total_num_requests=None,
+            current_num_replicas=None,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
 
         new_num_replicas = None
@@ -545,6 +603,17 @@ class TestReplicaQueueLengthPolicy:
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
 
         new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)

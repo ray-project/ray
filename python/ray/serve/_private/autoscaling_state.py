@@ -83,38 +83,38 @@ class AutoscalingContext:
     """Rich context provided to custom autoscaling policies."""
 
     # Deployment information
-    deployment_id: DeploymentID = None
-    deployment_name: str = None
-    app_name: Optional[str] = None
+    deployment_id: DeploymentID
+    deployment_name: str
+    app_name: Optional[str]
 
     # Current state
-    current_num_replicas: int = None
-    target_num_replicas: int = None
-    running_replicas: List[ReplicaID] = None
+    current_num_replicas: int
+    target_num_replicas: int
+    running_replicas: List[ReplicaID]
 
     # Built-in metrics
-    total_num_requests: float = None
-    queued_requests: Optional[float] = None
-    requests_per_replica: Dict[ReplicaID, float] = None
+    total_num_requests: float
+    queued_requests: Optional[float]
+    requests_per_replica: Dict[ReplicaID, float]
 
     # Custom metrics
-    aggregated_metrics: Dict[str, Dict[ReplicaID, float]] = None
-    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]] = None
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]]
 
     # Capacity and bounds
-    capacity_adjusted_min_replicas: int = None
-    capacity_adjusted_max_replicas: int = None
+    capacity_adjusted_min_replicas: int
+    capacity_adjusted_max_replicas: int
 
     # Policy state
-    policy_state: Dict[str, Any] = None
+    policy_state: Dict[str, Any]
 
     # Timing
-    last_scale_up_time: Optional[float] = None
-    last_scale_down_time: Optional[float] = None
-    current_time: Optional[float] = None
+    last_scale_up_time: Optional[float]
+    last_scale_down_time: Optional[float]
+    current_time: Optional[float]
 
     # Config
-    config: Optional[Any] = None
+    config: Optional[Any]
 
 
 class AutoscalingState:
@@ -322,6 +322,12 @@ class AutoscalingState:
             policy_state=self._policy_state.copy(),
             current_time=time.time(),
             config=self._config,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
 
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
