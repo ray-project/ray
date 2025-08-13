@@ -372,7 +372,7 @@ Conservative Q-Learning (CQL)
 Implicit Q-Learning (IQL)
 -------------------------
 `[paper] <https://arxiv.org/abs/2110.06169>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/iql/iql.py`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/iql/iql.py>`__
 
     **IQL architecture:** IQL (Implicit Q-Learning) is an offline RL algorithm that never needs to evaluate actions outside of
     the dataset, but still enables the learned policy to improve substantially over the best behavior in the data through
@@ -380,7 +380,7 @@ Implicit Q-Learning (IQL)
     which yields a conservative estimate of returns. This allows policy improvement through advantage-weighted behavior cloning,
     ensuring safer generalization without explicit exploration.
 
-    The `IQLLearner`_ replaces the usual TD-based value loss with an expectile regression loss, and trains the policy to imitate
+    The `IQLLearner` replaces the usual TD-based value loss with an expectile regression loss, and trains the policy to imitate
     high-advantage actions—enabling substantial performance gains over the behavior policy using only in-dataset actions.
 
 **Tuned examples:**
