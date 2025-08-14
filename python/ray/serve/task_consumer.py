@@ -158,7 +158,7 @@ def task_handler(
 
     Arguments:
         _func: The function to decorate.
-        name: The name of the task.
+        name: The name of the task. Default is the method name.
 
     Returns:
         A wrapper function that is marked as a task handler.
