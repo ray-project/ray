@@ -3,9 +3,10 @@ from typing import Optional
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
-    TensorTransportMetadata,
     TensorTransportEnum,
 )
+
+from ray.util.collective.types import CollectiveTransportMetadata
 
 
 class CollectiveTensorTransport(TensorTransportManager):
@@ -18,12 +19,12 @@ class CollectiveTensorTransport(TensorTransportManager):
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
         tensor_transport: TensorTransportEnum,
-    ) -> TensorTransportMetadata:
+    ) -> CollectiveTransportMetadata:
         def __ray_get_tensor_transport_metadata__(
             self: "ray.actor.ActorHandle",
             obj_id: str,
             tensor_transport: TensorTransportEnum,
-        ) -> TensorTransportMetadata:
+        ) -> CollectiveTransportMetadata:
 
             from ray._private.worker import global_worker
             from ray.util.collective.types import CollectiveTransportMetadata
@@ -52,17 +53,15 @@ class CollectiveTensorTransport(TensorTransportManager):
     def get_collective_metadata(
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
-        tensor_transport_metadata: TensorTransportMetadata,
+        tensor_transport_metadata: CollectiveTransportMetadata,
         backend: Optional[str] = None,
-    ) -> TensorTransportMetadata:
-        """
-        Update the communicator name, src/dst rank before sending the GPU object.
-        """
+    ) -> CollectiveTransportMetadata:
+
         from ray.experimental.collective import get_collective_groups
 
         def __ray_update_collective_metadata__(
             self: "ray.actor.ActorHandle",
-            tensor_transport_metadata: TensorTransportMetadata,
+            tensor_transport_metadata: CollectiveTransportMetadata,
             communicator_name: str,
             src_rank: int,
             dst_rank: int,
@@ -114,7 +113,7 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
-        metadata: TensorTransportMetadata,
+        metadata: CollectiveTransportMetadata,
         group_name: str = "default",
     ):
         from ray.util.collective import types

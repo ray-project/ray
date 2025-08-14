@@ -29,8 +29,7 @@ class TensorTransportManager(ABC):
         """
         Get the tensor transport metadata for the GPU object.
         This function retrieves metadata about tensors stored in the GPU object store,
-        including their shapes, dtypes, and NIXL-specific metadata (when NIXL transport
-        is enabled).
+        including their shapes, dtypes, and any transport-specific metadata, e.g., NIXL descriptors.
 
         Args:
             src_actor: The actor that runs this function.
@@ -50,8 +49,9 @@ class TensorTransportManager(ABC):
         backend: Optional[str] = None,
     ) -> TensorTransportMetadata:
         """
-        Update the collective metadata (e.g. communicator name, src/dst rank)
-        before sending the GPU object.
+        Update the collective metadata (e.g. communicator name, src/dst rank) in
+        `tensor_transport_metadata` and return the updated metadata.
+        This function is called before sending the GPU object.
 
         Args:
             src_actor: The actor that runs this function.
@@ -60,7 +60,7 @@ class TensorTransportManager(ABC):
             backend: The backend to use for the collective operation.
 
         Returns:
-            TensorTransportMetadata: A named tuple containing the tensor metadata.
+            TensorTransportMetadata: The updated tensor transport metadata.
         """
 
     @staticmethod

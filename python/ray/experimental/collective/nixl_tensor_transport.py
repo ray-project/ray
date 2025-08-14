@@ -3,10 +3,9 @@ from typing import Optional
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
-    TensorTransportMetadata,
     TensorTransportEnum,
 )
-from ray.util.collective.types import NIXL_GROUP_NAME
+from ray.util.collective.types import NIXL_GROUP_NAME, NixlTransportMetadata
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -19,14 +18,14 @@ class NixlTensorTransport(TensorTransportManager):
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
         tensor_transport: TensorTransportEnum,
-    ) -> TensorTransportMetadata:
+    ) -> NixlTransportMetadata:
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
         def __ray_get_tensor_transport_metadata__(
             self: "ray.actor.ActorHandle",
             obj_id: str,
             tensor_transport: TensorTransportEnum,
-        ) -> TensorTransportMetadata:
+        ) -> NixlTransportMetadata:
 
             from ray._private.worker import global_worker
             from ray.util.collective.types import NixlTransportMetadata
@@ -66,16 +65,16 @@ class NixlTensorTransport(TensorTransportManager):
     def get_collective_metadata(
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
-        tensor_transport_metadata: TensorTransportMetadata,
+        tensor_transport_metadata: NixlTransportMetadata,
         backend: Optional[str] = None,
-    ) -> TensorTransportMetadata:
+    ) -> NixlTransportMetadata:
         """
         Update the communicator name before sending the GPU object.
         """
 
         def __ray_update_collective_metadata__(
             self: "ray.actor.ActorHandle",
-            tensor_transport_metadata: TensorTransportMetadata,
+            tensor_transport_metadata: NixlTransportMetadata,
             communicator_name: str,
         ):
             tensor_transport_metadata.communicator_name = communicator_name
@@ -90,7 +89,7 @@ class NixlTensorTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
-        metadata: TensorTransportMetadata,
+        metadata: NixlTransportMetadata,
         group_name: str = "default",
     ):
         from ray.util.collective.collective import get_group_handle
