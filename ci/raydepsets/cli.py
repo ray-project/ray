@@ -272,7 +272,7 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
 
 
 def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
-    args.extend(flags)
+    args.extend(_flatten_flags(flags))
     return args
 
 
