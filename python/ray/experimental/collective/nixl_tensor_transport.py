@@ -66,8 +66,7 @@ class NixlTensorTransport(TensorTransportManager):
         backend: Optional[str] = None,
     ) -> TensorTransportMetadata:
         """
-        Update the collective metadata (e.g. communicator name, src/dst rank)
-        before sending the GPU object.
+        Update the communicator name before sending the GPU object.
         """
 
         def __ray_update_collective_metadata__(

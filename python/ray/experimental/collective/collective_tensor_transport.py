@@ -56,8 +56,7 @@ class CollectiveTensorTransport(TensorTransportManager):
         backend: Optional[str] = None,
     ) -> TensorTransportMetadata:
         """
-        Update the collective metadata (e.g. communicator name, src/dst rank)
-        before sending the GPU object.
+        Update the communicator name, src/dst rank before sending the GPU object.
         """
         from ray.experimental.collective import get_collective_groups
 
