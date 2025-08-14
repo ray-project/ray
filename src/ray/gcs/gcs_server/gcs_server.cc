@@ -393,7 +393,7 @@ void GcsServer::PullResourceLoads() {
   for (const auto &[node_id, node_info] : alive_nodes) {
     std::shared_ptr<ray::RayletClientInterface> raylet_client;
     if (auto raylet_client_opt = raylet_client_pool_.GetByID(node_id)) {
-      raylet_client = raylet_client_opt;
+      raylet_client = std::move(raylet_client_opt);
     } else {
       auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info->node_manager_address(), node_info->node_manager_port());
