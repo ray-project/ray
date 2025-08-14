@@ -158,6 +158,7 @@ class TaskManagerTest : public ::testing::Test {
             *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
+              return Status::OK();
             },
             [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
               num_retries_++;

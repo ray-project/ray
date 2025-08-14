@@ -533,10 +533,11 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
-bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
-                                   const rpc::ReturnObject &return_object,
-                                   const NodeID &worker_node_id,
-                                   bool store_in_plasma) {
+Status TaskManager::HandleTaskReturn(const ObjectID &object_id,
+                                     const rpc::ReturnObject &return_object,
+                                     const NodeID &worker_node_id,
+                                     bool store_in_plasma,
+                                     bool *direct_return_out) {
   bool direct_return = false;
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
   RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
@@ -579,7 +580,10 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
                      /*copy_data=*/false,
                      tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
     if (store_in_plasma) {
-      put_in_local_plasma_callback_(object, object_id);
+      Status s = put_in_local_plasma_callback_(object, object_id);
+      if (!s.ok()) {
+        return s;
+      }
     } else {
       in_memory_store_.Put(object, object_id);
       direct_return = true;
@@ -595,7 +599,10 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     }
     reference_counter_.AddNestedObjectIds(object_id, nested_ids, owner_address);
   }
-  return direct_return;
+  if (direct_return_out != nullptr) {
+    *direct_return_out = direct_return;
+  }
+  return Status::OK();
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
@@ -813,10 +820,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
     // When an object is reported, the object is ready to be fetched.
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    HandleTaskReturn(object_id,
-                     return_object,
-                     NodeID::FromBinary(request.worker_addr().node_id()),
-                     /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+    bool _direct_unused = false;
+    RAY_UNUSED(
+        HandleTaskReturn(object_id,
+                         return_object,
+                         NodeID::FromBinary(request.worker_addr().node_id()),
+                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id),
+                         &_direct_unused));
   }
 
   // Handle backpressure if needed.
@@ -900,23 +910,41 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         reference_counter_.AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
       }
-      if (!HandleTaskReturn(object_id,
-                            return_object,
-                            NodeID::FromBinary(worker_addr.node_id()),
-                            store_in_plasma_ids.contains(object_id))) {
-        if (first_execution) {
-          dynamic_returns_in_plasma.push_back(object_id);
-        }
+      bool direct = false;
+      Status s = HandleTaskReturn(object_id,
+                                  return_object,
+                                  NodeID::FromBinary(worker_addr.node_id()),
+                                  store_in_plasma_ids.contains(object_id),
+                                  &direct);
+      if (!s.ok()) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Failed to handle dynamic task return: " << s;
+      } else if (!direct && first_execution) {
+        dynamic_returns_in_plasma.push_back(object_id);
       }
     }
   }
 
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    if (HandleTaskReturn(object_id,
-                         return_object,
-                         NodeID::FromBinary(worker_addr.node_id()),
-                         store_in_plasma_ids.contains(object_id))) {
+    bool direct = false;
+    Status s = HandleTaskReturn(object_id,
+                                return_object,
+                                NodeID::FromBinary(worker_addr.node_id()),
+                                store_in_plasma_ids.contains(object_id),
+                                &direct);
+    if (!s.ok()) {
+      RAY_LOG(WARNING).WithField(object_id) << "Failed to handle task return: " << s;
+      // If storing return in plasma failed, treat as system failure for this attempt.
+      // Do not proceed with normal completion. Mark task failed immediately.
+      FailOrRetryPendingTask(task_id,
+                             rpc::ErrorType::WORKER_DIED,
+                             &s,
+                             /*ray_error_info=*/nullptr,
+                             /*mark_task_object_failed=*/true,
+                             /*fail_immediately=*/true);
+      return;
+    } else if (direct) {
       direct_return_ids.push_back(object_id);
     }
   }
@@ -1040,10 +1068,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
           RAY_CHECK_EQ(reply.return_objects_size(), 1);
           const auto &return_object = reply.return_objects(0);
-          HandleTaskReturn(generator_return_id,
-                           return_object,
-                           NodeID::FromBinary(worker_addr.node_id()),
-                           store_in_plasma_ids.contains(generator_return_id));
+          bool _direct_unused = false;
+          RAY_UNUSED(HandleTaskReturn(generator_return_id,
+                                      return_object,
+                                      NodeID::FromBinary(worker_addr.node_id()),
+                                      store_in_plasma_ids.contains(generator_return_id),
+                                      &_direct_unused));
         }
       }
     }
@@ -1455,7 +1485,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (store_in_plasma_ids.contains(object_id)) {
-      put_in_local_plasma_callback_(error, object_id);
+      Status s = put_in_local_plasma_callback_(error, object_id);
+      if (!s.ok()) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Failed to put error object in plasma: " << s;
+      }
     } else {
       in_memory_store_.Put(error, object_id);
     }
@@ -1463,7 +1497,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
       if (store_in_plasma_ids.contains(dynamic_return_id)) {
-        put_in_local_plasma_callback_(error, dynamic_return_id);
+        Status s = put_in_local_plasma_callback_(error, dynamic_return_id);
+        if (!s.ok()) {
+          RAY_LOG(WARNING).WithField(dynamic_return_id)
+              << "Failed to put error object in plasma: " << s;
+        }
       } else {
         in_memory_store_.Put(error, dynamic_return_id);
       }
@@ -1488,7 +1526,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
-        put_in_local_plasma_callback_(error, generator_return_id);
+        Status s = put_in_local_plasma_callback_(error, generator_return_id);
+        if (!s.ok()) {
+          RAY_LOG(WARNING).WithField(generator_return_id)
+              << "Failed to put error object in plasma: " << s;
+        }
       } else {
         in_memory_store_.Put(error, generator_return_id);
       }

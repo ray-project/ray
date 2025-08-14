@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -25,6 +26,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
@@ -42,7 +44,7 @@ class ActorManager;
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
-    std::function<void(const RayObject &object, const ObjectID &object_id)>;
+    std::function<Status(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback =
     std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
@@ -608,12 +610,13 @@ class TaskManager : public TaskManagerInterface {
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Update nested ref count info and store the in-memory value for a task's
-  /// return object. Returns true if the task's return object was returned
-  /// directly by value.
-  bool HandleTaskReturn(const ObjectID &object_id,
-                        const rpc::ReturnObject &return_object,
-                        const NodeID &worker_node_id,
-                        bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
+  /// return object. On success, sets direct_return_out to true if the object's value
+  /// was returned directly by value (not stored in plasma).
+  Status HandleTaskReturn(const ObjectID &object_id,
+                          const rpc::ReturnObject &return_object,
+                          const NodeID &worker_node_id,
+                          bool store_in_plasma,
+                          bool *direct_return_out) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
