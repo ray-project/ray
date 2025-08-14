@@ -151,8 +151,12 @@ class TaskManagerTest : public ::testing::Test {
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
-                                                       reference_counter_.get())),
+        store_(std::make_shared<CoreWorkerMemoryStore>(
+                   io_context_.GetIoService(),
+                   /*should_delete_object_on_put=*/
+                   [reference_counter](const ObjectID &object_id) {
+                     return !reference_counter->HasReference(object_id);
+                   });),
         manager_(
             *store_,
             *reference_counter_,
@@ -186,12 +190,14 @@ class TaskManagerTest : public ::testing::Test {
     absl::flat_hash_set<ObjectID> ready;
     absl::flat_hash_set<ObjectID> plasma_object_ids;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    ASSERT_TRUE(store_->Wait({object_id},
+    ASSERT_TRUE(store_
+                    ->Wait({object_id},
                            /*num_objects=*/1,
                            /*timeout_ms=*/0,
                            ctx,
                            &ready,
-                           &plasma_object_ids).ok());
+                           &plasma_object_ids)
+                    .ok());
     ASSERT_EQ(ready.size(), 1);
     if (expect_in_plasma) {
       ASSERT_EQ(plasma_object_ids.size(), 1);
@@ -202,12 +208,14 @@ class TaskManagerTest : public ::testing::Test {
     absl::flat_hash_set<ObjectID> ready;
     absl::flat_hash_set<ObjectID> plasma_object_ids;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    ASSERT_TRUE(store_->Wait(object_ids,
+    ASSERT_TRUE(store_
+                    ->Wait(object_ids,
                            /*num_objects=*/1,
                            /*timeout_ms=*/0,
                            ctx,
                            &ready,
-                           &plasma_object_ids).ok());
+                           &plasma_object_ids)
+                    .ok());
     ASSERT_EQ(ready.size(), 0);
     ASSERT_EQ(plasma_object_ids.size(), 0);
   }
