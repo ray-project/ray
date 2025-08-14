@@ -169,12 +169,12 @@ class DependencySetManager:
             args = _append_uv_flags(append_flags, args)
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", self.get_path(constraint)])
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.extend([self.get_path(requirement)])
+                args.extend([requirement])
         if output:
-            args.extend(["-o", self.get_path(output)])
+            args.extend(["-o", output])
         self.exec_uv_cmd("compile", args)
 
     def subset(
