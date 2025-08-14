@@ -158,9 +158,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         Args:
             num_timesteps: The number of timesteps to sample during this call.
-                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+                Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
-                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+                Note that only one of `num_timesteps` or `num_episodes` may be provided.
             explore: If True, will use the RLModule's `forward_exploration()`
                 method to compute actions. If False, will use the RLModule's
                 `forward_inference()` method. If None (default), will use the `explore`
@@ -355,7 +355,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already unsquashed/clipped) to be sent to the environment) and might not
+            # already unsquashed/clipped) to be sent to the environment and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS, [{} for _ in episodes])
@@ -377,7 +377,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             call_on_episode_start = set()
             # Store the data from the last environment step into the
-            # episodes for all sub-envrironments.
+            # episodes for all sub-environments.
             for env_index in range(self.num_envs):
                 extra_model_outputs = defaultdict(dict)
                 # `to_env` returns a dictionary with column keys and
@@ -715,7 +715,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-            # Only update the weigths, if this is the first synchronization or
+            # Only update the weights, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
