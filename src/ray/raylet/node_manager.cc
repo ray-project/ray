@@ -788,15 +788,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
       scheduling::NodeID(node_id.Binary()), labels);
 
-  // TODO: Always use the message from ray syncer.  // NOLINT
-  ResourceRequest resources;
-  for (auto &resource_entry : node_info.resources_total()) {
-    resources.Set(scheduling::ResourceID(resource_entry.first),
-                  FixedPoint(resource_entry.second));
-  }
-  if (ResourceCreateUpdated(node_id, resources)) {
-    cluster_task_manager_.ScheduleAndDispatchTasks();
-  }
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
                                                  syncer::MessageType::RESOURCE_VIEW)) {
@@ -1936,7 +1927,7 @@ void NodeManager::HandleResizeLocalResourceInstances(
 
   if (!delta_resource_map.empty()) {
     // Log the updated resources
-    RAY_LOG(INFO) << "Successfully resized local resources. Current Total resources:";
+    RAY_LOG(INFO) << "Successfully resized local resources. Current total resources:";
     for (const auto &[resource_name, updated_value] : updated_total_map) {
       RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
     }
@@ -2796,7 +2787,14 @@ void NodeManager::ConsumeSyncMessage(
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(message->node_id());
-    if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
+    ResourceRequest resources;
+    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+      resources.Set(scheduling::ResourceID(resource_entry.first),
+                    FixedPoint(resource_entry.second));
+    }
+    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+    if (capacity_updated || usage_update) {
       cluster_task_manager_.ScheduleAndDispatchTasks();
     }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
