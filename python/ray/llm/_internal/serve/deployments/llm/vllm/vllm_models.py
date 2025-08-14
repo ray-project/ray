@@ -237,7 +237,7 @@ class VLLMEngineConfig(BaseModelExtended):
             )
             assert (
                 dp_rank != 0
-            ), "Data parallel is not supported if already in a placement group."
+            ), "Data parallel rank 0 worker cannot be started in an existing placement group."
         else:
             if not ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT:
                 raise RuntimeError(
