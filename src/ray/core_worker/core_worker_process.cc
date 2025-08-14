@@ -435,12 +435,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             // began after our first check but before the plasma operation.
             RAY_LOG(WARNING) << "Failed to put error object " << object_id
                              << " in plasma store during shutdown: " << status.ToString();
+            return Status::OK();
           } else {
-            // For any other error, or IOError when not shutting down, this indicates
-            // a real problem that should crash the process.
-            RAY_CHECK_OK(status);
+            return status;
           }
         }
+        return Status::OK();
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
