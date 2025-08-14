@@ -345,18 +345,7 @@ class JoinOperator(HashShufflingOperatorBase):
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        shuffle_aggregation_type: Optional[Type[StatefulShuffleAggregation]] = None,
     ):
-        # Runtime validation (still recommended even with type hints)
-        if shuffle_aggregation_type is not None:
-            if not issubclass(shuffle_aggregation_type, StatefulShuffleAggregation):
-                raise TypeError(
-                    f"shuffle_aggregation_type must be a subclass of StatefulShuffleAggregation, "
-                    f"got {shuffle_aggregation_type}"
-                )
-
-        aggregation_class = shuffle_aggregation_type or JoiningShuffleAggregation
-
         super().__init__(
             name=f"Join(num_partitions={num_partitions})",
             input_ops=[left_input_op, right_input_op],
@@ -365,7 +354,7 @@ class JoinOperator(HashShufflingOperatorBase):
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: aggregation_class(
+                lambda aggregator_id, target_partition_ids: JoiningShuffleAggregation(
                     aggregator_id=aggregator_id,
                     join_type=join_type,
                     left_key_col_names=left_key_columns,
