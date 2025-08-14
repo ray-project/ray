@@ -19,7 +19,7 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: placeholderwheel {{matrix}} (x86_64)"
+  - label: ":tapioca: build: placeholderwheel 3.9 (x86_64)"
     key: placeholder_wheels
     tags:
       - release_wheels
@@ -27,9 +27,7 @@ steps:
       - oss
     instance_type: large
     commands:
-      - ./ci/build/build-manylinux-placeholder-wheel.sh {{matrix}}
-    matrix:
-      - "3.9"
+      - ./ci/build/build-manylinux-placeholder-wheel.sh 3.9
     depends_on:
       - manylinux
       - forge
