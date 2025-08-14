@@ -216,18 +216,13 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
       }
     }
 
-    bool delete_object_immediately = false;
     if (should_delete_object_on_put_(object_id)) {
-      delete_object_immediately = true;
-    }
-
-    if (!delete_object_immediately) {
-      // If there is no existing get request, then add the `RayObject` to map.
-      EmplaceObjectAndUpdateStats(object_id, object_entry);
-    } else {
       // It is equivalent to the object being added and immediately deleted from the
       // store.
       OnDelete(object_entry);
+    } else {
+      // If there is no existing get request, then add the `RayObject` to map.
+      EmplaceObjectAndUpdateStats(object_id, object_entry);
     }
 
     if (!async_callbacks.empty()) {
