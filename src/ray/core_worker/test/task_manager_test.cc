@@ -219,11 +219,11 @@ class TaskManagerTest : public ::testing::Test {
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
     ASSERT_TRUE(store_->Get({object_id}, 0, ctx, &results, &got_exception).ok());
     ASSERT_EQ(results.size(), 1);
+    ASSERT_TRUE(got_exception);
 
     rpc::ErrorType error;
-    ASSERT_TRUE(got_exception);
     ASSERT_TRUE(results[object_id]->IsException(&error));
-    ASSERT_EQ(error, *expected_error);
+    ASSERT_EQ(error, expected_error);
   }
 
   void AssertNoLeaks() {
