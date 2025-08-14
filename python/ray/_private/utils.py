@@ -269,38 +269,38 @@ def set_omp_num_threads_if_unset() -> bool:
 def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
-    environment variables based on the accelerator runtime. Return the overriden
+    environment variables based on the accelerator runtime. Return the original
     environment variables.
     """
-    visible_accelerator_env_vars_overriden = {}
-    not_override_accelerator_ids_when_num_accelerators_is_zero = os.environ.get(
-        ray._private.accelerators.RAY_EXPERIMENTAL_NO_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR,
+    from ray._private.ray_constants import env_bool
+
+    original_visible_accelerator_env_vars = {}
+    override_on_zero = env_bool(
+        ray._private.accelerators.RAY_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR,
+        True,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
     ):
         # If no accelerator ids are set, skip overriding the environment variable.
-        if (
-            not_override_accelerator_ids_when_num_accelerators_is_zero
-            and len(accelerator_ids) == 0
-        ):
+        if not override_on_zero and len(accelerator_ids) == 0:
             continue
         env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).get_visible_accelerator_ids_env_var()
-        visible_accelerator_env_vars_overriden[env_var] = os.environ.get(env_var, None)
+        original_visible_accelerator_env_vars[env_var] = os.environ.get(env_var, None)
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
 
-    return visible_accelerator_env_vars_overriden
+    return original_visible_accelerator_env_vars
 
 
 def reset_visible_accelerator_env_vars(
-    visible_accelerator_env_vars_overriden: Mapping[str, Optional[str]]
+    original_visible_accelerator_env_vars: Mapping[str, Optional[str]]
 ) -> None:
     """Reset the visible accelerator env vars to the original values."""
-    for env_var, env_value in visible_accelerator_env_vars_overriden.items():
+    for env_var, env_value in original_visible_accelerator_env_vars.items():
         if env_value is None:
             os.environ.pop(env_var, None)
         else:
