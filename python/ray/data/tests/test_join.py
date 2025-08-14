@@ -1,31 +1,14 @@
 from typing import Optional
-from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 import ray
 from ray.data import DataContext, Dataset
-from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.util import MiB
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
-
-
-@pytest.fixture
-def nullify_shuffle_aggregator_num_cpus():
-    ctx = ray.data.context.DataContext.get_current()
-
-    original = ctx.join_operator_actor_num_cpus_per_partition_override
-    # NOTE: We override this to reduce hardware requirements
-    #       for every aggregator
-    ctx.join_operator_actor_num_cpus_per_partition_override = 0.001
-
-    yield
-
-    ctx.join_operator_actor_num_cpus_per_partition_override = original
 
 
 @pytest.mark.parametrize(
@@ -41,7 +24,6 @@ def nullify_shuffle_aggregator_num_cpus():
 )
 def test_simple_inner_join(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     num_rows_left: int,
     num_rows_right: int,
     partition_size_hint: Optional[int],
@@ -108,7 +90,6 @@ def test_simple_inner_join(
 )
 def test_simple_left_right_outer_semi_anti_join(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
     num_rows_left,
     num_rows_right,
@@ -197,7 +178,6 @@ def test_simple_left_right_outer_semi_anti_join(
 )
 def test_simple_full_outer_join(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     num_rows_left,
     num_rows_right,
 ):
@@ -372,76 +352,9 @@ def test_invalid_join_not_matching_key_columns(
     )
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [
-        {
-            "num_cpus": 4,
-        }
-    ],
-    indirect=True,
-)
-def test_default_shuffle_aggregator_args(ray_start_regular):
-    parent_op_mock = MagicMock(PhysicalOperator)
-    parent_op_mock._output_dependencies = []
-
-    op = JoinOperator(
-        left_input_op=parent_op_mock,
-        right_input_op=parent_op_mock,
-        data_context=DataContext.get_current(),
-        left_key_columns=("id",),
-        right_key_columns=("id",),
-        join_type=JoinType.INNER,
-        num_partitions=16,
-    )
-
-    # - 1 partition per aggregator
-    # - No partition size hint
-    args = op._get_default_aggregator_ray_remote_args(
-        num_partitions=16,
-        num_aggregators=16,
-        partition_size_hint=None,
-    )
-
-    assert {
-        "num_cpus": 0.025,    # 4 cores * 10% / 16
-        "memory": 939524096,
-        "scheduling_strategy": "SPREAD",
-    } == args
-
-    # - 4 partitions per aggregator
-    # - No partition size hint
-    args = op._get_default_aggregator_ray_remote_args(
-        num_partitions=64,
-        num_aggregators=16,
-        partition_size_hint=None,
-    )
-
-    assert {
-        "num_cpus": 0.025,    # 4 cores * 10% / 16
-        "memory": 1744830464,
-        "scheduling_strategy": "SPREAD",
-    } == args
-
-    # - 4 partitions per aggregator
-    # - No partition size hint
-    args = op._get_default_aggregator_ray_remote_args(
-        num_partitions=64,
-        num_aggregators=16,
-        partition_size_hint=1 * GiB,
-    )
-
-    assert {
-        "num_cpus": 0.025,    # 4 cores * 10% / 16
-        "memory": 13958643712,
-        "scheduling_strategy": "SPREAD",
-    } == args
-
-
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
 ):
     """Test anti-join when there are no matches - should return all rows from respective side"""
@@ -481,7 +394,6 @@ def test_anti_join_no_matches(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
 ):
     """Test anti-join when all rows match - should return empty result"""
@@ -512,7 +424,6 @@ def test_anti_join_all_matches(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_multi_key(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
 ):
     """Test anti-join with multiple join keys"""
