@@ -24,8 +24,11 @@ if [ "$EUID" -eq 0 ]; then
 
 fi
 
+# Build dashboard
+bash ./ci/build/build-dashboard.sh
+
 # Extract prebuilt dashboard into expected location, only if it exists
-if [ -f /ray/dashboard_build.tar.gz ]; then
+if [[ -f /ray/dashboard_build.tar.gz ]]; then
   echo "Extracting dashboard_build.tar.gz..."
   mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
   tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build

@@ -9,7 +9,7 @@ produce .whl files owned by root.
 Inside the root directory (i.e., one level above this python directory), run
 
 ```bash
-# Build dashboard in a container
+# Build dashboard in a container (for building only dashboard)
 docker run --rm \
     -e HOST_UID=$(id -u) \
     -e HOST_GID=$(id -g) \
@@ -19,6 +19,7 @@ docker run --rm \
     bash ci/build/build-dashboard.sh
 
 # Then build wheel with dashboard tar.gz mounted
+# (currently calls ci/build/build-dashboard.sh before building the wheel)
 docker run -ti --rm \
     -e HOST_UID=$(id -u) \
     -e HOST_GID=$(id -g) \
