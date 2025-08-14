@@ -8,6 +8,7 @@ import pytest
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _DOCKER_GCP_REGISTRY
 from ci.ray_ci.test_base import RayCITestBase
+from ray_release.configs.global_config import get_global_config
 
 
 class TestAnyscaleDockerContainer(RayCITestBase):
@@ -32,6 +33,7 @@ class TestAnyscaleDockerContainer(RayCITestBase):
             aws_ecr = _DOCKER_ECR_REPO.split("/")[0]
             aws_prj = f"{aws_ecr}/anyscale/ray-ml"
             gcp_prj = f"{_DOCKER_GCP_REGISTRY}/anyscale/ray-ml"
+            gce_credentials = get_global_config()["aws2gce_credentials"]
 
             tags_want = [
                 f"123456-{pv}-cu121",
@@ -57,7 +59,7 @@ class TestAnyscaleDockerContainer(RayCITestBase):
                     "./ci/build/build-anyscale-docker.sh "
                     f"rayproject/ray-ml:123456-{pv}-cu121 "
                     f"{aws_prj}:123456-{pv}-cu121 requirements_ml_byod_{v}.txt {aws_ecr}",
-                    "./release/gcloud_docker_login.sh release/aws2gce_iam.json",
+                    f"./release/gcloud_docker_login.sh {gce_credentials}",
                     "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
                 ]
                 + push_cmds_want
