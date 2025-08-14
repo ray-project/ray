@@ -152,11 +152,11 @@ class TaskManagerTest : public ::testing::Test {
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(
-                   io_context_.GetIoService(),
-                   /*should_delete_object_on_put=*/
-                   [reference_counter_](const ObjectID &object_id) {
-                     return !reference_counter->HasReference(object_id);
-                   })),
+            io_context_.GetIoService(),
+            /*should_delete_object_on_put=*/
+            [reference_counter_](const ObjectID &object_id) {
+              return !reference_counter->HasReference(object_id);
+            })),
         manager_(
             *store_,
             *reference_counter_,
