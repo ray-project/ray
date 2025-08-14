@@ -20,8 +20,8 @@ class AnyscaleDockerContainer(DockerContainer):
 
         cmds = [
             # build docker image
-            f"./ci/build/build-anyscale-docker.sh "
-            f"{ray_image} {anyscale_image} {requirement} {aws_registry}",
+            "./ci/build/build-anyscale-docker.sh "
+            + f"{ray_image} {anyscale_image} {requirement} {aws_registry}",
             # gcloud login
             "./release/gcloud_docker_login.sh release/aws2gce_iam.json",
             "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
