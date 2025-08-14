@@ -14,9 +14,9 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
-    Depset,
     _append_uv_flags,
     _flatten_flags,
+    _get_depset,
     _override_uv_flags,
     _uv_binary,
     load,
@@ -27,6 +27,9 @@ from ci.raydepsets.tests.utils import (
     replace_in_file,
     save_file_as,
     save_packages_to_file,
+)
+from ci.raydepsets.workspace import (
+    Depset,
 )
 
 _REPO_NAME = "io_ray"
@@ -74,12 +77,12 @@ class TestCli(unittest.TestCase):
             ]
             assert manager.config.depsets[0].output == "requirements_compiled.txt"
 
-    def test_dependency_set_manager_get_depset(self):
+    def test_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                _get_depset(manager.config.depsets, "fake_depset")
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -486,7 +489,9 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("build_args_test_depset__py311_cpu")
+            depset = _get_depset(
+                manager.config.depsets, "build_args_test_depset__py311_cpu"
+            )
             assert depset.name == "build_args_test_depset__py311_cpu"
 
     def test_get_depset_without_build_arg_set(self):
@@ -496,7 +501,7 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("ray_base_test_depset")
+            depset = _get_depset(manager.config.depsets, "ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
 
     def test_get_depset_with_build_arg_set_and_no_build_arg_set_provided(self):
@@ -507,7 +512,7 @@ depsets:
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("build_args_test_depset_py311")
+                _get_depset(manager.config.depsets, "build_args_test_depset_py311")
 
 
 if __name__ == "__main__":

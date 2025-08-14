@@ -47,5 +47,26 @@ def test_substitute_build_args():
     assert substituted_depset["name"] == "test_depset_py311_cu128"
 
 
+def test_invalid_build_arg_set():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
+            f.write(
+                """
+depsets:
+    - name: invalid_build_arg_set
+      operation: compile
+      requirements:
+          - requirements_test.txt
+      output: requirements_compiled_invalid_build_arg_set.txt
+      build_arg_sets:
+          - invalid_build_arg_set
+            """
+            )
+        with pytest.raises(KeyError):
+            workspace = Workspace(dir=tmpdir)
+            workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
