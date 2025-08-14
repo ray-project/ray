@@ -156,7 +156,7 @@ class TaskManagerTest : public ::testing::Test {
                    /*should_delete_object_on_put=*/
                    [reference_counter](const ObjectID &object_id) {
                      return !reference_counter->HasReference(object_id);
-                   });),
+                   })),
         manager_(
             *store_,
             *reference_counter_,
