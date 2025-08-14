@@ -315,7 +315,10 @@ def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetrics
                     merged.data[QUEUED_REQUESTS_KEY][-1].value += timeseries[-1].value
                 elif not merged.data.get(key):
                     merged.data[key] = timeseries.copy()
-                elif timeseries and timeseries[-1].timestamp > merged.data[key][-1].timestamp:
+                elif (
+                    timeseries
+                    and timeseries[-1].timestamp > merged.data[key][-1].timestamp
+                ):
                     merged.data[key] = timeseries.copy()
 
     return merged
