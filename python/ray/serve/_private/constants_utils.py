@@ -53,7 +53,7 @@ def _get_env_value(
     default: Optional[T],
     value_type: Type[T],
     validation_func: Optional[Callable[[T], bool]] = None,
-    failed_validation_req_str: str = None,
+    expected_value_description: str = None,
 ) -> Optional[T]:
     """Get environment variable with type conversion and validation.
 
@@ -67,7 +67,7 @@ def _get_env_value(
         value_type: Type to convert the environment variable value to (e.g., int, float, str).
         validation_func: Optional function that takes the converted value and returns
                        a boolean indicating whether the value is valid.
-        failed_validation_req_str: Description of the expected value characteristics
+        expected_value_description: Description of the expected value characteristics
                                  (e.g., "positive", "non negative") used in error messages.
 
     Returns:
@@ -92,7 +92,7 @@ def _get_env_value(
     if validation_func and not validation_func(value):
         raise ValueError(
             f"Got unexpected value `{value}` for `{name}` environment variable! "
-            f"Expected {failed_validation_req_str} `{value_type.__name__}`."
+            f"Expected {expected_value_description} `{value_type.__name__}`."
         )
 
     return value
@@ -222,7 +222,9 @@ def get_env_bool(name: str, default: Optional[str]) -> bool:
     return os.environ.get(name, default) == "1"
 
 
-def get_env_float_warning(name: str, default: Optional[float]) -> Optional[float]:
+def get_env_float_non_zero_with_warning(
+    name: str, default: Optional[float]
+) -> Optional[float]:
     """Introduced for backward compatibility for constants:
 
     PROXY_HEALTH_CHECK_TIMEOUT_S
@@ -231,7 +233,7 @@ def get_env_float_warning(name: str, default: Optional[float]) -> Optional[float
     PROXY_MIN_DRAINING_PERIOD_S
     RAY_SERVE_KV_TIMEOUT_S
 
-    todo: remove the function after 2.49.0 release - use get_env_float_positive instead
+    todo: replace this function with 'get_env_float_positive' for the '2.50.0' release.
     """
     removal_version = "2.50.0"
 
@@ -242,8 +244,8 @@ def get_env_float_warning(name: str, default: Optional[float]) -> Optional[float
         # warning message if unexpected value
         warnings.warn(
             f"Got unexpected value `{env_value}` for `{name}` environment variable! "
-            f"Starting from version `{removal_version}`, the environment variable `{name}` will require a positive value. "
-            f"Be aware that the value that is used from the variable is `{backward_compatible_result}`. ",
+            f"Starting from version `{removal_version}`, the environment variable will require a positive value. "
+            f"Setting `{name}` to `{backward_compatible_result}`. ",
             FutureWarning,
             stacklevel=2,
         )

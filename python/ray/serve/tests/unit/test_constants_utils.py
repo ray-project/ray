@@ -8,8 +8,8 @@ from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
     get_env_float_non_negative,
+    get_env_float_non_zero_with_warning,
     get_env_float_positive,
-    get_env_float_warning,
     get_env_int,
     get_env_int_non_negative,
     get_env_int_positive,
@@ -221,7 +221,7 @@ class TestDeprecationFunctions:
         env_name = "TEST_POSITIVE_FLOAT"
         mock_environ[env_name] = "5.5"
 
-        result = get_env_float_warning(env_name, 10.0)
+        result = get_env_float_non_zero_with_warning(env_name, 10.0)
 
         assert result == 5.5
 
@@ -231,7 +231,7 @@ class TestDeprecationFunctions:
         mock_environ[env_name] = "-2.5"
 
         with pytest.warns(FutureWarning) as record:
-            result = get_env_float_warning(env_name, 10.0)
+            result = get_env_float_non_zero_with_warning(env_name, 10.0)
 
         assert result == -2.5
         assert len(record) == 1
@@ -243,7 +243,7 @@ class TestDeprecationFunctions:
         mock_environ[env_name] = "0.0"
 
         with pytest.warns(FutureWarning) as record:
-            result = get_env_float_warning(env_name, 10.0)
+            result = get_env_float_non_zero_with_warning(env_name, 10.0)
 
         assert result == 10.0
         assert len(record) == 1
@@ -254,7 +254,7 @@ class TestDeprecationFunctions:
         env_name = "TEST_MISSING_FLOAT"
         # Don't set environment variable
 
-        result = get_env_float_warning(env_name, 1.0)
+        result = get_env_float_non_zero_with_warning(env_name, 1.0)
 
         assert result == 1.0
 
@@ -263,26 +263,26 @@ class TestDeprecationFunctions:
         env_name = "TEST_FLOAT"
         mock_environ[env_name] = "2.0"
 
-        assert get_env_float_warning(env_name, 1.0) == 2.0
+        assert get_env_float_non_zero_with_warning(env_name, 1.0) == 2.0
 
         mock_environ["TEST_VAR"] = "-1.2"
-        assert get_env_float_warning("TEST_VAR", 5.0) == -1.2
+        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == -1.2
 
         mock_environ["TEST_VAR"] = "0.0"
-        assert get_env_float_warning("TEST_VAR", 5.0) == 5.0
+        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == 5.0
 
     @mock.patch("ray.__version__", "2.51.0")  # Version after 2.50.0
     def test_remain_the_same_behavior_after_2_50(self, mock_environ):
         env_name = "TEST_FLOAT"
         mock_environ[env_name] = "2.0"
 
-        assert get_env_float_warning(env_name, 1.0) == 2.0
+        assert get_env_float_non_zero_with_warning(env_name, 1.0) == 2.0
 
         mock_environ["TEST_VAR"] = "-1.2"
-        assert get_env_float_warning("TEST_VAR", 5.0) == -1.2
+        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == -1.2
 
         mock_environ["TEST_VAR"] = "0.0"
-        assert get_env_float_warning("TEST_VAR", 5.0) == 5.0
+        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == 5.0
 
 
 if __name__ == "__main__":
