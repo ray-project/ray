@@ -406,7 +406,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
         << ", death reason = " << rpc::NodeDeathInfo_Reason_Name(death_info->reason())
         << ", death message = " << death_info->reason_message();
     // Record stats that there's a new removed node.
-    stats::NodeFailureTotal.Record(1);
+    ray_metric_node_failures_total_.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from draining nodes if present.
