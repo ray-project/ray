@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from ray import serve
+from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
@@ -76,6 +77,7 @@ def build_dp_deployment(
     deployment_options = {
         "name": name,
         "num_replicas": dp_size,
+        "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
     }
     return DPServer.as_deployment(deployment_options).bind(
         llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
