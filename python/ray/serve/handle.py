@@ -9,6 +9,7 @@ import ray
 from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
+    OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
@@ -499,6 +500,9 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return await replica_result.to_object_ref_async()
 
@@ -522,6 +526,9 @@ class DeploymentResponse(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -640,6 +647,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return replica_result.to_object_ref_gen()
 
@@ -660,6 +670,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -717,8 +730,25 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
+        response_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
+
+        Args:
+            method_name: The method name to call on the deployment.
+            multiplexed_model_id: The model ID to use for multiplexed model requests.
+            stream: Whether to use streaming for the request.
+            use_new_handle_api: Whether to use the new handle API.
+            _prefer_local_routing: Whether to prefer local routing.
+            _by_reference: Whether to use by reference.
+            request_serialization: Serialization method for RPC requests.
+                Available options: "cloudpickle", "pickle", "msgpack", "orjson".
+                Defaults to "cloudpickle".
+            response_serialization: Serialization method for RPC responses.
+                Available options: "cloudpickle", "pickle", "msgpack", "orjson".
+                Defaults to "cloudpickle".
 
         Example:
 
@@ -746,6 +776,9 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _by_reference=_by_reference,
+            request_serialization=request_serialization,
+            response_serialization=response_serialization,
         )
 
     def remote(
