@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import List, Optional, TYPE_CHECKING
 from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import TensorTransportMetadata
+
+if TYPE_CHECKING:
+    import torch
 
 import ray
 
@@ -10,7 +13,11 @@ class TensorTransportManager(ABC):
     @staticmethod
     @abstractmethod
     def is_one_sided() -> bool:
-        """Whether the backend is one-sided."""
+        """Whether the backend is one-sided.
+
+        Returns:
+            bool: True if the backend is one-sided, False otherwise.
+        """
 
     @staticmethod
     @abstractmethod
@@ -76,4 +83,21 @@ class TensorTransportManager(ABC):
     ):
         """
         Receive the GPU object from the source actor.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def recv_multiple_tensors(
+        tensors: List["torch.Tensor"],
+        metadata: TensorTransportMetadata,
+        group_name: str = "default",
+    ):
+        """
+        Receive multiple tensors from the source actor.
+
+        Args:
+            tensors: The pre-allocated tensor space to receive the tensors.
+            metadata: The tensor transport metadata for the GPU object.
+            group_name: The name of the collective group.
+
         """

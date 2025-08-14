@@ -150,3 +150,18 @@ class CollectiveTensorTransport(TensorTransportManager):
         dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_recv__, obj_id, tensor_transport_metadata
         )
+
+    @staticmethod
+    def recv_multiple_tensors(
+        tensors,
+        metadata: TensorTransportMetadata,
+        group_name: str = "default",
+    ):
+        from ray.util.collective import types
+        from ray.util.collective.collective import recv
+
+        assert isinstance(
+            metadata, types.CollectiveTransportMetadata
+        ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
+        for tensor in tensors:
+            recv(tensor, metadata.src_rank, group_name)

@@ -665,26 +665,6 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g.recv([tensor], opts)
 
 
-def recv_multiple_tensors(
-    tensors,
-    metadata: types.TensorTransportMetadata,
-    group_name: str = "default",
-):
-    g = get_group_handle(group_name)
-
-    if g.backend() == types.Backend.NIXL:
-        assert isinstance(
-            metadata, types.NixlTransportMetadata
-        ), "metadata must be a NixlTransportMetadata object for NIXL transport"
-        g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
-    else:
-        assert isinstance(
-            metadata, types.CollectiveTransportMetadata
-        ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
-        for tensor in tensors:
-            recv(tensor, metadata.src_rank, group_name)
-
-
 def recv_multigpu(
     tensor,
     src_rank: int,

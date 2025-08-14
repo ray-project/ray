@@ -37,7 +37,6 @@ class NixlTensorTransport(TensorTransportManager):
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
             from ray.util.collective.collective import get_group_handle
 
-            # FIXME: Fix here
             nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
             serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
                 gpu_object.data
@@ -113,3 +112,19 @@ class NixlTensorTransport(TensorTransportManager):
         dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_recv__, obj_id, tensor_transport_metadata
         )
+
+    @staticmethod
+    def recv_multiple_tensors(
+        tensors,
+        metadata: TensorTransportMetadata,
+        group_name: str = "default",
+    ):
+        from ray.util.collective.collective import get_group_handle
+        from ray.util.collective import types
+
+        g = get_group_handle(group_name)
+
+        assert isinstance(
+            metadata, types.NixlTransportMetadata
+        ), "metadata must be a NixlTransportMetadata object for NIXL transport"
+        g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
