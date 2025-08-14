@@ -20,6 +20,19 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
 
+  - name: raycpubaseextra
+    label: "wanda: ray.py{{matrix}}.cpu.base-extra"
+    wanda: ci/docker/ray.cpu.base-extra.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      IMAGE_TYPE: "ray"
+    depends_on: raycpubase
+
   - name: raycudabase
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base"
     tags:
@@ -46,6 +59,31 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
 
+  - name: raycudabaseextra
+    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
+    wanda: ci/docker/ray.cuda.base-extra.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "11.7.1-cudnn8"
+          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
+          - "12.3.2-cudnn9"
+          - "12.4.1-cudnn"
+          - "12.5.1-cudnn"
+          - "12.6.3-cudnn"
+          - "12.8.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      IMAGE_TYPE: "ray"
+    depends_on: raycudabase
+
   - name: ray-llmbase
     label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base"
     tags:
@@ -62,6 +100,21 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+
+  - name: ray-llmbaseextra
+    label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
+    wanda: ci/docker/ray.cuda.base-extra.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.11"
+        cuda:
+          - "12.8.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      IMAGE_TYPE: "ray-llm"
+    depends_on: ray-llmbase
 
   - name: ray-mlcudabase
     label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
@@ -82,6 +135,23 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
 
+  - name: ray-mlcudabaseextra
+    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
+    wanda: ci/docker/ray.cuda.base-extra.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        cuda:
+          - "12.1.1-cudnn8"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      IMAGE_TYPE: "ray-ml"
+    depends_on: raycudabaseextra
+
   - name: ray-mlcpubase
     label: "wanda: ray-ml.py{{matrix}}.cpu.base"
     tags:
@@ -95,3 +165,15 @@ steps:
       - "3.11"
     env:
       PYTHON_VERSION: "{{matrix}}"
+
+  - name: ray-mlcpubaseextra
+    label: "wanda: ray-ml.py{{matrix}}.cpu.base-extra"
+    wanda: ci/docker/ray.cpu.base-extra.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      IMAGE_TYPE: "ray-ml"
+    depends_on: raycpubaseextra
