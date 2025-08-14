@@ -54,7 +54,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 "objective": "regression",
                 # Adding the line below is the only change needed
                 # for your `lgb.train` call!
-                **ray.train.lightgbm.v2.get_network_params(),
+                **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
                 params,
@@ -129,7 +129,23 @@ class LightGBMTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # TODO: [Deprecated] Legacy LightGBMTrainer API
+        label_column: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+        num_boost_round: Optional[int] = None,
     ):
+        if (
+            label_column is not None
+            or params is not None
+            or num_boost_round is not None
+        ):
+            raise DeprecationWarning(
+                "The legacy LightGBMTrainer API is deprecated. "
+                "Please switch to passing in a custom `train_loop_per_worker` "
+                "function instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/50042"
+            )
         from ray.train.lightgbm import LightGBMConfig
 
         super(LightGBMTrainer, self).__init__(

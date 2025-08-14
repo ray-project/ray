@@ -24,7 +24,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -64,11 +64,10 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 }
 
 /// Helper function to produce error table data.
-std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
-    const std::string &error_type,
-    const std::string &error_msg,
-    absl::Time timestamp,
-    const JobID &job_id = JobID::Nil());
+rpc::ErrorTableData CreateErrorTableData(const std::string &error_type,
+                                         const std::string &error_msg,
+                                         absl::Time timestamp,
+                                         const JobID &job_id = JobID::Nil());
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
@@ -84,7 +83,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
-  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_node_id(node_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_ip_address(ip_address);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
@@ -182,7 +181,11 @@ inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
          actor.death_cause().actor_died_error_context().reason() ==
              rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
          ((actor.max_restarts() == -1) ||
-          (static_cast<int64_t>(actor.num_restarts()) < actor.max_restarts()));
+          (actor.max_restarts() > 0 && actor.preempted()) ||
+          // Restarts due to node preemption do not count towards max_restarts.
+          (static_cast<int64_t>(actor.num_restarts() -
+                                actor.num_restarts_due_to_node_preemption()) <
+           actor.max_restarts()));
 }
 
 inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
@@ -227,7 +230,7 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   task_info->set_scheduling_state(rpc::TaskStatus::NIL);
   task_info->set_job_id(task_spec.JobId().Binary());
 
-  task_info->set_task_id(task_spec.TaskId().Binary());
+  task_info->set_task_id(task_spec.TaskIdBinary());
   // NOTE: we set the parent task id of a task to be submitter's task id, where
   // the submitter depends on the owner coreworker's:
   // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
@@ -244,6 +247,11 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   }
   if (task_spec.GetMessage().call_site().size() > 0) {
     task_info->set_call_site(task_spec.GetMessage().call_site());
+  }
+  if (task_spec.GetMessage().label_selector().size() > 0) {
+    task_info->mutable_label_selector()->insert(
+        task_spec.GetMessage().label_selector().begin(),
+        task_spec.GetMessage().label_selector().end());
   }
 }
 
@@ -267,7 +275,7 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   task_info->set_language(task_spec.GetLanguage());
   task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
 
-  task_info->set_task_id(task_spec.TaskId().Binary());
+  task_info->set_task_id(task_spec.TaskIdBinary());
   // NOTE: we set the parent task id of a task to be submitter's task id, where
   // the submitter depends on the owner coreworker's:
   // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
@@ -277,6 +285,8 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
+  task_info->mutable_labels()->insert(task_spec.GetLabels().begin(),
+                                      task_spec.GetLabels().end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(
@@ -297,6 +307,11 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
+  }
+  if (task_spec.GetMessage().label_selector().size() > 0) {
+    task_info->mutable_label_selector()->insert(
+        task_spec.GetMessage().label_selector().begin(),
+        task_spec.GetMessage().label_selector().end());
   }
 }
 
@@ -431,7 +446,7 @@ inline std::string FormatPlacementGroupDetails(
 /// \param strategy The placement strategy of placement group.
 /// \return The placement constraint for placement group if it's not a strict
 ///   strategy, else absl::nullopt.
-inline absl::optional<rpc::autoscaler::PlacementConstraint>
+inline std::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
   rpc::autoscaler::PlacementConstraint pg_constraint;

@@ -1,16 +1,17 @@
 import sys
-import yaml
+import copy
 import pytest
-
-from ray_release.test import Test
+import yaml
 from ray_release.config import (
-    read_and_validate_release_test_collection,
-    validate_cluster_compute,
+    _substitute_variable,
     load_schema_file,
     parse_test_definition,
+    read_and_validate_release_test_collection,
+    validate_cluster_compute,
     validate_test,
 )
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.test import Test
 
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
@@ -18,29 +19,27 @@ _TEST_COLLECTION_FILES = [
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 
-VALID_TEST = Test(
-    **{
-        "name": "validation_test",
-        "group": "validation_group",
-        "working_dir": "validation_dir",
-        "python": "3.9",
-        "frequency": "nightly",
-        "team": "release",
-        "cluster": {
-            "byod": {"type": "gpu"},
-            "cluster_compute": "tpl_cpu_small.yaml",
-            "autosuspend_mins": 10,
-        },
-        "run": {
-            "timeout": 100,
-            "script": "python validate.py",
-            "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
-            "type": "client",
-        },
-        "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
-        "alert": "default",
-    }
-)
+VALID_TEST = {
+    "name": "validation_test",
+    "group": "validation_group",
+    "working_dir": "validation_dir",
+    "python": "3.9",
+    "frequency": "nightly",
+    "team": "release",
+    "cluster": {
+        "byod": {"type": "gpu"},
+        "cluster_compute": "tpl_cpu_small.yaml",
+        "autosuspend_mins": 10,
+    },
+    "run": {
+        "timeout": 100,
+        "script": "python validate.py",
+        "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
+        "type": "client",
+    },
+    "smoke_test": {"run": {"timeout": 20}, "frequency": "nightly"},
+    "alert": "default",
+}
 
 
 def test_parse_test_definition():
@@ -129,12 +128,116 @@ def test_parse_test_definition_with_defaults():
     assert test_with_override["working_dir"] == "overridden_working_dir"
 
 
+def test_parse_test_definition_with_matrix_and_variations_raises():
+    # Matrix and variations are mutually exclusive.
+    test_definitions = yaml.safe_load(
+        """
+        - name: test
+          frequency: nightly
+          team: team
+          working_dir: sample_dir
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: "{{os}}.yaml"
+          matrix:
+            setup:
+              os: [windows, linux]
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: amd64
+            - __suffix__: arm64
+    """
+    )
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition(test_definitions)
+
+
+def test_parse_test_definition_with_matrix_and_adjustments():
+    test_definitions = yaml.safe_load(
+        """
+        - name: "test-{{compute}}-{{arg}}"
+          matrix:
+            setup:
+              compute: [fixed, autoscaling]
+              arg: [0, 1]
+            adjustments:
+                - with:
+                    # Only run arg 2 with fixed compute
+                    compute: fixed
+                    arg: 2
+          frequency: nightly
+          team: team
+          working_dir: sample_dir
+          cluster:
+            byod:
+              type: gpu
+              runtime_env:
+                - SCALING_MODE={{compute}}
+            cluster_compute: "{{compute}}.yaml"
+          run:
+            timeout: 100
+            script: python script.py --arg "{{arg}}"
+    """
+    )
+    tests = parse_test_definition(test_definitions)
+    schema = load_schema_file()
+
+    assert len(tests) == 5  # 4 from matrix, 1 from adjustments
+    assert not any(validate_test(test, schema) for test in tests)
+    for i, (compute, arg) in enumerate(
+        [
+            ("fixed", 0),
+            ("fixed", 1),
+            ("autoscaling", 0),
+            ("autoscaling", 1),
+            ("fixed", 2),
+        ]
+    ):
+        assert tests[i]["name"] == f"test-{compute}-{arg}"
+        assert tests[i]["cluster"]["cluster_compute"] == f"{compute}.yaml"
+        assert tests[i]["cluster"]["byod"]["runtime_env"] == [f"SCALING_MODE={compute}"]
+
+
+class TestSubstituteVariable:
+    def test_does_not_mutate_original(self):
+        test_definition = {"name": "test-{{arg}}"}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted is not test_definition
+        assert test_definition == {"name": "test-{{arg}}"}
+
+    def test_substitute_variable_in_string(self):
+        test_definition = {"name": "test-{{arg}}"}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"name": "test-1"}
+
+    def test_substitute_variable_in_list(self):
+        test_definition = {"items": ["item-{{arg}}"]}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"items": ["item-1"]}
+
+    def test_substitute_variable_in_dict(self):
+        test_definition = {"outer": {"inner": "item-{{arg}}"}}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"outer": {"inner": "item-1"}}
+
+
 def test_schema_validation():
     test = VALID_TEST.copy()
 
     schema = load_schema_file()
 
-    assert not validate_test(test, schema)
+    assert not validate_test(Test(**test), schema)
 
     # Remove some optional arguments
     del test["alert"]
@@ -142,38 +245,50 @@ def test_schema_validation():
     del test["run"]["wait_for_nodes"]
     del test["cluster"]["autosuspend_mins"]
 
-    assert not validate_test(test, schema)
+    assert not validate_test(Test(**test), schema)
 
     # Add some faulty arguments
 
     # Faulty frequency
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["frequency"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty job type
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["type"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty file manager type
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["file_manager"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty smoke test
-    invalid_test = test.copy()
+
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     del invalid_test["smoke_test"]["frequency"]
 
     assert validate_test(invalid_test, schema)
 
     # Faulty Python version
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["python"] = "invalid"
 
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD type
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "invalid"
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD and Python version match
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "gpu"
+    invalid_test["python"] = "3.11"
     assert validate_test(invalid_test, schema)
 
 

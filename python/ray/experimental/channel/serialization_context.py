@@ -74,6 +74,10 @@ class _SerializationContext:
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport
 
+    @property
+    def use_external_transport(self) -> bool:
+        return self._use_external_transport
+
     def reset_out_of_band_tensors(
         self, tensors: List["torch.Tensor"]
     ) -> Tuple[List["torch.Tensor"], Set[int]]:
@@ -102,11 +106,15 @@ class _SerializationContext:
             # Return a placeholder.
             return len(self._out_of_band_tensors) - 1
 
-        return self.serialize_to_numpy(tensor)
+        return self.serialize_to_numpy_or_scalar(tensor)
 
-    def serialize_to_numpy(
+    def serialize_to_numpy_or_scalar(
         self, tensor: "torch.Tensor"
-    ) -> Tuple["np.ndarray", "torch.dtype", str]:
+    ) -> Tuple[Union["np.ndarray", Any], "torch.dtype", str]:
+        """
+        Serialize a tensor to a numpy array,
+        or a scalar when the tensor is 0-dim.
+        """
         import torch
 
         tensor_device_type = tensor.device.type
@@ -116,13 +124,19 @@ class _SerializationContext:
         # CPU and another from CPU to shared memory. Ideally we should elide
         # the first copy and memcpy directly from GPU to the shared memory
         # buffer.
-        if tensor_device_type == "cuda":
+        if tensor_device_type != "cpu":
             tensor = tensor.to("cpu")
 
         # Numpy does not have an equivalent dtype for all torch dtypes, so
-        # instead of casting directly to numpy, we first use a view with a
-        # common dtype and then view as numpy array.
-        return (tensor.view(torch.uint8).numpy(), tensor.dtype, tensor_device_type)
+        # instead of casting directly to numpy:
+        # 1) for non-scalar tensors, we first use a view with a common dtype (uint8)
+        #    and then view as numpy array.
+        # 2) for scalar tensors, we cannot use a uint8 view when the size differs,
+        #    so we save the original item and type information.
+        if tensor.dim() > 0:
+            return (tensor.view(torch.uint8).numpy(), tensor.dtype, tensor_device_type)
+        else:
+            return (tensor.item(), tensor.dtype, tensor_device_type)
 
     def deserialize_tensor(
         self,
@@ -130,46 +144,59 @@ class _SerializationContext:
         target_device: Device,
     ):
 
-        # Found a placeholder for a tensor that was serialized via NCCL.
+        # Found a placeholder for a tensor that was serialized via accelerator.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
             placeholder = val
             self._deserialized_tensor_placeholders.add(placeholder)
-            assert placeholder < len(self._out_of_band_tensors)
+            assert placeholder < len(self._out_of_band_tensors), (
+                "placeholder",
+                placeholder,
+                "out_of_band_tensors",
+                self._out_of_band_tensors,
+            )
             tensor = self._out_of_band_tensors[placeholder]
             if target_device == Device.CPU:
                 tensor = tensor.to("cpu")
             return tensor
 
         np_array, dtype, tensor_device_type = val
-        return self.deserialize_from_numpy(
+        return self.deserialize_from_numpy_or_scalar(
             np_array, dtype, tensor_device_type, target_device
         )
 
-    def deserialize_from_numpy(
+    def deserialize_from_numpy_or_scalar(
         self,
-        np_array: "np.ndarray",
+        np_array: Union["np.ndarray", Any],
         dtype: "torch.dtype",
         tensor_device_type: str,
         target_device: Device,
     ):
         import torch
+        import numpy as np
 
         if target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
         elif target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
         else:
-            target_device_type = "cpu"
+            target_device_type = target_device.value
 
         # TODO(swang): Support local P2P transfers if available.
-        if target_device_type == "cuda":
+        if target_device_type != "cpu":
 
             def convert_numpy_to_tensor(np_array):
-                # It does zero-copy convert np_array inside shared memroy to
-                # a tensor. Since we move data to GPU immediately, it is safe.
-                cpu_tensor = torch.from_numpy(np_array).view(dtype)
-                return cpu_tensor.to(device=target_device_type)
+                if not isinstance(np_array, np.ndarray):
+                    # For scalar tensors, create the 0-dim tensor.
+                    return torch.tensor(
+                        np_array, device=target_device_type, dtype=dtype
+                    )
+                else:
+                    # For non-scalar tensors, view as the original dtype.
+                    # It does zero-copy convert np_array inside shared memory to
+                    # a tensor. Since we move data to GPU immediately, it is safe.
+                    cpu_tensor = torch.from_numpy(np_array).view(dtype)
+                    return cpu_tensor.to(device=target_device_type)
 
             global _TORCH_WARNING_FILTER_ACTIVATE
             # filtering warning messages would be the bottleneck for
@@ -194,4 +221,9 @@ class _SerializationContext:
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
-        return torch.tensor(np_array, device=target_device_type).view(dtype)
+        if not isinstance(np_array, np.ndarray):
+            # For scalar tensors, create the 0-dim tensor.
+            return torch.tensor(np_array, device=target_device_type, dtype=dtype)
+        else:
+            # For non-scalar tensors, view as the original dtype.
+            return torch.tensor(np_array, device=target_device_type).view(dtype)

@@ -83,7 +83,7 @@ python generate.py \
 ### Generate images interactively in a notebook
 
 See the `playground.ipynb` notebook for a more interactive way to generate images with the fine-tuned model.
-Click on the Jupyter icon on the workspace page and open the notebook. *Note: The widgets in this notebook don't work in VSCode, so please use Jupyter!*
+Click on the Jupyter icon on the workspace page and open the notebook. *Note: The widgets in this notebook don't work in VS Code, so please use Jupyter!*
 
 ## Appendix
 

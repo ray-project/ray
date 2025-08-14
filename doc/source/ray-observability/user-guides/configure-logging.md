@@ -45,21 +45,20 @@ System logs may include information about your applications. For example, ``runt
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. Ray streams all stdout and stderr from Tasks or Actors to these files. Note that job_id is the ID of the driver.
 
 ### System/component logs
-- ``dashboard.[log|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.err`` files contain stdout and stderr printed from the dashboard. They're usually empty except when the dashboard crashes unexpectedly.
-- ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
+- ``dashboard.[log|out|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
+- ``dashboard_agent.[log|out|err]``: Every Ray node has one dashboard agent. ``.log`` files
+contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent respectively. They're usually empty except when the dashboard agent crashes unexpectedly.
+- ``dashboard_[module_name].[log|out|err]``: The log files for the Ray Dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
-- ``log_monitor.[log|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.err`` files contain the stdout and stderr printed from the log monitor. They're usually empty except when the log monitor crashes unexpectedly.
-- ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
-- ``monitor.log``: Ray's Cluster Launcher operates from a monitor process. It also manages the Autoscaler.
-- ``plasma_store.[out|err]``: Deprecated.
+- ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.out`` and ``.err`` files contain the stdout and stderr printed from the log monitor respectively. They're usually empty except when the log monitor crashes unexpectedly.
+- ``monitor.[log|out|err]``: Log files of the Autoscaler. ``.log`` files contain logs generated from the autoscaler's logger. ``.out`` and ``.err`` files contain stdout and stderr
+printed from the autoscaler respectively. They're usually empty except when the autoscaler crashes unexpectedly.
 - ``python-core-driver-[worker_id]_[pid].log``: Ray drivers consist of C++ core and a Python or Java frontend. C++ code generates this log file.
 - ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of C++ core and a Python or Java frontend. C++ code generates this log file.
 - ``raylet.[out|err]``: A log file of raylets.
-- ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
-- ``redis.[out|err]``: Redis log files.
-- ``runtime_env_agent.log``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching.
-  This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
+- ``runtime_env_agent.[log|out|err]``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching.
+  ``.log`` files contain logs generated from the runtime env agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the runtime env agent respectively. They're usually empty except when the runtime env agent crashes unexpectedly.
  The logs of the actual installations for ``pip install`` logs are in the following ``runtime_env_setup-[job_id].log`` file.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
 - ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
@@ -377,10 +376,10 @@ In both `TEXT` and `JSON` encoding formats, the logs include Ray-specific fields
 * `log_level`: The log level for the driver process. The default is `INFO`.
 Available log levels are defined in the [Python logging library](https://docs.python.org/3/library/logging.html#logging-levels).
 
-* `additional_log_standard_attrs`: Since Ray version 2.43. A list of additional 
-standard Python logger attributes to include in the log record. The default is an empty 
-list. The list of already included standard attributes are: `asctime`, `levelname`, 
-`message`, `filename`, `lineno`, `exc_text`. The list of all valid attributes are 
+* `additional_log_standard_attrs`: Since Ray version 2.43. A list of additional
+standard Python logger attributes to include in the log record. The default is an empty
+list. The list of already included standard attributes are: `asctime`, `levelname`,
+`message`, `filename`, `lineno`, `exc_text`. The list of all valid attributes are
 specified in the [Python logging library](http://docs.python.org/library/logging.html#logrecord-attributes).
 
 When you set up `logging_config` in `ray.init`, it configures the root loggers for the driver process, Ray actors, and Ray tasks.

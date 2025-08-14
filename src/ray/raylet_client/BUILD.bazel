@@ -1,0 +1,20 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+exports_files([
+    "raylet_client.h",
+])
+
+ray_cc_library(
+    name = "raylet_client_lib",
+    srcs = ["raylet_client.cc"],
+    hdrs = ["raylet_client.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/rpc:node_manager_client",
+        "//src/ray/util:logging",
+    ],
+)

@@ -32,7 +32,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -107,7 +107,7 @@ class GcsActorSchedulerInterface {
 
   virtual std::string DebugString() const = 0;
 
-  virtual ~GcsActorSchedulerInterface() {}
+  virtual ~GcsActorSchedulerInterface() = default;
 };
 
 /// GcsActorScheduler is responsible for scheduling actors registered to GcsActorManager.
@@ -127,8 +127,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// created on the worker successfully.
   /// \param raylet_client_pool Raylet client pool to
   /// construct connections to raylets.
-  /// \param client_factory Factory to create remote
-  /// core worker client, default factory will be used if not set.
+  /// \param worker_client_pool Pool to manage connections to core worker clients.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
@@ -136,10 +135,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       ClusterTaskManager &cluster_task_manager_,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
-      rpc::NodeManagerClientPool &raylet_client_pool,
-      rpc::CoreWorkerClientFactoryFn client_factory = nullptr,
+      rpc::RayletClientPool &raylet_client_pool,
+      rpc::CoreWorkerClientPool &worker_client_pool,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
+
   ~GcsActorScheduler() override = default;
 
   /// Schedule the specified actor.
@@ -236,7 +236,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     WorkerID GetWorkerID() const { return WorkerID::FromBinary(address_.worker_id()); }
 
     /// Get the NodeID of this leased worker.
-    NodeID GetNodeID() const { return NodeID::FromBinary(address_.raylet_id()); }
+    NodeID GetNodeID() const { return NodeID::FromBinary(address_.node_id()); }
 
     /// Get the id of the actor which is assigned to this leased worker.
     ActorID GetAssignedActorID() const { return assigned_actor_id_; }
@@ -300,7 +300,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
                                      const rpc::RequestWorkerLeaseReply &reply);
 
   /// A rejected rely means resources were preempted by normal tasks. Then
-  /// update the the cluster resource view and reschedule immediately.
+  /// update the cluster resource view and reschedule immediately.
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
@@ -340,7 +340,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Get an existing lease client or connect a new one.
-  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address &raylet_address);
 
   /// Kill the actor on a node
@@ -389,9 +389,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.
-  rpc::NodeManagerClientPool &raylet_client_pool_;
-  /// The cached core worker clients which are used to communicate with leased worker.
-  rpc::CoreWorkerClientPool core_worker_clients_;
+  rpc::RayletClientPool &raylet_client_pool_;
+  /// Core worker client pool shared by the GCS.
+  rpc::CoreWorkerClientPool &worker_client_pool_;
 
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;

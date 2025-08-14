@@ -1,13 +1,15 @@
 # Used by CI for datasets and docs.
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
-dask[complete]==2022.10.2; python_version < '3.12'
-distributed==2022.10.2; python_version < '3.12'
-dask[complete]==2024.6.0; python_version >= '3.12'
-distributed==2024.6.0; python_version >= '3.12'
+getdaft==0.4.3
+dask[complete]==2023.6.1; python_version < '3.12'
+distributed==2023.6.1; python_version < '3.12'
+dask[complete]==2025.5.0; python_version >= '3.12'
+distributed==2025.5.0; python_version >= '3.12'
 aioboto3==11.2.0
 crc32c==2.3
 flask_cors
+bokeh==2.4.3; python_version < '3.12'
 modin==0.22.2; python_version < '3.12'
 pandas==1.5.3; python_version < '3.12'
 modin==0.31.0; python_version >= '3.12'

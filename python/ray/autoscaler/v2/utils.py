@@ -6,7 +6,7 @@ from itertools import chain
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.util import (
@@ -42,6 +42,10 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
+)
+from ray.core.generated.common_pb2 import (
+    LabelSelectorConstraint,
+    LabelSelector,
 )
 from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
@@ -188,41 +192,63 @@ class ResourceRequestUtil(ProtobufUtil):
     def make(
         resources_map: Dict[str, float],
         constraints: Optional[List[Tuple[PlacementConstraintType, str, str]]] = None,
+        label_selectors: Optional[List[List[Tuple[str, int, List[str]]]]] = None,
     ) -> ResourceRequest:
         """
         Make a resource request from the given resources map.
         Args:
-            resources_map: the resources map
+            resources_map: Mapping of resource names to quantities.
+            constraints: Placement constraints. Each tuple is (constraint_type,
+                label_key, label_value), where `constraint_type` is a
+                PlacementConstraintType (AFFINITY or ANTI_AFFINITY).
+            label_selectors: Optional list of label selectors. Each selector is
+                a list of (label_key, operator_enum, label_values) tuples.
         Returns:
-            request: the resource request
+            request: the ResourceRequest object
         """
         request = ResourceRequest()
         for resource_name, quantity in resources_map.items():
             request.resources_bundle[resource_name] = quantity
 
-        if constraints is None:
-            return request
-
-        for constraint_type, label, value in constraints:
-            if constraint_type == ResourceRequestUtil.PlacementConstraintType.AFFINITY:
-                request.placement_constraints.append(
-                    PlacementConstraint(
-                        affinity=AffinityConstraint(label_name=label, label_value=value)
-                    )
-                )
-            elif (
-                constraint_type
-                == ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
-            ):
-                request.placement_constraints.append(
-                    PlacementConstraint(
-                        anti_affinity=AntiAffinityConstraint(
-                            label_name=label, label_value=value
+        if constraints is not None:
+            for constraint_type, label, value in constraints:
+                if (
+                    constraint_type
+                    == ResourceRequestUtil.PlacementConstraintType.AFFINITY
+                ):
+                    request.placement_constraints.append(
+                        PlacementConstraint(
+                            affinity=AffinityConstraint(
+                                label_name=label, label_value=value
+                            )
                         )
                     )
-                )
-            else:
-                raise ValueError(f"Unknown constraint type: {constraint_type}")
+                elif (
+                    constraint_type
+                    == ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+                ):
+                    request.placement_constraints.append(
+                        PlacementConstraint(
+                            anti_affinity=AntiAffinityConstraint(
+                                label_name=label, label_value=value
+                            )
+                        )
+                    )
+                else:
+                    raise ValueError(f"Unknown constraint type: {constraint_type}")
+
+        if label_selectors is not None:
+            for selector in label_selectors:
+                selector_proto = LabelSelector()
+                for label_key, operator_enum, label_values in selector:
+                    selector_proto.label_constraints.append(
+                        LabelSelectorConstraint(
+                            label_key=label_key,
+                            operator=operator_enum,
+                            label_values=label_values,
+                        )
+                    )
+                request.label_selectors.append(selector_proto)
 
         return request
 
@@ -250,7 +276,7 @@ class ResourceRequestUtil(ProtobufUtil):
 
         # Map of set of serialized affinity constraint to the list of resource requests
         requests_by_affinity: Dict[
-            Tuple[str, str], List[ResourceRequest]
+            Tuple[str, str, Tuple], List[ResourceRequest]
         ] = defaultdict(list)
         combined_requests: List[ResourceRequest] = []
 
@@ -268,10 +294,14 @@ class ResourceRequestUtil(ProtobufUtil):
             constraint = request.placement_constraints[0]
 
             if constraint.HasField("affinity"):
+                # Combine requests with affinity and label selectors.
                 affinity = constraint.affinity
-                requests_by_affinity[
-                    (affinity.label_name, affinity.label_value)
-                ].append(request)
+                key = (
+                    affinity.label_name,
+                    affinity.label_value,
+                    ResourceRequestUtil._label_selector_key(request.label_selectors),
+                )
+                requests_by_affinity[key].append(request)
             elif constraint.HasField("anti_affinity"):
                 # We don't need to combine requests with anti-affinity constraints.
                 combined_requests.append(request)
@@ -279,6 +309,7 @@ class ResourceRequestUtil(ProtobufUtil):
         for (
             affinity_label_name,
             affinity_label_value,
+            label_selector_key,
         ), requests in requests_by_affinity.items():
             combined_request = ResourceRequest()
 
@@ -297,9 +328,32 @@ class ResourceRequestUtil(ProtobufUtil):
                 PlacementConstraint(affinity=affinity_constraint)
             )
 
+            combined_request.label_selectors.extend(requests[0].label_selectors)
+
             combined_requests.append(combined_request)
 
         return combined_requests
+
+    def _label_selector_key(
+        label_selectors: List[LabelSelector],
+    ) -> Tuple:
+        """
+        Convert label selectors into a hashable form for grouping.
+        This is used for gang requests with identical label_selectors.
+        """
+        result = []
+        for selector in label_selectors:
+            constraints = []
+            for constraint in selector.label_constraints:
+                constraints.append(
+                    (
+                        constraint.label_key,
+                        constraint.operator,
+                        tuple(sorted(constraint.label_values)),
+                    )
+                )
+            result.append(tuple(constraints))
+        return tuple(result)
 
 
 class ClusterStatusFormatter:
@@ -319,6 +373,9 @@ class ClusterStatusFormatter:
         pending_report = cls._pending_node_report(data)
         failure_report = cls._failed_node_report(data, verbose)
         cluster_usage_report = cls._cluster_usage_report(data, verbose)
+        constraints_report = cls._constraint_report(
+            data.resource_demands.cluster_constraint_demand
+        )
         demand_report = cls._demand_report(data)
         node_usage_report = (
             ""
@@ -341,9 +398,11 @@ class ClusterStatusFormatter:
             "",
             "Resources",
             separator,
-            f"{'Total ' if verbose else ''}Usage:",
+            "Total Usage:",
             cluster_usage_report,
-            f"{'Total ' if verbose else ''}Demands:",
+            "Total Constraints:",
+            constraints_report,
+            "Total Demands:",
             demand_report,
             node_usage_report,
         ]
@@ -540,6 +599,41 @@ class ClusterStatusFormatter:
         return " (no pending nodes)"
 
     @staticmethod
+    def _constraint_report(
+        cluster_constraint_demand: List[ClusterConstraintDemand],
+    ) -> str:
+        """Returns a formatted string describing the resource constraints from request_resources().
+
+        Args:
+            data: ClusterStatus object containing resource demand information.
+
+        Returns:
+            String containing the formatted constraints report, either listing each constraint
+            and count or indicating no constraints exist.
+
+        Example:
+            >>> cluster_constraint_demand = [
+            ...     ClusterConstraintDemand(bundles_by_count=[
+            ...         ResourceRequestByCount(bundle={"CPU": 4}, count=2),
+            ...         ResourceRequestByCount(bundle={"GPU": 1}, count=1)
+            ...     ])
+            ... ]
+            >>> ClusterStatusFormatter._constraint_report(cluster_constraint_demand)
+            " {'CPU': 4}: 2 from request_resources()\\n {'GPU': 1}: 1 from request_resources()"
+        """
+        constraint_lines = []
+        request_demand = [
+            (bc.bundle, bc.count)
+            for constraint_demand in cluster_constraint_demand
+            for bc in constraint_demand.bundles_by_count
+        ]
+        for bundle, count in request_demand:
+            constraint_lines.append(f" {bundle}: {count} from request_resources()")
+        if constraint_lines:
+            return "\n".join(constraint_lines)
+        return " (no request_resources() constraints)"
+
+    @staticmethod
     def _demand_report(data: ClusterStatus) -> str:
         # Process resource demands
         resource_demands = [
@@ -579,15 +673,6 @@ class ClusterStatusFormatter:
         for pg, count in pg_demand:
             pg_str = format_pg(pg)
             demand_lines.append(f" {pg_str}: {count}+ pending placement groups")
-
-        # Process cluster constraint demand
-        request_demand = [
-            (bc.bundle, bc.count)
-            for constraint_demand in data.resource_demands.cluster_constraint_demand
-            for bc in constraint_demand.bundles_by_count
-        ]
-        for bundle, count in request_demand:
-            demand_lines.append(f" {bundle}: {count}+ from request_resources()")
 
         # Generate demand report
         if demand_lines:
@@ -860,6 +945,7 @@ class ClusterStatusParser:
                 resource_usage=node_resource_usage,
                 failure_detail=failure_detail,
                 node_activity=node_state.node_activity,
+                labels=dict(node_state.labels),
             )
 
             if node_state.status == NodeStatus.DEAD:

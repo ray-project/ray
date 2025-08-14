@@ -4,10 +4,10 @@ import lance
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -91,6 +91,22 @@ def test_lance_read_basic(fs, data_path, batch_size):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_read_with_scanner_fragments(data_path):
+    table = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    dataset = lance.write_dataset(table, path, max_rows_per_file=2)
+
+    fragments = dataset.get_fragments()
+    ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
+    values = [[s["one"], s["two"]] for s in ds.take_all()]
+    assert values == [
+        [2, "b"],
+        [1, "a"],
+    ]
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_read_many_files(data_path):
     # NOTE: Lance only works with PyArrow 12 or above.
     pyarrow_version = get_pyarrow_version()
@@ -116,7 +132,7 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_lance(data_path)
+    ).write_lance(data_path, schema=schema)
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
@@ -146,6 +162,36 @@ def test_lance_write(data_path):
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
     assert ds.schema == schema
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_min_rows_per_file(data_path):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, min_rows_per_file=100)
+
+    ds = lance.dataset(data_path)
+    assert ds.count_rows() == 10
+    assert ds.schema == schema
+
+    assert len(ds.get_fragments()) == 1
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_max_rows_per_file(data_path):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, max_rows_per_file=1)
+
+    ds = lance.dataset(data_path)
+    assert ds.count_rows() == 10
+    assert ds.schema == schema
+
+    assert len(ds.get_fragments()) == 10
 
 
 if __name__ == "__main__":

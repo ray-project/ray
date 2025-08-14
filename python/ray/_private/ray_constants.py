@@ -1,9 +1,9 @@
 """Ray constants used in the Python code."""
 
+import json
 import logging
 import os
 import sys
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +70,38 @@ ID_SIZE = 28
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", 200 * 10**9  # 200 GB
+    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", (200) * (10**9)  # 200 GB
 )
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
     "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
     0.3,
 )
+
+# The following values are only used when resource isolation is enabled
+# ===== The default number of bytes to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (25) * (10**9)
+)
+# The default proportion available memory to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_integer(
+    "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
+)
+# The default number of cpu cores to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_CPU_CORES = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_CORES", 1.0
+)
+# The default proportion of cpu cores to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
+)
+# The smallest number of cores that ray system processes can be guaranteed
+MINIMUM_SYSTEM_RESERVED_CPU_CORES = 0.5
+# The smallest number of bytes that ray system processes can be guaranteed
+MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES = (100) * (10**6)
+# The default path for cgroupv2
+DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
+
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -95,12 +120,13 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # (see https://github.com/ray-project/ray/issues/20388 for details)
 # The workaround here is to limit capacity to 2GB for Mac by default,
 # and raise error if the capacity is overwritten by user.
-MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2**30
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = (2) * (2**30)
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_API_SERVER_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
@@ -117,7 +143,6 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 # If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
 # when using a local working_dir or py_modules.
 RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
-RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
@@ -136,6 +161,7 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
+DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 DEFAULT_DASHBOARD_AGENT_LISTEN_PORT = 52365
 # Default resource requirements for actors when no resource requirements are
@@ -197,9 +223,6 @@ RAYLET_DIED_ERROR = "raylet_died"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
-# Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
-
 # Used by autoscaler to set the node custom resources and labels
 # from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
@@ -224,9 +247,6 @@ LOGGER_LEVEL_HELP = (
     " 'warning', 'error', 'critical'], default='info'"
 )
 
-LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
-LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
-
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
 # Logging format when logging stderr. This should be formatted with the
 # component before setting the formatter, e.g. via
@@ -241,15 +261,12 @@ PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
-# TODO(sang): Delete it.
-PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
-PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
 PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER = "python-core-driver"
 PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
@@ -417,7 +434,6 @@ KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
-KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
@@ -437,9 +453,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
-
-# Default max_concurrency option in @ray.remote for async actors.
-DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
@@ -511,8 +524,6 @@ RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONN
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
-PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
-
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 
 RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
@@ -539,3 +550,42 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 )
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
+
+# If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`
+# environment to all workers. Ray does this by setting the `py_executable` to the
+# `uv run`` command line and by propagating the working directory
+# via the `working_dir` plugin so uv finds the pyproject.toml.
+# If you enable RAY_ENABLE_UV_RUN_RUNTIME_ENV AND you run the driver
+# with `uv run`, Ray deactivates the regular RAY_RUNTIME_ENV_HOOK
+# because in most cases the hooks wouldn't work unless you specifically make the code
+# for the runtime env hook available in your uv environment and make sure your hook
+# is compatible with your uv runtime environment. If you want to combine a custom
+# RAY_RUNTIME_ENV_HOOK with `uv run`, you should flag off RAY_ENABLE_UV_RUN_RUNTIME_ENV
+# and call ray._private.runtime_env.uv_runtime_env_hook.hook manually in your hook or
+# manually set the py_executable in your runtime environment hook.
+RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
+
+# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+#
+# Legacy: report all metrics to prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
+# Recommended: report only the node level metrics to prometheus. This means that the
+#   WorkerId will be removed from all metrics.
+RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
+
+# Whether GPU metrics collection via `nvidia-smi` is enabled.
+# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
+# Defaults to False to use pynvml to collect usage.
+RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
+
+# Whether enable OpenTelemetry as the metrics collection backend. The default is
+# using OpenCensus.
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
+
+# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+#
+# NOTE: This must be kept in sync with the C++ definition of
+# `RayConfig::fetch_fail_timeout_milliseconds`.
+FETCH_FAIL_TIMEOUT_SECONDS = (
+    env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
+)

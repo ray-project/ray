@@ -59,7 +59,7 @@ class MockObjectLifecycleManager : public IObjectLifecycleManager {
 
 struct GetRequestQueueTest : public Test {
  public:
-  GetRequestQueueTest() : io_work_(io_context_) {}
+  GetRequestQueueTest() : io_work_(io_context_.get_executor()) {}
   void SetUp() override {
     Test::SetUp();
     object_id1 = ObjectID::FromRandom();
@@ -111,7 +111,7 @@ struct GetRequestQueueTest : public Test {
 
  protected:
   instrumented_io_context io_context_;
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   std::thread thread_;
   LocalObject object1{Allocation()};
   LocalObject object2{Allocation()};
@@ -136,7 +136,7 @@ TEST_F(GetRequestQueueTest, TestObjectSealed) {
   /// Mock the object already sealed.
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   EXPECT_CALL(object_lifecycle_manager, GetObject(_)).Times(1).WillOnce(Return(&object1));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
   EXPECT_TRUE(satisfied);
 
   AssertNoLeak(get_request_queue);
@@ -158,7 +158,7 @@ TEST_F(GetRequestQueueTest, TestObjectTimeout) {
   std::vector<ObjectID> object_ids{object_id1};
   MarkObject(object1, ObjectState::PLASMA_CREATED);
   EXPECT_CALL(object_lifecycle_manager, GetObject(_)).Times(1).WillOnce(Return(&object1));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
   /// This trigger timeout
   io_context_.run_one();
   promise.get_future().get();
@@ -184,7 +184,7 @@ TEST_F(GetRequestQueueTest, TestObjectNotSealed) {
   EXPECT_CALL(object_lifecycle_manager, GetObject(_))
       .Times(2)
       .WillRepeatedly(Return(&object1));
-  get_request_queue.AddRequest(client, object_ids, /*timeout_ms*/ -1, false);
+  get_request_queue.AddRequest(client, object_ids, /*timeout_ms*/ -1);
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   get_request_queue.MarkObjectSealed(object_id1);
   promise.get_future().get();
@@ -219,7 +219,7 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
       .WillRepeatedly(Return(&object1));
   EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id2)))
       .WillRepeatedly(Return(&object2));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
   promise1.get_future().get();
   EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
@@ -266,7 +266,7 @@ TEST_F(GetRequestQueueTest, TestFallbackAllocatedFdArePassed) {
       .WillRepeatedly(Return(&object1));
   EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id2)))
       .WillRepeatedly(Return(&object2));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
   promise1.get_future().get();
   EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
@@ -299,7 +299,7 @@ TEST_F(GetRequestQueueTest, TestDuplicateObjects) {
       .Times(2)
       .WillOnce(Return(&object1))
       .WillOnce(Return(&object2));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
   EXPECT_EQ(1, GetRequestCount(get_request_queue, object_id1));
@@ -325,7 +325,7 @@ TEST_F(GetRequestQueueTest, TestRemoveAll) {
       .Times(2)
       .WillOnce(Return(&object1))
       .WillOnce(Return(&object2));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
 
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
@@ -356,7 +356,7 @@ TEST_F(GetRequestQueueTest, TestRemoveTwice) {
       .Times(2)
       .WillOnce(Return(&object1))
       .WillOnce(Return(&object2));
-  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  get_request_queue.AddRequest(client, object_ids, 1000);
 
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));

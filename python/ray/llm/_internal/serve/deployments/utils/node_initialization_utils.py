@@ -1,131 +1,23 @@
 import asyncio
-import enum
 import os
-from typing import Any, Dict, NamedTuple, Optional
+from typing import Any, Dict, NamedTuple
 
 import ray
-from ray.util.placement_group import PlacementGroup
-
-from ray.llm._internal.utils import try_import
-
-
-from ray.llm._internal.serve.observability.logging import get_logger
-
-from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
-from ray.llm._internal.common.utils.download_utils import CloudModelDownloader
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
+)
+from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
-from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.util.placement_group import PlacementGroup
 
 torch = try_import("torch")
 transformers = try_import("transformers")
 
 logger = get_logger(__name__)
-
-
-class NodeModelDownloadable(enum.Enum):
-    """Defines which files to download from cloud storage."""
-
-    MODEL_AND_TOKENIZER = enum.auto()
-    TOKENIZER_ONLY = enum.auto()
-    NONE = enum.auto()
-
-    def __bool__(self):
-        return self != NodeModelDownloadable.NONE
-
-    def union(self, other: "NodeModelDownloadable") -> "NodeModelDownloadable":
-        """Return a NodeModelDownloadable that is a union of this and the other."""
-        if (
-            self == NodeModelDownloadable.MODEL_AND_TOKENIZER
-            or other == NodeModelDownloadable.MODEL_AND_TOKENIZER
-        ):
-            return NodeModelDownloadable.MODEL_AND_TOKENIZER
-
-        if (
-            self == NodeModelDownloadable.TOKENIZER_ONLY
-            or other == NodeModelDownloadable.TOKENIZER_ONLY
-        ):
-            return NodeModelDownloadable.TOKENIZER_ONLY
-
-        return NodeModelDownloadable.NONE
-
-
-def _log_download_info(
-    *, source: str, download_model: NodeModelDownloadable, download_extra_files: bool
-):
-    if download_model == NodeModelDownloadable.NONE:
-        if download_extra_files:
-            logger.info("Downloading extra files from %s", source)
-        else:
-            logger.info("Not downloading anything from %s", source)
-    elif download_model == NodeModelDownloadable.TOKENIZER_ONLY:
-        if download_extra_files:
-            logger.info("Downloading tokenizer and extra files from %s", source)
-        else:
-            logger.info("Downloading tokenizer from %s", source)
-    elif download_model == NodeModelDownloadable.MODEL_AND_TOKENIZER:
-        if download_extra_files:
-            logger.info("Downloading model, tokenizer, and extra files from %s", source)
-        else:
-            logger.info("Downloading model and tokenizer from %s", source)
-
-
-def download_model_files(
-    model_id: Optional[str] = None,
-    mirror_config: Optional[CloudMirrorConfig] = None,
-    download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
-    download_extra_files: bool = True,
-) -> Optional[str]:
-    """
-    Perform initialization for a node.
-
-    Currently, that means downloading the model from cloud storage.
-
-    Args:
-        model_id: The model id.
-        mirror_config: Config for downloading model from cloud storage.
-        download_model: What parts of the model to download.
-        download_extra_files: Whether to download extra files specified in the mirror config.
-
-    Returns path to downloaded model, if any.
-    """
-
-    # Create the torch cache kernels directory if it doesn't exist.
-    # This is a workaround for a torch issue, where the kernels directory
-    # cannot be created by torch if the parent directory doesn't exist.
-    torch_cache_home = torch.hub._get_torch_home()
-    os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
-    model_path_or_id = None
-
-    if model_id is None:
-        return model_path_or_id
-
-    if mirror_config is None:
-        logger.info("No cloud storage mirror configured")
-        return model_path_or_id
-
-    storage_type = mirror_config.storage_type
-    source = (
-        f"{storage_type.upper()} mirror" if storage_type else "Cloud storage mirror"
-    )
-
-    _log_download_info(
-        source=source,
-        download_model=download_model,
-        download_extra_files=download_extra_files,
-    )
-
-    downloader = CloudModelDownloader(model_id, mirror_config)
-
-    if download_model != NodeModelDownloadable.NONE:
-        model_path_or_id = downloader.get_model(
-            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY
-        )
-
-    if download_extra_files:
-        downloader.get_extra_files()
-
-    return model_path_or_id
 
 
 async def initialize_worker_nodes(
@@ -197,6 +89,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     extra_init_kwargs = {}
 
     engine_config = llm_config.get_engine_config()
+    assert engine_config is not None
     pg = engine_config.get_or_create_pg()
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
@@ -211,7 +104,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         )
 
         await _initialize_local_node(
-            engine_config,
+            llm_config,
             download_model=local_node_download_model,
             download_extra_files=True,
         )
@@ -224,11 +117,6 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
             download_extra_files=True,
         )
 
-    llm_config.apply_checkpoint_info(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
-
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
     )
@@ -236,11 +124,12 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
 
 @make_async
 def _initialize_local_node(
-    engine_config: VLLMEngineConfig,
+    llm_config: LLMConfig,
     *,
     download_model: NodeModelDownloadable,
     download_extra_files: bool,
 ):
+    engine_config = llm_config.get_engine_config()
     local_path = download_model_files(
         model_id=engine_config.actual_hf_model_id,
         mirror_config=engine_config.mirror_config,
@@ -256,7 +145,16 @@ def _initialize_local_node(
     if not isinstance(local_path, str) or not os.path.exists(local_path):
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
-    _ = transformers.AutoTokenizer.from_pretrained(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
+    if llm_config.llm_engine == LLMEngine.vLLM:
+        from vllm.transformers_utils.tokenizer import get_tokenizer
+
+        _ = get_tokenizer(
+            engine_config.actual_hf_model_id,
+            tokenizer_mode=engine_config.engine_kwargs.get("tokenizer_mode", None),
+            trust_remote_code=engine_config.trust_remote_code,
+        )
+    else:
+        _ = transformers.AutoTokenizer.from_pretrained(
+            engine_config.actual_hf_model_id,
+            trust_remote_code=engine_config.trust_remote_code,
+        )

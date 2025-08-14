@@ -199,8 +199,6 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   explicit RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
 
-  ~RaySyncerService();
-
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override;
 

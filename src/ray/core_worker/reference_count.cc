@@ -14,10 +14,17 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "ray/util/network_util.h"
+
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
-
-namespace {}  // namespace
 
 namespace ray {
 namespace core {
@@ -188,7 +195,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const int64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
-                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
+                                      const std::optional<NodeID> &pinned_at_node_id,
+                                      rpc::TensorTransport tensor_transport) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -197,7 +205,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                    object_size,
                                    is_reconstructable,
                                    add_local_ref,
-                                   pinned_at_raylet_id))
+                                   pinned_at_node_id,
+                                   tensor_transport))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -226,7 +235,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/false,
-                                    absl::optional<NodeID>()));
+                                    std::optional<NodeID>()));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -261,7 +270,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/true,
-                                    absl::optional<NodeID>()));
+                                    std::optional<NodeID>()));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -310,8 +319,9 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const int64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
-    const absl::optional<NodeID> &pinned_at_raylet_id) {
-  if (object_id_refs_.count(object_id) != 0) {
+    const std::optional<NodeID> &pinned_at_node_id,
+    rpc::TensorTransport tensor_transport) {
+  if (object_id_refs_.contains(object_id)) {
     return false;
   }
   if (ObjectID::IsActorID(object_id)) {
@@ -331,16 +341,17 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    call_site,
                                    object_size,
                                    is_reconstructable,
-                                   pinned_at_raylet_id))
+                                   pinned_at_node_id,
+                                   tensor_transport))
                 .first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
     AddNestedObjectIdsInternal(object_id, inner_ids, rpc_address_);
   }
-  if (pinned_at_raylet_id.has_value()) {
+  if (pinned_at_node_id.has_value()) {
     // We eagerly add the pinned location to the set of object locations.
-    AddObjectLocationInternal(it, pinned_at_raylet_id.value());
+    AddObjectLocationInternal(it, pinned_at_node_id.value());
   }
 
   reconstructable_owned_objects_.emplace_back(object_id);
@@ -633,12 +644,12 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
 
 bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
-  return freed_objects_.find(object_id) != freed_objects_.end();
+  return freed_objects_.contains(object_id);
 }
 
 bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  if (object_id_refs_.count(object_id) == 0) {
+  if (!object_id_refs_.contains(object_id)) {
     return false;
   }
   return freed_objects_.erase(object_id) != 0u;
@@ -776,7 +787,7 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
-  it->second.pinned_at_raylet_id.reset();
+  it->second.pinned_at_node_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     it->second.spilled = false;
     it->second.spilled_url = "";
@@ -806,7 +817,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
-  } else if (freed_objects_.count(object_id) > 0) {
+  } else if (freed_objects_.contains(object_id)) {
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
     return false;
@@ -816,18 +827,18 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
   return true;
 }
 
-void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
+void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
-    if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
-        it->second.spilled_node_id == raylet_id) {
+    if (it->second.pinned_at_node_id.value_or(NodeID::Nil()) == node_id ||
+        it->second.spilled_node_id == node_id) {
       UnsetObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
     }
-    RemoveObjectLocationInternal(it, raylet_id);
+    RemoveObjectLocationInternal(it, node_id);
   }
 }
 
@@ -839,28 +850,28 @@ std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
 }
 
 void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
-                                                  const NodeID &raylet_id) {
+                                                  const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
-    if (freed_objects_.count(object_id) > 0) {
+    if (freed_objects_.contains(object_id)) {
       // The object has been freed by the language frontend.
       return;
     }
 
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
-    if (it->second.pinned_at_raylet_id.has_value()) {
+    if (it->second.pinned_at_node_id.has_value()) {
       RAY_LOG(INFO).WithField(object_id)
-          << "Updating primary location for object to node " << raylet_id
-          << ", but it already has a primary location " << *it->second.pinned_at_raylet_id
+          << "Updating primary location for object to node " << node_id
+          << ", but it already has a primary location " << *it->second.pinned_at_node_id
           << ". This should only happen during reconstruction";
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
-      if (check_node_alive_(raylet_id)) {
-        it->second.pinned_at_raylet_id = raylet_id;
+      if (!is_node_dead_(node_id)) {
+        it->second.pinned_at_node_id = node_id;
       } else {
         UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
@@ -879,7 +890,7 @@ bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
     if (it->second.owned_by_us) {
       *owned_by_us = true;
       *spilled = it->second.spilled;
-      *pinned_at = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
+      *pinned_at = it->second.pinned_at_node_id.value_or(NodeID::Nil());
     }
     return true;
   }
@@ -1046,8 +1057,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
       RAY_LOG(DEBUG)
               .WithField(WorkerID::FromBinary(worker_addr.worker_id()))
               .WithField(object_id)
-          << "Adding borrower " << worker_addr.ip_address() << ":" << worker_addr.port()
-          << " to object";
+          << "Adding borrower "
+          << BuildAddress(worker_addr.ip_address(), worker_addr.port()) << " to object";
       new_borrowers.push_back(worker_addr);
     }
   }
@@ -1059,8 +1070,9 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
       RAY_LOG(DEBUG)
               .WithField(WorkerID::FromBinary(nested_borrower.worker_id()))
               .WithField(object_id)
-          << "Adding borrower " << nested_borrower.ip_address() << ":"
-          << nested_borrower.port() << " to object";
+          << "Adding borrower "
+          << BuildAddress(nested_borrower.ip_address(), nested_borrower.port())
+          << " to object";
       new_borrowers.push_back(nested_borrower);
     }
   }
@@ -1212,8 +1224,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
     // from a task, and the task's caller executed in a remote process.
     for (const auto &inner_id : inner_ids) {
       RAY_LOG(DEBUG).WithField(inner_id)
-          << "Adding borrower " << owner_address.ip_address() << ":"
-          << owner_address.port() << " to object, borrower owns outer ID " << object_id;
+          << "Adding borrower "
+          << BuildAddress(owner_address.ip_address(), owner_address.port())
+          << " to object, borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it == object_id_refs_.end()) {
         inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
@@ -1384,7 +1397,7 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
   }
 }
 
-absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
+std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -1417,7 +1430,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
-      spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
+      spilled_node_id.IsNil() || !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;
@@ -1435,7 +1448,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   return true;
 }
 
-absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
+std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
@@ -1466,12 +1479,12 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   auto node_ids = it->second.locations;
   // Add location of the primary copy since the object must be there: either in memory or
   // spilled.
-  if (it->second.pinned_at_raylet_id.has_value()) {
-    node_ids.emplace(it->second.pinned_at_raylet_id.value());
+  if (it->second.pinned_at_node_id.has_value()) {
+    node_ids.emplace(it->second.pinned_at_node_id.value());
   }
 
   // We should only reach here if we have valid locality data to return.
-  absl::optional<LocalityData> locality_data(
+  std::optional<LocalityData> locality_data(
       {static_cast<uint64_t>(object_size), std::move(node_ids)});
   return locality_data;
 }
@@ -1553,7 +1566,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_size = it->second.object_size;
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
-  const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
+  const auto &optional_primary_node_id = it->second.pinned_at_node_id;
   const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
   RAY_LOG(DEBUG).WithField(object_id)
       << "Published message for object, " << locations.size()
@@ -1597,7 +1610,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   }
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
-  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
+  auto primary_node_id = it->second.pinned_at_node_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation);
   object_info->set_did_spill(it->second.did_spill);
@@ -1697,6 +1710,16 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   for (const auto &contains_id : nested().contains) {
     ref->add_contains(contains_id.Binary());
   }
+}
+
+std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+    const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return absl::nullopt;
+  }
+  return it->second.tensor_transport;
 }
 
 }  // namespace core

@@ -157,6 +157,9 @@ class _DeploymentHandleBase:
         ):
             ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
+    def _is_router_running_in_separate_loop(self) -> bool:
+        return self.init_options._run_router_in_separate_loop
+
     def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
         if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
@@ -208,15 +211,27 @@ class _DeploymentHandleBase:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
-    def shutdown(self):
+    def shutdown(self, _skip_asyncio_check: bool = False):
         if self._router:
             shutdown_future = self._router.shutdown()
-            shutdown_future.result()
+            if self._is_router_running_in_separate_loop():
+                shutdown_future.result()
+            else:
+                if not _skip_asyncio_check:
+                    raise RuntimeError(
+                        "Sync methods should not be called from within an `asyncio` event "
+                        "loop. Use `await handle.shutdown_async()` instead."
+                    )
 
     async def shutdown_async(self):
         if self._router:
-            shutdown_future = self._router.shutdown()
-            await asyncio.wrap_future(shutdown_future)
+            shutdown_future: Union[
+                asyncio.Future, concurrent.futures.Future
+            ] = self._router.shutdown()
+            if self._is_router_running_in_separate_loop:
+                await asyncio.wrap_future(shutdown_future)
+            else:
+                await shutdown_future
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -238,13 +253,17 @@ class _DeploymentHandleBase:
 class _DeploymentResponseBase:
     def __init__(
         self,
-        replica_result_future: concurrent.futures.Future[ReplicaResult],
+        replica_result_future: Union[
+            concurrent.futures.Future[ReplicaResult], asyncio.Future[ReplicaResult]
+        ],
         request_metadata: RequestMetadata,
+        _is_router_running_in_separate_loop: bool = True,
     ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
         self._request_metadata: RequestMetadata = request_metadata
+        self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
 
     @property
     def request_id(self) -> str:
@@ -259,10 +278,16 @@ class _DeploymentResponseBase:
         """
 
         if self._replica_result is None:
+            if not self._is_router_running_in_separate_loop:
+                raise RuntimeError(
+                    "Sync methods should not be called from within an `asyncio` event "
+                    "loop. Use `await response` instead."
+                )
             try:
                 self._replica_result = self._replica_result_future.result(
                     timeout=_timeout_s
                 )
+
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
             except concurrent.futures.CancelledError:
@@ -277,14 +302,16 @@ class _DeploymentResponseBase:
         """
 
         if self._replica_result is None:
-            # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
-            # safely from any asyncio loop.
-            try:
+            if self._is_router_running_in_separate_loop:
+                # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
+                # safely from any asyncio loop.
+                # self._replica_result_future is a object of type concurrent.futures.Future
                 self._replica_result = await asyncio.wrap_future(
                     self._replica_result_future
                 )
-            except asyncio.CancelledError:
-                raise RequestCancelledError(self.request_id) from None
+            else:
+                # self._replica_result_future is a object of type asyncio.Future
+                self._replica_result = await self._replica_result_future
 
         return self._replica_result
 
@@ -312,11 +339,22 @@ class _DeploymentResponseBase:
             return
 
         self._cancelled = True
-        if not self._replica_result_future.done():
-            self._replica_result_future.cancel()
-        elif self._replica_result_future.exception() is None:
+        self._replica_result_future.cancel()
+        if not self._is_router_running_in_separate_loop:
+            # Given that there is a event loop running, we can't call sync methods.
+            # Hence optimistically cancel the replica result future and replica result.
+            if self._replica_result:
+                self._replica_result.cancel()
+            return
+        try:
+            # try to fetch the results synchronously. if it succeeds,
+            # we will explicitly cancel the replica result. if it fails,
+            # the request is already cancelled and we can return early.
             self._fetch_future_result_sync()
-            self._replica_result.cancel()
+        except RequestCancelledError:
+            # request is already cancelled nothing to do here
+            return
+        self._replica_result.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -400,9 +438,15 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        replica_result = yield from self._fetch_future_result_async().__await__()
-        result = yield from replica_result.get_async().__await__()
-        return result
+        try:
+            replica_result = yield from self._fetch_future_result_async().__await__()
+            result = yield from replica_result.get_async().__await__()
+            return result
+        except asyncio.CancelledError:
+            if self._cancelled:
+                raise RequestCancelledError(self.request_id) from None
+            else:
+                raise asyncio.CancelledError from None
 
     def __reduce__(self):
         raise RayServeException(
@@ -563,8 +607,14 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self
 
     async def __anext__(self) -> Any:
-        replica_result = await self._fetch_future_result_async()
-        return await replica_result.__anext__()
+        try:
+            replica_result = await self._fetch_future_result_async()
+            return await replica_result.__anext__()
+        except asyncio.CancelledError:
+            if self._cancelled:
+                raise RequestCancelledError(self.request_id) from None
+            else:
+                raise asyncio.CancelledError from None
 
     def __iter__(self) -> Iterator[Any]:
         return self
@@ -650,7 +700,7 @@ class DeploymentHandle(_DeploymentHandleBase):
                 self._downstream_handle = handle
 
             async def __call__(self, name: str) -> str:
-                response = self._handle.say_hi.remote(name)
+                response = self._downstream_handle.say_hi.remote(name)
                 return await response
 
         app = Ingress.bind(Downstream.bind())
@@ -735,4 +785,8 @@ class DeploymentHandle(_DeploymentHandleBase):
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(future, request_metadata)
+        return response_cls(
+            future,
+            request_metadata,
+            _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+        )

@@ -5,6 +5,7 @@ from pytest_docker_tools import wrappers
 import subprocess
 import docker
 from typing import List
+from ray._common.network_utils import build_address
 
 # If you need to debug tests using fixtures in this file,
 # comment in the volume
@@ -79,7 +80,7 @@ redis_image = fetch(repository="redis:latest")
 redis = container(
     image="{redis_image.id}",
     network="{gcs_network.name}",
-    command=("redis-server --save 60 1 --loglevel" " warning"),
+    command=("redis-server --save 60 1 --loglevel warning"),
 )
 
 head_node_vol = volume()
@@ -126,7 +127,7 @@ def gen_worker_node(envs, num_cpus):
             "ray",
             "start",
             "--address",
-            f"{head_node_container_name}:6379",
+            build_address(head_node_container_name, 6379),
             "--block",
             # Fix the port of raylet to make sure raylet restarts at the same
             # ip:port is treated as a different raylet.
@@ -181,10 +182,16 @@ def run_in_container(cmds: List[List[str]], container_id: str):
     for cmd in cmds:
         docker_cmd = ["docker", "exec", container_id] + cmd
         print(f"Executing command: {docker_cmd}", time.time())
-        resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
-        output = resp.decode("utf-8").strip()
-        print(f"Output: {output}")
-        outputs.append(output)
+        try:
+            resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+            output = resp.decode("utf-8").strip()
+            print(f"Output: {output}")
+            outputs.append(output)
+        except subprocess.CalledProcessError as e:
+            error_output = e.output.decode("utf-8") if e.output else "No output"
+            print(f"Command failed with return code {e.returncode}")
+            print(f"Full error output:\n{error_output}")
+            raise
 
     return outputs
 

@@ -27,6 +27,7 @@ modin
 numpy
 openai-whisper
 openskill
+orjson
 petastorm
 protobuf
 pyarrow
@@ -57,3 +58,4 @@ uvicorn
 validators
 wandb
 xgboost
+albumentations

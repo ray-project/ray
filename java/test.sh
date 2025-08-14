@@ -8,14 +8,6 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
-pushd "$ROOT_DIR"
-  echo "Check java code format."
-  # check google java style
-  mvn -T16 spotless:check
-  # check naming and others
-  mvn -T16 checkstyle:check
-popd
-
 run_testng() {
     local pid
     local exit_code
@@ -72,10 +64,24 @@ if [[ ! -d ".git" ]]; then
 fi
 
 echo "Build java maven deps."
+bazel run //java:gen_pom_files
+bazel run //java:gen_proto_files
 bazel build //java:gen_maven_deps
+
+echo "Build ray core."
+bazel run //:gen_ray_pkg
 
 echo "Build test jar."
 bazel build //java:all_tests_shaded.jar
+
+(
+  cd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+)
 
 java/generate_jni_header_files.sh
 
@@ -118,8 +124,23 @@ run_testng java -Dray.run-mode="LOCAL" -cp "$ROOT_DIR"/../bazel-bin/java/all_tes
 
 echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
-  linux*) ip=$(hostname -I | awk '{print $1}');;
-  darwin*) ip=$(ipconfig getifaddr en0);;
+  linux*) ip="$(hostname -I | awk '{print $1}')";;
+  darwin*)
+    # On newer macos ec2 instances, en0 is IPv6 only.
+    # en6 (or sometimes en7) is the private network and has an IPv4 address.
+    for interface in en0 en6 en7; do
+      ip="$(ipconfig getifaddr "$interface" || true)"
+      if [[ "$ip" != "" ]]; then
+        break
+      fi
+    done
+
+    if [[ -z "$ip" ]]; then
+      echo "Can't get IP address; ifconfig output:"
+      ifconfig
+      exit 1
+    fi
+  ;;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="$ip"

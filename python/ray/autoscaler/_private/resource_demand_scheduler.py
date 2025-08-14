@@ -19,6 +19,7 @@ import ray
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_UPSCALING_INITIAL_NUM_NODES,
     AUTOSCALER_UTILIZATION_SCORER_KEY,
 )
 from ray.autoscaler._private.loader import load_function_or_class
@@ -44,9 +45,6 @@ from ray.autoscaler.tags import (
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
-
-# The minimum number of nodes to launch concurrently.
-UPSCALING_INITIAL_NUM_NODES = 5
 
 NodeResources = ResourceDict
 ResourceDemands = List[ResourceDict]
@@ -181,7 +179,10 @@ class ResourceDemandScheduler:
         """Given resource demands, return node types to add to the cluster.
 
         This method:
-            (1) calculates the resources present in the cluster.
+            (1) calculates the resources present in the cluster by:
+                - computing available resources for each existing node
+                - counting the number of nodes per node type
+                - including both running and launching nodes
             (2) calculates the remaining nodes to add to respect min_workers
                 constraint per node type.
             (3) for each strict spread placement group, reserve space on
@@ -213,6 +214,7 @@ class ResourceDemandScheduler:
         )
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
+        # Step 1: Calculate current cluster resources and node type counts
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = self.calculate_node_resources(
@@ -369,7 +371,7 @@ class ResourceDemandScheduler:
             if runtime_resources:
                 runtime_resources = copy.deepcopy(runtime_resources)
                 resources = self.node_types[node_type].get("resources", {})
-                for key in ["CPU", "GPU", "memory", "object_store_memory"]:
+                for key in ["CPU", "GPU", "memory"]:
                     if key in runtime_resources:
                         resources[key] = runtime_resources[key]
                 self.node_types[node_type]["resources"] = resources
@@ -433,7 +435,7 @@ class ResourceDemandScheduler:
             # Enforce here max allowed pending nodes to be frac of total
             # running nodes.
             max_allowed_pending_nodes = max(
-                UPSCALING_INITIAL_NUM_NODES,
+                AUTOSCALER_UPSCALING_INITIAL_NUM_NODES,
                 int(self.upscaling_speed * max(running_nodes[node_type], 1)),
             )
             total_pending_nodes = (
@@ -894,7 +896,7 @@ def get_bin_pack_residual(
 
     Returns:
         List[ResourceDict]: the residual list resources that do not fit.
-        List[ResourceDict]: The updated node_resources after the method.
+        List[ResourceDict]: The updated node_resources after the method. The order of the list elements remains unchanged.
     """
 
     unfulfilled = []
@@ -902,7 +904,7 @@ def get_bin_pack_residual(
     # A most naive bin packing algorithm.
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
-    used = []
+    used = set()
     # We order the resource demands in the following way:
     # More complex demands first.
     # Break ties: heavier demands first.
@@ -919,20 +921,21 @@ def get_bin_pack_residual(
         found = False
         node = None
         for i in range(len(nodes)):
+            if i in used:
+                continue
             node = nodes[i]
             if _fits(node, demand):
                 found = True
                 # In the strict_spread case, we can't reuse nodes.
                 if strict_spread:
-                    used.append(node)
-                    del nodes[i]
+                    used.add(i)
                 break
         if found and node:
             _inplace_subtract(node, demand)
         else:
             unfulfilled.append(demand)
 
-    return unfulfilled, nodes + used
+    return unfulfilled, nodes
 
 
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
@@ -969,7 +972,7 @@ def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
 
 def placement_groups_to_resource_demands(
     pending_placement_groups: List[PlacementGroupTableData],
-):
+) -> Tuple[List[ResourceDict], List[List[ResourceDict]]]:
     """Preprocess placement group requests into regular resource demand vectors
     when possible. The policy is:
         * STRICT_PACK - Convert to a single bundle.
@@ -979,7 +982,7 @@ def placement_groups_to_resource_demands(
 
     Args:
         pending_placement_groups (List[PlacementGroupData]): List of
-        PlacementGroupLoad's.
+            PlacementGroupLoad's.
 
     Returns:
         List[ResourceDict]: The placement groups which were converted to a
@@ -990,7 +993,13 @@ def placement_groups_to_resource_demands(
     resource_demand_vector = []
     unconverted = []
     for placement_group in pending_placement_groups:
-        shapes = [dict(bundle.unit_resources) for bundle in placement_group.bundles]
+        # Skip **placed** bundle (which has node id associated with it).
+        shapes = []
+        for bundle in placement_group.bundles:
+            if bundle.node_id != b"":
+                continue
+            shapes.append(dict(bundle.unit_resources))
+
         if (
             placement_group.strategy == PlacementStrategy.PACK
             or placement_group.strategy == PlacementStrategy.SPREAD

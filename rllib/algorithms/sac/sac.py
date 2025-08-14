@@ -120,9 +120,6 @@ class SACConfig(AlgorithmConfig):
         # .training()
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
-        # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1500
 
         # .reporting()
@@ -313,6 +310,11 @@ class SACConfig(AlgorithmConfig):
                 The default value is 3e-4, identical to the critic learning rate (`lr`).
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
+            num_steps_sampled_before_learning_starts: Number of timesteps (int)
+                that we collect from the runners before we start sampling the
+                replay buffers for learning. Whether we count this in agent steps
+                or environment steps depends on the value of
+                `config.multi_agent(count_steps_by=...)`.
             _deterministic_loss: Whether the loss should be calculated deterministically
                 (w/o the stochastic action sampling step). True only useful for
                 continuous actions and for debugging.
@@ -513,7 +515,7 @@ class SACConfig(AlgorithmConfig):
             return RLModuleSpec(module_class=DefaultSACTorchRLModule)
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @override(AlgorithmConfig)
@@ -524,7 +526,7 @@ class SACConfig(AlgorithmConfig):
             return SACTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @override(AlgorithmConfig)

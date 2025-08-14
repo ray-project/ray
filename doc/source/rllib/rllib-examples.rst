@@ -39,7 +39,7 @@ directory and run the script as-is with python:
 .. code-block:: bash
 
     $ cd ray/rllib/examples/multi_agent
-    $ python multi_agent_pendulum.py --enable-new-api-stack --num-agents=2
+    $ python multi_agent_pendulum.py --num-agents=2
 
 
 Use the `--help` command line argument to have each script print out its supported command line options.
@@ -62,6 +62,12 @@ Actions
    Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
    the previously sampled first component of the same action.
 
+- `Custom action distribution class <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/custom_action_distribution.py>`__:
+   Demonstrates how to write a custom action distribution class, taking an additional temperature parameter on top of a Categorical
+   distribution, and how to configure this class inside your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation.
+   Further explains how to define different such classes for the different forward methods of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+   in case you need more granularity.
+
 - `Nested Action Spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py>`__:
    Sets up an environment with nested action spaces using custom single- or multi-agent
    configurations. This example demonstrates how RLlib manages complex action structures,
@@ -70,11 +76,24 @@ Actions
 
 Algorithms
 ++++++++++
+
+- `Custom implementation of the Model-Agnostic Meta-Learning (MAML) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/maml_lr_supervised_learning.py>`__:
+   Shows how to stably train a model in an "infinite-task" environment, where each task corresponds
+   to a sinusoidal function with randomly sampled amplitude and phase. Because each new task introduces
+   a shift in data distribution, traditional learning algorithms would fail to generalize.
+
 - `Custom "vanilla policy gradient" (VPG) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py>`__:
    Shows how to write a very simple policy gradient :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from scratch,
    including a matching :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`,
    a matching :py:class:`~ray.rllib.core.learner.learner.Learner` which defines the loss function,
    and the Algorithm's :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` implementation.
+
+- `Custom algorithm with a global, shared data actor for sending manipulated rewards from EnvRunners to Learners <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py>`__:
+   Shows how to write a custom shared data actor accessible from any of the Algorithm's other actors,
+   like :py:class:`~ray.rllib.env.env_runner.EnvRunner` and :py:class:`~ray.rllib.core.learner.learner.Learner` actors.
+   The new actor stores manipulated rewards from sampled episodes under unique, per-episode keys and then serves
+   this information to the :py:class:`~ray.rllib.core.learner.learner.Learner` for adding these rewards to the train
+   batch.
 
 
 Checkpoints
@@ -115,9 +134,20 @@ Connectors
    This type of filtering can improve learning stability in environments with highly variable state magnitudes
    by scaling observations to a normalized range.
 
+- `Multi-agent observation preprocessor enhancing non-Markovian observations to Markovian ones <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__:
+   A multi-agent preprocessor enhances the per-agent observations of a multi-agent env, which by themselves are non-Markovian,
+   partial observations and converts them into Markovian observations by adding information from
+   the respective other agent. A policy can only be trained optimally through this additional information.
+
 - `Prev-actions, prev-rewards connector <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
    Augments observations with previous actions and rewards, giving the agent a short-term memory of past events, which can improve
    decision-making in partially observable or sequentially dependent tasks.
+
+- `Single-agent observation preprocessor <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/single_agent_observation_preprocessor.py>`__:
+   A connector alters the CartPole-v1 environment observations from the Markovian 4-tuple (x-pos,
+   angular-pos, x-velocity, angular-velocity) to a non-Markovian, simpler 2-tuple (only
+   x-pos and angular-pos). The resulting problem can only be solved through a
+   memory/stateful model, for example an LSTM.
 
 
 Curiosity
@@ -146,6 +176,21 @@ Curriculum learning
    Demonstrates curriculum learning, where the environment difficulty increases as the agent improves.
    This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
    ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
+- `Curriculum learning for Atari Pong <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/pong_curriculum_learning.py>`__:
+   Demonstrates curriculum learning for Atari Pong using the `frameskip` to increase difficulty of the task.
+   This approach enables gradual learning, allowing agents to master slower reactions (lower `frameskip`) before progressing to more faster ones (higher `frameskip`).
+   Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
+
+Debugging
++++++++++
+
+- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+   Demonstrates the possibility to seed an experiment through the algorithm config. RLlib passes the seed through to all components that have a copy of the
+   :ref:`RL environment <rllib-environments-doc>` and the :ref:`RLModule <rlmodule-guide>` and thus makes sure these components behave deterministically.
+   When using a seed, train results should become repeatable. Note that some algorithms, such as :ref:`APPO <appo>` which rely on asynchronous sampling
+   in combination with Ray network communication always behave stochastically, no matter whether you set a seed or not.
 
 
 Environments
@@ -229,10 +274,14 @@ Inference of models or policies
 +++++++++++++++++++++++++++++++
 
 - `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
-   Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
+   Demonstrates performing inference using a checkpointed :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   First trains the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, creates a checkpoint, then re-loads the module from this checkpoint or ONNX file, and computes
+   actions in a simulated environment.
 
 - `Policy inference after training, with ConnectorV2 <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__:
-   Runs inference with a trained, LSTM-based policy using connectors, which preprocess observations and actions, allowing for more modular and flexible inference setups.
+   Runs inference with a trained, LSTM-based :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   Two connector pipelines, env-to-module and module-to-env, preprocess observations and LSTM-states and postprocess model outputs into actions,
+   allowing for very modular and flexible inference setups.
 
 
 Learners
@@ -272,8 +321,10 @@ Multi-agent RL
    a hand-coded random policy while another agent trains with PPO. This example highlights integrating static and dynamic policies,
    suitable for environments with a mix of fixed-strategy and adaptive agents.
 
-- `Different spaces for agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
+- `Different observation- and action spaces for different agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
    Configures agents with differing observation and action spaces within the same environment, showcasing RLlib's support for heterogeneous agents with varying space requirements in a single multi-agent environment.
+   Another example, which also makes use of connectors, and that covers the same topic, agents having different spaces, can be found
+   `here <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__.
 
 - `Grouped agents, two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
    Implements a multi-agent, grouped setup within a two-step game environment from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.

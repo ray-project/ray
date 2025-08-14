@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -18,6 +18,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
@@ -26,12 +27,12 @@ from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
-
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
+    from ray.data._internal.pandas_block import PandasBlockSchema
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
@@ -48,6 +49,10 @@ AggType = TypeVar("AggType")
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
+
+# Represents the schema of a block, which can be either a Python type or a
+# pyarrow schema. This is used to describe the structure of the data in a block.
+Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
 
 # Represents a single column of the ``Block``
 BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
@@ -97,6 +102,16 @@ BlockPartitionMetadata = List["BlockMetadata"]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
 DEFAULT_BATCH_FORMAT = "numpy"
+
+
+def _is_empty_schema(schema: Optional[Schema]) -> bool:
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    return schema is None or (
+        not schema.names
+        if isinstance(schema, PandasBlockSchema)
+        else not schema  # pyarrow schema check
+    )
 
 
 def _apply_batch_format(given_batch_format: Optional[str]) -> str:
@@ -206,14 +221,13 @@ class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
     #: The pyarrow schema or types of the block elements, or None.
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
 
     def to_stats(self):
         return BlockStats(
-            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+            **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
     def __post_init__(self):
@@ -221,6 +235,38 @@ class BlockMetadata(BlockStats):
 
         if self.input_files is None:
             self.input_files = []
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass
+class BlockMetadataWithSchema(BlockMetadata):
+    schema: Optional[Schema] = None
+
+    def __init__(self, metadata: BlockMetadata, schema: Optional["Schema"] = None):
+        super().__init__(
+            input_files=metadata.input_files,
+            size_bytes=metadata.size_bytes,
+            num_rows=metadata.num_rows,
+            exec_stats=metadata.exec_stats,
+        )
+        self.schema = schema
+
+    def from_block(
+        block: Block, stats: Optional["BlockExecStats"] = None
+    ) -> "BlockMetadataWithSchema":
+        accessor = BlockAccessor.for_block(block)
+        meta = accessor.get_metadata(exec_stats=stats)
+        schema = accessor.schema()
+        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+
+    @property
+    def metadata(self) -> BlockMetadata:
+        return BlockMetadata(
+            num_rows=self.num_rows,
+            size_bytes=self.size_bytes,
+            exec_stats=self.exec_stats,
+            input_files=self.input_files,
+        )
 
 
 @DeveloperAPI
@@ -349,7 +395,6 @@ class BlockAccessor:
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
-            schema=self.schema(),
             input_files=input_files,
             exec_stats=exec_stats,
         )
@@ -493,7 +538,7 @@ class BlockAccessor:
     @staticmethod
     def merge_sorted_blocks(
         blocks: List["Block"], sort_key: "SortKey"
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
@@ -503,8 +548,23 @@ class BlockAccessor:
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Aggregate partially combined and sorted blocks."""
+        raise NotImplementedError
+
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ) -> List[Block]:
+        """NOTE: PLEASE READ CAREFULLY
+
+        Returns dataset partitioned using list of boundaries
+
+        This method requires that
+            - Block being sorted (according to `sort_key`)
+            - Boundaries is a sorted list of tuples
+        """
         raise NotImplementedError
 
     def block_type(self) -> BlockType:
@@ -573,6 +633,21 @@ class BlockColumnAccessor:
         """Returns a mean of the values in the column"""
         raise NotImplementedError()
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        """Returns requested quantile of the given column"""
+        raise NotImplementedError()
+
+    def unique(self) -> BlockColumn:
+        """Returns new column holding only distinct values of the current one"""
+        raise NotImplementedError()
+
+    def flatten(self) -> BlockColumn:
+        """Flattens nested lists merging them into top-level container"""
+
+        raise NotImplementedError()
+
     def sum_of_squared_diffs_from_mean(
         self,
         *,
@@ -583,8 +658,16 @@ class BlockColumnAccessor:
         """Returns a sum of diffs (from mean) squared for the column"""
         raise NotImplementedError()
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """Converts underlying column to Numpy"""
+        raise NotImplementedError()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
     @staticmethod
@@ -593,7 +676,6 @@ class BlockColumnAccessor:
         _check_pyarrow_version()
 
         import pandas as pd
-        import pyarrow as pa
 
         if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
             from ray.data._internal.arrow_block import ArrowBlockColumnAccessor

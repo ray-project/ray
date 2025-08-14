@@ -38,7 +38,7 @@ if torch:
     TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
 else:
     TORCH_COMPILE_REQUIRED_VERSION = ValueError(
-        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+        "torch is not installed. TORCH_COMPILE_REQUIRED_VERSION is not defined."
     )
 
 
@@ -368,8 +368,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     Returns:
         The explained variance given a pair of labels and predictions.
     """
-    y_var = torch.var(y, dim=[0])
-    diff_var = torch.var(y - pred, dim=[0])
+    squeezed_y = y.squeeze()
+    y_var = torch.var(squeezed_y, dim=0)
+    diff_var = torch.var(squeezed_y - pred.squeeze(), dim=0)
     min_ = torch.tensor([-1.0]).to(pred.device)
     return torch.max(min_, 1 - (diff_var / (y_var + SMALL_NUMBER)))[0]
 
@@ -716,12 +717,22 @@ def set_torch_seed(seed: Optional[int] = None) -> None:
         # See https://github.com/pytorch/pytorch/issues/47672.
         cuda_version = torch.version.cuda
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
-            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+            # See https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility.
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)  # if using multi-GPU
         else:
-            # Not all Operations support this.
-            torch.use_deterministic_algorithms(True)
+            if version.Version(torch.__version__) >= version.Version("1.8.0"):
+                # Not all Operations support this.
+                torch.use_deterministic_algorithms(True)
+            else:
+                torch.set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
+        # For benchmark=True, CuDNN may choose different algorithms depending on runtime
+        # conditions or slight differences in input sizes, even if the seed is fixed,
+        # which breaks determinism.
+        torch.backends.cudnn.benchmark = False
 
 
 @PublicAPI
@@ -739,6 +750,129 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
+
+
+@PublicAPI
+def symlog(x: "torch.Tensor") -> "torch.Tensor":
+    """The symlog function as described in [1]:
+
+    [1] Mastering Diverse Domains through World Models - 2023
+    D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
+    https://arxiv.org/pdf/2301.04104v1.pdf
+    """
+    return torch.sign(x) * torch.log(torch.abs(x) + 1)
+
+
+@PublicAPI
+def inverse_symlog(y: "torch.Tensor") -> "torch.Tensor":
+    """Inverse of the `symlog` function as desribed in [1]:
+
+    [1] Mastering Diverse Domains through World Models - 2023
+    D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
+    https://arxiv.org/pdf/2301.04104v1.pdf
+    """
+    # To get to symlog inverse, we solve the symlog equation for x:
+    #     y = sign(x) * log(|x| + 1)
+    # <=> y / sign(x) = log(|x| + 1)
+    # <=> y =  log( x + 1) V x >= 0
+    #    -y =  log(-x + 1) V x <  0
+    # <=> exp(y)  =  x + 1  V x >= 0
+    #     exp(-y) = -x + 1  V x <  0
+    # <=> exp(y)  - 1 =  x   V x >= 0
+    #     exp(-y) - 1 = -x   V x <  0
+    # <=>  exp(y)  - 1 = x   V x >= 0 (if x >= 0, then y must also be >= 0)
+    #     -exp(-y) - 1 = x   V x <  0 (if x < 0, then y must also be < 0)
+    # <=> sign(y) * (exp(|y|) - 1) = x
+    return torch.sign(y) * (torch.exp(torch.abs(y)) - 1)
+
+
+@PublicAPI
+def two_hot(
+    value: "torch.Tensor",
+    num_buckets: int = 255,
+    lower_bound: float = -20.0,
+    upper_bound: float = 20.0,
+    device: Optional[str] = None,
+):
+    """Returns a two-hot vector of dim=num_buckets with two entries that are non-zero.
+
+    See [1] for more details:
+    [1] Mastering Diverse Domains through World Models - 2023
+    D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
+    https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Entries in the vector represent equally sized buckets within some fixed range
+    (`lower_bound` to `upper_bound`).
+    Those entries not 0.0 at positions k and k+1 encode the actual `value` and sum
+    up to 1.0. They are the weights multiplied by the buckets values at k and k+1 for
+    retrieving `value`.
+
+    Example:
+        num_buckets=11
+        lower_bound=-5
+        upper_bound=5
+        value=2.5
+        -> [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0]
+        -> [-5   -4   -3   -2   -1   0    1    2    3    4    5] (0.5*2 + 0.5*3=2.5)
+
+    Example:
+        num_buckets=5
+        lower_bound=-1
+        upper_bound=1
+        value=0.1
+        -> [0.0, 0.0, 0.8, 0.2, 0.0]
+        -> [-1  -0.5   0   0.5   1] (0.2*0.5 + 0.8*0=0.1)
+
+    Args:
+        value: The input tensor of shape (B,) to be two-hot encoded.
+        num_buckets: The number of buckets to two-hot encode into.
+        lower_bound: The lower bound value used for the encoding. If input values are
+            lower than this boundary, they will be encoded as `lower_bound`.
+        upper_bound: The upper bound value used for the encoding. If input values are
+            higher than this boundary, they will be encoded as `upper_bound`.
+
+    Returns:
+        The two-hot encoded tensor of shape (B, num_buckets).
+    """
+    # First make sure, values are clipped.
+    value = torch.clamp(value, lower_bound, upper_bound)
+    # Tensor of batch indices: [0, B=batch size).
+    batch_indices = torch.arange(0, value.shape[0], device=device).float()
+    # Calculate the step deltas (how much space between each bucket's central value?).
+    bucket_delta = (upper_bound - lower_bound) / (num_buckets - 1)
+    # Compute the float indices (might be non-int numbers: sitting between two buckets).
+    idx = (-lower_bound + value) / bucket_delta
+    # k
+    k = torch.floor(idx)
+    # k+1
+    kp1 = torch.ceil(idx)
+    # In case k == kp1 (idx is exactly on the bucket boundary), move kp1 up by 1.0.
+    # Otherwise, this would result in a NaN in the returned two-hot tensor.
+    kp1 = torch.where(k.eq(kp1), kp1 + 1.0, kp1)
+    # Iff `kp1` is one beyond our last index (because incoming value is larger than
+    # `upper_bound`), move it to one before k (kp1's weight is going to be 0.0 anyways,
+    # so it doesn't matter where it points to; we are just avoiding an index error
+    # with this).
+    kp1 = torch.where(kp1.eq(num_buckets), kp1 - 2.0, kp1)
+    # The actual values found at k and k+1 inside the set of buckets.
+    values_k = lower_bound + k * bucket_delta
+    values_kp1 = lower_bound + kp1 * bucket_delta
+    # Compute the two-hot weights (adding up to 1.0) to use at index k and k+1.
+    weights_k = (value - values_kp1) / (values_k - values_kp1)
+    weights_kp1 = 1.0 - weights_k
+    # Compile a tensor of full paths (indices from batch index to feature index) to
+    # use for the scatter_nd op.
+    indices_k = torch.stack([batch_indices, k], dim=-1)
+    indices_kp1 = torch.stack([batch_indices, kp1], dim=-1)
+    indices = torch.cat([indices_k, indices_kp1], dim=0).long()
+    # The actual values (weights adding up to 1.0) to place at the computed indices.
+    updates = torch.cat([weights_k, weights_kp1], dim=0)
+    # Call the actual scatter update op, returning a zero-filled tensor, only changed
+    # at the given indices.
+    output = torch.zeros(value.shape[0], num_buckets, device=device)
+    # Set our two-hot values at computed indices.
+    output[indices[:, 0], indices[:, 1]] = updates
+    return output
 
 
 def _dynamo_is_available():

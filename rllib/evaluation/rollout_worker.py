@@ -388,7 +388,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         if not (
             self.worker_index == 0
             and self.num_workers > 0
-            and not self.config.create_env_on_local_worker
+            and not self.config.create_local_env_runner
         ):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(copy.deepcopy(self.env_context))
@@ -664,7 +664,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             raise ValueError(
                 "RolloutWorker has no `input_reader` object! "
                 "Cannot call `sample()`. You can try setting "
-                "`create_env_on_driver` to True."
+                "`create_local_env_runner` to True."
             )
 
         if log_once("sample_start"):

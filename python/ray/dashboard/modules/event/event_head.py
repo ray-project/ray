@@ -6,16 +6,16 @@ from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from itertools import islice
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 import aiohttp.web
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.core.generated import event_pb2, event_pb2_grpc
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
@@ -23,10 +23,11 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
 from ray.dashboard.state_api_utils import do_filter, handle_list_api
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.util.state.common import ClusterEventState, ListApiOptions, ListApiResponse
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
@@ -80,12 +81,11 @@ async def _list_cluster_events_impl(
 
 
 class EventHead(
-    dashboard_utils.DashboardHeadModule,
+    SubprocessModule,
     dashboard_utils.RateLimitedModule,
-    event_pb2_grpc.ReportEventServiceServicer,
 ):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        dashboard_utils.DashboardHeadModule.__init__(self, config)
+    def __init__(self, *args, **kwargs):
+        SubprocessModule.__init__(self, *args, **kwargs)
         dashboard_utils.RateLimitedModule.__init__(
             self,
             min(
@@ -106,6 +106,10 @@ class EventHead(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
             thread_name_prefix="event_head_executor",
         )
+
+        # To init gcs_client in internal_kv for record_extra_usage_tag.
+        assert self.gcs_client is not None
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
     async def limit_handler_(self):
         return dashboard_optional_utils.rest_response(
@@ -143,15 +147,31 @@ class EventHead(
                 while len(job_events) > MAX_EVENTS_TO_CACHE:
                     job_events.popitem(last=False)
 
-    async def ReportEvents(self, request, context):
-        received_events = []
-        if request.event_strings:
-            received_events.extend(parse_event_strings(request.event_strings))
-        logger.debug("Received %d events", len(received_events))
-        self._update_events(received_events)
+    @routes.post("/report_events")
+    async def report_events(self, request):
+        """
+        Report events to the dashboard.
+        The request body is a JSON array of event strings in type string.
+        Response should contain {"success": true}.
+        """
+        try:
+            request_body: List[str] = await request.json()
+        except Exception as e:
+            logger.warning(f"Failed to parse request body: {request=}, {e=}")
+            raise aiohttp.web.HTTPBadRequest()
+        if not isinstance(request_body, list):
+            logger.warning(f"Request body is not a list, {request_body=}")
+            raise aiohttp.web.HTTPBadRequest()
+        events = parse_event_strings(request_body)
+        logger.debug("Received %d events", len(events))
+        self._update_events(events)
         self.total_report_events_count += 1
-        self.total_events_received += len(received_events)
-        return event_pb2.ReportEventsReply(send_success=True)
+        self.total_events_received += len(events)
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="",
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+        )
 
     async def _periodic_state_print(self):
         if self.total_events_received <= 0 or self.total_report_events_count <= 0:
@@ -201,14 +221,10 @@ class EventHead(
 
         return await handle_list_api(list_api_fn, req)
 
-    async def run(self, server):
-        event_pb2_grpc.add_ReportEventServiceServicer_to_server(self, server)
+    async def run(self):
+        await super().run()
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             self._executor,
         )
-
-    @staticmethod
-    def is_minimal_module():
-        return False

@@ -36,10 +36,10 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				},
 				"team": {
@@ -102,10 +102,10 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"type":{
+				"type": {
 					"type": "string"
 				},
-				"post_build_script":{
+				"post_build_script": {
 					"type": "string"
 				},
 				"pip": {
@@ -115,8 +115,7 @@
 					"type": "array"
 				}
 			},
-			"required": [
-			],
+			"required": [],
 			"title": "Byod"
 		},
 		"Run": {
@@ -201,10 +200,10 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				}
 			},

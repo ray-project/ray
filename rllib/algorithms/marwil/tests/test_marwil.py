@@ -225,18 +225,10 @@ class TestMARWIL(unittest.TestCase):
         learner_results = algo.learner_group._learner.metrics.peek(DEFAULT_MODULE_ID)
 
         # Check all components.
-        check(
-            learner_results[VF_LOSS_KEY].detach().cpu().numpy(),
-            expected_vf_loss,
-            decimals=4,
-        )
-        check(
-            learner_results[POLICY_LOSS_KEY].detach().cpu().numpy(),
-            expected_pol_loss,
-            decimals=4,
-        )
+        check(learner_results[VF_LOSS_KEY], expected_vf_loss, decimals=4)
+        check(learner_results[POLICY_LOSS_KEY], expected_pol_loss, decimals=4)
         # Check the total loss.
-        check(total_loss.detach().cpu().numpy(), expected_loss, decimals=3)
+        check(total_loss, expected_loss, decimals=3)
 
 
 if __name__ == "__main__":

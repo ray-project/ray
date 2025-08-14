@@ -35,57 +35,59 @@ namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 /// Disable gRPC server metrics since it incurs too high cardinality.
-#define RAY_CORE_WORKER_RPC_HANDLERS                                  \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PushTask)                       \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DirectActorCallArgWaitComplete) \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RayletNotifyGCSRestart)         \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectStatus)                \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorRefDeleted)         \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubLongPolling)              \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubCommandBatch)             \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(UpdateObjectLocationBatch)      \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectLocationsOwner)        \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ReportGeneratorItemReturns)     \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(KillActor)                      \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(CancelTask)                     \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RemoteCancelTask)               \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RegisterMutableObjectReader)    \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetCoreWorkerStats)             \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(LocalGC)                        \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteObjects)                  \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(SpillObjects)                   \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RestoreSpilledObjects)          \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteSpilledObjects)           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)              \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)              \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PushTask)                    \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ActorCallArgWaitComplete)    \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RayletNotifyGCSRestart)      \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectStatus)             \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorRefDeleted)      \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubLongPolling)           \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubCommandBatch)          \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(UpdateObjectLocationBatch)   \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectLocationsOwner)     \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ReportGeneratorItemReturns)  \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(KillActor)                   \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(CancelTask)                  \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RemoteCancelTask)            \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RegisterMutableObjectReader) \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetCoreWorkerStats)          \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(LocalGC)                     \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteObjects)               \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(SpillObjects)                \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RestoreSpilledObjects)       \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteSpilledObjects)        \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)           \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                        \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)           \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)             \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(FreeActorObject)
 
-#define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RayletNotifyGCSRestart)         \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorRefDeleted)         \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubCommandBatch)             \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UpdateObjectLocationBatch)      \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectLocationsOwner)        \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReportGeneratorItemReturns)     \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RegisterMutableObjectReader)    \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteObjects)                  \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)
+#define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                    \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ActorCallArgWaitComplete)    \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RayletNotifyGCSRestart)      \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)             \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorRefDeleted)      \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubCommandBatch)          \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UpdateObjectLocationBatch)   \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectLocationsOwner)     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReportGeneratorItemReturns)  \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                   \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                  \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)            \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RegisterMutableObjectReader) \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)          \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteObjects)               \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)       \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)             \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(FreeActorObject)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler : public DelayedServiceHandler {

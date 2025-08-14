@@ -22,6 +22,8 @@ _IS_FIELD_METRIC_KEY = "__is_metric"
 # Metadata keys used to store information about a metric.
 _METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
 _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
+_METRIC_FIELD_METRICS_TYPE_KEY = "__metric_metrics_type"
+_METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
@@ -36,6 +38,12 @@ class MetricsGroup(Enum):
     OBJECT_STORE_MEMORY = "object_store_memory"
     MISC = "misc"
     ACTORS = "actors"
+
+
+class MetricsType(Enum):
+    Counter = 0
+    Gauge = 1
+    Histogram = 2
 
 
 @dataclass(frozen=True)
@@ -54,16 +62,22 @@ class MetricDefinition:
     name: str
     description: str
     metrics_group: str
+    metrics_type: MetricsType
+    metrics_args: Dict[str, Any]
     # TODO: Let's refactor this parameter so it isn't tightly coupled with a specific
     # operator type (MapOperator).
     map_only: bool = False
+    internal_only: bool = False  # do not expose this metric to the user
 
 
 def metric_field(
     *,
     description: str,
     metrics_group: str,
+    metrics_type: MetricsType = MetricsType.Gauge,
+    metrics_args: Dict[str, Any] = None,
     map_only: bool = False,
+    internal_only: bool = False,  # do not expose this metric to the user
     **field_kwargs,
 ):
     """A dataclass field that represents a metric."""
@@ -73,6 +87,8 @@ def metric_field(
 
     metadata[_METRIC_FIELD_DESCRIPTION_KEY] = description
     metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
+    metadata[_METRIC_FIELD_METRICS_TYPE_KEY] = metrics_type
+    metadata[_METRIC_FIELD_METRICS_ARGS_KEY] = metrics_args or {}
     metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY] = map_only
 
     return field(metadata=metadata, **field_kwargs)
@@ -82,7 +98,10 @@ def metric_property(
     *,
     description: str,
     metrics_group: str,
+    metrics_type: MetricsType = MetricsType.Gauge,
+    metrics_args: Dict[str, Any] = None,
     map_only: bool = False,
+    internal_only: bool = False,  # do not expose this metric to the user
 ):
     """A property that represents a metric."""
 
@@ -91,7 +110,10 @@ def metric_property(
             name=func.__name__,
             description=description,
             metrics_group=metrics_group,
+            metrics_type=metrics_type,
+            metrics_args=(metrics_args or {}),
             map_only=map_only,
+            internal_only=internal_only,
         )
 
         _METRICS.append(metric)
@@ -106,7 +128,9 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    num_rows_produced: int
     start_time: float
+    cum_block_gen_time: float
 
 
 @dataclass
@@ -132,6 +156,8 @@ class OpRuntimesMetricsMeta(type):
                     name=name,
                     description=value.metadata[_METRIC_FIELD_DESCRIPTION_KEY],
                     metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
+                    metrics_type=value.metadata[_METRIC_FIELD_METRICS_TYPE_KEY],
+                    metrics_args=value.metadata[_METRIC_FIELD_METRICS_ARGS_KEY],
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
@@ -206,6 +232,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of input blocks received by operator.",
         metrics_group=MetricsGroup.INPUTS,
     )
+    num_row_inputs_received: int = metric_field(
+        default=0,
+        description="Number of input rows received by operator.",
+        metrics_group=MetricsGroup.INPUTS,
+    )
     bytes_inputs_received: int = metric_field(
         default=0,
         description="Byte size of input blocks received by operator.",
@@ -217,7 +248,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "Number of input blocks that operator's tasks have finished processing."
         ),
         metrics_group=MetricsGroup.INPUTS,
-        map_only=True,
     )
     bytes_task_inputs_processed: int = metric_field(
         default=0,
@@ -225,13 +255,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "Byte size of input blocks that operator's tasks have finished processing."
         ),
         metrics_group=MetricsGroup.INPUTS,
-        map_only=True,
     )
     bytes_inputs_of_submitted_tasks: int = metric_field(
         default=0,
         description="Byte size of input blocks passed to submitted tasks.",
         metrics_group=MetricsGroup.INPUTS,
-        map_only=True,
+    )
+    rows_inputs_of_submitted_tasks: int = metric_field(
+        default=0,
+        description="Number of rows in the input blocks passed to submitted tasks.",
+        metrics_group=MetricsGroup.INPUTS,
     )
 
     # === Outputs-related metrics ===
@@ -239,19 +272,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Number of output blocks generated by tasks.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
     )
     bytes_task_outputs_generated: int = metric_field(
         default=0,
         description="Byte size of output blocks generated by tasks.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
     )
     rows_task_outputs_generated: int = metric_field(
         default=0,
         description="Number of output rows generated by tasks.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
+    )
+    row_outputs_taken: int = metric_field(
+        default=0,
+        description="Number of rows that are already taken by downstream operators.",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    block_outputs_taken: int = metric_field(
+        default=0,
+        description="Number of blocks that are already taken by downstream operators.",
+        metrics_group=MetricsGroup.OUTPUTS,
     )
     num_outputs_taken: int = metric_field(
         default=0,
@@ -271,15 +311,28 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Number of generated output blocks that are from finished tasks.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
     )
     bytes_outputs_of_finished_tasks: int = metric_field(
         default=0,
         description=(
-            "Byte size of generated output blocks that are from finished tasks."
+            "Total byte size of generated output blocks produced by finished tasks."
         ),
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
+    )
+    rows_outputs_of_finished_tasks: int = metric_field(
+        default=0,
+        description=("Number of rows generated by finished tasks."),
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    num_output_queue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the output queue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    num_output_queue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the output queue",
+        metrics_group=MetricsGroup.OUTPUTS,
     )
 
     # === Tasks-related metrics ===
@@ -287,41 +340,71 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Number of submitted tasks.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     num_tasks_running: int = metric_field(
         default=0,
         description="Number of running tasks.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     num_tasks_have_outputs: int = metric_field(
         default=0,
         description="Number of tasks that already have output.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     num_tasks_finished: int = metric_field(
         default=0,
         description="Number of finished tasks.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     num_tasks_failed: int = metric_field(
         default=0,
         description="Number of failed tasks.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     block_generation_time: float = metric_field(
         default=0,
         description="Time spent generating blocks in tasks.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     task_submission_backpressure_time: float = metric_field(
         default=0,
         description="Time spent in task submission backpressure.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_output_backpressure_time: float = metric_field(
+        default=0,
+        description="Time spent in task output backpressure.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    histogram_buckets_s = [
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        7.5,
+        10.0,
+        15.0,
+        20.0,
+        25.0,
+        50.0,
+        75.0,
+        100.0,
+        150.0,
+        500.0,
+        1000.0,
+        2500.0,
+        5000.0,
+    ]
+    task_completion_time: float = metric_field(
+        default=0,
+        description="Time spent running tasks to completion.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_completion_time_without_backpressure: float = metric_field(
+        default=0,
+        description="Time spent running tasks to completion without backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
 
@@ -357,13 +440,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Byte size of freed memory in object store.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-        map_only=True,
     )
     obj_store_mem_spilled: int = metric_field(
         default=0,
         description="Byte size of spilled memory in object store.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-        map_only=True,
     )
     obj_store_mem_used: int = metric_field(
         default=0,
@@ -383,6 +464,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+        # Start time of current pause due to task output backpressure
+        self._task_output_backpressure_start_time = -1
 
         self._internal_inqueue = create_bundle_queue()
         self._internal_outqueue = create_bundle_queue()
@@ -393,6 +476,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
         self._cum_max_uss_bytes: Optional[int] = None
+        self._issue_detector_hanging = 0
+        self._issue_detector_high_memory = 0
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -403,11 +488,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def get_metrics(self) -> List[MetricDefinition]:
         return list(_METRICS)
 
-    def as_dict(self):
+    def as_dict(self, skip_internal_metrics: bool = False) -> Dict[str, Any]:
         """Return a dict representation of the metrics."""
         result = []
         for metric in self.get_metrics():
             if not self._is_map and metric.map_only:
+                continue
+            if skip_internal_metrics and metric.internal_only:
                 continue
             value = getattr(self, metric.name)
             result.append((metric.name, value))
@@ -427,7 +514,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Average number of blocks generated per task.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
     )
     def average_num_outputs_per_task(self) -> Optional[float]:
         """Average number of output blocks per task, or None if no task has finished."""
@@ -439,7 +525,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Average size of task output in bytes.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
     )
     def average_bytes_per_output(self) -> Optional[float]:
         """Average size in bytes of output blocks."""
@@ -467,7 +552,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Byte size of input blocks used by pending tasks.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-        map_only=True,
     )
     def obj_store_mem_pending_task_inputs(self) -> int:
         return self._pending_task_inputs.estimate_size_bytes()
@@ -505,7 +589,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
+        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
+        # estimate – just bail out.
         if bytes_per_output is None:
+            if context.target_max_block_size is None:
+                return None
             bytes_per_output = context.target_max_block_size
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
@@ -518,7 +606,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Average size of task inputs in bytes.",
         metrics_group=MetricsGroup.INPUTS,
-        map_only=True,
     )
     def average_bytes_inputs_per_task(self) -> Optional[float]:
         """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
@@ -529,9 +616,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.bytes_inputs_of_submitted_tasks / self.num_tasks_submitted
 
     @metric_property(
+        description="Average number of rows passed in to the task.",
+        metrics_group=MetricsGroup.INPUTS,
+    )
+    def average_rows_inputs_per_task(self) -> Optional[float]:
+        """Average number of rows in input blocks per task,
+        or None if no task has been submitted."""
+        if self.num_tasks_submitted == 0:
+            return None
+        else:
+            return self.rows_inputs_of_submitted_tasks / self.num_tasks_submitted
+
+    @metric_property(
         description="Average total output size of task in bytes.",
         metrics_group=MetricsGroup.OUTPUTS,
-        map_only=True,
     )
     def average_bytes_outputs_per_task(self) -> Optional[float]:
         """Average size in bytes of output blocks per task,
@@ -542,9 +640,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
 
     @metric_property(
+        description="Average number of rows produced per task.",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    def average_rows_outputs_per_task(self) -> Optional[float]:
+        """Average number of rows in output blocks per task,
+        or None if no task has finished."""
+        if self.num_tasks_finished == 0:
+            return None
+        else:
+            return self.rows_outputs_of_finished_tasks / self.num_tasks_finished
+
+    @metric_property(
         description="Average USS usage of tasks.",
         metrics_group=MetricsGroup.TASKS,
-        map_only=True,
     )
     def average_max_uss_per_task(self) -> Optional[float]:
         """Average max USS usage of tasks."""
@@ -554,9 +663,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
             return self._cum_max_uss_bytes / self.num_task_outputs_generated
 
+    @metric_property(
+        description="Indicates if the operator is hanging.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    def issue_detector_hanging(self) -> int:
+        return self._issue_detector_hanging
+
+    @metric_property(
+        description="Indicates if the operator is using high memory.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    def issue_detector_high_memory(self) -> int:
+        return self._issue_detector_high_memory
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
+        self.num_row_inputs_received += input.num_rows() or 0
         self.bytes_inputs_received += input.size_bytes()
 
     def on_input_queued(self, input: RefBundle):
@@ -602,9 +728,21 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             )
             self._task_submission_backpressure_start_time = -1
 
+    def on_toggle_task_output_backpressure(self, in_backpressure):
+        if in_backpressure and self._task_output_backpressure_start_time == -1:
+            # backpressure starting, start timer
+            self._task_output_backpressure_start_time = time.perf_counter()
+        elif self._task_output_backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            delta = time.perf_counter() - self._task_output_backpressure_start_time
+            self.task_output_backpressure_time += delta
+            self._task_output_backpressure_start_time = -1
+
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
         self.num_outputs_taken += 1
+        self.block_outputs_taken += len(output)
+        self.row_outputs_taken += output.num_rows() or 0
         self.bytes_outputs_taken += output.size_bytes()
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):
@@ -612,32 +750,42 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
+        self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
         self._running_tasks[task_index] = RunningTaskInfo(
-            inputs, 0, 0, time.perf_counter()
+            inputs=inputs,
+            num_outputs=0,
+            bytes_outputs=0,
+            num_rows_produced=0,
+            start_time=time.perf_counter(),
+            cum_block_gen_time=0,
         )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
         num_outputs = len(output)
         output_bytes = output.size_bytes()
+        num_rows_produced = output.num_rows()
 
         self.num_task_outputs_generated += num_outputs
         self.bytes_task_outputs_generated += output_bytes
+        self.rows_task_outputs_generated += num_rows_produced
 
         task_info = self._running_tasks[task_index]
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
+
         task_info.num_outputs += num_outputs
         task_info.bytes_outputs += output_bytes
+        task_info.num_rows_produced += num_rows_produced
 
         for block_ref, meta in output.blocks:
             assert (
                 meta.exec_stats is not None and meta.exec_stats.wall_time_s is not None
             )
             self.block_generation_time += meta.exec_stats.wall_time_s
+            task_info.cum_block_gen_time += meta.exec_stats.wall_time_s
             assert meta.num_rows is not None
-            self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
             if meta.exec_stats.max_uss_bytes is not None:
                 if self._cum_max_uss_bytes is None:
@@ -662,12 +810,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.num_tasks_failed += 1
 
         task_info = self._running_tasks[task_index]
+
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
-        self._op_task_duration_stats.add_duration(
-            time.perf_counter() - task_info.start_time
-        )
+        self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
+        task_time_delta = time.perf_counter() - task_info.start_time
+        self.task_completion_time += task_time_delta
+
+        assert task_info.cum_block_gen_time is not None
+        self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()

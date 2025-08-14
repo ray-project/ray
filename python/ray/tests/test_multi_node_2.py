@@ -1,13 +1,13 @@
 import logging
+import sys
 import time
 
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     generate_system_config_map,
-    wait_for_condition,
 )
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.sdk import request_resources
@@ -365,11 +365,4 @@ def test_multi_node_pgs(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

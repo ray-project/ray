@@ -20,7 +20,6 @@
 
 // clang-format off
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -41,8 +40,8 @@ class GcsJobManagerTest : public ::testing::Test {
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
     std::promise<bool> promise;
     thread_io_service_ = std::make_unique<std::thread>([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     });
@@ -54,15 +53,16 @@ class GcsJobManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
     // just for testing purposes.
-    client_factory_ = [](const rpc::Address &address) {
-      return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
-          address.port());
-    };
+    worker_client_pool_ =
+        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &address) {
+          return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
+              address.port());
+        });
     log_dir_ = "event_12345";
   }
 
@@ -78,10 +78,10 @@ class GcsJobManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::CoreWorkerClientFactoryFn client_factory_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -109,10 +109,10 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     client_factory_);
+                                     *worker_client_pool_);
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager.Initialize(gcs_init_data);
 
   auto job_api_job_id = JobID::FromInt(100);
   std::string submission_id = "submission_id_100";

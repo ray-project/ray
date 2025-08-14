@@ -21,11 +21,11 @@
 
 #include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
 #include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/memory_object_reader.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/path_utils.h"
 
 namespace ray {
 
@@ -138,9 +138,9 @@ TEST(SpilledObjectReaderTest, ParseObjectHeader) {
   auto assert_parse_success = [](uint64_t object_offset,
                                  std::string data,
                                  std::string metadata,
-                                 std::string raylet_id) {
+                                 std::string node_id) {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(raylet_id);
+    owner_address.set_node_id(node_id);
     auto str = ContructObjectString(object_offset, data, metadata, owner_address);
     uint64_t actual_data_offset = 0;
     uint64_t actual_data_size = 0;
@@ -162,7 +162,7 @@ TEST(SpilledObjectReaderTest, ParseObjectHeader) {
               actual_data_offset);
     ASSERT_EQ(data.size(), actual_data_size);
     ASSERT_EQ(metadata.size(), actual_metadata_size);
-    ASSERT_EQ(owner_address.raylet_id(), actual_owner_address.raylet_id());
+    ASSERT_EQ(owner_address.node_id(), actual_owner_address.node_id());
     ASSERT_EQ(data, str.substr(actual_data_offset, actual_data_size));
     ASSERT_EQ(metadata, str.substr(actual_metadata_offset, actual_metadata_size));
   };
@@ -171,13 +171,13 @@ TEST(SpilledObjectReaderTest, ParseObjectHeader) {
   std::vector<std::string> data_list{"", "somedata", large_data};
   std::string large_metadata(10000, 'm');
   std::vector<std::string> metadata_list{"", "somemetadata", large_metadata};
-  std::vector<std::string> raylet_ids{"", "yes", "laaaaaaaarrrrrggge"};
+  std::vector<std::string> node_ids{"", "yes", "laaaaaaaarrrrrggge"};
 
   for (auto offset : offsets) {
     for (auto &data : data_list) {
       for (auto &metadata : metadata_list) {
-        for (auto &raylet_id : raylet_ids) {
-          assert_parse_success(offset, data, metadata, raylet_id);
+        for (auto &node_id : node_ids) {
+          assert_parse_success(offset, data, metadata, node_id);
         }
       }
     }
@@ -249,7 +249,7 @@ TEST(ChunkObjectReaderTest, GetNumChunks) {
   auto assert_get_num_chunks =
       [](uint64_t data_size, uint64_t chunk_size, uint64_t expected_num_chunks) {
         rpc::Address owner_address;
-        owner_address.set_raylet_id("nonsense");
+        owner_address.set_node_id("nonsense");
         ChunkObjectReader reader(std::make_shared<SpilledObjectReader>(
                                      SpilledObjectReader("path",
                                                          100 /* object_size */,
@@ -334,12 +334,12 @@ TYPED_TEST(ObjectReaderTest, Getters) {
   std::string data("data");
   std::string metadata("metadata");
   rpc::Address owner_address;
-  owner_address.set_raylet_id("nonsense");
+  owner_address.set_node_id("nonsense");
   auto obj_reader = this->CreateObjectReader_(data, metadata, owner_address);
   ASSERT_EQ(data.size(), obj_reader->GetDataSize());
   ASSERT_EQ(metadata.size(), obj_reader->GetMetadataSize());
   ASSERT_EQ(data.size() + metadata.size(), obj_reader->GetObjectSize());
-  ASSERT_EQ(owner_address.raylet_id(), obj_reader->GetOwnerAddress().raylet_id());
+  ASSERT_EQ(owner_address.node_id(), obj_reader->GetOwnerAddress().node_id());
 }
 
 TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
@@ -386,7 +386,7 @@ TYPED_TEST(ObjectReaderTest, GetChunk) {
     for (auto &metadata : list_metadata) {
       std::vector<uint64_t> chunk_sizes{1, 2, 3, 5, 100};
       rpc::Address owner_address;
-      owner_address.set_raylet_id("nonsense");
+      owner_address.set_node_id("nonsense");
 
       std::string expected_output = data + metadata;
       if (expected_output.size() != 0) {
@@ -421,8 +421,8 @@ TEST(StringAllocationTest, TestNoCopyWhenStringMoved) {
   std::string s(1000, '\0');
   auto allocation_address = s.c_str();
   rpc::Address address;
-  address.set_raylet_id(std::move(s));
-  EXPECT_EQ(allocation_address, address.raylet_id().c_str());
+  address.set_node_id(std::move(s));
+  EXPECT_EQ(allocation_address, address.node_id().c_str());
 }
 
 TEST(StringAllocationTest, TestCopyWhenPassByPointer) {
@@ -431,8 +431,8 @@ TEST(StringAllocationTest, TestCopyWhenPassByPointer) {
   char arr[1000];
   auto allocation_address = &arr[0];
   rpc::Address address;
-  address.set_raylet_id(allocation_address, 1000);
-  EXPECT_NE(allocation_address, address.raylet_id().c_str());
+  address.set_node_id(allocation_address, 1000);
+  EXPECT_NE(allocation_address, address.node_id().c_str());
 }
 }  // namespace ray
 

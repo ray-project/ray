@@ -6,7 +6,7 @@ orphan: true
 
 # Serve a Stable Diffusion Model
 
-<a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-serve-stable-diffusion-quickstart&redirectTo=/v2/template-preview/serve-stable-diffusion-v2">
+<a href="https://https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-serve-stable-diffusion-quickstart&redirectTo=/v2/template-preview/serve-stable-diffusion-v2">
     <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
 </a>
 <br></br>

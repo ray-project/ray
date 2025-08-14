@@ -11,12 +11,12 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.utils import remove_ray_internal_flags_from_env
-from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -25,6 +25,7 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
+from ray._common.network_utils import build_address
 
 import psutil
 
@@ -76,8 +77,8 @@ class JobSupervisor:
         logs_dir: Optional[str] = None,
     ):
         self._job_id = job_id
-        gcs_aio_client = GcsAioClient(address=gcs_address, cluster_id=cluster_id_hex)
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
+        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
+        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -250,7 +251,7 @@ class JobSupervisor:
         if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
             os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
         ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
+            "auto", ray._private.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
         return {
@@ -335,11 +336,8 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        driver_agent_http_address = (
-            "http://"
-            f"{ray.worker.global_worker.node.node_ip_address}:"
-            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
-        )
+        node = ray._private.worker.global_worker.node
+        driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
 
         await self._job_info_client.put_status(

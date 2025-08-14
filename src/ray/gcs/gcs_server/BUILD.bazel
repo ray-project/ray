@@ -1,0 +1,278 @@
+load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library")
+
+ray_cc_library(
+    name = "gcs_state_util",
+    srcs = ["state_util.cc"],
+    hdrs = ["state_util.h"],
+    deps = [
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_table_storage",
+    srcs = ["gcs_table_storage.cc"],
+    hdrs = ["gcs_table_storage.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/gcs:gcs_callback",
+        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
+        "//src/ray/gcs/store_client:gcs_observable_store_client",
+        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_init_data",
+    srcs = ["gcs_init_data.cc"],
+    hdrs = ["gcs_init_data.h"],
+    deps = [
+        ":gcs_table_storage",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/gcs:gcs_callback",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_kv_manager",
+    srcs = ["gcs_kv_manager.cc"],
+    hdrs = ["gcs_kv_manager.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:gcs_server",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_function_manager",
+    hdrs = ["gcs_function_manager.h"],
+    deps = [
+        ":gcs_kv_manager",
+        "//src/ray/common:asio",
+        "//src/ray/common:constants",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_usage_stats_client",
+    srcs = ["usage_stats_client.cc"],
+    hdrs = ["usage_stats_client.h"],
+    deps = [
+        ":gcs_kv_manager",
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:usage_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_store_client_kv",
+    srcs = ["store_client_kv.cc"],
+    hdrs = ["store_client_kv.h"],
+    deps = [
+        ":gcs_kv_manager",
+        "//src/ray/gcs/store_client:gcs_store_client",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_pubsub_handler",
+    srcs = ["pubsub_handler.cc"],
+    hdrs = ["pubsub_handler.h"],
+    deps = [
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/rpc:gcs_server",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_runtime_env_handler",
+    srcs = ["runtime_env_handler.cc"],
+    hdrs = ["runtime_env_handler.h"],
+    deps = [
+        "//src/ray/common:runtime_env",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:gcs_server",
+        "//src/ray/util:thread_checker",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_redis_failure_detector",
+    srcs = ["gcs_redis_failure_detector.cc"],
+    hdrs = ["gcs_redis_failure_detector.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+        "//src/ray/gcs:gcs_redis_client",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_worker_manager",
+    srcs = ["gcs_worker_manager.cc"],
+    hdrs = ["gcs_worker_manager.h"],
+    deps = [
+        ":gcs_kv_manager",
+        ":gcs_table_storage",
+        ":gcs_usage_stats_client",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/rpc:gcs_server",
+        "//src/ray/stats:stats_metric",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_health_check_manager",
+    srcs = ["gcs_health_check_manager.cc"],
+    hdrs = ["gcs_health_check_manager.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:thread_checker",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_task_manager",
+    srcs = ["gcs_task_manager.cc"],
+    hdrs = ["gcs_task_manager.h"],
+    deps = [
+        ":gcs_usage_stats_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:counter_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_server_io_context_policy",
+    hdrs = ["gcs_server_io_context_policy.h"],
+    deps = [
+        ":gcs_task_manager",
+        "//src/ray/common:ray_syncer",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/util:array",
+        "//src/ray/util:type_traits",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_job_manager",
+    srcs = ["gcs_job_manager.cc"],
+    hdrs = ["gcs_job_manager.h"],
+    deps = [
+        ":gcs_function_manager",
+        ":gcs_init_data",
+        ":gcs_table_storage",
+        "//src/ray/common:runtime_env",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:gcs_server",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:event",
+        "//src/ray/util:thread_checker",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_server_lib",
+    srcs = [
+        "gcs_actor_manager.cc",
+        "gcs_actor_scheduler.cc",
+        "gcs_autoscaler_state_manager.cc",
+        "gcs_node_manager.cc",
+        "gcs_placement_group_mgr.cc",
+        "gcs_placement_group_scheduler.cc",
+        "gcs_resource_manager.cc",
+        "gcs_server.cc",
+    ],
+    hdrs = [
+        "gcs_actor_manager.h",
+        "gcs_actor_scheduler.h",
+        "gcs_autoscaler_state_manager.h",
+        "gcs_node_manager.h",
+        "gcs_placement_group_mgr.h",
+        "gcs_placement_group_scheduler.h",
+        "gcs_resource_manager.h",
+        "gcs_server.h",
+    ],
+    deps = [
+        ":gcs_function_manager",
+        ":gcs_health_check_manager",
+        ":gcs_init_data",
+        ":gcs_job_manager",
+        ":gcs_kv_manager",
+        ":gcs_pubsub_handler",
+        ":gcs_redis_failure_detector",
+        ":gcs_runtime_env_handler",
+        ":gcs_server_io_context_policy",
+        ":gcs_state_util",
+        ":gcs_store_client_kv",
+        ":gcs_table_storage",
+        ":gcs_task_manager",
+        ":gcs_usage_stats_client",
+        ":gcs_worker_manager",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/gcs/store_client:gcs_observable_store_client",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/pubsub:publisher",
+        "//src/ray/raylet/scheduling:scheduler",
+        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:gcs_server",
+        "//src/ray/rpc:node_manager_client",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:network_util",
+        "//src/ray/util:thread_checker",
+        "//src/ray/util:throttler",
+        "//src/ray/util:type_traits",
+        "@boost//:bimap",
+        "@com_google_absl//absl/container:btree",
+    ],
+)
+
+ray_cc_binary(
+    name = "gcs_server",
+    srcs = [
+        "gcs_server_main.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gcs_server_lib",
+        "//src/ray/stats:stats_lib",
+        "//src/ray/util:stream_redirection",
+        "//src/ray/util:stream_redirection_options",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+)

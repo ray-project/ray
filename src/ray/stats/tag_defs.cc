@@ -32,6 +32,8 @@ const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 
 const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
 
+// Keep in sync with the WORKER_ID_TAG_KEY in
+// python/ray/_private/telemetry/metric_cardinality.py
 const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
 
 const TagKeyType JobIdKey = TagKeyType::Register("JobId");

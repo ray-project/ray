@@ -165,7 +165,7 @@ class SubscriberTest : public ::testing::Test {
       const std::string address = "abc",
       const int port = 1234) {
     rpc::Address addr;
-    addr.set_raylet_id(node_id);
+    addr.set_node_id(node_id);
     addr.set_ip_address(address);
     addr.set_port(port);
     addr.set_worker_id(worker_id);
@@ -244,14 +244,14 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
   objects_batched.push_back(object_id);
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   // Make sure the long polling batch works as expected.
-  for (const auto &object_id : objects_batched) {
-    ASSERT_EQ(object_subscribed_[object_id], 1);
+  for (const auto &oid : objects_batched) {
+    ASSERT_EQ(object_subscribed_[oid], 1);
   }
 
   // Publish the objects again, and subscriber should receive it.
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
-  for (const auto &object_id : objects_batched) {
-    ASSERT_EQ(object_subscribed_[object_id], 2);
+  for (const auto &oid : objects_batched) {
+    ASSERT_EQ(object_subscribed_[oid], 2);
   }
 
   ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
@@ -287,8 +287,8 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
-  for (const auto &object_id : objects_batched) {
-    ASSERT_EQ(object_subscribed_[object_id], 1);
+  for (const auto &oid : objects_batched) {
+    ASSERT_EQ(object_subscribed_[oid], 1);
   }
 
   // By resetting the sequence_id, the message now come out of order,
@@ -297,8 +297,8 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
   // Make sure the long polling batch works as expected.
-  for (const auto &object_id : objects_batched) {
-    ASSERT_EQ(object_subscribed_[object_id], 1);
+  for (const auto &oid : objects_batched) {
+    ASSERT_EQ(object_subscribed_[oid], 1);
   }
 
   // message arrives out of order (sequence_id 4 comes before 3),
@@ -333,8 +333,8 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
-  for (const auto &object_id : objects_batched) {
-    ASSERT_EQ(object_subscribed_[object_id], 1);
+  for (const auto &oid : objects_batched) {
+    ASSERT_EQ(object_subscribed_[oid], 1);
   }
 
   // By resetting the sequence_id, the message now come out of order,
@@ -836,11 +836,11 @@ TEST_F(SubscriberTest, TestOnlyOneInFlightCommandBatch) {
 
   // These two subscribe requests are sent in the next batch.
   for (int i = 0; i < 2; i++) {
-    const auto object_id = ObjectID::FromRandom();
-    subscriber_->Subscribe(GenerateSubMessage(object_id),
+    const auto oid = ObjectID::FromRandom();
+    subscriber_->Subscribe(GenerateSubMessage(oid),
                            channel,
                            owner_addr,
-                           object_id.Binary(),
+                           oid.Binary(),
                            /*subscribe_done_callback=*/nullptr,
                            subscription_callback,
                            failure_callback);
@@ -880,11 +880,11 @@ TEST_F(SubscriberTest, TestCommandsCleanedUponPublishFailure) {
 
   // These two subscribe requests are sent to the next batch.
   for (int i = 0; i < 2; i++) {
-    const auto object_id = ObjectID::FromRandom();
-    subscriber_->Subscribe(GenerateSubMessage(object_id),
+    const auto oid = ObjectID::FromRandom();
+    subscriber_->Subscribe(GenerateSubMessage(oid),
                            channel,
                            owner_addr,
-                           object_id.Binary(),
+                           oid.Binary(),
                            /*subscribe_done_callback=*/nullptr,
                            subscription_callback,
                            failure_callback);

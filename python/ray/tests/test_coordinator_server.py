@@ -1,8 +1,11 @@
+import json
 import os
 import random
-import unittest
 import socket
-import json
+import sys
+import unittest
+
+import pytest
 
 from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _get_node_provider
@@ -14,6 +17,7 @@ from ray.autoscaler._private.local.node_provider import (
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider,
 )
+from ray._common.network_utils import build_address
 from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     TAG_RAY_CLUSTER_NAME,
@@ -24,8 +28,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     STATUS_UP_TO_DATE,
 )
-from ray._private.utils import get_ray_temp_dir
-import pytest
+from ray._common.utils import get_ray_temp_dir
 
 
 class OnPremCoordinatorServerTest(unittest.TestCase):
@@ -37,7 +40,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             host=self.host,
             port=self.port,
         )
-        self.coordinator_address = self.host + ":" + str(self.port)
+        self.coordinator_address = build_address(self.host, self.port)
 
     def tearDown(self):
         self.server.shutdown()
@@ -291,9 +294,4 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -13,9 +13,8 @@ import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import hex_to_binary
-from ray._raylet import ActorID, JobID, TaskID, NodeID
+from ray._common.utils import hex_to_binary
+from ray._raylet import GcsClient, ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
@@ -55,6 +54,7 @@ from ray.util.state.common import (
     SupportedFilterType,
 )
 from ray.util.state.exception import DataSourceUnavailable
+from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +81,13 @@ def handle_grpc_network_errors(func):
         Returns:
             If RPC succeeds, it returns what the original function returns.
             If RPC fails, it raises exceptions.
-        Exceptions:
+
+        Raises:
             DataSourceUnavailable: if the source is unavailable because it is down
                 or there's a slow network issue causing timeout.
-            Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
+
+            Exception: Otherwise, the raw network exceptions (e.g., gRPC) will be
+                raised.
         """
         try:
             return await func(*args, **kwargs)
@@ -96,7 +99,7 @@ def handle_grpc_network_errors(func):
                 raise DataSourceUnavailable(
                     "Failed to query the data source. "
                     "It is either there's a network issue, or the source is down."
-                )
+                ) from e
             else:
                 logger.exception(e)
                 raise e
@@ -118,10 +121,10 @@ class StateDataSourceClient:
     - throw a ValueError if it cannot find the source.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_aio_client: GcsAioClient):
+    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_client: GcsClient):
         self.register_gcs_client(gcs_channel)
-        self._job_client = JobInfoStorageClient(gcs_aio_client)
-        self._gcs_aio_client = gcs_aio_client
+        self._job_client = JobInfoStorageClient(gcs_client)
+        self._gcs_client = gcs_client
         self._client_session = aiohttp.ClientSession()
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
@@ -144,13 +147,13 @@ class StateDataSourceClient:
     def get_raylet_stub(self, ip: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
-            f"{ip}:{port}", options, asynchronous=True
+            build_address(ip, port), options, asynchronous=True
         )
         return NodeManagerServiceStub(channel)
 
     async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
         """Returns None if the agent on the node is not registered in Internal KV."""
-        agent_addr = await self._gcs_aio_client.internal_kv_get(
+        agent_addr = await self._gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
@@ -160,7 +163,7 @@ class StateDataSourceClient:
         ip, http_port, grpc_port = json.loads(agent_addr)
         options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
-            f"{ip}:{grpc_port}", options=options, asynchronous=True
+            build_address(ip, grpc_port), options=options, asynchronous=True
         )
         return LogServiceStub(channel)
 
@@ -178,7 +181,7 @@ class StateDataSourceClient:
         if not ip:
             return None
         # Uses the dashboard agent keys to find ip -> id mapping.
-        agent_addr = await self._gcs_aio_client.internal_kv_get(
+        agent_addr = await self._gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
@@ -304,13 +307,14 @@ class StateDataSourceClient:
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllNodeInfoReply]:
-        # TODO(ryw): move this to GcsAioClient.get_all_node_info, i.e.
+        # TODO(ryw): move this to GcsClient.async_get_all_node_info, i.e.
         # InnerGcsClient.async_get_all_node_info
 
         if filters is None:
             filters = []
 
-        req_filters = GetAllNodeInfoRequest.Filters()
+        node_selectors = []
+        state_filter = None
         for filter in filters:
             key, predicate, value = filter
             if predicate != "=":
@@ -318,18 +322,24 @@ class StateDataSourceClient:
                 continue
 
             if key == "node_id":
-                req_filters.node_id = NodeID(hex_to_binary(value)).binary()
+                node_selector = GetAllNodeInfoRequest.NodeSelector()
+                node_selector.node_id = NodeID(hex_to_binary(value)).binary()
+                node_selectors.append(node_selector)
             elif key == "state":
                 value = value.upper()
                 if value not in GcsNodeInfo.GcsNodeState.keys():
                     raise ValueError(f"Invalid node state for filtering: {value}")
-                req_filters.state = GcsNodeInfo.GcsNodeState.Value(value)
+                state_filter = GcsNodeInfo.GcsNodeState.Value(value)
             elif key == "node_name":
-                req_filters.node_name = value
+                node_selector = GetAllNodeInfoRequest.NodeSelector()
+                node_selector.node_name = value
+                node_selectors.append(node_selector)
             else:
                 continue
 
-        request = GetAllNodeInfoRequest(limit=limit, filters=req_filters)
+        request = GetAllNodeInfoRequest(
+            limit=limit, node_selectors=node_selectors, state_filter=state_filter
+        )
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
@@ -374,7 +384,7 @@ class StateDataSourceClient:
         # Cannot use @handle_grpc_network_errors because async def is not supported yet.
 
         driver_jobs, submission_job_drivers = await get_driver_jobs(
-            self._gcs_aio_client, timeout=timeout
+            self._gcs_client, timeout=timeout
         )
         submission_jobs = await self._job_client.get_all_jobs(timeout=timeout)
         submission_jobs = [
@@ -420,7 +430,7 @@ class StateDataSourceClient:
                 f"Expected non empty node ip and runtime env agent port, got {node_ip} and {runtime_env_agent_port}."
             )
         timeout = aiohttp.ClientTimeout(total=timeout)
-        url = f"http://{node_ip}:{runtime_env_agent_port}/get_runtime_envs_info"
+        url = f"http://{build_address(node_ip, runtime_env_agent_port)}/get_runtime_envs_info"
         request = GetRuntimeEnvsInfoRequest(limit=limit)
         data = request.SerializeToString()
         async with self._client_session.post(url, data=data, timeout=timeout) as resp:

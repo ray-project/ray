@@ -35,7 +35,8 @@ class MemoryMonitorTest : public ::testing::Test {
  protected:
   void SetUp() override {
     thread_ = std::make_unique<std::thread>([this]() {
-      boost::asio::io_context::work work(io_context_);
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_context_.get_executor());
       io_context_.run();
     });
   }

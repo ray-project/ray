@@ -21,7 +21,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES
+from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -76,11 +76,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
-        self.worker_index: int = kwargs.get("worker_index")
-        self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
+        self.spaces = kwargs.get("spaces", {})
 
         # Create our callbacks object.
         self._callbacks: List[RLlibCallback] = [
@@ -96,11 +95,17 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.vector.VectorEnvWrapper] = None
         self.num_envs: int = 0
-        self.make_env()
+        if (
+            self.worker_index is None
+            or self.worker_index > 0
+            or self.config.create_env_on_local_worker
+            or self.config.num_env_runners == 0
+        ):
+            self.make_env()
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(
-            self.env, device=self._device
+            env=self.env, spaces=self.spaces, device=self._device
         )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
@@ -117,7 +122,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.make_module()
 
         # Create the module-to-env connector pipeline.
-        self._module_to_env = self.config.build_module_to_env_connector(self.env)
+        self._module_to_env = self.config.build_module_to_env_connector(
+            env=self.env, spaces=self.spaces
+        )
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -170,6 +177,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         Returns:
             A list of `SingleAgentEpisode` instances, carrying the sampled data.
         """
+        if self.env is None:
+            raise ValueError(
+                f"{self} doesn't have an env! Can't call `sample()` on it."
+            )
+
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # Log time between `sample()` requests.
@@ -455,8 +467,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def get_spaces(self):
+        if self.env is None:
+            return self.spaces
         return {
             INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            INPUT_ENV_SINGLE_SPACES: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
             DEFAULT_MODULE_ID: (
                 self._env_to_module.observation_space,
                 self.env.single_action_space,
@@ -686,9 +704,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_module(self):
+        env = self.env.unwrapped if self.env is not None else None
         try:
             module_spec: RLModuleSpec = self.config.get_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+                env=env, spaces=self.get_spaces(), inference_only=True
             )
             # Build the module from its spec.
             self.module = module_spec.build()
@@ -707,7 +726,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def stop(self):
         # Close our env object via gymnasium's API.
-        self.env.close()
+        if self.env is not None:
+            self.env.close()
 
     def _reset_envs(self, episodes, shared_data, explore):
         # Create n new episodes and make the `on_episode_created` callbacks.
@@ -720,8 +740,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        observations, infos = self._try_env_reset()
+        observations, infos = self._try_env_reset(
+            # Only seed (if seed provided) upon initial reset.
+            seed=self._seed if self._needs_initial_reset else None,
+            # TODO (sven): Support options?
+            options=None,
+        )
         observations = unbatch(observations)
 
         # Set initial obs and infos in the episodes.
@@ -757,20 +781,26 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
-        self, which: str, idx: int, episodes: List[SingleAgentEpisode] = None
+        self, which: str, idx: int, episodes: List[SingleAgentEpisode]
     ):
+        kwargs = dict(
+            episode=episodes[idx],
+            env_runner=self,
+            metrics_logger=self.metrics,
+            env=self.env.unwrapped,
+            rl_module=self.module,
+            env_index=idx,
+        )
+        if which == "on_episode_end":
+            kwargs["prev_episode_chunks"] = self._ongoing_episodes_for_metrics[
+                episodes[idx].id_
+            ]
+
         make_callback(
             which,
             callbacks_objects=self._callbacks,
             callbacks_functions=getattr(self.config, f"callbacks_{which}"),
-            kwargs=dict(
-                episode=episodes[idx],
-                env_runner=self,
-                metrics_logger=self.metrics,
-                env=self.env.unwrapped,
-                rl_module=self.module,
-                env_index=idx,
-            ),
+            kwargs=kwargs,
         )
 
     def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
@@ -839,11 +869,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
         # Per-agent returns.
         self.metrics.log_value(
-            ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
+            ("agent_episode_return_mean", DEFAULT_AGENT_ID), ret, window=win
         )
         # Per-RLModule returns.
         self.metrics.log_value(
-            ("module_episode_returns_mean", DEFAULT_MODULE_ID), ret, window=win
+            ("module_episode_return_mean", DEFAULT_MODULE_ID), ret, window=win
         )
 
         # For some metrics, log min/max as well.

@@ -24,9 +24,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
+#include "ray/stats/metric.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/exponential_backoff.h"
-#include "ray/util/logging.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -129,6 +129,14 @@ struct RedisRequestContext {
   std::vector<std::string> redis_cmds_;
   std::vector<const char *> argv_;
   std::vector<size_t> argc_;
+
+  // Ray metrics
+  ray::stats::Histogram ray_metric_gcs_latency_{
+      "gcs_latency",
+      "The latency of a GCS (by default Redis) operation.",
+      "us",
+      {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
+      {stats::kCustomKey}};
 };
 
 class RedisContext {

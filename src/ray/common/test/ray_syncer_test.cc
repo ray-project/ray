@@ -28,6 +28,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,9 +38,9 @@
 #include "ray/common/ray_syncer/ray_syncer_client.h"
 #include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/network_util.h"
+#include "ray/util/path_utils.h"
 
-using namespace std::chrono;  // NOLINT
-using namespace ray::syncer;  // NOLINT
 using ray::NodeID;
 using ::testing::_;
 using ::testing::Eq;
@@ -226,7 +227,7 @@ struct SyncerServerTest {
         io_context, node_id.Binary(), std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
-    auto server_address = std::string("0.0.0.0:") + port;
+    auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
     service = std::make_unique<RaySyncerService>(*syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
@@ -309,22 +310,24 @@ struct SyncerServerTest {
       if (f.get()) {
         return;
       } else {
-        std::this_thread::sleep_for(1s);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
       }
     }
   }
 
   bool WaitUntil(std::function<bool()> predicate, int64_t time_s) {
-    auto start = steady_clock::now();
+    auto start = std::chrono::steady_clock::now();
 
-    while (duration_cast<seconds>(steady_clock::now() - start).count() <= time_s) {
+    while (std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::steady_clock::now() - start)
+               .count() <= time_s) {
       std::promise<bool> p;
       auto f = p.get_future();
       io_context.post([&p, predicate]() mutable { p.set_value(predicate()); }, "TEST");
       if (f.get()) {
         return true;
       } else {
-        std::this_thread::sleep_for(1s);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
       }
     }
     return false;
@@ -419,7 +422,7 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
   argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
   return grpc::CreateCustomChannel(
-      "localhost:" + port, grpc::InsecureChannelCredentials(), argument);
+      BuildAddress("localhost", port), grpc::InsecureChannelCredentials(), argument);
 }
 
 using TClusterView = absl::flat_hash_map<
@@ -448,7 +451,7 @@ class SyncerTest : public ::testing::Test {
       s->Stop();
     }
 
-    std::this_thread::sleep_for(1s);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   std::vector<std::unique_ptr<SyncerServerTest>> servers;
 };
@@ -529,7 +532,7 @@ TEST_F(SyncerTest, Test1To1) {
 
   // Make sure no new messages are sent
   s2.local_versions[0] = 0;
-  std::this_thread::sleep_for(1s);
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 
   ASSERT_EQ(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), 2);
   ASSERT_EQ(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), 1);
@@ -542,7 +545,7 @@ TEST_F(SyncerTest, Test1To1) {
   std::uniform_int_distribution<> rand_sleep(0, 10000);
   std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
 
-  auto start = steady_clock::now();
+  auto start = std::chrono::steady_clock::now();
   for (int i = 0; i < 10000; ++i) {
     if (choose_component(gen) == 0) {
       s1.local_versions[0]++;
@@ -550,16 +553,16 @@ TEST_F(SyncerTest, Test1To1) {
       s2.local_versions[choose_component(gen)]++;
     }
     if (rand_sleep(gen) < 5) {
-      std::this_thread::sleep_for(1s);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   }
 
-  auto end = steady_clock::now();
+  auto end = std::chrono::steady_clock::now();
 
   // Max messages can be send during this period of time.
   // +1 is for corner cases.
   auto max_sends =
-      duration_cast<milliseconds>(end - start).count() /
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() /
           RayConfig::instance().raylet_report_resources_period_milliseconds() +
       1;
 
@@ -724,7 +727,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
 
   for (size_t i = 0; i < 10; ++i) {
     if (!check()) {
-      std::this_thread::sleep_for(1s);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     } else {
       break;
     }
@@ -750,7 +753,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     servers[server_idx]->local_versions[message_type]++;
     // expect to sleep for 100 times for the whole loop.
     if (rand_sleep(gen) < 100) {
-      std::this_thread::sleep_for(100ms);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   }
 
@@ -760,7 +763,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
   // Make sure everything is synced.
   for (size_t i = 0; i < 10; ++i) {
     if (!check()) {
-      std::this_thread::sleep_for(1s);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     } else {
       break;
     }
@@ -884,14 +887,18 @@ class SyncerReactorTest : public ::testing::Test {
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
 
-    auto start = steady_clock::now();
-    while (duration_cast<seconds>(steady_clock::now() - start).count() <= 5) {
+    auto start = std::chrono::steady_clock::now();
+    while (std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::steady_clock::now() - start)
+               .count() <= 5) {
       RAY_LOG(INFO) << "Waiting: "
-                    << duration_cast<seconds>(steady_clock::now() - start).count();
+                    << std::chrono::duration_cast<std::chrono::seconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
       if (rpc_service_->reactor != nullptr) {
         break;
       };
-      std::this_thread::sleep_for(1s);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   }
 
@@ -984,8 +991,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
@@ -994,6 +1001,6 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   auto ret = RUN_ALL_TESTS();
   // Sleep for gRPC to gracefully shutdown.
-  std::this_thread::sleep_for(2s);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   return ret;
 }

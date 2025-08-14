@@ -146,7 +146,9 @@ class TaskSpecBuilder {
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "",
       bool enable_task_events = true,
-      const std::unordered_map<std::string, std::string> &labels = {}) {
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -178,6 +180,9 @@ class TaskSpecBuilder {
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
     message_->mutable_labels()->insert(labels.begin(), labels.end());
+    message_->mutable_label_selector()->insert(label_selector.begin(),
+                                               label_selector.end());
+    message_->set_tensor_transport(tensor_transport);
     return *this;
   }
 
@@ -247,7 +252,7 @@ class TaskSpecBuilder {
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      bool execute_out_of_order = false,
+      bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
@@ -274,7 +279,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
-    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
+    actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
@@ -292,7 +297,7 @@ class TaskSpecBuilder {
       int max_retries,
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
-      uint64_t actor_counter) {
+      uint64_t sequence_number) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
@@ -302,7 +307,7 @@ class TaskSpecBuilder {
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
-    actor_spec->set_actor_counter(actor_counter);
+    actor_spec->set_sequence_number(sequence_number);
     return *this;
   }
 

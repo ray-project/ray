@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -32,7 +32,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     gcs::GcsTableStorage &gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    rpc::NodeManagerClientPool &raylet_client_pool)
+    rpc::RayletClientPool &raylet_client_pool)
     : io_context_(io_context),
       return_timer_(io_context),
       gcs_table_storage_(gcs_table_storage),
@@ -180,19 +180,19 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 
 void GcsPlacementGroupScheduler::PrepareResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback &callback) {
   if (!node.has_value()) {
     callback(Status::NotFound("Node is already dead."));
     return;
   }
 
-  const auto lease_client = GetLeaseClientFromNode(node.value());
+  const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
   RAY_LOG(INFO) << "Preparing resource from node " << node_id
                 << " for bundles: " << GetDebugStringForBundles(bundles);
 
-  lease_client->PrepareBundleResources(
+  raylet_client->PrepareBundleResources(
       bundles,
       [node_id, bundles, callback](const Status &status,
                                    const rpc::PrepareBundleResourcesReply &reply) {
@@ -211,15 +211,15 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
 void GcsPlacementGroupScheduler::CommitResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback callback) {
   RAY_CHECK(node.has_value());
-  const auto lease_client = GetLeaseClientFromNode(node.value());
+  const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
 
   RAY_LOG(INFO) << "Committing resource to a node " << node_id
                 << " for bundles: " << GetDebugStringForBundles(bundles);
-  lease_client->CommitBundleResources(
+  raylet_client->CommitBundleResources(
       bundles,
       [bundles, node_id, callback](const Status &status,
                                    const rpc::CommitBundleResourcesReply &reply) {
@@ -237,7 +237,7 @@ void GcsPlacementGroupScheduler::CommitResources(
 
 void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<const BundleSpecification> &bundle_spec,
-    const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
     int current_retry_cnt) {
   if (!node.has_value()) {
@@ -258,9 +258,9 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
 
   RAY_LOG(DEBUG) << "Cancelling the resource reserved for bundle: "
                  << bundle_spec->DebugString() << " at node " << node_id;
-  const auto return_client = GetLeaseClientFromNode(node.value());
+  const auto raylet_client = GetRayletClientFromNode(node.value());
 
-  return_client->CancelResourceReserve(
+  raylet_client->CancelResourceReserve(
       *bundle_spec,
       [this, bundle_spec, node_id, node, max_retry, current_retry_cnt](
           const Status &status, const rpc::CancelResourceReserveReply &reply) {
@@ -283,19 +283,19 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
       });
 }
 
-std::shared_ptr<ResourceReserveInterface>
-GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
+std::shared_ptr<RayletClientInterface>
+GcsPlacementGroupScheduler::GetOrConnectRayletClient(const rpc::Address &raylet_address) {
   return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
 
-std::shared_ptr<ResourceReserveInterface>
-GcsPlacementGroupScheduler::GetLeaseClientFromNode(
+std::shared_ptr<RayletClientInterface>
+GcsPlacementGroupScheduler::GetRayletClientFromNode(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_node_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  return GetOrConnectLeaseClient(remote_address);
+  return GetOrConnectRayletClient(remote_address);
 }
 
 void GcsPlacementGroupScheduler::CommitAllBundles(
@@ -536,7 +536,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
     const auto &node_id = alive_node.first;
     nodes_of_releasing_unused_bundles_.insert(node_id);
 
-    auto lease_client = GetLeaseClientFromNode(alive_node.second);
+    auto raylet_client = GetRayletClientFromNode(alive_node.second);
     auto release_unused_bundles_callback =
         [this, node_id](const Status &status,
                         const rpc::ReleaseUnusedBundlesReply &reply) {
@@ -548,7 +548,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
     // In this case, GCS will send an empty list.
     auto bundles_in_use =
         iter != node_to_bundles.end() ? iter->second : std::vector<rpc::Bundle>{};
-    lease_client->ReleaseUnusedBundles(bundles_in_use, release_unused_bundles_callback);
+    raylet_client->ReleaseUnusedBundles(bundles_in_use, release_unused_bundles_callback);
   }
 }
 

@@ -6,7 +6,6 @@ boto3
 cmake
 crc32c
 cython
-dask[complete]
 fastapi
 gcsfs==2023.5.0
 gsutil
@@ -18,11 +17,13 @@ lightgbm
 locust==2.18.0
 memray
 openskill
+orjson
 petastorm
 protobuf
 pyarrow
 pydantic>=2.5.0
 pytest
+pyyaml
 requests>=2.31.0
 semidbm
 s3fs

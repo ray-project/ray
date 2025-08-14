@@ -39,7 +39,7 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
             tf.write(f"{i}.b", str(i**2).encode("utf-8"))
     assert os.path.exists(path)
     assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], override_num_blocks=1)
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
@@ -92,18 +92,14 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
     assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
 
     # test simple suffixes
-    ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], override_num_blocks=1, suffixes=["txt", "cls"]
-    )
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], suffixes=["txt", "cls"])
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
         assert set(sample.keys()) == {"__url__", "__key__", "txt", "cls"}
 
     # test fnmatch patterns for suffixes
-    ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], override_num_blocks=1, suffixes=["*.txt", "*.cls"]
-    )
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], suffixes=["*.txt", "*.cls"])
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
@@ -113,9 +109,7 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
     def select(name):
         return name.endswith("txt")
 
-    ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], override_num_blocks=1, suffixes=select
-    )
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], suffixes=select)
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
@@ -127,9 +121,7 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
         print("***", name, result)
         return result
 
-    ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], override_num_blocks=1, filerename=renamer
-    )
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], filerename=renamer)
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
@@ -198,7 +190,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     assert len(paths) == 1
     path = paths[0]
     assert os.path.exists(path)
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], override_num_blocks=1)
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
     samples = ds.take(1)
     assert len(samples) == 1
     for sample in samples:
@@ -218,7 +210,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
 
     # test the format argument to the default decoder and multiple decoders
     ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], override_num_blocks=1, decoder=["PIL", custom_decoder]
+        paths=[str(tmp_path)], decoder=["PIL", custom_decoder]
     )
     samples = ds.take(1)
     assert len(samples) == 1

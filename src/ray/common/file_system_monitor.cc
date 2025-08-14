@@ -31,10 +31,10 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
     : paths_(std::move(paths)),
       capacity_threshold_(capacity_threshold),
       over_capacity_(CheckIfAnyPathOverCapacity()),
-      io_context_(),
       monitor_thread_([this] {
         /// The asio work to keep io_contex_ alive.
-        boost::asio::io_service::work io_service_work_(io_context_);
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+            io_context_.get_executor());
         io_context_.run();
       }),
       runner_(PeriodicalRunner::Create(io_context_)) {
@@ -123,6 +123,10 @@ bool FileSystemMonitor::OverCapacityImpl(
 
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) {
   std::vector<std::string> spilling_paths;
+
+  if (spilling_config.empty()) {
+    return spilling_paths;
+  }
 
   try {
     json spill_config = json::parse(spilling_config);

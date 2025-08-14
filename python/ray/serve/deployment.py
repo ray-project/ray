@@ -1,12 +1,12 @@
-import inspect
 import logging
+import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-import warnings
 
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
+    RequestRouterConfig,
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -83,9 +83,9 @@ class Deployment:
             def __call__(self, request):
                 return "Hello world!"
 
-            app = MyDeployment.bind()
-            # Run via `serve.run` or the `serve run` CLI command.
-            serve.run(app)
+        app = MyDeployment.bind()
+        # Run via `serve.run` or the `serve run` CLI command.
+        serve.run(app)
 
     """
 
@@ -105,20 +105,11 @@ class Deployment:
         self._validate_name(name)
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        docs_path = None
-        if (
-            inspect.isclass(replica_config.deployment_def)
-            and hasattr(replica_config.deployment_def, "__module__")
-            and replica_config.deployment_def.__module__ == "ray.serve.api"
-            and hasattr(replica_config.deployment_def, "__fastapi_docs_path__")
-        ):
-            docs_path = replica_config.deployment_def.__fastapi_docs_path__
 
         self._name = name
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
-        self._docs_path = docs_path
 
     def _validate_name(self, name: str):
         if not isinstance(name, str):
@@ -236,6 +227,9 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+        request_router_config: Default[
+            Union[Dict, RequestRouterConfig, None]
+        ] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
@@ -347,6 +341,9 @@ class Deployment:
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
+        if request_router_config is not DEFAULT.VALUE:
+            new_deployment_config.request_router_config = request_router_config
+
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
                 graceful_shutdown_wait_loop_s
@@ -436,6 +433,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
+        "request_router_config": d._deployment_config.request_router_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -496,6 +494,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
+        request_router_config=s.request_router_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

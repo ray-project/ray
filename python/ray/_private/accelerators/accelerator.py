@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 class AcceleratorManager(ABC):
@@ -12,7 +12,7 @@ class AcceleratorManager(ABC):
         """Get the name of the resource representing this accelerator family.
 
         Returns:
-            The resource name: e.g., the resource name for Nvidia GPUs is "GPU"
+            The resource name: e.g., the resource name for NVIDIA GPUs is "GPU"
         """
 
     @staticmethod
@@ -22,7 +22,7 @@ class AcceleratorManager(ABC):
 
         Returns:
             The env var for setting visible accelerator ids: e.g.,
-                CUDA_VISIBLE_DEVICES for Nvidia GPUs.
+                CUDA_VISIBLE_DEVICES for NVIDIA GPUs.
         """
 
     @staticmethod
@@ -46,7 +46,7 @@ class AcceleratorManager(ABC):
         The result should only be used when get_current_node_num_accelerators() > 0.
 
         Returns:
-            The detected accelerator type of this family: e.g., H100 for Nvidia GPU.
+            The detected accelerator type of this family: e.g., H100 for NVIDIA GPU.
             Return None if it's unknown or the node doesn't have
             accelerators of this family.
         """
@@ -134,5 +134,14 @@ class AcceleratorManager(ABC):
         Returns:
             The accelerator type of this family on the ec2 instance with given type.
             Return None if it's unknown.
+        """
+        return None
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Optional[Dict[str, str]]:
+        """Get accelerator related Ray node labels of the curent node.
+
+        Returns:
+            A dictionary mapping accelerator related label keys to values.
         """
         return None

@@ -67,9 +67,9 @@ class TaskEventsGcPolicyInterface {
 
 class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
  public:
-  size_t MaxPriority() const { return 3; }
+  size_t MaxPriority() const override { return 3; }
 
-  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const {
+  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const override {
     if (IsTaskFinished(task_events)) {
       return 0;
     }
@@ -91,7 +91,7 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
 /// services. All handling of all rpc should be posted to the single thread it owns.
-class GcsTaskManager : public rpc::TaskInfoHandler {
+class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHandler {
  public:
   /// Create a GcsTaskManager.
   explicit GcsTaskManager(instrumented_io_context &io_service);
@@ -104,6 +104,15 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handles a AddEvents request.
+  ///
+  /// \param request gRPC Request.
+  /// \param reply gRPC Reply.
+  /// \param send_reply_callback Callback to invoke when sending reply.
+  void HandleAddEvents(rpc::events::AddEventsRequest request,
+                       rpc::events::AddEventsReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle GetTaskEvent request.
   ///

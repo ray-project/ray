@@ -187,7 +187,7 @@ class OneHotEncoder(Preprocessor):
         4  [1, 0, 0]
         5  [0, 1, 0]
 
-        :class:`MultiHotEncoder` can also be used in append mode by providing the
+        OneHotEncoder can also be used in append mode by providing the
         name of the output_columns that should hold the encoded values.
 
         >>> encoder = OneHotEncoder(columns=["color"], output_columns=["color_encoded"])
@@ -206,21 +206,21 @@ class OneHotEncoder(Preprocessor):
         >>> df = pd.DataFrame({"color": ["yellow"]})
         >>> batch = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> encoder.transform(batch).to_pandas()  # doctest: +SKIP
-           color_blue  color_green  color_red
-        0           0            0          0
+            color color_encoded
+        0  yellow     [0, 0, 0]
 
         Likewise, if you one-hot encode an infrequent value, then the value is encoded
         with zeros.
 
         >>> encoder = OneHotEncoder(columns=["color"], max_categories={"color": 2})
         >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
-           color_red  color_green
-        0          1            0
-        1          0            1
-        2          1            0
-        3          1            0
-        4          0            0
-        5          0            1
+            color
+        0  [1, 0]
+        1  [0, 1]
+        2  [1, 0]
+        3  [1, 0]
+        4  [0, 0]
+        5  [0, 1]
 
     Args:
         columns: The columns to separately encode.
@@ -268,25 +268,29 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
+        from typing import Any
+
+        def safe_get(v: Any, stats: Dict[str, int]):
+            from collections.abc import Hashable
+
+            if isinstance(v, Hashable):
+                return stats.get(v, -1)
+            else:
+                return -1  # Unhashable type treated as a missing category
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
-            column_values = self.stats_[f"unique_values({column})"]
             if _is_series_composed_of_lists(df[column]):
-                df[column] = df[column].map(lambda x: tuple(x))
-            for column_value in column_values:
-                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
-                    int
-                )
-            # Concatenate the value columns
-            value_columns = [
-                f"{column}_{column_value}" for column_value in column_values
-            ]
-            concatenated = df[value_columns].to_numpy()
-            df = df.drop(columns=value_columns)
-            # Use a Pandas Series for column assignment to get more consistent
-            # behavior across Pandas versions.
-            df.loc[:, output_column] = pd.Series(list(concatenated))
+                df[column] = df[column].map(tuple)
+
+            stats = self.stats_[f"unique_values({column})"]
+            num_categories = len(stats)
+            one_hot = np.zeros((len(df), num_categories), dtype=int)
+            codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
+            valid_rows = codes != -1
+            one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
+            df[output_column] = one_hot.tolist()
+
         return df
 
     def __repr__(self):

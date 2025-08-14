@@ -1,26 +1,25 @@
+import asyncio
 import json
 import os
 import sys
-import asyncio
+from pathlib import Path
 from typing import List
-import urllib
 from unittest.mock import MagicMock, AsyncMock
 
-import pytest
-from ray.util.state.state_cli import logs_state_cli_group
-from ray.util.state import list_jobs
-import requests
-from click.testing import CliRunner
 import grpc
-
-from pathlib import Path
+from ray._common.test_utils import wait_for_condition
+import requests
+import pytest
+import urllib
+from click.testing import CliRunner
 
 import ray
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
+from ray.util.state.state_cli import logs_state_cli_group
+from ray.util.state import list_jobs
 
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
@@ -91,7 +90,7 @@ async def generate_actor_data(id, node_id, worker_id):
         pid=1234,
         class_name="class",
         address=Address(
-            raylet_id=node_id.binary(),
+            node_id=node_id.binary(),
             ip_address="127.0.0.1",
             port=1234,
             worker_id=worker_id,
@@ -969,6 +968,41 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         assert line in file_response
 
 
+def test_log_download_filename(ray_start_with_dashboard):
+    """Test that the download filename can be specified when downloading a log."""
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    download_filename = "dummy.out"
+
+    def verify():
+        stream_response = requests.get(
+            webui_url
+            + (
+                f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
+                f"&lines=5&download_filename={download_filename}"
+            ),
+            stream=True,
+        )
+        if stream_response.status_code != 200:
+            raise ValueError(stream_response.content.decode("utf-8"))
+
+        assert (
+            stream_response.headers["Content-Disposition"]
+            == f'attachment; filename="{download_filename}"'
+        )
+        return True
+
+    # Node ID may not be found immediately, so may need to retry the check a few times.
+    wait_for_condition(verify)
+
+
 def test_log_list(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
@@ -999,9 +1033,7 @@ def test_log_list(ray_start_cluster):
     with pytest.raises(requests.HTTPError) as e:
         list_logs(node_id=node_id)
 
-    assert (
-        f"Agent for node id: {node_id} doesn't exist." in e.value.response.json()["msg"]
-    )
+    assert e.value.response.status_code == 500
 
 
 @pytest.mark.skipif(
@@ -1562,9 +1594,4 @@ def test_log_cli(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

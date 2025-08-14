@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
@@ -15,8 +15,6 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.test_utils import check_apps_running, get_node_id
 from ray.serve._private.utils import get_head_node_id
-from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema
 from ray.tests.conftest import *  # noqa
 
 
@@ -209,8 +207,8 @@ class TestCompactScheduling:
     @pytest.mark.parametrize(
         "app_resources,expected_worker_nodes",
         [
-            # [2, 5, 3, 3, 7, 2, 6, 2] -> 3 nodes
-            ({5: 1, 3: 2, 7: 1, 2: 3, 6: 1}, 3),
+            # [2, 5, 3, 3, 7, 6, 4] -> 3 nodes
+            ({5: 1, 3: 2, 7: 1, 2: 1, 6: 1, 4: 1}, 3),
             # [1, 7, 7, 3, 2] -> 2 nodes
             ({1: 1, 7: 2, 3: 1, 2: 1}, 2),
             # [7, 3, 2, 7, 7, 2] -> 3 nodes
@@ -221,37 +219,39 @@ class TestCompactScheduling:
         self, ray_cluster, use_pg, app_resources, expected_worker_nodes
     ):
         for _ in range(expected_worker_nodes):
-            ray_cluster.add_node(num_cpus=10)
+            ray_cluster.add_node(num_cpus=1)
         ray_cluster.wait_for_nodes()
         ray.init(address=ray_cluster.address)
 
         serve.start()
-        client = _get_global_client()
 
-        applications = []
+        @serve.deployment
+        def A():
+            return ray.get_runtime_context().get_node_id()
+
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
+        class Ingress:
+            def __init__(self, *handles):
+                self.handles = handles
+
+            def __call__(self):
+                pass
+
+        deployments = []
         for n, count in app_resources.items():
-            name = n
             num_cpus = 0.1 * n
-            app = {
-                "name": f"app{name}",
-                "import_path": "ray.serve.tests.test_deployment_scheduler.app_A",
-                "route_prefix": f"/app{name}",
-                "deployments": [
-                    {
-                        "name": "A",
-                        "num_replicas": count,
-                        "ray_actor_options": {"num_cpus": 0 if use_pg else num_cpus},
-                    }
-                ],
-            }
-            if use_pg:
-                app["deployments"][0]["placement_group_bundles"] = [{"CPU": num_cpus}]
-                app["deployments"][0]["placement_group_strategy"] = "STRICT_PACK"
+            deployments.append(
+                A.options(
+                    name=f"A{n}",
+                    num_replicas=count,
+                    ray_actor_options={"num_cpus": 0 if use_pg else num_cpus},
+                    placement_group_bundles=[{"CPU": num_cpus}] if use_pg else None,
+                    placement_group_strategy="STRICT_PACK" if use_pg else None,
+                ).bind()
+            )
 
-            applications.append(app)
-
-        client.deploy_apps(ServeDeploySchema(**{"applications": applications}))
-        wait_for_condition(check_apps_running, apps=[f"app{n}" for n in app_resources])
+        serve.run(Ingress.bind(*deployments))
+        wait_for_condition(check_apps_running, apps=["default"])
         print("Test passed!")
 
     @pytest.mark.parametrize("use_pg", [True, False])

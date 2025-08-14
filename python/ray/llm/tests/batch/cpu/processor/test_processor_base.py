@@ -1,13 +1,15 @@
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
 
+import pydantic
 import pytest
 
 import ray
+from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
-    ProcessorConfig,
     ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
@@ -62,9 +64,10 @@ def test_processor_with_stages(has_extra: bool):
         def __init__(
             self,
             data_column: str,
+            expected_input_keys: List[str],
             factor: int,
         ):
-            super().__init__(data_column)
+            super().__init__(data_column, expected_input_keys)
             self.factor = factor
 
         async def udf(
@@ -80,14 +83,13 @@ def test_processor_with_stages(has_extra: bool):
                     self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 }
 
-        @property
-        def expected_input_keys(self) -> List[str]:
-            return ["val"]
-
     class DummyStage(StatefulStage):
         fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = dict(concurrency=1)
+
+        def get_required_input_keys(self) -> Dict[str, str]:
+            return {"val": "The value to multiply."}
 
     stages = [
         DummyStage(fn_constructor_kwargs=dict(factor=2)),
@@ -184,6 +186,20 @@ def test_builder():
     assert (
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 2
     )
+
+
+class TestProcessorConfig:
+    def test_valid_concurrency(self):
+
+        with pytest.raises(pydantic.ValidationError, match="should be a valid integer"):
+            config = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                concurrency=(1, 2),
+            )
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+        )
+        assert config.concurrency == 1
 
 
 if __name__ == "__main__":

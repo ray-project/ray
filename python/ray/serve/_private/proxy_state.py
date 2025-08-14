@@ -8,10 +8,11 @@ from typing import Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray import ObjectRef
+from ray._common.network_utils import build_address
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import NodeId
+from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_DRAIN_CHECK_PERIOD_S,
@@ -26,9 +27,19 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.utils import Timer, TimerBase, format_actor_name
+from ray.serve._private.utils import (
+    Timer,
+    TimerBase,
+    format_actor_name,
+    is_grpc_enabled,
+)
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
-from ray.serve.schema import LoggingConfig, ProxyDetails, ProxyStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ProxyDetails,
+    ProxyStatus,
+    Target,
+)
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -149,7 +160,7 @@ class ActorProxyWrapper(ProxyWrapper):
         try:
             proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
         except ValueError:
-            addr = f"{http_options.host}:{http_options.port}"
+            addr = build_address(http_options.host, http_options.port)
             logger.info(
                 f"Starting proxy on node '{node_id}' listening on '{addr}'.",
                 extra={"log_to_stderr": False},
@@ -283,6 +294,8 @@ class ActorProxyWrapper(ProxyWrapper):
         except RayActorError:
             # The actor is dead, so it's ready for shutdown.
             return True
+        except GetTimeoutError:
+            pass
 
         # The actor is still alive, so it's not ready for shutdown.
         return False
@@ -314,6 +327,7 @@ class ProxyState:
         actor_name: str,
         node_id: str,
         node_ip: str,
+        node_instance_id: str,
         proxy_restart_count: int = 0,
         timer: TimerBase = Timer(),
     ):
@@ -331,6 +345,7 @@ class ProxyState:
         self._actor_details = ProxyDetails(
             node_id=node_id,
             node_ip=node_ip,
+            node_instance_id=node_instance_id,
             actor_id=self._actor_proxy_wrapper.actor_id,
             actor_name=self._actor_name,
             status=self._status,
@@ -601,6 +616,35 @@ class ProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
+    def get_targets(self, protocol: RequestProtocol) -> List[Target]:
+        """In Ray Serve, every proxy is responsible for routing requests to the
+        correct application. Here we curate a list of targets for the given protocol.
+        Where each target represents how to reach a proxy.
+
+        Args:
+            protocol: Either "http" or "grpc"
+        """
+        targets = []
+        if protocol == RequestProtocol.HTTP:
+            port = self._http_options.port
+        elif protocol == RequestProtocol.GRPC:
+            if not is_grpc_enabled(self._grpc_options):
+                return []
+            port = self._grpc_options.port
+        else:
+            raise ValueError(f"Invalid protocol: {protocol}")
+
+        targets = [
+            Target(
+                ip=state.actor_details.node_ip,
+                port=port,
+                instance_id=state.actor_details.node_instance_id,
+            )
+            for _, state in self._proxy_states.items()
+            if state.actor_details.status == ProxyStatus.HEALTHY
+        ]
+        return targets
+
     def get_alive_proxy_actor_ids(self) -> Set[str]:
         return {state.actor_id for state in self._proxy_states.values()}
 
@@ -619,7 +663,7 @@ class ProxyStateManager:
             proxy_nodes.add(self._head_node_id)
 
         target_nodes = self._get_target_nodes(proxy_nodes)
-        target_node_ids = {node_id for node_id, _ in target_nodes}
+        target_node_ids = {node_id for node_id, _, _ in target_nodes}
 
         for node_id, proxy_state in self._proxy_states.items():
             draining = node_id not in target_node_ids
@@ -628,7 +672,7 @@ class ProxyStateManager:
         self._stop_proxies_if_needed()
         self._start_proxies_if_needed(target_nodes)
 
-    def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str]]:
+    def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP and gRPC servers
         on."""
         location = self._http_options.location
@@ -637,15 +681,15 @@ class ProxyStateManager:
             return []
 
         target_nodes = [
-            (node_id, ip_address)
-            for node_id, ip_address in self._cluster_node_info_cache.get_alive_nodes()
+            (node_id, ip_address, instance_id)
+            for node_id, ip_address, instance_id in self._cluster_node_info_cache.get_alive_nodes()
             if node_id in proxy_nodes
         ]
 
         if location == DeploymentMode.HeadOnly:
             nodes = [
-                (node_id, ip_address)
-                for node_id, ip_address in target_nodes
+                (node_id, ip_address, instance_id)
+                for node_id, ip_address, instance_id in target_nodes
                 if node_id == self._head_node_id
             ]
             assert len(nodes) == 1, (
@@ -710,7 +754,7 @@ class ProxyStateManager:
     def _start_proxies_if_needed(self, target_nodes) -> None:
         """Start a proxy on every node if it doesn't already exist."""
 
-        for node_id, node_ip_address in target_nodes:
+        for node_id, node_ip_address, node_instance_id in target_nodes:
             if node_id in self._proxy_states:
                 continue
 
@@ -726,6 +770,7 @@ class ProxyStateManager:
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,
+                node_instance_id=node_instance_id,
                 proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
                 timer=self._timer,
             )

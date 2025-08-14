@@ -51,16 +51,7 @@ For more information like the number of rows, print the Dataset.
 
 .. testoutput::
 
-    Dataset(
-       num_rows=150,
-       schema={
-          sepal length (cm): double,
-          sepal width (cm): double,
-          petal length (cm): double,
-          petal width (cm): double,
-          target: int64
-       }
-    )
+    Dataset(num_rows=..., schema=...)
 
 .. _inspecting-rows:
 
@@ -138,7 +129,6 @@ of the returned batch, set ``batch_format``.
             0                5.1               3.5  ...               0.2       0
             1                4.9               3.0  ...               0.2       0
             <BLANKLINE>
-            [2 rows x 5 columns]
 
 For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and

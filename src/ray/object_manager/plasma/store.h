@@ -36,7 +36,7 @@
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -79,9 +79,6 @@ class PlasmaStore {
   /// absolutely know what's going on). This method won't work correctly if it is used
   /// before the object is pinned by raylet for the first time.
   bool IsObjectSpillable(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
-
-  /// Return the plasma object bytes that are consumed by core workers.
-  int64_t GetConsumedBytes();
 
   /// Return the number of plasma objects that have been created.
   int64_t GetCumulativeCreatedObjects() const {
@@ -172,8 +169,7 @@ class PlasmaStore {
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
                          const std::vector<ObjectID> &object_ids,
-                         int64_t timeout_ms,
-                         bool is_from_worker) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                         int64_t timeout_ms) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -313,9 +309,6 @@ class PlasmaStore {
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_ ABSL_GUARDED_BY(mutex_);
-
-  /// Total plasma object bytes that are consumed by core workers.
-  std::atomic<int64_t> total_consumed_bytes_;
 
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.

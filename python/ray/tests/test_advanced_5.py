@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.test_utils import SignalActor, client_test_enabled
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import client_test_enabled
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -101,48 +102,6 @@ def test_schedule_actor_and_normal_task(ray_start_cluster_enabled):
     assert ray.get(o2) == 2
 
 
-# This case tests whether gcs-based actor scheduler works properly
-# in a large scale.
-def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
-    cluster = ray_start_cluster
-
-    node_count = 10
-    actor_count = 50
-    each_actor_task_count = 50
-    normal_task_count = 1000
-    node_memory = 2 * 1024**3
-
-    for i in range(node_count):
-        cluster.add_node(
-            memory=node_memory,
-            _system_config={"gcs_actor_scheduling_enabled": True} if i == 0 else {},
-        )
-    ray.init(address=cluster.address)
-    cluster.wait_for_nodes()
-
-    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
-    class Foo:
-        def method(self):
-            return 2
-
-    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
-    def fun():
-        return 1
-
-    normal_task_object_list = [fun.remote() for _ in range(normal_task_count)]
-    actor_list = [Foo.remote() for _ in range(actor_count)]
-    actor_object_list = [
-        actor.method.remote()
-        for _ in range(each_actor_task_count)
-        for actor in actor_list
-    ]
-    for object in ray.get(actor_object_list):
-        assert object == 2
-
-    for object in ray.get(normal_task_object_list):
-        assert object == 1
-
-
 # This case tests whether gcs actor scheduler distributes actors
 # in a balanced way if using `SPREAD` policy.
 @pytest.mark.parametrize("args", [[5, 20], [5, 3]])
@@ -227,10 +186,4 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

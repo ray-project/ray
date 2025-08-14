@@ -3,7 +3,7 @@ import zipfile
 
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
@@ -31,6 +31,15 @@ def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -
     return os.path.join(target_dir, table_dir)
 
 
+def _get_hudi_table_path(fs, data_path, table_name, testing_dir="test_hudi") -> str:
+    setup_data_path = _unwrap_protocol(data_path)
+    target_testing_dir = os.path.join(setup_data_path, testing_dir)
+    fixture_path, _ = _resolve_paths_and_filesystem(
+        f"example://hudi-tables/{table_name}.zip", fs
+    )
+    return _extract_testing_table(fixture_path[0], table_name, target_testing_dir)
+
+
 @pytest.mark.skipif(
     not PYARROW_VERSION_MEETS_REQUIREMENT,
     reason=PYARROW_HUDI_TEST_SKIP_REASON,
@@ -42,17 +51,10 @@ def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
     ],
 )
-def test_read_hudi_simple_cow_table(ray_start_regular_shared, fs, data_path):
-    setup_data_path = _unwrap_protocol(data_path)
-    target_testing_dir = os.path.join(setup_data_path, "test_hudi")
-    fixture_path, _ = _resolve_paths_and_filesystem(
-        "example://hudi-tables/0.x_cow_partitioned.zip", fs
-    )
-    target_table_path = _extract_testing_table(
-        fixture_path[0], "trips_table", target_testing_dir
-    )
+def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_path):
+    table_path = _get_hudi_table_path(fs, data_path, "v6_trips_8i1u")
 
-    ds = ray.data.read_hudi(target_table_path)
+    ds = ray.data.read_hudi(table_path, filters=[("city", "=", "san_francisco")])
 
     assert ds.schema().names == [
         "_hoodie_commit_time",
@@ -67,42 +69,88 @@ def test_read_hudi_simple_cow_table(ray_start_regular_shared, fs, data_path):
         "fare",
         "city",
     ]
-    assert ds.count() == 5
+    assert ds.count() == 4
     rows = (
-        ds.select_columns(["_hoodie_commit_time", "ts", "uuid", "fare"])
+        ds.select_columns(["_hoodie_commit_time", "ts", "rider", "fare"])
         .sort("fare")
         .take_all()
     )
+    first_commit = "20250715043008154"
+    second_commit = "20250715043011090"
     assert rows == [
         {
-            "_hoodie_commit_time": "20240402123035233",
-            "ts": 1695115999911,
-            "uuid": "c8abbe79-8d89-47ea-b4ce-4d224bae5bfa",
-            "fare": 17.85,
-        },
-        {
-            "_hoodie_commit_time": "20240402123035233",
+            "_hoodie_commit_time": first_commit,
             "ts": 1695159649087,
-            "uuid": "334e26e9-8355-45cc-97c6-c31daf0df330",
-            "fare": 19.1,
+            "rider": "rider-A",
+            "fare": 19.10,
         },
         {
-            "_hoodie_commit_time": "20240402123035233",
-            "ts": 1695091554788,
-            "uuid": "e96c4396-3fad-413a-a942-4cb36106d721",
-            "fare": 27.7,
-        },
-        {
-            "_hoodie_commit_time": "20240402123035233",
-            "ts": 1695516137016,
-            "uuid": "e3cf430c-889d-4015-bc98-59bdce1e530c",
-            "fare": 34.15,
-        },
-        {
-            "_hoodie_commit_time": "20240402144910683",
+            "_hoodie_commit_time": second_commit,
             "ts": 1695046462179,
-            "uuid": "9909a8b1-2d15-4d3d-8ec9-efc48c536a00",
-            "fare": 339.0,
+            "rider": "rider-D",
+            "fare": 25.0,
+        },
+        {
+            "_hoodie_commit_time": first_commit,
+            "ts": 1695091554788,
+            "rider": "rider-C",
+            "fare": 27.70,
+        },
+        {
+            "_hoodie_commit_time": first_commit,
+            "ts": 1695332066204,
+            "rider": "rider-E",
+            "fare": 93.50,
+        },
+    ]
+
+
+@pytest.mark.skipif(
+    not PYARROW_VERSION_MEETS_REQUIREMENT,
+    reason=PYARROW_HUDI_TEST_SKIP_REASON,
+)
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+    ],
+)
+def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, fs, data_path):
+    table_path = _get_hudi_table_path(fs, data_path, "v6_trips_8i1u")
+
+    first_commit = "20250715043008154"
+    second_commit = "20250715043011090"
+    ds = ray.data.read_hudi(
+        table_path,
+        query_type="incremental",
+        hudi_options={
+            "hoodie.read.file_group.start_timestamp": first_commit,
+            "hoodie.read.file_group.end_timestamp": second_commit,
+        },
+    )
+
+    assert ds.schema().names == [
+        "_hoodie_commit_time",
+        "_hoodie_commit_seqno",
+        "_hoodie_record_key",
+        "_hoodie_partition_path",
+        "_hoodie_file_name",
+        "ts",
+        "uuid",
+        "rider",
+        "driver",
+        "fare",
+        "city",
+    ]
+    assert ds.count() == 1
+    rows = ds.select_columns(["_hoodie_commit_time", "ts", "rider", "fare"]).take_all()
+    assert rows == [
+        {
+            "_hoodie_commit_time": second_commit,
+            "ts": 1695046462179,
+            "rider": "rider-D",
+            "fare": 25.0,
         },
     ]
 

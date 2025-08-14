@@ -40,7 +40,7 @@ struct hash<ray::rpc::Address> {
     size_t hash = std::hash<int32_t>()(addr.port());
     hash ^= std::hash<std::string>()(addr.ip_address());
     hash ^= std::hash<std::string>()(addr.worker_id());
-    hash ^= std::hash<std::string>()(addr.raylet_id());
+    hash ^= std::hash<std::string>()(addr.node_id());
     return hash;
   }
 };
@@ -55,16 +55,7 @@ inline constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 /// The base size in bytes per request.
 inline constexpr int64_t kBaseRequestSize = 1024;
 
-/// Get the estimated size in bytes of the given task.
-static const int64_t RequestSizeInBytes(const PushTaskRequest &request) {
-  int64_t size = kBaseRequestSize;
-  for (auto &arg : request.task_spec().args()) {
-    size += arg.data().size();
-  }
-  return size;
-}
-
-// Shared between direct actor and task submitters.
+// Shared between actor and task submitters.
 /* class CoreWorkerClientInterface; */
 
 inline bool operator==(const rpc::Address &lhs, const rpc::Address &rhs) {
@@ -108,14 +99,14 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                const ClientCallback<NumPendingTasksReply> &callback,
                                int64_t timeout_ms = -1) {}
 
-  /// Notify a wait has completed for direct actor call arguments.
+  /// Notify a wait has completed for actor call arguments.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual void DirectActorCallArgWaitComplete(
-      const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {}
+  virtual void ActorCallArgWaitComplete(
+      const ActorCallArgWaitCompleteRequest &request,
+      const ClientCallback<ActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
   virtual void GetObjectStatus(const GetObjectStatusRequest &request,
@@ -198,8 +189,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
-  /// Returns the max acked sequence number, useful for checking on progress.
-  virtual int64_t ClientProcessedUpToSeqno() { return -1; }
+  virtual void FreeActorObject(const FreeActorObjectRequest &request,
+                               const ClientCallback<FreeActorObjectReply> &callback) {}
 
   virtual ~CoreWorkerClientInterface() = default;
 };
@@ -212,27 +203,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const rpc::Address &address,
+  /// \param[in] core_worker_unavailable_timeout_callback The callback function that is
+  /// used by the retryable grpc to remove unresponsive core worker connections from the
+  /// pool once its been unavailable for more than server_unavailable_timeout_seconds.
+  CoreWorkerClient(rpc::Address address,
                    ClientCallManager &client_call_manager,
-                   std::function<void()> core_worker_unavailable_timeout_callback)
-      : addr_(address) {
-    grpc_client_ = std::make_shared<GrpcClient<CoreWorkerService>>(
-        addr_.ip_address(), addr_.port(), client_call_manager);
-
-    retryable_grpc_client_ = RetryableGrpcClient::Create(
-        grpc_client_->Channel(),
-        client_call_manager.GetMainService(),
-        /*max_pending_requests_bytes=*/
-        std::numeric_limits<uint64_t>::max(),
-        /*check_channel_status_interval_milliseconds=*/
-        ::RayConfig::instance()
-            .grpc_client_check_connection_status_interval_milliseconds(),
-        /*server_unavailable_timeout_seconds=*/
-        ::RayConfig::instance().core_worker_rpc_server_reconnect_timeout_s(),
-        /*server_unavailable_timeout_callback=*/
-        core_worker_unavailable_timeout_callback,
-        /*server_name=*/"Core worker " + addr_.ip_address());
-  };
+                   std::function<void()> core_worker_unavailable_timeout_callback);
 
   const rpc::Address &Addr() const override { return addr_; }
 
@@ -242,16 +218,17 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         DirectActorCallArgWaitComplete,
+                         ActorCallArgWaitComplete,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         GetObjectStatus,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   GetObjectStatus,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          KillActor,
@@ -289,11 +266,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         UpdateObjectLocationBatch,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   UpdateObjectLocationBatch,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          GetObjectLocationsOwner,
@@ -371,41 +349,18 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         FreeActorObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,
-                     ClientCallback<PushTaskReply> &&callback) override {
-    if (skip_queue) {
-      // Set this value so that the actor does not skip any tasks when
-      // processing this request. We could also set it to max_finished_seq_no_,
-      // but we just set it to the default of -1 to avoid taking the lock.
-      request->set_client_processed_up_to(-1);
-      INVOKE_RPC_CALL(CoreWorkerService,
-                      PushTask,
-                      *request,
-                      callback,
-                      grpc_client_,
-                      /*method_timeout_ms*/ -1);
-      return;
-    }
-
-    {
-      absl::MutexLock lock(&mutex_);
-      send_queue_.emplace_back(std::move(request), std::move(callback));
-    }
-    SendRequests();
-  }
+                     ClientCallback<PushTaskReply> &&callback) override;
 
   void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                      const ClientCallback<PushTaskReply> &callback) override {
-    request->set_sequence_number(-1);
-    request->set_client_processed_up_to(-1);
-    INVOKE_RPC_CALL(CoreWorkerService,
-                    PushTask,
-                    *request,
-                    callback,
-                    grpc_client_,
-                    /*method_timeout_ms*/ -1);
-  }
+                      const ClientCallback<PushTaskReply> &callback) override;
 
   void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
                        const ClientCallback<NumPendingTasksReply> &callback,
@@ -419,53 +374,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
   /// See direct_actor.proto for a description of the ordering protocol.
-  void SendRequests() {
-    absl::MutexLock lock(&mutex_);
-    auto this_ptr = this->shared_from_this();
-
-    while (!send_queue_.empty() && rpc_bytes_in_flight_ < kMaxBytesInFlight) {
-      auto pair = std::move(*send_queue_.begin());
-      send_queue_.pop_front();
-
-      auto request = std::move(pair.first);
-      int64_t task_size = RequestSizeInBytes(*request);
-      int64_t seq_no = request->sequence_number();
-      request->set_client_processed_up_to(max_finished_seq_no_);
-      rpc_bytes_in_flight_ += task_size;
-
-      auto rpc_callback =
-          [this, this_ptr, seq_no, task_size, callback = std::move(pair.second)](
-              Status status, rpc::PushTaskReply &&reply) {
-            {
-              absl::MutexLock lock(&mutex_);
-              if (seq_no > max_finished_seq_no_) {
-                max_finished_seq_no_ = seq_no;
-              }
-              rpc_bytes_in_flight_ -= task_size;
-              RAY_CHECK(rpc_bytes_in_flight_ >= 0);
-            }
-            SendRequests();
-            callback(status, std::move(reply));
-          };
-
-      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService,
-                                 PushTask,
-                                 *request,
-                                 std::move(rpc_callback),
-                                 grpc_client_,
-                                 /*method_timeout_ms*/ -1));
-    }
-
-    if (!send_queue_.empty()) {
-      RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
-    }
-  }
-
-  /// Returns the max acked sequence number, useful for checking on progress.
-  int64_t ClientProcessedUpToSeqno() override {
-    absl::MutexLock lock(&mutex_);
-    return max_finished_seq_no_;
-  }
+  void SendRequests();
 
  private:
   /// Protects against unsafe concurrent access from the callback thread.
@@ -487,7 +396,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
+  std::optional<int64_t> max_finished_seq_no_ ABSL_GUARDED_BY(mutex_);
 };
 
 using CoreWorkerClientFactoryFn =

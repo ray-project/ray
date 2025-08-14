@@ -13,3 +13,37 @@ steps:
     depends_on:
       - oss-ci-base_test
       - forge
+    tags: tools
+  - label: ":coral: reef: raydepsets tests"
+    key: raydepsets-tests
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+          //ci/raydepsets/... ci
+          --cache-test-results
+          --build-name oss-ci-base_test
+          --build-type skip
+    instance_type: small
+    depends_on:
+      - oss-ci-base_test
+      - forge
+    tags: tools
+  - label: ":coral: reef: privileged container tests"
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+          //ci/ray_ci:test_privileged ci
+          --cache-test-results
+          --build-name oss-ci-base_test
+          --build-type cgroup
+          --privileged
+    instance_type: small
+    depends_on:
+      - oss-ci-base_test
+      - forge
+    tags: tools
+  - label: ":coral: reef: iwyu tests"
+    commands:
+      - bazel test --config iwyu //bazel/tests/cpp:example_test
+    instance_type: small
+    depends_on: oss-ci-base_build
+    job_env: oss-ci-base_build
+    tags: tools

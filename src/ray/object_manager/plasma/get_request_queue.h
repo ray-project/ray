@@ -20,7 +20,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/connection.h"
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 
 namespace plasma {
 struct GetRequest;
@@ -35,7 +35,6 @@ struct GetRequest {
   GetRequest(instrumented_io_context &io_context,
              const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids,
-             bool is_from_worker,
              int64_t num_unique_objects_to_wait_for);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
@@ -49,9 +48,6 @@ struct GetRequest {
   /// The number of object requests in this wait request that are already
   /// satisfied.
   int64_t num_unique_objects_satisfied;
-  /// Whether or not the request comes from the core worker. It is used to track the size
-  /// of total objects that are consumed by core worker.
-  const bool is_from_worker;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout);
@@ -90,14 +86,13 @@ class GetRequestQueue {
   /// \param client the client where the request comes from.
   /// \param object_ids the object ids to get.
   /// \param timeout_ms timeout in millisecond, -1 is used to indicate that no timer
-  /// should be set. \param is_from_worker whether the get request from a worker or not.
+  /// should be set.
   /// \param object_callback the callback function called once any object has been
   /// satisfied. \param all_objects_callback the callback function called when all objects
   /// has been satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids,
-                  int64_t timeout_ms,
-                  bool is_from_worker);
+                  int64_t timeout_ms);
 
   /// Remove all of the GetRequests for a given client.
   ///

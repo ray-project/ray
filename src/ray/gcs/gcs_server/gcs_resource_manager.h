@@ -31,7 +31,7 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -185,7 +185,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
   /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+  std::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
 

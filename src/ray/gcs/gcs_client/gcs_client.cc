@@ -26,6 +26,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace gcs {
@@ -112,8 +113,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ =
-      std::make_unique<rpc::ClientCallManager>(io_service, options_.cluster_id_);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      io_service, /*record_stats=*/false, options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
@@ -159,9 +160,10 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
+  publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
 
-  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
-                 << options_.gcs_port_;
+  RAY_LOG(DEBUG) << "GcsClient connected "
+                 << BuildAddress(options_.gcs_address_, options_.gcs_port_);
 
   if (options_.should_fetch_cluster_id_) {
     RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));

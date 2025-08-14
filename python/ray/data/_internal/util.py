@@ -1,17 +1,16 @@
+import functools
 import importlib
 import logging
 import os
 import pathlib
+import platform
 import random
 import sys
-import psutil
-import platform
 import threading
 import time
-import functools
 import urllib.parse
+from collections import Counter
 from queue import Empty, Full, Queue
-from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
@@ -28,18 +27,28 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
 import pyarrow
+from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
+import psutil
+
 if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.execution.interfaces import RefBundle
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
+    from ray.data.block import (
+        Block,
+        BlockMetadataWithSchema,
+        Schema,
+        UserDefinedFunction,
+    )
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -68,17 +77,28 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
-class _NullSentinel:
-    """Sentinel value that sorts greater than any other value."""
+class _OrderedNullSentinel:
+    """Sentinel value that sorts greater than any other non-null value.
+
+    NOTE: Semantic of this sentinel is closely mirroring that one of
+          ``np.nan`` for the purpose of consistency in handling of
+          ``None``s and ``np.nan``s.
+    """
 
     def __eq__(self, other):
-        return isinstance(other, _NullSentinel)
-
-    def __lt__(self, other):
         return False
 
+    def __lt__(self, other):
+        # not None < _OrderedNullSentinel
+        # _OrderedNullSentinel < _OrderedNullSentinel
+        # _OrderedNullSentinel < None
+        # _OrderedNullSentinel < np.nan
+        return isinstance(other, _OrderedNullSentinel) or is_null(other)
+
     def __le__(self, other):
-        return isinstance(other, _NullSentinel)
+        # NOTE: This is just a shortened version of
+        #   self < other or self == other
+        return self.__lt__(other)
 
     def __gt__(self, other):
         return not self.__le__(other)
@@ -90,7 +110,7 @@ class _NullSentinel:
         return id(self)
 
 
-NULL_SENTINEL = _NullSentinel()
+NULL_SENTINEL = _OrderedNullSentinel()
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -138,7 +158,7 @@ def _check_pyarrow_version():
 
 def _autodetect_parallelism(
     parallelism: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     ctx: DataContext,
     datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
@@ -181,9 +201,14 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
+
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
-    if mem_size is not None and not np.isnan(mem_size):
+    if (
+        mem_size is not None
+        and not np.isnan(mem_size)
+        and target_max_block_size is not None
+    ):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
 
@@ -222,13 +247,18 @@ def _autodetect_parallelism(
             reason = (
                 "output blocks of size at least "
                 "DataContext.get_current().target_min_block_size="
-                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+                f"{ctx.target_min_block_size / MiB} MiB"
             )
         elif parallelism == min_safe_parallelism:
+            # Handle ``None`` (unlimited) gracefully in the log message.
+            if ctx.target_max_block_size is None:
+                display_val = "unlimited"
+            else:
+                display_val = f"{ctx.target_max_block_size / MiB} MiB"
             reason = (
                 "output blocks of size at most "
                 "DataContext.get_current().target_max_block_size="
-                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                f"{display_val}"
             )
         else:
             reason = (
@@ -664,54 +694,69 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
-    from ray.data.block import BlockAccessor, BlockExecStats
+def pandas_df_to_arrow_block(
+    df: "pandas.DataFrame",
+) -> Tuple["Block", "BlockMetadataWithSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadataWithSchema
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return (
-        block,
-        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
-    )
+    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
 
 
-def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
-    from ray.data.block import BlockAccessor, BlockExecStats
+def ndarray_to_block(
+    ndarray: np.ndarray, ctx: DataContext
+) -> Tuple["Block", "BlockMetadataWithSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadataWithSchema
 
     DataContext._set_current(ctx)
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-    return block, metadata
+    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
 
 
-def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
-) -> "BlockMetadata":
-    from ray.data.block import BlockAccessor, BlockExecStats
+def get_table_block_metadata_schema(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+) -> "BlockMetadataWithSchema":
+    from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
+    return BlockMetadataWithSchema.from_block(table, stats=stats.build())
 
 
 def unify_block_metadata_schema(
-    metadata: List["BlockMetadata"],
-) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    block_metadata_with_schemas: List["BlockMetadataWithSchema"],
+) -> Optional["Schema"]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
+
+    Args:
+        block_metadata_with_schemas: List of BlockMetadata to unify
+
+    Returns:
+        A unified schema of the input list of schemas, or None if no valid schemas
+        are provided.
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
-    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
+
     schemas_to_unify = []
-    for m in metadata:
+    for m in block_metadata_with_schemas:
         if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
             schemas_to_unify.append(m.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
+
+
+def unify_schemas_with_validation(
+    schemas_to_unify: Iterable["Schema"],
+) -> Optional["Schema"]:
     if schemas_to_unify:
+        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+
         # Check valid pyarrow installation before attempting schema unification
         try:
             import pyarrow as pa
@@ -724,6 +769,18 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def unify_ref_bundles_schema(
+    ref_bundles: List["RefBundle"],
+) -> Optional["Schema"]:
+    schemas_to_unify = []
+    for bundle in ref_bundles:
+        if bundle.schema is not None and (
+            bundle.num_rows() is None or bundle.num_rows() > 0
+        ):
+            schemas_to_unify.append(bundle.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
 
 
 def find_partition_index(
@@ -766,12 +823,6 @@ def find_partition_index(
         if desired_val is None:
             desired_val = NULL_SENTINEL
 
-        # Replace None/NaN values in col_vals with sentinel
-        null_mask = col_vals == None  # noqa: E711
-        if null_mask.any():
-            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
-            col_vals[null_mask] = NULL_SENTINEL
-
         prevleft = left
         if descending[i] is True:
             # ``np.searchsorted`` expects the array to be sorted in ascending
@@ -780,13 +831,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -795,38 +847,14 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+
     return right if descending[0] is True else left
-
-
-def find_partitions(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
-    boundaries: List[Tuple[Union[int, float]]],
-    sort_key: "SortKey",
-):
-    partitions = []
-
-    # For each boundary value, count the number of items that are less
-    # than it. Since the block is sorted, these counts partition the items
-    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-    # partition[i]. If `descending` is true, `boundaries` would also be
-    # in descending order and we only need to count the number of items
-    # *greater than* the boundary value instead.
-    bounds = [
-        find_partition_index(table, boundary, sort_key) for boundary in boundaries
-    ]
-
-    last_idx = 0
-    for idx in bounds:
-        partitions.append(table[last_idx:idx])
-        last_idx = idx
-    partitions.append(table[last_idx:])
-    return partitions
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
@@ -914,29 +942,39 @@ class _InterruptibleQueue(Queue):
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
+    preserve_ordering: bool,
     num_workers: int = 1,
-    queue_buffer_size: int = 2,
+    buffer_size: int = 1,
 ) -> Generator[U, None, None]:
-
-    gen_id = random.randint(0, 2**31 - 1)
-
     """Returns a generator (iterator) mapping items from the
     provided iterator applying provided transformation in parallel (using a
     thread-pool).
 
-    NOTE: Even though the mapping is performed in parallel across N
-          threads, this method provides crucial guarantee of preserving the
-          ordering of the source iterator, ie that
+    NOTE: There are some important constraints that needs to be carefully
+          understood before using this method
 
-            iterator = [A1, A2, ... An]
-            mapped iterator = [map(A1), map(A2), ..., map(An)]
+        1. If `preserve_ordering` is True
+            a. This method would unroll input iterator eagerly (irrespective
+                of the speed of resulting generator being consumed). This is necessary
+                as we can not guarantee liveness of the algorithm AND preserving of the
+                original ordering at the same time.
 
-          Preserving ordering is crucial to eliminate non-determinism in producing
-          content of the blocks.
+            b. Resulting ordering of the output will "match" ordering of the input, ie
+               that:
+                    iterator = [A1, A2, ... An]
+                    output iterator = [map(A1), map(A2), ..., map(An)]
+
+        2. If `preserve_ordering` is False
+            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be
+                fetched from the iterator
+
+            b. Resulting ordering of the output is unspecified (and is
+            non-deterministic)
 
     Args:
         base_iterator: Iterator yielding elements to map
         fn: Transformation to apply to each element
+        preserve_ordering: Whether ordering has to be preserved
         num_workers: The number of threads to use in the threadpool (defaults to 1)
         buffer_size: Number of objects to be buffered in its input/output
                      queues (per queue; defaults to 2). Total number of objects held
@@ -949,8 +987,13 @@ def make_async_gen(
         elements mapped by provided transformation (while *preserving the ordering*)
     """
 
+    gen_id = random.randint(0, 2**31 - 1)
+
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
+
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
 
     # To apply transformations to elements in parallel *and* preserve the ordering
     # following invariants are established:
@@ -967,16 +1010,26 @@ def make_async_gen(
     #     order as input queues) dequeues 1 mapped element at a time from each output
     #     queue and yields it
     #
-    # Signal handler used to interrupt workers when terminating
-    interrupted_event = threading.Event()
+    # However, in case when we're preserving the ordering we can not enforce the input
+    # queue size as this could result in deadlocks since transformations could be
+    # producing sequences of arbitrary length.
+    #
+    # Check `test_make_async_gen_varying_seq_length_stress_test` for more context on
+    # this problem.
+    if preserve_ordering:
+        input_queue_buf_size = -1
+        num_input_queues = num_workers
+    else:
+        input_queue_buf_size = (buffer_size + 1) * num_workers
+        num_input_queues = 1
 
     input_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(input_queue_buf_size, interrupted_event)
+        for _ in range(num_input_queues)
     ]
+
     output_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(buffer_size, interrupted_event) for _ in range(num_workers)
     ]
 
     # Filling worker
@@ -985,11 +1038,16 @@ def make_async_gen(
             # First, round-robin elements from the iterator into
             # corresponding input queues (one by one)
             for idx, item in enumerate(base_iterator):
-                input_queues[idx % num_workers].put(item)
+                input_queues[idx % num_input_queues].put(item)
 
-            # Enqueue sentinel objects to signal end of the line
+            # NOTE: We have to Enqueue sentinel objects for every transforming
+            #       worker:
+            #   - In case of preserving order of ``num_queues`` == ``num_workers``
+            #     we will enqueue 1 sentinel per queue
+            #   - In case of NOT preserving order all ``num_workers`` sentinels
+            #     will be enqueued into a single queue
             for idx in range(num_workers):
-                input_queues[idx].put(SENTINEL)
+                input_queues[idx % num_input_queues].put(SENTINEL)
 
         except InterruptedError:
             pass
@@ -1004,18 +1062,14 @@ def make_async_gen(
                 output_queue.put(e)
 
     # Transforming worker
-    def _run_transforming_worker(worker_id: int):
-        input_queue = input_queues[worker_id]
-        output_queue = output_queues[worker_id]
-
+    def _run_transforming_worker(input_queue, output_queue):
         try:
             # Create iterator draining the queue, until it receives sentinel
             #
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
 
-            mapped_iter = fn(input_queue_iter)
-            for result in mapped_iter:
+            for result in fn(input_queue_iter):
                 # Enqueue result of the transformation
                 output_queue.put(result)
 
@@ -1042,11 +1096,11 @@ def make_async_gen(
     transforming_worker_threads = [
         threading.Thread(
             target=_run_transforming_worker,
-            name=f"map_tp_transforming_worker-{gen_id}-{worker_idx}",
-            args=(worker_idx,),
+            name=f"map_tp_transforming_worker-{gen_id}-{idx}",
+            args=(input_queues[idx % num_input_queues], output_queues[idx]),
             daemon=True,
         )
-        for worker_idx in range(num_workers)
+        for idx in range(num_workers)
     ]
 
     for t in transforming_worker_threads:
@@ -1071,7 +1125,6 @@ def make_async_gen(
             #     order and one single element is dequeued (in a blocking way!) at a
             #     time from every individual output queue
             #
-            non_empty_queues = []
             empty_queues = []
 
             # At every iteration only remaining non-empty queues
@@ -1086,10 +1139,12 @@ def make_async_gen(
                 if item is SENTINEL:
                     empty_queues.append(output_queue)
                 else:
-                    non_empty_queues.append(output_queue)
                     yield item
 
-            remaining_output_queues = non_empty_queues
+            if empty_queues:
+                remaining_output_queues = [
+                    q for q in remaining_output_queues if q not in empty_queues
+                ]
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
@@ -1117,6 +1172,9 @@ class RetryingContextManager:
         self._data_context = context
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} fs={self.handler.unwrap()}>"
 
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
@@ -1438,13 +1496,6 @@ def iterate_with_retry(
                 raise e from None
 
 
-def create_dataset_tag(dataset_name: Optional[str], *args):
-    tag = dataset_name or "dataset"
-    for arg in args:
-        tag += f"_{arg}"
-    return tag
-
-
 def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     if num_bytes >= 1e9:
         num_bytes_str = f"{round(num_bytes / 1e9)}GB"
@@ -1456,16 +1507,20 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
 
 
 def _validate_rows_per_file_args(
-    *, num_rows_per_file: Optional[int] = None, min_rows_per_file: Optional[int] = None
-) -> Optional[int]:
+    *,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> Tuple[Optional[int], Optional[int]]:
     """Helper method to validate and handle rows per file arguments.
 
     Args:
         num_rows_per_file: Deprecated parameter for number of rows per file
         min_rows_per_file: New parameter for minimum rows per file
+        max_rows_per_file: New parameter for maximum rows per file
 
     Returns:
-        The effective min_rows_per_file value to use
+        A tuple of (effective_min_rows_per_file, effective_max_rows_per_file)
     """
     if num_rows_per_file is not None:
         import warnings
@@ -1481,8 +1536,28 @@ def _validate_rows_per_file_args(
                 "Cannot specify both `num_rows_per_file` and `min_rows_per_file`. "
                 "Use `min_rows_per_file` as `num_rows_per_file` is deprecated."
             )
-        return num_rows_per_file
-    return min_rows_per_file
+        min_rows_per_file = num_rows_per_file
+
+    # Validate max_rows_per_file
+    if max_rows_per_file is not None and max_rows_per_file <= 0:
+        raise ValueError("max_rows_per_file must be a positive integer")
+
+    # Validate min_rows_per_file
+    if min_rows_per_file is not None and min_rows_per_file <= 0:
+        raise ValueError("min_rows_per_file must be a positive integer")
+
+    # Validate that max >= min if both are specified
+    if (
+        min_rows_per_file is not None
+        and max_rows_per_file is not None
+        and min_rows_per_file > max_rows_per_file
+    ):
+        raise ValueError(
+            f"min_rows_per_file ({min_rows_per_file}) cannot be greater than "
+            f"max_rows_per_file ({max_rows_per_file})"
+        )
+
+    return min_rows_per_file, max_rows_per_file
 
 
 def is_nan(value) -> bool:
@@ -1640,3 +1715,32 @@ class MemoryProfiler:
     def _can_estimate_uss() -> bool:
         # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
         return platform.system() == "Linux"
+
+
+def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
+    """Unzips a list of tuples into a tuple of lists
+
+    Args:
+        data: A list of tuples to unzip.
+
+    Returns:
+        A tuple of lists, where each list corresponds to one element of the tuples in
+        the input list.
+    """
+    return tuple(map(list, zip(*data)))
+
+
+def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
+    """Check if two DataFrames have the same rows.
+
+    Unlike the built-in pandas equals method, this function ignores indices and the
+    order of rows. This is useful for testing Ray Data because its interface doesn't
+    usually guarantee the order of rows.
+    """
+    actual_rows = actual.to_dict(orient="records")
+    expected_rows = expected.to_dict(orient="records")
+
+    actual_items_counts = Counter(frozenset(row.items()) for row in actual_rows)
+    expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
+
+    return actual_items_counts == expected_items_counts

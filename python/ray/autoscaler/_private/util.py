@@ -12,7 +12,7 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-import ray._private.ray_constants as ray_constants
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 import ray._private.services as services
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
@@ -701,10 +701,9 @@ def format_resource_demand_summary(
         # the demand report.
         if (
             using_placement_group
-            and ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
-            in pg_filtered_bundle.keys()
+            and PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in pg_filtered_bundle.keys()
         ):
-            del pg_filtered_bundle[ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
+            del pg_filtered_bundle[PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
 
         # No need to report empty request to demand (e.g.,
         # placement group ready task).
@@ -724,6 +723,36 @@ def format_resource_demand_summary(
     return demand_lines
 
 
+def get_constraint_report(request_demand: List[DictCount]):
+    """Returns a formatted string describing the resource constraints from request_resources().
+
+    Args:
+        request_demand: List of tuples containing resource bundle dictionaries and counts
+            from request_resources() calls.
+
+    Returns:
+        String containing the formatted constraints report, either listing each constraint
+        and count or indicating no constraints exist.
+
+    Example:
+        >>> request_demand = [
+        ...     ({"CPU": 4}, 2),
+        ...     ({"GPU": 1}, 1)
+        ... ]
+        >>> get_constraint_report(request_demand)
+        " {'CPU': 4}: 2 from request_resources()\\n {'GPU': 1}: 1 from request_resources()"
+    """
+    constraint_lines = []
+    for bundle, count in request_demand:
+        line = f" {bundle}: {count} from request_resources()"
+        constraint_lines.append(line)
+    if len(constraint_lines) > 0:
+        constraints_report = "\n".join(constraint_lines)
+    else:
+        constraints_report = " (no request_resources() constraints)"
+    return constraints_report
+
+
 def get_demand_report(lm_summary: LoadMetricsSummary):
     demand_lines = []
     if lm_summary.resource_demand:
@@ -732,9 +761,6 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
         pg, count = entry
         pg_str = format_pg(pg)
         line = f" {pg_str}: {count}+ pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count}+ from request_resources()"
         demand_lines.append(line)
     if len(demand_lines) > 0:
         demand_report = "\n".join(demand_lines)
@@ -893,6 +919,7 @@ def format_info_string(
         failure_report += " (no failures)"
 
     usage_report = get_usage_report(lm_summary, verbose)
+    constraints_report = get_constraint_report(lm_summary.request_demand)
     demand_report = get_demand_report(lm_summary)
     formatted_output = f"""{header}
 Node status
@@ -912,9 +939,11 @@ Pending:
 
 Resources
 {separator}
-{"Total " if verbose else ""}Usage:
+Total Usage:
 {usage_report}
-{"Total " if verbose else ""}Demands:
+Total Constraints:
+{constraints_report}
+Total Demands:
 {demand_report}"""
 
     if verbose:

@@ -21,24 +21,6 @@ py_test_run_all_subdirectory(
 
 py_test_module_list(
     size = "medium",
-    env = {"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
-    files = [
-        "test_deployment_state.py",
-    ],
-    name_suffix = "_with_stop_fully_then_start_behavior",
-    tags = [
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-        "//python/ray/serve/tests:common",
-    ],
-)
-
-py_test_module_list(
-    size = "medium",
     env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_deployment_scheduler.py",

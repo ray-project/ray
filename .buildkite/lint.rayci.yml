@@ -2,6 +2,9 @@ group: lint
 steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small
+    tags:
+      - lint
+      - always
     depends_on:
       - forge
     commands:
@@ -21,10 +24,22 @@ steps:
       - test_coverage
       - documentation_style
 
+  - label: ":lint-roller: pre-commit pydoclint"
+    key: pydoclint-small
+    tags:
+      - oss
+      - lint
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh pre_commit_pydoclint
+
   - label: ":lint-roller: lint: {{matrix}}"
     tags:
       - oss
       - lint
+      - always
     key: lint-medium
     instance_type: medium
     depends_on: docbuild

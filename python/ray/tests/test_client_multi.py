@@ -1,4 +1,3 @@
-import os
 import sys
 import pytest
 import ray
@@ -207,7 +206,4 @@ if __name__ == "__main__":
     from ray._private import auto_init_hook
 
     auto_init_hook.enable_auto_connect = False
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

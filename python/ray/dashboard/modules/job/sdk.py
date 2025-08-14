@@ -18,6 +18,7 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.utils import strip_keys_with_value_none
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.runtime_env import RuntimeEnv
+from ray.runtime_env.runtime_env import _validate_no_local_paths
 from ray.util.annotations import PublicAPI
 
 try:
@@ -45,7 +46,7 @@ class JobSubmissionClient(SubmissionClient):
             ray.init(), e.g. a Ray Client address (ray://<head_node_host>:10001),
             or "auto", or "localhost:<port>". If unspecified, will try to connect to
             a running local Ray cluster. This argument is always overridden by the
-            RAY_ADDRESS environment variable.
+            RAY_API_SERVER_ADDRESS or RAY_ADDRESS environment variable.
         create_cluster_if_needed: Indicates whether the cluster at the specified
             address needs to already be running. Ray doesn't start a cluster
             before interacting with jobs, but third-party job managers may do so.
@@ -222,7 +223,9 @@ class JobSubmissionClient(SubmissionClient):
             )
 
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
-        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+        runtime_env = RuntimeEnv(**runtime_env)
+        _validate_no_local_paths(runtime_env)
+        runtime_env = runtime_env.to_dict()
 
         submission_id = submission_id or job_id
         req = JobSubmitRequest(

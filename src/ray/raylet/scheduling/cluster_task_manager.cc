@@ -16,7 +16,6 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/range/join.hpp>
 #include <deque>
 #include <memory>
 #include <string>
@@ -24,6 +23,7 @@
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace raylet {
@@ -37,13 +37,13 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      get_node_info_(get_node_info),
-      announce_infeasible_task_(announce_infeasible_task),
+      get_node_info_(std::move(get_node_info)),
+      announce_infeasible_task_(std::move(announce_infeasible_task)),
       local_task_manager_(local_task_manager),
       scheduler_resource_reporter_(
           tasks_to_schedule_, infeasible_tasks_, local_task_manager_),
       internal_stats_(*this, local_task_manager_),
-      get_time_ms_(get_time_ms) {}
+      get_time_ms_(std::move(get_time_ms)) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     RayTask task,
@@ -170,7 +170,21 @@ bool ClusterTaskManager::IsWorkWithResourceShape(
   return false;
 }
 
-bool ClusterTaskManager::CancelAllTaskOwnedBy(
+bool ClusterTaskManager::CancelAllTasksOwnedBy(
+    const NodeID &node_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  // Only tasks and regular actors are canceled because their lifetime is
+  // the same as the owner.
+  auto predicate = [node_id](const std::shared_ptr<internal::Work> &work) {
+    return !work->task.GetTaskSpecification().IsDetachedActor() &&
+           work->task.GetTaskSpecification().CallerNodeId() == node_id;
+  };
+
+  return CancelTasks(predicate, failure_type, scheduling_failure_message);
+}
+
+bool ClusterTaskManager::CancelAllTasksOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
@@ -253,15 +267,14 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
     if (is_infeasible) {
       RAY_CHECK(!work_queue.empty());
       // Only announce the first item as infeasible.
-      auto &work_queue = shapes_it->second;
-      const auto &work = work_queue[0];
+      auto &cur_work_queue = shapes_it->second;
+      const auto &work = cur_work_queue[0];
       const RayTask task = work->task;
       if (announce_infeasible_task_) {
         announce_infeasible_task_(task);
       }
 
-      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it++);
@@ -315,7 +328,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_[shapes_it->first] = std::move(shapes_it->second);
       infeasible_tasks_.erase(shapes_it++);
     }
   }
@@ -340,9 +353,9 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   cluster_resource_scheduler_.GetLocalResourceManager().PopulateResourceViewSyncMessage(
       resource_view_sync_message);
   (*data.mutable_resources_total()) =
-      std::move(resource_view_sync_message.resources_total());
+      std::move(*resource_view_sync_message.mutable_resources_total());
   (*data.mutable_resources_available()) =
-      std::move(resource_view_sync_message.resources_available());
+      std::move(*resource_view_sync_message.mutable_resources_available());
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());
@@ -350,11 +363,9 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
       resource_view_sync_message.draining_deadline_timestamp_ms());
 }
 
-bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar,
-    bool *any_pending,
-    int *num_pending_actor_creation,
-    int *num_pending_tasks) const {
+const RayTask *ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
+    int *num_pending_actor_creation, int *num_pending_tasks) const {
+  const RayTask *exemplar = nullptr;
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
@@ -387,18 +398,16 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
         *num_pending_tasks += 1;
       }
 
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
+      if (exemplar == nullptr) {
+        exemplar = &task;
       }
     }
   }
 
-  local_task_manager_.AnyPendingTasksForResourceAcquisition(
-      exemplar, any_pending, num_pending_actor_creation, num_pending_tasks);
-
-  // If there's any pending task, at this point, there's no progress being made.
-  return *any_pending;
+  auto local_task_exemplar = local_task_manager_.AnyPendingTasksForResourceAcquisition(
+      num_pending_actor_creation, num_pending_tasks);
+  // Prefer returning the cluster task manager exemplar if it exists.
+  return exemplar == nullptr ? local_task_exemplar : exemplar;
 }
 
 void ClusterTaskManager::RecordMetrics() const {
@@ -446,7 +455,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_ip_address(
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();
 }

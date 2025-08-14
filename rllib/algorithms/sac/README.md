@@ -10,10 +10,13 @@ well as expected entropy over the current policy. In addition to optimizing over
 actor and critic with entropy-based objectives, SAC also optimizes for the entropy
 coeffcient.
 
+[SAC-Discrete](https://arxiv.org/pdf/1910.07207) is a variant of SAC that can be used for discrete action spaces is
+also implemented.
+
 ## Documentation & Implementation:
 
 [Soft Actor-Critic Algorithm (SAC)](https://arxiv.org/abs/1801.01290).
 
 **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#sac)**
 
-**[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py)**
+**[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py)**

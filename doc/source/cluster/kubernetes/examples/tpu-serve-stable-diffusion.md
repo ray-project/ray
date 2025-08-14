@@ -38,7 +38,7 @@ Port-forward the Ray Dashboard from the Ray head service. To view the dashboard,
 kubectl port-forward svc/stable-diffusion-tpu-head-svc 8265:8265 &
 ```
 
-Monitor the status of the RayService CR in the Ray Dashboard from the the 'Serve' tab. The installed RayService CR should create a running app with the name 'stable_diffusion'. The app should have two deployments, the API ingress, which receives input prompts, and the Stable Diffusion model server.
+Monitor the status of the RayService CR in the Ray Dashboard from the 'Serve' tab. The installed RayService CR should create a running app with the name 'stable_diffusion'. The app should have two deployments, the API ingress, which receives input prompts, and the Stable Diffusion model server.
 
 ![serve_dashboard](../images/serve_dashboard.png)
 

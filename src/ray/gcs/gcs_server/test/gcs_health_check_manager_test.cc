@@ -35,9 +35,10 @@ using namespace boost::asio::ip;  // NOLINT
 
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
+#include "ray/util/network_util.h"
 
 int GetFreePort() {
-  io_service io_service;
+  io_context io_service;
   tcp::acceptor acceptor(io_service);
   tcp::endpoint endpoint;
 
@@ -89,7 +90,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     RAY_LOG(INFO) << "Get port " << port;
     auto server = std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true);
 
-    auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
+    auto channel = grpc::CreateChannel(BuildAddress("localhost", port),
                                        grpc::InsecureChannelCredentials());
     server->Run();
     if (alive) {
@@ -265,7 +266,8 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
 #ifdef _RAY_TSAN_BUILD
   GTEST_SKIP() << "Disabled in tsan because of performance";
 #endif
-  boost::asio::io_service::work work(io_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      io_service.get_executor());
   std::srand(std::time(nullptr));
   auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
 

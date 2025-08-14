@@ -181,14 +181,18 @@ to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
 .. testcode::
 
     logger.log_value("some_items", value="a", reduce=None, clear_on_reduce=True)
-    logger.log_value("some_items", value="b")
-    logger.log_value("some_items", value="c")
-    logger.log_value("some_items", value="d")
+    logger.log_value("some_items", value="b", reduce=None, clear_on_reduce=True)
+    logger.log_value("some_items", value="c", reduce=None, clear_on_reduce=True)
+    logger.log_value("some_items", value="d", reduce=None, clear_on_reduce=True)
 
     logger.peek("some_items")  # expect a list: ["a", "b", "c", "d"]
 
     logger.reduce()
     logger.peek("some_items")  # expect an empty list: []
+
+You should pass additional arguments like ``reduce=None`` and ``clear_on_reduce=True`` to the
+:py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method on each call.
+Otherwise, MetricsLogger will emit warnings to ensure that it's behaviour is always as expected.
 
 
 Logging a set of nested scalar values
@@ -238,9 +242,9 @@ log three consecutive image frames from a ``CartPole`` environment, do the follo
     env.reset()
     logger.log_value("some_images", value=env.render(), reduce=None, clear_on_reduce=True)
     env.step(0)
-    logger.log_value("some_images", value=env.render())
+    logger.log_value("some_images", value=env.render(), reduce=None, clear_on_reduce=True)
     env.step(1)
-    logger.log_value("some_images", value=env.render())
+    logger.log_value("some_images", value=env.render(), reduce=None, clear_on_reduce=True)
 
 Timers
 ~~~~~~
@@ -296,7 +300,7 @@ Set ``clear_on_reduce=False``, which is the default, if you want the count to ac
     logger = MetricsLogger()
 
     logger.log_value("my_counter", 50, reduce="sum", window=None)
-    logger.log_value("my_counter", 25)
+    logger.log_value("my_counter", 25, reduce="sum", window=None)
     logger.peek("my_counter")  # expect: 75
 
     # Even if your logger gets "reduced" from time to time, the counter keeps increasing
@@ -306,7 +310,7 @@ Set ``clear_on_reduce=False``, which is the default, if you want the count to ac
 
     # To clear the sum after each "reduce" event, set `clear_on_reduce=True`:
     logger.log_value("my_temp_counter", 50, reduce="sum", window=None, clear_on_reduce=True)
-    logger.log_value("my_temp_counter", 25)
+    logger.log_value("my_temp_counter", 25, reduce="sum", window=None, clear_on_reduce=True)
     logger.peek("my_counter")  # expect: 75
     logger.reduce()
     logger.peek("my_counter")  # expect: 0 (upon reduction, all values are cleared)
@@ -323,8 +327,7 @@ on each ``reduce()`` operation.
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` automatically compiles an extra key for each such metric, adding the suffix ``_throughput``
 to the original key and assigning it the value for the throughput per second.
 
-You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method with the call argument ``throughput=True``
-to access the throughput value. For example:
+You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method to access the throughput value by passing the ``throughput=True`` flag.
 
 .. testcode::
 
@@ -337,18 +340,45 @@ to access the throughput value. For example:
         logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
 
         # RLlib triggers a new throughput computation at each `reduce()` call
-        logger.reduce()
         time.sleep(1.0)
 
         # Expect the first call to return NaN because we don't have a proper start time for the time delta.
         # From the second call on, expect a value of roughly 5/sec.
         print(logger.peek("lifetime_count", throughput=True))
 
+        logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
+        # Expect the throughput to be roughly 10/sec now.
+        print(logger.peek("lifetime_count", throughput=True))
+
+        # You can also get a dict of all throughputs at once:
+        print(logger.peek(throughput=True))
+
+
+Measuring throughputs with MetricsLogger.log_time()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can also use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_time` method to measure throughputs.
+
+.. testcode::
+
+    import time
+    from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+
+    logger = MetricsLogger()
+
+    for _ in range(3):
+        with logger.log_time("my_block_to_be_timed", with_throughput=True):
+            time.sleep(1.0)
+
+    # Expect the throughput to be roughly 1.0/sec.
+    print(logger.peek("my_block_to_be_timed", throughput=True))
+
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks
 ----------------------------------------------------------
 
-To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`, take a look at this end-to-end example here, which
+To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`,
+take a look at this end-to-end example here, which
 makes use of the :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` API to inject custom code into the RL environment loop.
 
 The example computes the average "first-joint angle" of the
@@ -366,15 +396,21 @@ only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspec
     from ray.rllib.callbacks.callbacks import RLlibCallback
 
     # Define a custom RLlibCallback.
+
     class LogAcrobotAngle(RLlibCallback):
+
+        def on_episode_created(self, *, episode, **kwargs):
+            # Initialize an empty list in the `custom_data` property of `episode`.
+            episode.custom_data["theta1"] = []
+
         def on_episode_step(self, *, episode, env, **kwargs):
             # Compute the angle at every episode step and store it temporarily in episode:
             state = env.envs[0].unwrapped.state
             deg_theta1 = math.degrees(math.atan2(state[1], state[0]))
-            episode.add_temporary_timestep_data("theta1", deg_theta1)
+            episode.custom_data["theta1"].append(deg_theta1)
 
         def on_episode_end(self, *, episode, metrics_logger, **kwargs):
-            theta1s = episode.get_temporary_timestep_data("theta1")
+            theta1s = episode.custom_data["theta1"]
             avg_theta1 = np.mean(theta1s)
 
             # Log the resulting average angle - per episode - to the MetricsLogger.

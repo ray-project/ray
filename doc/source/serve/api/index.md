@@ -83,6 +83,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
+   serve.config.AutoscalingPolicy
+   serve.config.RequestRouterConfig
 ```
 
 ### Schemas
@@ -99,6 +101,22 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
    serve.schema.EncodingType
+```
+
+### Request Router
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.request_router.ReplicaID
+   serve.request_router.PendingRequest
+   serve.request_router.RunningReplica
+   serve.request_router.FIFOMixin
+   serve.request_router.LocalityMixin
+   serve.request_router.MultiplexMixin
+   serve.request_router.RequestRouter
 ```
 
 #### Advanced APIs
@@ -212,7 +230,8 @@ Content-Type: application/json
     },
     "grpc_options": {
         "port": 9000,
-        "grpc_servicer_functions": []
+        "grpc_servicer_functions": [],
+        "request_timeout_s": null
     },
     "proxies": {
         "cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec": {
@@ -365,6 +384,9 @@ Content-Type: application/json
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
+   schema.CeleryAdapterConfig
+   schema.TaskProcessorConfig
+   schema.TaskResult
 ```
 
 (serve-rest-api-response-schema)=
@@ -382,6 +404,8 @@ Content-Type: application/json
    schema.DeploymentDetails
    schema.ReplicaDetails
    schema.ProxyStatus
+   schema.TargetGroup
+   schema.Target
 ```
 
 ## Observability
@@ -445,22 +469,4 @@ Content-Type: application/json
 
    serve.llm.LLMServer
    serve.llm.LLMRouter
-```
-
-### OpenAI API Models
-
-```{eval-rst}
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-   :template: autosummary/autopydantic_show_json.rst
-
-   serve.llm.openai_api_models.ChatCompletionRequest
-   serve.llm.openai_api_models.CompletionRequest
-   serve.llm.openai_api_models.ChatCompletionStreamResponse
-   serve.llm.openai_api_models.ChatCompletionResponse
-   serve.llm.openai_api_models.CompletionStreamResponse
-   serve.llm.openai_api_models.CompletionResponse
-   serve.llm.openai_api_models.ErrorResponse
 ```

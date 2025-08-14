@@ -14,10 +14,6 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind/bind.hpp>
-#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -135,7 +131,6 @@ class ObjectBufferPool {
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  /// \return Void.
   void FreeObjects(const std::vector<ObjectID> &object_ids)
       ABSL_LOCKS_EXCLUDED(pool_mutex_);
 

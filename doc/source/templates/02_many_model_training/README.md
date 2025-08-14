@@ -9,7 +9,7 @@
 
 ## Getting Started
 
-**When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `start.ipynb` file and follow the instructions there.**
+**When the workspace is up and running, start coding by clicking on the Jupyter or VS Code icon above. Open the `start.ipynb` file and follow the instructions there.**
 
 The end result of the template is fitting multiple models on each dataset partition, then determining the best model based on cross-validation metrics. Then, using the best model, we can generate forecasts like the ones shown below:
 

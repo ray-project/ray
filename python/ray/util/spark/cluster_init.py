@@ -19,7 +19,8 @@ import ray
 import ray._private.services
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._private.utils import load_class
+from ray._common.utils import load_class
+from ray._common.network_utils import build_address, parse_address
 
 from .utils import (
     exec_cmd,
@@ -130,7 +131,7 @@ class RayClusterOnSpark:
             ray.init(address=self.address)
 
             if self.ray_dashboard_port is not None and _wait_service_up(
-                self.address.split(":")[0],
+                parse_address(self.address)[0],
                 self.ray_dashboard_port,
                 _RAY_DASHBOARD_STARTUP_TIMEOUT,
             ):
@@ -189,7 +190,7 @@ class RayClusterOnSpark:
                             ) = self.spark_job_server.server_address[:2]
                             response = requests.post(
                                 url=(
-                                    f"http://{job_server_host}:{job_server_port}"
+                                    f"http://{build_address(job_server_host, job_server_port)}"
                                     "/query_last_worker_err"
                                 ),
                                 json={"spark_job_group_id": None},
@@ -691,7 +692,7 @@ def _setup_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    cluster_address = f"{ray_head_ip}:{ray_head_port}"
+    cluster_address = build_address(ray_head_ip, ray_head_port)
     # Set RAY_ADDRESS environment variable to the cluster address.
     os.environ["RAY_ADDRESS"] = cluster_address
 
@@ -1204,10 +1205,12 @@ def _setup_ray_cluster_internal(
                 shutdown_ray_cluster()
             except Exception:
                 pass
-            raise RuntimeError("Launch Ray-on-Saprk cluster failed") from e
+            raise RuntimeError("Launch Ray-on-Spark cluster failed") from e
 
-    head_ip = cluster.address.split(":")[0]
-    remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
+    head_ip = parse_address(cluster.address)[0]
+    remote_connection_address = (
+        f"ray://{build_address(head_ip, cluster.ray_client_server_port)}"
+    )
     return cluster.address, remote_connection_address
 
 
@@ -1527,7 +1530,7 @@ def _start_ray_worker_nodes(
             "ray.util.spark.start_ray_node",
             f"--num-cpus={num_cpus_per_node}",
             "--block",
-            f"--address={ray_head_ip}:{ray_head_port}",
+            f"--address={build_address(ray_head_ip, ray_head_port)}",
             f"--memory={heap_memory_per_node}",
             f"--object-store-memory={object_store_memory_per_node}",
             f"--min-worker-port={worker_port_range_begin}",
@@ -1576,7 +1579,7 @@ def _start_ray_worker_nodes(
             # Check node id availability
             response = requests.post(
                 url=(
-                    f"http://{ray_head_ip}:{spark_job_server_port}"
+                    f"http://{build_address(ray_head_ip, spark_job_server_port)}"
                     "/check_node_id_availability"
                 ),
                 json={
@@ -1603,7 +1606,7 @@ def _start_ray_worker_nodes(
             # Notify job server the task has been launched.
             requests.post(
                 url=(
-                    f"http://{ray_head_ip}:{spark_job_server_port}"
+                    f"http://{build_address(ray_head_ip, spark_job_server_port)}"
                     "/notify_task_launched"
                 ),
                 json={

@@ -43,11 +43,25 @@ def test_context_saved_when_dataset_created(
     assert d1.context.get_config("foo") == 2
     assert d2.context.get_config("foo") == 1
 
-    # The global context has changed.
-    # Applying new operators to the existing datasets should use the new
-    # global context.
-    d2 = d2.map_batches(lambda batch: batch)
-    assert d2.context.get_config("foo") == 1
+
+def test_context_inheritance(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    ds.context.set_config("foo", 1)
+    assert DataContext.get_current().get_config("foo", None) is None
+
+    # Test that applying a new operator to an existing dataset
+    # inherits the context.
+    ds2 = ds.map_batches(lambda batch: batch)
+    assert ds2.context.get_config("foo") == 1
+
+    # Test that materializing a dataset also inherits the context.
+    mds = ds.materialize()
+    assert mds.context.get_config("foo") == 1
+
+    # Test that the iterator also inherits the context.
+    iter = ds.iterator()
+    assert iter.get_context().get_config("foo") == 1
+    assert iter.materialize().context.get_config("foo") == 1
 
 
 def _test_updating_context_after_dataset_creation(gen_ds):
@@ -71,7 +85,7 @@ def test_read(
                 return [pd.DataFrame({"id": [value]})]
 
             meta = BlockMetadata(
-                num_rows=1, size_bytes=8, schema=None, input_files=None, exec_stats=None
+                num_rows=1, size_bytes=8, input_files=None, exec_stats=None
             )
             return [ReadTask(read_fn, meta)]
 

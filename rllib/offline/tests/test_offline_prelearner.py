@@ -13,6 +13,7 @@ from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.utils import unflatten_dict
 
 
 class TestOfflinePreLearner(unittest.TestCase):
@@ -104,20 +105,20 @@ class TestOfflinePreLearner(unittest.TestCase):
         # Now sample from the dataset and convert the `SampleBatch` in the `PreLearner`
         # and sample episodes.
         batch = algo.offline_data.data.take_batch(10)
-        batch = oplr(batch)
+        batch = unflatten_dict(oplr(batch))
         # Ensure all transformations worked and we have a `MultiAgentBatch`.
-        self.assertIsInstance(batch["batch"][0], MultiAgentBatch)
+        self.assertIsInstance(batch, dict)
         # Ensure that we have as many environment steps as the train batch size.
         self.assertEqual(
-            batch["batch"][0][DEFAULT_POLICY_ID].count,
+            batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0],
             self.config.train_batch_size_per_learner,
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
         for key in self.EXPECTED_KEYS:
-            self.assertIn(key, batch["batch"][0][DEFAULT_POLICY_ID])
+            self.assertIn(key, batch[DEFAULT_POLICY_ID])
             self.assertEqual(
-                len(batch["batch"][0][DEFAULT_POLICY_ID][key]),
+                len(batch[DEFAULT_POLICY_ID][key]),
                 self.config.train_batch_size_per_learner,
             )
 
@@ -133,6 +134,20 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
+    def test_offline_prelearner_ignore_final_observation(self):
+        # Create the dataset.
+        data = ray.data.read_parquet(self.data_path)
+
+        # Now, take a small batch from the data and conert it to episodes.
+        batch = data.take_batch(batch_size=10)
+        episodes = OfflinePreLearner._map_to_episodes(
+            False, batch, ignore_final_observation=True
+        )["episodes"]
+
+        self.assertTrue(
+            all(all(eps.get_observations()[-1] == [0.0] * 4) for eps in episodes)
+        )
 
     def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self):
         """Tests conversion from `SampleBatch` data to episodes."""

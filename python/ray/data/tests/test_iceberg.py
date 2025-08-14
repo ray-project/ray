@@ -4,10 +4,12 @@ import random
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
-from pyiceberg import catalog as pyi_catalog
-from pyiceberg import expressions as pyi_expr
-from pyiceberg import schema as pyi_schema
-from pyiceberg import types as pyi_types
+from pyiceberg import (
+    catalog as pyi_catalog,
+    expressions as pyi_expr,
+    schema as pyi_schema,
+    types as pyi_types,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.transforms import IdentityTransform
 
@@ -254,6 +256,41 @@ def test_write_basic():
         ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
     )
     assert orig_table_p.equals(table_p)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_concurrency():
+
+    import numpy as np
+    import pandas as pd
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+
+    data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3, 4], dtype=np.int32),
+            "col_b": ["1", "2", "3", "4"],
+            "col_c": np.array([1, 2, 3, 4], dtype=np.int32),
+        }
+    )
+    write_ds = ray.data.from_pandas(data).repartition(2)
+    write_ds.write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        concurrency=2,
+    )
+    read_ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        selected_fields=("col_a",),
+    )
+    df = read_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
+    assert df["col_a"].tolist() == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":

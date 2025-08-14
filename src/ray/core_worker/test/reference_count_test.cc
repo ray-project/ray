@@ -14,6 +14,9 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/functional/bind_front.h"
@@ -43,7 +46,7 @@ class ReferenceCountTest : public ::testing::Test {
     subscriber_ = std::make_shared<pubsub::MockSubscriber>();
     rc = std::make_unique<ReferenceCounter>(
         addr, publisher_.get(), subscriber_.get(), [](const NodeID &node_id) {
-          return true;
+          return false;
         });
   }
 
@@ -71,7 +74,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         addr,
         publisher_.get(),
         subscriber_.get(),
-        [](const NodeID &node_id) { return true; },
+        [](const NodeID &node_id) { return false; },
         /*lineage_pinning_enabled=*/true);
   }
 
@@ -123,15 +126,14 @@ using PublisherFactoryFn =
 
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
-  MockDistributedSubscriber(
-      pubsub::pub_internal::SubscriptionIndex *directory,
-      SubscriptionCallbackMap *subscription_callback_map,
-      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      pubsub::SubscriberID subscriber_id,
-      PublisherFactoryFn client_factory)
-      : directory_(directory),
-        subscription_callback_map_(subscription_callback_map),
-        subscription_failure_callback_map_(subscription_failure_callback_map),
+  MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
+                            SubscriptionCallbackMap *sub_callback_map,
+                            SubscriptionFailureCallbackMap *sub_failure_callback_map,
+                            pubsub::SubscriberID subscriber_id,
+                            PublisherFactoryFn client_factory)
+      : directory_(dict),
+        subscription_callback_map_(sub_callback_map),
+        subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
         subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
             subscriber_id,
@@ -230,28 +232,27 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
-  MockDistributedPublisher(
-      pubsub::pub_internal::SubscriptionIndex *directory,
-      SubscriptionCallbackMap *subscription_callback_map,
-      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      WorkerID publisher_id)
-      : directory_(directory),
-        subscription_callback_map_(subscription_callback_map),
-        subscription_failure_callback_map_(subscription_failure_callback_map),
+  MockDistributedPublisher(pubsub::pub_internal::SubscriptionIndex *dict,
+                           SubscriptionCallbackMap *sub_callback_map,
+                           SubscriptionFailureCallbackMap *sub_failure_callback_map,
+                           WorkerID publisher_id)
+      : directory_(dict),
+        subscription_callback_map_(sub_callback_map),
+        subscription_failure_callback_map_(sub_failure_callback_map),
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
-                            const std::optional<std::string> &key_id_binary) {
+                            const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) {}
+                      const std::string &key_id_binary) override {}
 
-  void Publish(rpc::PubMessage pub_message) {
+  void Publish(rpc::PubMessage pub_message) override {
     if (pub_message.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
       // TODO(swang): Test object locations pubsub too.
       return;
@@ -272,9 +273,15 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const pubsub::SubscriberID &subscriber_id,
-                              const std::optional<std::string> &key_id_binary) {
+                              const std::optional<std::string> &key_id_binary) override {
     return true;
   }
+
+  void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback) override {}
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
@@ -288,12 +295,13 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   static rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
-    address.set_raylet_id(NodeID::FromRandom().Binary());
+    address.set_node_id(NodeID::FromRandom().Binary());
     address.set_worker_id(WorkerID::FromRandom().Binary());
     return address;
   }
 
-  MockWorkerClient(const std::string &addr, PublisherFactoryFn client_factory = nullptr)
+  explicit MockWorkerClient(const std::string &addr,
+                            PublisherFactoryFn client_factory = nullptr)
       : address_(CreateRandomAddress(addr)),
         publisher_(std::make_shared<MockDistributedPublisher>(
             &directory,
@@ -653,7 +661,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      object_size,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     std::optional<NodeID>(node1));
   rc->HandleObjectSpilled(obj1, "url1", node1);
   rpc::WorkerObjectLocationsPubMessage object_info;
   rc->FillObjectInformation(obj1, &object_info);
@@ -683,7 +691,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      object_size,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     std::optional<NodeID>(node1));
   auto locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_TRUE(locality_data_obj1.has_value());
   ASSERT_EQ(locality_data_obj1->object_size, object_size);
@@ -758,7 +766,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      -1,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node2));
+                     std::optional<NodeID>(node2));
   auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
   ASSERT_FALSE(locality_data_obj2_no_object_size.has_value());
 
@@ -824,19 +832,20 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto publisher = std::make_shared<pubsub::MockPublisher>();
   auto subscriber = std::make_shared<pubsub::MockSubscriber>();
   auto rc = std::make_shared<ReferenceCounter>(
-      rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
-        return true;
-      });
+      rpc::Address(),
+      publisher.get(),
+      subscriber.get(),
+      /*is_node_dead=*/[](const NodeID &) { return false; });
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
   // Tests putting an object with no references is ignored.
-  RAY_CHECK(store.Put(buffer, id2));
+  store.Put(buffer, id2);
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
   rc->AddLocalReference(id1, "");
-  RAY_CHECK(store.Put(buffer, id1));
+  store.Put(buffer, id1);
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
@@ -2424,7 +2433,7 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
   ASSERT_FALSE(nested_worker->rc_.HasReference(inner_id));
 }
 
-// TODO: Test Pop and Merge individually.
+// TODO(swang): Test Pop and Merge individually.
 
 TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) {
   ObjectID id = ObjectID::FromRandom();
@@ -2670,7 +2679,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
-  ASSERT_TRUE(deleted->count(id) > 0);
+  ASSERT_GT(deleted->count(id), 0);
   deleted->clear();
 
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
@@ -2719,7 +2728,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->FreePlasmaObjects({id});
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
-  ASSERT_TRUE(deleted->count(id) > 0);
+  ASSERT_GT(deleted->count(id), 0);
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());

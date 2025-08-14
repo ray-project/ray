@@ -14,88 +14,58 @@
 
 # ==== Ray core ====
 
-# API compatibility
-/src/ray/protobuf/common.proto @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs.proto @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs_service.proto @pcmoritz @raulchen @ray-project/ray-core
-
-# Autoscaler
-/python/ray/autoscaler/ @ray-project/ray-core
-
-# Metrics
-/src/ray/stats/metric_defs.h @ray-project/ray-core
-/src/ray/stats/metric_defs.cc @ray-project/ray-core
-
-# Telemetry
-/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
-
 # All C++ code.
-# /src/ray @ray-project/ray-core-cpp
+/src/ @ray-project/ray-core
 
-# GCS
-/src/ray/gcs/ @ray-project/ray-core
+# Python worker.
+/python/ray/ @ray-project/ray-core
+
+# Java worker.
+/java/ @kfstorm @raulchen @WangTaoTheTonic @SongGuyang @ray-project/ray-core
+
+# C++ worker
+/cpp/ @SongGuyang @raulchen @kfstorm @ray-project/ray-core
+
+/doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
+/doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
+
+# ==== Libraries and frameworks ====
 
 # Dependencies
 /python/setup.py @richardliaw @edoakes @aslonnie
 
-# CI
-/ci/lint/format.sh @ray-project/ray-ci
-/ci/docker @ray-project/ray-ci
-/ci/ray_ci @ray-project/ray-ci
-
-# Python worker.
-#/python/ray/ @ray-project/ray-core
-#!/python/ray/tune/ @ray-project/ray-core
-#!/python/ray/rllib/ @ray-project/ray-core
-
-# Java worker.
-/java/dependencies.bzl @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
-/java/pom.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
-/java/pom_template.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
-/java/*/pom_template.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
-/java/api/ @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
-
-# C++ worker
-/cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
-
-# Ray Client
-/src/ray/protobuf/ray_client.proto @ray-project/ray-core
-
-# Runtime Env
-# TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
-/src/ray/protobuf/runtime_env_common.proto @SongGuyang @raulchen @edoakes @ray-project/ray-core
-/src/ray/protobuf/runtime_env_agent.proto @SongGuyang @raulchen @edoakes @ray-project/ray-core
-
-# ==== Libraries and frameworks ====
+# Common directory shared by core and the libraries.
+# @edoakes is the czar for now because the pattern is new.
+/python/ray/_common/ @edoakes @aslonnie
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
 /doc/source/data/ @ray-project/ray-data
+/python/ray/dashboard/modules/metrics/dashboards/data_dashboard_panels.py @ray-project/ray-data
 
 # Ray workflows.
 /python/ray/workflow/ @ray-project/ray-core
 /doc/source/workflows/ @ray-project/ray-core @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @simonsays1980
-/doc/source/rllib/ @sven1977 @maxpumperla @simonsays1980 @ray-project/ray-docs
-
-# Cluster (docs)
-/doc/source/cluster/ @pcmoritz @kevin85421 @ray-project/ray-docs
+/rllib/ @ray-project/ray-rllib
+/doc/source/rllib/ @ray-project/ray-rllib @ray-project/ray-docs
 
 # Tune
-/python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
-/doc/source/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
+/python/ray/tune/ @ray-project/ray-tune
+/doc/source/tune/ @ray-project/ray-tune @ray-project/ray-docs
 
 # Train
-/python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
-/doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
+/python/ray/train/ @ray-project/ray-train
+/doc/source/train/ @ray-project/ray-train @ray-project/ray-docs
 
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
 
-# Serve (docs)
-/doc/source/serve/ @edoakes @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
+# Ray Serve
+/python/ray/serve/ @ray-project/ray-serve
+/src/ray/protobuf/serve.proto @ray-project/ray-serve
+/doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
@@ -108,6 +78,7 @@
 # Ray usage stats
 /python/ray/_private/usage/ @edoakes @richardliaw @jjyao
 /python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw @jjyao
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
 
 
 # ==== Build and CI ====
@@ -120,11 +91,22 @@
 # CI scripts.
 #/ci/ @ray-project/ray-core @ray-project/ray-ci
 
+# CI
+/ci/lint/format.sh @ray-project/ray-ci
+/ci/docker @ray-project/ray-ci
+/ci/ray_ci @ray-project/ray-ci
+
 # Buildkite pipeline management
 .buildkite/hooks @ray-project/ray-ci
 
 /release/ray_release @ray-project/ray-ci
 
+# Allow people to add BYOD post-installation shell scripts
+# on their own.
+/release/ray_release/byod/*.sh
+
 /.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci
+
+/.gemini/ @edoakes @aslonnie

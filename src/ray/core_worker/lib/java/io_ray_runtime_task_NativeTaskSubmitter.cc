@@ -16,7 +16,13 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
@@ -175,6 +181,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string ray_namespace = "";
   int32_t max_pending_calls = -1;
   bool is_async = false;
+  bool allow_out_of_order_execution = false;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -268,8 +275,10 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
-    is_async = (bool)env->GetBooleanField(actorCreationOptions,
-                                          java_actor_creation_options_is_async);
+    is_async = static_cast<bool>(
+        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_is_async));
+    allow_out_of_order_execution = static_cast<bool>(env->GetBooleanField(
+        actorCreationOptions, java_actor_creation_options_allow_out_of_order_execution));
   }
 
   rpc::SchedulingStrategy scheduling_strategy;
@@ -296,7 +305,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                               /*scheduling_strategy=*/scheduling_strategy,
                                               serialized_runtime_env,
                                               concurrency_groups,
-                                              /*execute_out_of_order*/ false,
+                                              allow_out_of_order_execution,
                                               max_pending_calls};
   return actor_creation_options;
 }
@@ -380,7 +389,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
         placement_group_options.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
+  // TODO(kfstorm): Allow setting `max_retries` via `CallOptions`.
   // TODO(ryw): support `call_site` in SubmitTask. Problem is it needs to
   // happen in Java, while we don't yet expose RayConfig to Java.
   auto return_refs =
@@ -450,7 +459,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   // NOTE: An actor method call from Java ActorHandle only recognizes the actor's
   // max_task_retries. It does NOT recognize per-method max_retries. It also only retries
   // on actor death, not on user exceptions. The max_task_retries is read from CoreWorker.
-  // TODO: support Java max_retries and retry_exceptions.
+  // TODO(ryw): support Java max_retries and retry_exceptions.
   const auto native_actor_handle =
       CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   int max_retries = native_actor_handle->MaxTaskRetries();

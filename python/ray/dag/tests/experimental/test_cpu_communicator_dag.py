@@ -6,7 +6,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
@@ -108,9 +108,6 @@ def test_allreduce_basic(ray_start_cluster):
 
     cpu_group = CPUCommunicator(num_workers, workers)
 
-    shape = (10,)
-    dtype = torch.float16
-
     with InputNode() as inp:
         computes = [
             worker.compute_with_tuple_args.bind(inp, i)
@@ -193,6 +190,9 @@ def test_allreduce_get_partial(ray_start_cluster):
     indirect=True,
 )
 def test_allreduce_wrong_shape(ray_start_cluster):
+    """
+    Test an error is thrown when the tensors in an all-reduce have different shapes.
+    """
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
 
@@ -221,16 +221,16 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
     )
-    # Execution hangs because of shape mismatch and a timeout error is raised.
-    with pytest.raises(RayChannelError):
+    # Execution hangs because of shape mismatch and a task error is raised.
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
-    # The DAG will be torn down after any task throws an application-level
-    # exception, such as when the task returns torch.Tensors of the wrong
-    # shape or dtype. Check that we can no longer submit to the DAG.
+    # Since we have buffered channels, the execution should not error, but the
+    # get should error, as the dag should no longer work after the application-
+    # level exception.
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+        ray.get(ref)
 
 
 @pytest.mark.parametrize(
@@ -317,16 +317,10 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
         computes = [worker.return_tensor.bind(inp) for _ in range(2)]
         with pytest.raises(
             ValueError,
-            match="Expected unique actor handles for a collective operation",
-        ):
-            collective.allreduce.bind(computes, transport=cpu_group)
-
-    with InputNode() as inp:
-        compute = worker.return_tensor.bind(inp)
-        computes = [compute for _ in range(2)]
-        with pytest.raises(
-            ValueError,
-            match="Expected unique input nodes for a collective operation",
+            match=(
+                "Expected unique actor handles, but found duplicate actor handles "
+                "from input nodes"
+            ),
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 
@@ -355,7 +349,7 @@ def test_allreduce_wrong_actors(ray_start_cluster):
         computes = [worker.return_tensor.bind(inp) for worker in workers[2:]]
         with pytest.raises(
             ValueError,
-            match="Expected actor handles to match the custom NCCL group",
+            match="Expected actor handles to match the custom communicator group",
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 

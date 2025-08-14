@@ -16,8 +16,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -35,7 +37,11 @@ from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
-from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.json_datasource import (
+    JSON_FILE_EXTENSIONS,
+    ArrowJSONDatasource,
+    PandasJSONDatasource,
+)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -46,9 +52,11 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
     FromBlocks,
@@ -57,17 +65,20 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    get_table_block_metadata,
+    get_table_block_metadata_schema,
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockExecStats,
+    BlockMetadataWithSchema,
+)
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
@@ -79,7 +90,6 @@ from ray.data.datasource import (
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
-    _unwrap_arrow_serialization_workaround,
     _validate_shuffle_arg,
 )
 from ray.data.datasource.file_meta_provider import (
@@ -93,6 +103,7 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
+    import daft
     import dask
     import datasets
     import mars
@@ -107,7 +118,6 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
-
 
 T = TypeVar("T")
 
@@ -129,10 +139,12 @@ def from_blocks(blocks: List[Block]):
         A :class:`~ray.data.Dataset` holding the blocks.
     """
     block_refs = [ray.put(block) for block in blocks]
-    metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
-    from_blocks_op = FromBlocks(block_refs, metadata)
+    meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
+
+    from_blocks_op = FromBlocks(block_refs, meta_with_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
+        DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
     return MaterializedDataset(
@@ -150,7 +162,8 @@ def from_items(
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
 
-    Use this method to create small datasets from data that fits in memory.
+    Use this method to create small datasets from data that fits in memory. The column
+    name defaults to "item".
 
     Examples:
 
@@ -195,7 +208,7 @@ def from_items(
     # NOTE: We need to explicitly use the builtins range since we override range below,
     # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
-    metadata: List[BlockMetadata] = []
+    meta_with_schema: List[BlockMetadataWithSchema] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -209,13 +222,14 @@ def from_items(
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(
-            BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
+        meta_with_schema.append(
+            BlockMetadataWithSchema.from_block(block, stats=stats.build())
         )
 
-    from_items_op = FromItems(blocks, metadata)
+    from_items_op = FromItems(blocks, meta_with_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+        DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_items_op, execution_plan._context)
     return MaterializedDataset(
@@ -235,7 +249,7 @@ def range(
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
     This function allows for easy creation of synthetic datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. The column name defaults to "id".
 
     Examples:
 
@@ -289,7 +303,7 @@ def range_tensor(
     [0...n].
 
     This function allows for easy creation of synthetic tensor datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. The column name defaults to "data".
 
     Examples:
 
@@ -401,13 +415,9 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    import uuid
-
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
-        needs_stats_actor=True,
-        stats_uuid=uuid.uuid4(),
     )
     read_op = Read(
         datasource,
@@ -418,7 +428,10 @@ def read_datasource(
         ray_remote_args,
         concurrency,
     )
-    execution_plan = ExecutionPlan(stats)
+    execution_plan = ExecutionPlan(
+        stats,
+        DataContext.get_current().copy(),
+    )
     logical_plan = LogicalPlan(read_op, execution_plan._context)
     return Dataset(
         plan=execution_plan,
@@ -443,6 +456,8 @@ def read_audio(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
+
+    The column names default to "amplitude" and "sample_rate".
 
     Examples:
         >>> import ray
@@ -522,6 +537,7 @@ def read_videos(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
+    include_timestamps: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
     shuffle: Union[Literal["files"], None] = None,
@@ -531,7 +547,8 @@ def read_videos(
 ):
     """Creates a :class:`~ray.data.Dataset` from video files.
 
-    Each row in the resulting dataset represents a video frame.
+    Each row in the resulting dataset represents a video frame. The column names default
+    to "frame", "frame_index" and "frame_timestamp".
 
     Examples:
         >>> import ray
@@ -565,6 +582,8 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
+        include_timestmaps: If ``True``, include the frame timestamps from the video
+            as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
@@ -587,6 +606,7 @@ def read_videos(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         include_paths=include_paths,
+        include_timestamps=include_timestamps,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -973,6 +993,8 @@ def read_images(
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
+    The column name defaults to "image".
+
     Examples:
         >>> import ray
         >>> path = "s3://anonymous@ray-example-data/batoidea/JPEGImages/"
@@ -1248,6 +1270,7 @@ def read_parquet_bulk(
 def read_json(
     paths: Union[str, List[str]],
     *,
+    lines: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
@@ -1258,7 +1281,7 @@ def read_json(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = JSON_FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_json_args,
@@ -1281,11 +1304,11 @@ def read_json(
 
         Read a JSONL file in remote storage.
 
-        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl")
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl", lines=True)
         >>> ds.schema()
         Column  Type
         ------  ----
-        input   string
+        input   <class 'object'>
 
         Read multiple local files.
 
@@ -1310,6 +1333,9 @@ def read_json(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
+        lines: [Experimental] If ``True``, read files assuming line-delimited JSON.
+            If set, will ignore the ``filesystem``, ``arrow_open_stream_args``, and
+            ``arrow_json_args`` parameters.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1364,12 +1390,20 @@ def read_json(
     """  # noqa: E501
     _emit_meta_provider_deprecation_warning(meta_provider)
 
+    if lines:
+        incompatible_params = {
+            "filesystem": filesystem,
+            "arrow_open_stream_args": arrow_open_stream_args,
+            "arrow_json_args": arrow_json_args,
+        }
+        for param, value in incompatible_params.items():
+            if value:
+                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
-    datasource = JSONDatasource(
-        paths,
-        arrow_json_args=arrow_json_args,
+    file_based_datasource_kwargs = dict(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
@@ -1380,6 +1414,22 @@ def read_json(
         include_paths=include_paths,
         file_extensions=file_extensions,
     )
+    if lines:
+        target_output_size_bytes = (
+            ray.data.context.DataContext.get_current().target_max_block_size
+        )
+        datasource = PandasJSONDatasource(
+            paths,
+            target_output_size_bytes=target_output_size_bytes,
+            **file_based_datasource_kwargs,
+        )
+    else:
+        datasource = ArrowJSONDatasource(
+            paths,
+            arrow_json_args=arrow_json_args,
+            **file_based_datasource_kwargs,
+        )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,
@@ -1476,7 +1526,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema={a: int64, b: int64})
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1579,6 +1629,8 @@ def read_text(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
+
+    The column name default to "text".
 
     Examples:
         Read a file in remote storage.
@@ -1802,6 +1854,8 @@ def read_numpy(
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
+    The column name defaults to "data".
+
     Examples:
         Read a directory of files in remote storage.
 
@@ -1887,6 +1941,7 @@ def read_tfrecords(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1920,10 +1975,7 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1933,10 +1985,7 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1949,6 +1998,7 @@ def read_tfrecords(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -2029,6 +2079,7 @@ def read_tfrecords(
     ds = read_datasource(
         datasource,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -2387,6 +2438,70 @@ def read_sql(
 
 
 @PublicAPI(stability="alpha")
+def read_snowflake(
+    sql: str,
+    connection_parameters: Dict[str, Any],
+    *,
+    shard_keys: Optional[list[str]] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read data from a Snowflake data set.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            connection_parameters = dict(
+                user=...,
+                account="ABCDEFG-ABC12345",
+                password=...,
+                database="SNOWFLAKE_SAMPLE_DATA",
+                schema="TPCDS_SF100TCL"
+            )
+            ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
+
+    Args:
+        sql: The SQL query to execute.
+        connection_parameters: Keyword arguments to pass to
+            ``snowflake.connector.connect``. To view supported parameters, read
+            https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        shard_keys: The keys to shard the data by.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A ``Dataset`` containing the data from the Snowflake data set.
+    """  # noqa: E501
+    import snowflake.connector
+
+    def snowflake_connection_factory():
+        return snowflake.connector.connect(**connection_parameters)
+
+    return ray.data.read_sql(
+        sql,
+        connection_factory=snowflake_connection_factory,
+        shard_keys=shard_keys,
+        shard_hash_fn="hash",
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
 def read_databricks_tables(
     *,
     warehouse_id: str,
@@ -2461,7 +2576,6 @@ def read_databricks_tables(
     from ray.data._internal.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
-    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     def get_dbutils():
         no_dbutils_error = RuntimeError("No dbutils module found.")
@@ -2487,6 +2601,8 @@ def read_databricks_tables(
 
     host = os.environ.get("DATABRICKS_HOST")
     if not host:
+        from ray.util.spark.utils import is_in_databricks_runtime
+
         if is_in_databricks_runtime():
             ctx = (
                 get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
@@ -2500,9 +2616,13 @@ def read_databricks_tables(
             )
 
     if not catalog:
+        from ray.util.spark.utils import get_spark_session
+
         catalog = get_spark_session().sql("SELECT CURRENT_CATALOG()").collect()[0][0]
 
     if not schema:
+        from ray.util.spark.utils import get_spark_session
+
         schema = get_spark_session().sql("SELECT CURRENT_DATABASE()").collect()[0][0]
 
     if query is not None and table is not None:
@@ -2535,6 +2655,9 @@ def read_databricks_tables(
 def read_hudi(
     table_uri: str,
     *,
+    query_type: str = "snapshot",
+    filters: Optional[List[Tuple[str, str, str]]] = None,
+    hudi_options: Optional[Dict[str, str]] = None,
     storage_options: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2548,11 +2671,28 @@ def read_hudi(
         >>> import ray
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
+        ...     query_type="snapshot",
+        ...     filters=[("city", "=", "san_francisco")],
+        ... )
+
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ...     query_type="incremental",
+        ...     hudi_options={
+        ...         "hoodie.read.file_group.start_timestamp": "20230101123456789",
+        ...         "hoodie.read.file_group.end_timestamp": "20230201123456789",
+        ...     },
         ... )
 
     Args:
-        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
-            are supported.
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS are supported.
+        query_type: The Hudi query type to use. Supported values are ``snapshot`` and ``incremental``.
+        filters: Optional list of filters to apply to the Hudi table when the
+            ``query_type`` is ``snapshot``. Each filter is a tuple of the form
+            ``(column_name, operator, value)``. The operator can be
+            one of ``"="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
+            Currently, only filters on partition columns will be effective.
+        hudi_options: A dictionary of Hudi options to pass to the Hudi reader.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. See more explanation
@@ -2572,6 +2712,9 @@ def read_hudi(
     """  # noqa: E501
     datasource = HudiDatasource(
         table_uri=table_uri,
+        query_type=query_type,
+        filters=filters,
+        hudi_options=hudi_options,
         storage_options=storage_options,
     )
 
@@ -2581,6 +2724,37 @@ def read_hudi(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI
+def from_daft(df: "daft.DataFrame") -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+
+    .. warning::
+
+        This function only works with PyArrow 13 or lower. For more details, see
+        https://github.com/ray-project/ray/issues/53278.
+
+    Args:
+        df: A Daft DataFrame
+
+    Returns:
+        A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
+    """
+    pyarrow_version = get_pyarrow_version()
+    assert pyarrow_version is not None
+    if pyarrow_version >= parse_version("14.0.0"):
+        raise RuntimeError(
+            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
+            "https://github.com/ray-project/ray/issues/53278."
+        )
+
+    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
+    # that we can stream object references into a Ray dataset. Unfortunately this is
+    # very tricky today because of the way Ray Datasources are implemented with a fully-
+    # materialized `list` of ReadTasks, rather than an iterator which can lazily return
+    # these tasks.
+    return df.to_ray_dataset()
 
 
 @PublicAPI
@@ -2750,12 +2924,15 @@ def from_pandas_refs(
 
     context = DataContext.get_current()
     if context.enable_pandas_block:
-        get_metadata = cached_remote_fn(get_table_block_metadata)
-        metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+        metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
         execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+            DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
+            DataContext.get_current().copy(),
         )
-        logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
+        logical_plan = LogicalPlan(
+            FromPandas(dfs, metadata_schema), execution_plan._context
+        )
         return MaterializedDataset(
             execution_plan,
             logical_plan,
@@ -2764,12 +2941,15 @@ def from_pandas_refs(
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata = map(list, zip(*res))
-    metadata = ray.get(metadata)
+    blocks, metadata_schema = map(list, zip(*res))
+    metadata_schema = ray.get(metadata_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
+        DataContext.get_current().copy(),
     )
-    logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
+    logical_plan = LogicalPlan(
+        FromPandas(blocks, metadata_schema), execution_plan._context
+    )
     return MaterializedDataset(
         execution_plan,
         logical_plan,
@@ -2779,6 +2959,8 @@ def from_pandas_refs(
 @PublicAPI
 def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays.
+
+    The column name defaults to "data".
 
     Examples:
         >>> import numpy as np
@@ -2810,6 +2992,8 @@ def from_numpy_refs(
 ) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
     NumPy ndarrays.
+
+    The column name defaults to "data".
 
     Examples:
         >>> import numpy as np
@@ -2848,13 +3032,17 @@ def from_numpy_refs(
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
-    blocks, metadata = map(list, zip(*res))
-    metadata = ray.get(metadata)
+    blocks, metadata_schema = map(list, zip(*res))
+    metadata_schema = ray.get(metadata_schema)
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+        DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None),
+        DataContext.get_current().copy(),
     )
-    logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
+
+    logical_plan = LogicalPlan(
+        FromNumpy(blocks, metadata_schema), execution_plan._context
+    )
 
     return MaterializedDataset(
         execution_plan,
@@ -2865,6 +3053,8 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
+    *,
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of PyArrow tables.
 
@@ -2884,14 +3074,50 @@ def from_arrow(
     Args:
         tables: A PyArrow table, or a list of PyArrow tables,
                 or its streaming format in bytes.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
     """
+    import builtins
+
     import pyarrow as pa
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
+
+    if override_num_blocks is not None:
+        if override_num_blocks <= 0:
+            raise ValueError("override_num_blocks must be > 0")
+        combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        total_rows = len(combined_table)
+
+        if total_rows == 0:
+            # Handle empty table case
+            tables = [
+                combined_table.slice(0, 0) for _ in builtins.range(override_num_blocks)
+            ]
+        else:
+            batch_size = (total_rows + override_num_blocks - 1) // override_num_blocks
+            slices = []
+
+            for i in builtins.range(override_num_blocks):
+                start = i * batch_size
+                if start >= total_rows:
+                    break
+                length = min(batch_size, total_rows - start)
+                slices.append(combined_table.slice(start, length))
+
+            # Pad with empty slices if needed
+            if len(slices) < override_num_blocks:
+                empty_table = combined_table.slice(0, 0)
+                slices.extend([empty_table] * (override_num_blocks - len(slices)))
+
+            tables = slices
+
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
@@ -2928,12 +3154,15 @@ def from_arrow_refs(
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
-    get_metadata = cached_remote_fn(get_table_block_metadata)
-    metadata = ray.get([get_metadata.remote(t) for t in tables])
+    get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+    metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+        DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None),
+        DataContext.get_current().copy(),
     )
-    logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
+    logical_plan = LogicalPlan(
+        FromArrow(tables, metadata_schema), execution_plan._context
+    )
 
     return MaterializedDataset(
         execution_plan,
@@ -3133,7 +3362,32 @@ def from_huggingface(
             # Attempt to read data via Hugging Face Hub parquet files. If the
             # returned list of files is empty, attempt read via other methods.
             file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+
             if len(file_urls) > 0:
+                # Resolve HTTP 302 redirects
+                import requests
+
+                resolved_urls = []
+                for url in file_urls:
+                    try:
+                        resp = requests.head(url, allow_redirects=True, timeout=5)
+                        if resp.status_code == 200:
+                            resolved_urls.append(resp.url)
+                        else:
+                            logger.warning(
+                                f"Unexpected status {resp.status_code} resolving {url} from "
+                                f"Hugging Face Hub parquet files"
+                            )
+                    except requests.RequestException as e:
+                        logger.warning(
+                            f"Failed to resolve {url}: {e} from Hugging Face Hub parquet files"
+                        )
+
+                if not resolved_urls:
+                    raise FileNotFoundError(
+                        "No resolvable Parquet URLs found from Hugging Face Hub parquet files"
+                    )
+
                 # If file urls are returned, the parquet files are available via API
                 # TODO: Add support for reading from http filesystem in
                 # FileBasedDatasource. GH Issue:
@@ -3142,7 +3396,7 @@ def from_huggingface(
 
                 http = fsspec.implementations.http.HTTPFileSystem()
                 return read_parquet(
-                    file_urls,
+                    resolved_urls,
                     parallelism=parallelism,
                     filesystem=http,
                     concurrency=concurrency,
@@ -3151,6 +3405,7 @@ def from_huggingface(
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
                 )
+
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
                 "Distributed read via Hugging Face Hub parquet files failed, "
@@ -3166,20 +3421,12 @@ def from_huggingface(
             override_num_blocks=override_num_blocks,
         )
     if isinstance(dataset, datasets.Dataset):
-        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
-        if override_num_blocks is not None:
-            raise ValueError(
-                "`override_num_blocks` parameter is not supported for "
-                "non-streaming Hugging Face Datasets. Please omit the parameter and use `.repartition` instead."
-                "Alternatively, use streaming mode to read the dataset."
-            )
-
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
-        ray_ds = from_arrow(hf_ds_arrow[:])
+        ray_ds = from_arrow(hf_ds_arrow[:], override_num_blocks=override_num_blocks)
         return ray_ds
     elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
@@ -3265,6 +3512,8 @@ def from_torch(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
+
+    The column name defaults to "data".
 
     .. note::
         The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.
@@ -3409,7 +3658,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance/api/python/lance.html#lance.LanceDataset>`_.
+    `Lance Dataset <https://lancedb.github.io/lance-python-doc/all-modules.html#lance.LanceDataset>`_.
 
     Examples:
         >>> import ray
@@ -3428,11 +3677,11 @@ def read_lance(
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+                ://lancedb.github.io/lance/guide/object_store/>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
             see `LanceDB API doc <https://lancedb.github.io\
-            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
+            /lance-python-doc/all-modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -3544,6 +3793,203 @@ def read_clickhouse(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_unity_catalog(
+    table: str,
+    url: str,
+    token: str,
+    *,
+    data_format: Optional[str] = None,
+    region: Optional[str] = None,
+    reader_kwargs: Optional[dict],
+) -> Dataset:
+    """
+    Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
+    with automatic short-lived cloud credential handoff for secure, parallel, distributed access from external engines.
+
+    This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
+    credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
+    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
+    The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
+
+    .. note::
+
+       This ``read_unity_catalog`` function is currently experimental and under active development
+
+    .. warning::
+
+        The Databricks Unity Catalog credential vending feature is currently in Public Preview and there are important requirements and limitations.
+        You must read these docs carefully and ensure your workspace and principal are properly configured.
+
+    Features:
+        - **Secure Access**: Only principals with `EXTERNAL USE SCHEMA` on the containing schema, and after explicit metastore enablement, can obtain short-lived credentials.
+        - **Format Support**: Supports reading `delta` and `parquet` formats via supported Ray Dataset readers (iceberg coming soon).
+        - **Cloud Support**: AWS, Azure, and GCP supported, with automatic environment setup for the vended credentials per session.
+        - **Auto-Infer**: Data format is auto-inferred from table metadata, but can be explicitly specified.
+
+    Examples:
+        Read a Unity Catalog managed Delta table with credential vending:
+
+            >>> import ray
+            >>> ds = read_unity_catalog( # doctest: +SKIP
+            ...     table="main.sales.transactions",
+            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
+            ...     token="XXXXXXXXXXX" # noqa: E501
+            ... )
+            >>> ds.show(3) # doctest: +SKIP
+
+        Explicitly specify the format, and pass reader options:
+
+            >>> ds = read_unity_catalog( # doctest: +SKIP
+            ...     table="main.catalog.images",
+            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
+            ...     token="XXXXXXXXXXX", # noqa: E501
+            ...     data_format="delta",
+            ...     region="us-west-2",
+            ...     # Reader kwargs come from the associated reader (ray.data.read_delta in this example)
+            ...     reader_kwargs={"override_num_blocks": 1000}
+            ... )
+
+    Args:
+        table: Unity Catalog table name as `<catalog>.<schema>.<table>`. Must be a managed or external table supporting credential vending.
+        url: Databricks workspace URL, e.g. `"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"`
+        token: Databricks PAT (Personal Access Token) with `EXTERNAL USE SCHEMA` on the schema containing the table, and with access to the workspace API.
+        data_format: (Optional) Data format override. If not specified, inferred from Unity Catalog metadata and file extension. Supported: `"delta"`, `"parquet"`
+        region: (Optional) For S3: AWS region for cloud credential environment setup.
+        reader_kwargs: Additional arguments forwarded to the underlying Ray Dataset reader (e.g., override_num_blocks, etc.).
+
+    Returns:
+        A :class:`ray.data.Dataset` containing the data from the external Unity Catalog table.
+
+    References:
+        - Databricks Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
+        - API Reference for temporary credentials: https://docs.databricks.com/api/workspace/unity-catalog/temporary-table-credentials
+
+    """
+    reader = UnityCatalogConnector(
+        base_url=url,
+        token=token,
+        table_full_name=table,
+        data_format=data_format,
+        region=region,
+        reader_kwargs=reader_kwargs,
+    )
+    return reader.read()
+
+
+@PublicAPI(stability="alpha")
+def read_delta(
+    path: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[ParquetMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
+    shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **arrow_parquet_args,
+):
+    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+
+    Examples:
+
+        >>> import ray
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
+
+    Args:
+        path: A single file path for a Delta Lake table. Multiple tables are not yet
+            supported.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used. If ``None``, this function uses a system-chosen implementation.
+        columns: A list of column names to read. Only the specified columns are
+            read during the file scan.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to HIVE partitioning.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified parquet
+        files.
+
+    """
+    # Modified from ray.data._internal.util._check_import, which is meant for objects,
+    # not functions. Move to _check_import if moved to a DataSource object.
+    import importlib
+
+    package = "deltalake"
+    try:
+        importlib.import_module(package)
+    except ImportError:
+        raise ImportError(
+            f"`ray.data.read_delta` depends on '{package}', but '{package}' "
+            f"couldn't be imported. You can install '{package}' by running `pip "
+            f"install {package}`."
+        )
+
+    from deltalake import DeltaTable
+
+    # This seems reasonable to keep it at one table, even Spark doesn't really support
+    # multi-table reads, it's usually up to the developer to keep it in one table.
+    if not isinstance(path, str):
+        raise ValueError("Only a single Delta Lake table path is supported.")
+
+    # Get the parquet file paths from the DeltaTable
+    paths = DeltaTable(path).file_uris()
+    file_extensions = ["parquet"]
+
+    return read_parquet(
+        paths,
+        filesystem=filesystem,
+        columns=columns,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+        **arrow_parquet_args,
+    )
+
+
 def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
@@ -3560,8 +4006,6 @@ def _get_datasource_or_legacy_reader(
     Returns:
         The datasource or a generated legacy reader.
     """
-    kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-
     DataContext._set_current(ctx)
 
     if ds.should_create_reader:

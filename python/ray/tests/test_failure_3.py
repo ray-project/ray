@@ -1,6 +1,7 @@
 import os
 import sys
 import signal
+import time
 import threading
 import json
 from pathlib import Path
@@ -9,14 +10,12 @@ import ray
 import numpy as np
 import pytest
 import psutil
-import time
 
 from ray._private.test_utils import (
-    SignalActor,
     wait_for_pid_to_exit,
-    wait_for_condition,
     run_string_as_driver_nonblocking,
 )
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -46,6 +45,31 @@ def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
     wait_for_pid_to_exit(raylet_pid)
     # Make sure the worker process exits as well.
     wait_for_pid_to_exit(worker_pid)
+
+
+def test_plasma_store_operation_after_raylet_dies(ray_start_cluster):
+    """
+    Test that the operation on the plasma store after the raylet dies will not fail the
+    task with an application level error (RayTaskError) but a system level error
+    (RayletDiedError).
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def get_after_raylet_dies():
+        raylet_pid = int(os.environ["RAY_RAYLET_PID"])
+        os.kill(raylet_pid, SIGKILL)
+        wait_for_pid_to_exit(raylet_pid)
+        ray.put([0] * 100000)
+
+    try:
+        ray.get(get_after_raylet_dies.remote(), timeout=10)
+    except Exception as e:
+        assert isinstance(e, ray.exceptions.LocalRayletDiedError)
 
 
 @pytest.mark.parametrize(
@@ -470,11 +494,10 @@ import multiprocessing
 import shutil
 import time
 import os
-import setproctitle
 
 def change_name_and_sleep(label: str, index: int) -> None:
     proctitle = "child_proc_name_prefix_" + label + "_" + str(index)
-    setproctitle.setproctitle(proctitle)
+    ray._raylet.setproctitle(proctitle)
     time.sleep(1000)
 
 def create_child_proc(label, index):
@@ -564,9 +587,4 @@ while True:
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

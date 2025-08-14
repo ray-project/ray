@@ -5,6 +5,7 @@ from typing import Dict
 import pytest
 import sys
 import time
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._private import ray_constants
 from functools import reduce
 
@@ -18,10 +19,8 @@ from ray._private.state_api_test_utils import (
 )
 from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
-    async_wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 from ray.util.state import (
     StateApiClient,
@@ -480,6 +479,7 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
         verify_tasks_running_or_terminated,
         task_pids=ray.get(pid_actor.get_pids.remote()),
         expect_num_tasks=4,
+        timeout=30,
     )
 
 
@@ -1303,7 +1303,4 @@ class TestIsActorTaskRunning:
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

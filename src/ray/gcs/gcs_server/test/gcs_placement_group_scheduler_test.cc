@@ -39,8 +39,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     thread_io_service_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       io_service_.run();
     }));
     for (int index = 0; index < 3; ++index) {
@@ -68,7 +68,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         *gcs_node_manager_,
         local_node_id);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
-    raylet_client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
+    raylet_client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_,
@@ -302,7 +302,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
 };
 

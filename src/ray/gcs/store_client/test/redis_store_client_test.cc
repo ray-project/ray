@@ -25,6 +25,7 @@
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
+#include "ray/util/path_utils.h"
 
 using namespace std::chrono_literals;  // NOLINT
 namespace ray {
@@ -182,16 +183,16 @@ TEST_F(RedisStoreClientTest, Complicated) {
 
                    if ((i / window) % 2 == 0) {
                      // Delete non exist keys
-                     for (size_t i = 0; i < keys.size(); ++i) {
+                     for (size_t jj = 0; jj < keys.size(); ++jj) {
                        ++sent;
-                       RAY_LOG(INFO) << "S AsyncDelete: " << n_keys[i];
+                       RAY_LOG(INFO) << "S AsyncDelete: " << n_keys[jj];
                        ASSERT_TRUE(
                            store_client_
                                ->AsyncDelete("N",
-                                             n_keys[i],
-                                             {[&finished, n_keys, i](auto b) mutable {
+                                             n_keys[jj],
+                                             {[&finished, n_keys, jj](auto b) mutable {
                                                 RAY_LOG(INFO)
-                                                    << "F AsyncDelete: " << n_keys[i];
+                                                    << "F AsyncDelete: " << n_keys[jj];
                                                 ++finished;
                                                 ASSERT_FALSE(b);
                                               },
@@ -199,14 +200,14 @@ TEST_F(RedisStoreClientTest, Complicated) {
                                .ok());
 
                        ++sent;
-                       RAY_LOG(INFO) << "S AsyncExists: " << p_keys[i];
+                       RAY_LOG(INFO) << "S AsyncExists: " << p_keys[jj];
                        ASSERT_TRUE(
                            store_client_
                                ->AsyncExists("N",
-                                             p_keys[i],
-                                             {[&finished, p_keys, i](auto b) mutable {
+                                             p_keys[jj],
+                                             {[&finished, p_keys, jj](auto b) mutable {
                                                 RAY_LOG(INFO)
-                                                    << "F AsyncExists: " << p_keys[i];
+                                                    << "F AsyncExists: " << p_keys[jj];
                                                 ++finished;
                                                 ASSERT_TRUE(b);
                                               },
@@ -414,8 +415,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

@@ -3,6 +3,7 @@ import copy
 import logging
 import yaml
 import tempfile
+import sys
 from typing import Dict, Callable, List
 import shutil
 from queue import PriorityQueue
@@ -14,7 +15,7 @@ from ray.tests.test_autoscaler import (
     MockProvider,
     MockProcessRunner,
     MockGcsClient,
-    mock_raylet_id,
+    mock_node_id,
     MockAutoscaler,
 )
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
@@ -82,7 +83,7 @@ class Node:
         self.in_cluster = in_cluster
         self.node_type = node_type
         self.start_time = start_time
-        self.raylet_id = mock_raylet_id()
+        self.node_id = mock_node_id()
 
     def bundle_fits(self, bundle):
         if not self.in_cluster:
@@ -369,7 +370,7 @@ class Simulator:
                 continue
             self.load_metrics.update(
                 ip=ip,
-                raylet_id=node.raylet_id,
+                node_id=node.node_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
                 node_idle_duration_s=0,
@@ -619,10 +620,4 @@ class AutoscalingPolicyTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

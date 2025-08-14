@@ -1,4 +1,3 @@
-import argparse
 import errno
 import io
 import logging
@@ -9,9 +8,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 import warnings
 from enum import Enum
 from itertools import chain
@@ -41,11 +37,6 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-
-CLEANABLE_SUBDIRS = [
-    THIRDPARTY_SUBDIR,
-    RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR,
-]
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -186,6 +177,7 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/spark/defaults.yaml",
+    "ray/autoscaler/_private/readonly/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
@@ -229,7 +221,6 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
-        "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
     pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
@@ -260,15 +251,15 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
+            "opentelemetry-sdk >= 1.30.0",
+            "opentelemetry-exporter-prometheus",
+            "opentelemetry-proto",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "opentelemetry-api",
-            "opentelemetry-sdk",
-            "opentelemetry-exporter-otlp",
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
@@ -304,6 +295,17 @@ if setup_spec.type == SetupType.RAY:
                 "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
                 "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
                 "pyOpenSSL",
+            ]
+        )
+    )
+
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
             ]
         )
     )
@@ -364,13 +366,14 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.7.2",
+                "vllm>=0.10.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "hf_transfer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
@@ -391,10 +394,8 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
-        "aiosignal",
-        "frozenlist",
         "requests",
     ]
 
@@ -413,37 +414,31 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installation path
-# (~/bin/bazel) if it isn't found.
-def bazel_invoke(invoker, cmdline, *args, **kwargs):
-    home = os.path.expanduser("~")
-    first_candidate = os.getenv("BAZEL_PATH", "bazel")
-    candidates = [first_candidate]
+def _find_bazel_bin():
+    candidates = []
+
+    # User specified bazel location.
+    bazel_path = os.getenv("BAZEL_PATH")
+    if bazel_path:
+        candidates.append(bazel_path)
+
+    # Default bazel locations; prefers bazelisk.
+    candidates.extend(["bazelisk", "bazel"])
+
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
-            candidates.append(mingw_dir + "/bin/bazel.exe")
+            candidates.append(os.path.join(mingw_dir, "bin", "bazel.exe"))
     else:
-        candidates.append(os.path.join(home, "bin", "bazel"))
-    result = None
-    for i, cmd in enumerate(candidates):
-        try:
-            result = invoker([cmd] + cmdline, *args, **kwargs)
-            break
-        except IOError:
-            if i >= len(candidates) - 1:
-                raise
-    return result
+        home_dir = os.path.expanduser("~")
+        candidates.append(os.path.join(home_dir, "bin", "bazel"))
 
+    for bazel in candidates:
+        bazel_bin = shutil.which(bazel)
+        if bazel_bin:
+            return bazel_bin
 
-def download(url):
-    try:
-        result = urllib.request.urlopen(url).read()
-    except urllib.error.URLError:
-        # This fallback is necessary on Python 3.5 on macOS due to TLS 1.2.
-        curl_args = ["curl", "-s", "-L", "-f", "-o", "-", url]
-        result = subprocess.check_output(curl_args)
-    return result
+    raise RuntimeError("Cannot find bazel in PATH")
 
 
 def patch_isdir():
@@ -548,7 +543,8 @@ def build(build_python, build_java, build_cpp):
         )
         raise OSError(msg)
 
-    bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
+    bazel_env = os.environ.copy()
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
 
     if is_native_windows_or_msys():
         SHELL = bazel_env.get("SHELL")
@@ -572,7 +568,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
-        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
+        pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
             [
                 sys.executable,
@@ -636,19 +632,20 @@ def build(build_python, build_java, build_cpp):
         ]
     else:
         bazel_precmd_flags = []
+        if sys.platform == "win32":
+            bazel_precmd_flags = ["--output_user_root=C:/tmp"]
         # Using --incompatible_strict_action_env so that the build is more
         # cache-able We cannot turn this on for Python tests yet, as Ray's
         # Python bazel tests are not hermetic.
         #
         # And we put it here so that does not change behavior of
         # conda-forge build.
-        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
-            bazel_flags.append("--incompatible_strict_action_env")
+        bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
-    bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
+    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
+    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -657,11 +654,23 @@ def build(build_python, build_java, build_cpp):
     if setup_spec.build_type == BuildType.TSAN:
         bazel_flags.append("--config=tsan")
 
-    return bazel_invoke(
-        subprocess.check_call,
-        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+    bazel_bin = _find_bazel_bin()
+    # Build all things first.
+    subprocess.check_call(
+        [bazel_bin]
+        + bazel_precmd_flags
+        + ["build"]
+        + bazel_flags
+        + ["--"]
+        + bazel_targets,
         env=bazel_env,
     )
+    # Then run the actions.
+    for action in bazel_targets:
+        subprocess.check_call(
+            [bazel_bin] + bazel_precmd_flags + ["run"] + bazel_flags + [action],
+            env=bazel_env,
+        )
 
 
 def _walk_thirdparty_dir(directory):
@@ -730,62 +739,6 @@ def pip_run(build_ext):
     print("# of files copied to {}: {}".format(build_ext.build_lib, copied_files))
 
 
-def api_main(program, *args):
-    parser = argparse.ArgumentParser()
-    choices = ["build", "python_versions", "clean", "help"]
-    parser.add_argument("command", type=str, choices=choices)
-    parser.add_argument(
-        "-l",
-        "--language",
-        default="python",
-        type=str,
-        help="A list of languages to build native libraries. "
-        'Supported languages include "python", "cpp", and "java". '
-        "If not specified, only the Python library will be built.",
-    )
-    parsed_args = parser.parse_args(args)
-
-    result = None
-
-    if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False, build_cpp=False)
-        for lang in parsed_args.language.split(","):
-            if "python" in lang:
-                kwargs.update(build_python=True)
-            elif "java" in lang:
-                kwargs.update(build_java=True)
-            elif "cpp" in lang:
-                kwargs.update(build_cpp=True)
-            else:
-                raise ValueError("invalid language: {!r}".format(lang))
-        result = build(**kwargs)
-    elif parsed_args.command == "python_versions":
-        for version in SUPPORTED_PYTHONS:
-            # NOTE: On Windows this will print "\r\n" on the command line.
-            # Strip it out by piping to tr -d "\r".
-            print(".".join(map(str, version)))
-    elif parsed_args.command == "clean":
-
-        def onerror(function, path, excinfo):
-            nonlocal result
-            if excinfo[1].errno != errno.ENOENT:
-                msg = excinfo[1].strerror
-                logger.error("cannot remove {}: {}".format(path, msg))
-                result = 1
-
-        for subdir in CLEANABLE_SUBDIRS:
-            shutil.rmtree(os.path.join(ROOT_DIR, subdir), onerror=onerror)
-    elif parsed_args.command == "help":
-        parser.print_help()
-    else:
-        raise ValueError("Invalid command: {!r}".format(parsed_args.command))
-
-    return result
-
-
-if __name__ == "__api__":
-    api_main(*sys.argv)
-
 if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
@@ -798,60 +751,60 @@ if __name__ == "__main__":
         def has_ext_modules(self):
             return True
 
+    # Ensure no remaining lib files.
+    build_dir = os.path.join(ROOT_DIR, "build")
+    if os.path.isdir(build_dir):
+        shutil.rmtree(build_dir)
 
-# Ensure no remaining lib files.
-build_dir = os.path.join(ROOT_DIR, "build")
-if os.path.isdir(build_dir):
-    shutil.rmtree(build_dir)
-
-setuptools.setup(
-    name=setup_spec.name,
-    version=setup_spec.version,
-    author="Ray Team",
-    author_email="ray-dev@googlegroups.com",
-    description=(setup_spec.description),
-    long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-    ).read(),
-    url="https://github.com/ray-project/ray",
-    keywords=(
-        "ray distributed parallel machine-learning hyperparameter-tuning"
-        "reinforcement-learning deep-learning serving python"
-    ),
-    python_requires=">=3.9",
-    classifiers=[
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-    ],
-    packages=setup_spec.get_packages(),
-    cmdclass={"build_ext": build_ext},
-    # The BinaryDistribution argument triggers build_ext.
-    distclass=BinaryDistribution,
-    install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 3.0.12", "pip", "wheel"],
-    extras_require=setup_spec.extras,
-    entry_points={
-        "console_scripts": [
-            "ray=ray.scripts.scripts:main",
-            "tune=ray.tune.cli.scripts:cli",
-            "serve=ray.serve.scripts:cli",
-        ]
-    },
-    package_data={
-        "ray": [
-            "includes/*.pxd",
-            "*.pxd",
-            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+    setuptools.setup(
+        name=setup_spec.name,
+        version=setup_spec.version,
+        author="Ray Team",
+        author_email="ray-dev@googlegroups.com",
+        description=(setup_spec.description),
+        long_description=io.open(
+            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        ).read(),
+        url="https://github.com/ray-project/ray",
+        keywords=(
+            "ray distributed parallel machine-learning hyperparameter-tuning"
+            "reinforcement-learning deep-learning serving python"
+        ),
+        python_requires=">=3.9",
+        classifiers=[
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+            "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
         ],
-    },
-    include_package_data=True,
-    exclude_package_data={
-        # Empty string means "any package".
-        # Therefore, exclude BUILD from every package:
-        "": ["BUILD"],
-    },
-    zip_safe=False,
-    license="Apache 2.0",
-) if __name__ == "__main__" else None
+        packages=setup_spec.get_packages(),
+        cmdclass={"build_ext": build_ext},
+        # The BinaryDistribution argument triggers build_ext.
+        distclass=BinaryDistribution,
+        install_requires=setup_spec.install_requires,
+        setup_requires=["cython >= 3.0.12", "pip", "wheel"],
+        extras_require=setup_spec.extras,
+        entry_points={
+            "console_scripts": [
+                "ray=ray.scripts.scripts:main",
+                "tune=ray.tune.cli.scripts:cli",
+                "serve=ray.serve.scripts:cli",
+            ]
+        },
+        package_data={
+            "ray": [
+                "includes/*.pxd",
+                "*.pxd",
+                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+            ],
+        },
+        include_package_data=True,
+        exclude_package_data={
+            # Empty string means "any package".
+            # Therefore, exclude BUILD from every package:
+            "": ["BUILD"],
+        },
+        zip_safe=False,
+        license="Apache 2.0",
+    )

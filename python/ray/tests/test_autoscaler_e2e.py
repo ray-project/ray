@@ -1,15 +1,16 @@
 import subprocess
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+import sys
 
 import pytest
+
 import ray
-import sys
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray._common.network_utils import build_address
 from ray._private.test_utils import (
-    wait_for_condition,
     get_metric_check_condition,
     MetricSamplePattern,
-    SignalActor,
 )
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
@@ -123,11 +124,7 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
     actor = Actor.remote()
     ray.get(actor.ping.remote())
 
-    assert "Demands" in subprocess.check_output("ray status", shell=True).decode()
-    assert (
-        "Total Demands"
-        not in subprocess.check_output("ray status", shell=True).decode()
-    )
+    assert "Total Demands" in subprocess.check_output("ray status", shell=True).decode()
     assert (
         "Total Demands" in subprocess.check_output("ray status -v", shell=True).decode()
     )
@@ -165,7 +162,7 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
 def test_metrics(local_autoscaling_cluster, shutdown_only):
 
     info = ray.init(address="auto")
-    autoscaler_export_addr = "{}:{}".format(
+    autoscaler_export_addr = build_address(
         info.address_info["node_ip_address"], AUTOSCALER_METRIC_PORT
     )
 
@@ -372,10 +369,4 @@ def test_infeasible_task_early_cancellation_actor_creation(
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

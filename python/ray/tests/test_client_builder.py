@@ -7,13 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.client_builder as client_builder
 import ray.util.client.server.server as ray_client_server
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
-    skip_flaky_core_test_premerge,
 )
 from ray.util.state import list_workers
 
@@ -55,7 +54,6 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_namespace(ray_start_cluster):
     """
     Most of the "checks" in this test case rely on the fact that
@@ -105,100 +103,114 @@ print("Current namespace:", ray.get_runtime_context().namespace)
     subprocess.check_output("ray stop --force", shell=True)
 
 
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
-def test_connect_to_cluster(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50055")
-    with ray.client("localhost:50055").connect() as client_context:
-        assert client_context.dashboard_url == ray._private.worker.get_dashboard_url()
-        python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
-        assert client_context.python_version == python_version
-        assert client_context.ray_version == ray.__version__
-        assert client_context.ray_commit == ray.__commit__
-
-    server.stop(0)
-    subprocess.check_output("ray stop --force", shell=True)
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_local_clusters():
-    """
-    This tests the various behaviors of connecting to local clusters:
+def test_start_local_cluster():
+    """This tests that ray.client() starts a new local cluster when appropriate.
 
     * Using `ray.client("local").connect() ` should always create a new
       cluster.
-    * Using `ray.cleint().connectIO` should create a new cluster if it doesn't
-      connect to an existing one.
-    * Using `ray.client().connect()` should only connect to a cluster if it
-      was created with `ray start --head`, not from a python program.
-
-    It does tests if two calls are in the same cluster by trying to create an
-    actor with the same name in the same namespace, which will error and cause
-    the script have a non-zero exit, which throws an exception.
+    * Using `ray.client().connect()` should create a new cluster if it doesn't
+      connect to an existing one that was started via `ray start --head`..
     """
     driver_template = """
 import ray
-info = ray.client({address}).namespace("").connect()
+info = ray.client({address}).connect()
+print("NODE_ID:", ray.get_runtime_context().get_node_id())
 
-@ray.remote
-class Foo:
-    def ping(self):
-        return "pong"
-
-a = Foo.options(name="abc", lifetime="detached").remote()
-ray.get(a.ping.remote())
-
-import time
+# Block.
 while True:
-    time.sleep(30)
-
+    time.sleep(1)
 """
-    blocking_local_script = driver_template.format(address="'local'", blocking=True)
-    blocking_noaddr_script = driver_template.format(address="", blocking=True)
 
-    # This should start a cluster.
-    p1 = run_string_as_driver_nonblocking(blocking_local_script)
-    # ray.client("local").connect() should start a second cluster.
-    p2 = run_string_as_driver_nonblocking(blocking_local_script)
-    # ray.client().connect() shouldn't connect to a cluster started by
-    # ray.client("local").connect() so it should create a third one.
-    p3 = run_string_as_driver_nonblocking(blocking_noaddr_script)
-    # ray.client().connect() shouldn't connect to a cluster started by
-    # ray.client().connect() so it should create a fourth one.
-    p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
+    def _get_node_id(p: subprocess.Popen) -> str:
+        l = p.stdout.readline().decode("ascii").strip()
+        assert "NODE_ID" in l
+        return l[len("NODE_ID: ") :]
 
-    wait_for_condition(
-        lambda: len(ray._private.services.find_gcs_addresses()) == 4,
-        retry_interval_ms=1000,
-    )
+    p1, p2, p3 = None, None, None
+    unbuffered = {"PYTHONUNBUFFERED": "1"}
+    try:
+        # ray.client() should start a cluster if none is running.
+        p1 = run_string_as_driver_nonblocking(
+            driver_template.format(address=""), env=unbuffered
+        )
+        p1_node_id = _get_node_id(p1)
 
-    p1.kill()
-    p2.kill()
-    p3.kill()
-    p4.kill()
-    # Prevent flakiness since fatesharing takes some time.
-    subprocess.check_output("ray stop --force", shell=True)
+        # ray.client("local") should always start a cluster.
+        p2 = run_string_as_driver_nonblocking(driver_template.format(address="'local'"))
+        p2_node_id = _get_node_id(p2)
 
-    # Since there's a cluster started with `ray start --head`
-    # we should connect to it instead.
-    subprocess.check_output("ray start --head", shell=True)
-    # The assertion in the driver should cause the script to fail if we start
-    # a new cluster instead of connecting.
-    run_string_as_driver(
-        """
-import ray
-ray.client().connect()
-assert len(ray._private.services.find_gcs_addresses()) == 1
+        # ray.client() shouldn't connect to a cluster started by ray.client() or
+        # ray.client("local").
+        p3 = run_string_as_driver_nonblocking(driver_template.format(address=""))
+        p3_node_id = _get_node_id(p3)
+
+        # Check that all three drivers started their own local clusters.
+        assert len({p1_node_id, p2_node_id, p3_node_id}) == 3
+    finally:
+        # Kill processes concurrently.
+        if p1 is not None:
+            p1.kill()
+        if p2 is not None:
+            p2.kill()
+        if p3 is not None:
+            p3.kill()
+
+        # Wait for processes to exit.
+        if p1 is not None:
+            p1.wait()
+        if p2 is not None:
+            p2.wait()
+        if p3 is not None:
+            p3.wait()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_connect_to_local_cluster(call_ray_start):
+    """This tests that ray.client connects to a local cluster when appropriate.
+
+    * Using `ray.client("local").connect() ` should always create a new
+      cluster even if one is running.
+    * Using `ray.client().connect()` should connect to a local cluster that was
+      started with `ray start --head`.
     """
-    )
-    # ray.client("local").connect() should always create a new cluster even if
-    # there's one running.
-    p1 = run_string_as_driver_nonblocking(blocking_local_script)
-    wait_for_condition(
-        lambda: len(ray._private.services.find_gcs_addresses()) == 2,
-        retry_interval_ms=1000,
-    )
-    p1.kill()
-    subprocess.check_output("ray stop --force", shell=True)
+    driver_template = """
+import ray
+info = ray.client({address}).connect()
+print("NODE_ID:", ray.get_runtime_context().get_node_id())
+"""
+
+    def _get_node_id(p: subprocess.Popen) -> str:
+        l = p.stdout.readline().decode("ascii").strip()
+        assert "NODE_ID" in l
+        return l[len("NODE_ID: ") :]
+
+    existing_node_id = ray.get_runtime_context().get_node_id()
+
+    p1, p2 = None, None
+    unbuffered = {"PYTHONUNBUFFERED": "1"}
+    try:
+        # ray.client() should connect to the running cluster.
+        p1 = run_string_as_driver_nonblocking(
+            driver_template.format(address=""), env=unbuffered
+        )
+        assert _get_node_id(p1) == existing_node_id
+
+        # ray.client("local") should always start a cluster.
+        p2 = run_string_as_driver_nonblocking(driver_template.format(address="'local'"))
+        assert _get_node_id(p2) != existing_node_id
+    finally:
+        # Kill processes concurrently.
+        if p1 is not None:
+            p1.kill()
+        if p2 is not None:
+            p2.kill()
+
+        # Wait for processes to exit.
+        if p1 is not None:
+            p1.wait()
+        if p2 is not None:
+            p2.wait()
 
 
 def test_non_existent_modules():
@@ -328,7 +340,6 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
 @pytest.mark.filterwarnings(
     "default:Starting a connection through `ray.client` will be deprecated"
 )
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with
@@ -351,7 +362,7 @@ def test_client_deprecation_warn():
     )
     ray.shutdown()
 
-    server = ray_client_server.serve("localhost:50055")
+    server = ray_client_server.serve("localhost", 50055)
 
     # Test warning when namespace and runtime env aren't specified
     with warnings.catch_warnings(record=True) as w:
@@ -448,7 +459,4 @@ def test_task_use_prestarted_worker(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

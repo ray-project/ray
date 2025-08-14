@@ -9,8 +9,8 @@ import ray.train
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
-from ray.tune import Checkpoint, CheckpointConfig
 from ray.train.tests.util import mock_storage_context
+from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.logger import NoopLogger
 from ray.tune.result import DEFAULT_METRIC

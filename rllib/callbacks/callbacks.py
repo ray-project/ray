@@ -10,6 +10,9 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
+from ray.rllib.offline.offline_evaluation_runner_group import (
+    OfflineEvaluationRunnerGroup,
+)
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -105,6 +108,27 @@ class RLlibCallback(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
+    def on_evaluate_offline_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        **kwargs,
+    ) -> None:
+        """Callback before offline evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate_offline().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics before running the next round of offline
+                evaluation.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
     def on_evaluate_end(
         self,
         *,
@@ -123,6 +147,31 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics after the most recent evaluation round.
             evaluation_metrics: Results dict to be returned from algorithm.evaluate().
                 You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_offline_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        """Runs when the offline evaluation is done.
+
+        Runs at the end of Algorithm.evaluate_offline().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics after the most recent offline evaluation
+                round.
+            evaluation_metrics: Results dict to be returned from
+                Algorithm.evaluate_offline(). You can mutate this object to add
+                additional metrics.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -186,6 +235,61 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_offline_eval_runners_recreated(
+        self,
+        *,
+        algorithm: "Algorithm",
+        offline_eval_runner_group: "OfflineEvaluationRunnerGroup",
+        offline_eval_runner_indices: List[int],
+        **kwargs,
+    ) -> None:
+        """Callback run after one or more OfflineEvaluationRunner actors have been recreated.
+
+        You can access and change the OfflineEvaluationRunners in question through the following code
+        snippet inside your custom override of this method:
+
+        .. testcode::
+            from ray.rllib.callbacks.callbacks import RLlibCallback
+
+            class MyCallbacks(RLlibCallback):
+                def on_offline_eval_runners_recreated(
+                    self,
+                    *,
+                    algorithm,
+                    offline_eval_runner_group,
+                    offline_eval_runner_indices,
+                    **kwargs,
+                ):
+                    # Define what you would like to do on the recreated EnvRunner:
+                    def func(offline_eval_runner):
+                        # Here, we just set some arbitrary property to 1.
+                        if is_evaluation:
+                            offline_eval_runner._custom_property_for_evaluation = 1
+                        else:
+                            offline_eval_runner._custom_property_for_training = 1
+
+                    # Use the `foreach_runner` method of the worker set and
+                    # only loop through those worker IDs that have been restarted.
+                    # Note that `local_runner=False` as long as there are remote
+                    # runners.
+                    offline_eval_runner_group.foreach_runner(
+                        func,
+                        remote_runner_ids=offline_eval_runner_indices,
+                        local_runner=False,
+                    )
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            offline_eval_runner_group: The OfflineEvaluationRunnerGroup object in which
+                the workers in question reside. You can use a `runner_group.foreach_runner(
+                remote_worker_ids=..., local_runner=False)` method call to execute
+                custom code on the recreated (remote) workers.
+            offline_eval_runner_indices: The list of (remote) worker IDs that have been
+                recreated.
         """
         pass
 
@@ -373,6 +477,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
         self,
         *,
         episode: Union[EpisodeType, EpisodeV2],
+        prev_episode_chunks: Optional[List[EpisodeType]] = None,
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -415,6 +520,11 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 object). Note that this method is still called before(!) the episode
                 object is numpy'ized, meaning all its timestep data is still present in
                 lists of individual timestep data.
+            prev_episode_chunks: A complete list of all previous episode chunks
+                with the same ID as `episode` that have been sampled on this EnvRunner.
+                In order to compile metrics across the complete episode, users should
+                loop through the list: `[episode] + previous_episode_chunks` and
+                accumulate the required information.
             env_runner: Reference to the EnvRunner running the env and episode.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics during env/episode stepping.

@@ -71,15 +71,15 @@ int main() {
   const auto env = std::getenv("GRPC_SERVER_CPUS");
   const auto parallelism = env ? std::atoi(env) : std::thread::hardware_concurrency();
 
-  GrpcServer server("grpc_bench", 50051, false, parallelism);
+  GrpcServer server("grpc_bench", 50051, false, ClusterID::Nil(), parallelism);
   instrumented_io_context main_service;
   std::thread t([&main_service] {
-    boost::asio::io_service::work work(main_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        main_service.get_executor());
     main_service.run();
   });
   GreeterServiceHandler handler;
-  GreeterGrpcService grpc_service(main_service, handler);
-  server.RegisterService(grpc_service);
+  server.RegisterService(std::make_unique<GreeterGrpcService>(main_service, handler));
   server.Run();
   t.join();
   return 0;

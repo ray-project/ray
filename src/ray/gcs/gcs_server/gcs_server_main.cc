@@ -24,8 +24,8 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -42,9 +42,7 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
-DEFINE_string(session_name,
-              "",
-              "session_name: The session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
@@ -57,7 +55,7 @@ int main(int argc, char *argv[]) {
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stdout_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStdout(stdout_redirection_options);
+    ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
   }
 
   if (!FLAGS_stderr_filepath.empty()) {
@@ -67,16 +65,13 @@ int main(int argc, char *argv[]) {
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stderr_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStderr(stderr_redirection_options);
+    ray::RedirectStderrOncePerProcess(stderr_redirection_options);
   }
 
   // Backward compatibility notes:
-  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // By default, GCS server flushes all logging and stdout to a single file called
   // `gcs_server.out`, without log rotations. To keep backward compatibility at best
   // effort, we use the same filename as output, and disable log rotation by default.
-
-  // For compatibility, by default GCS server dumps logging into a single file with no
-  // rotation.
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
@@ -109,15 +104,17 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
-  instrumented_io_context main_service(/*enable_lag_probe=*/true);
+  instrumented_io_context main_service(/*enable_lag_probe=*/true,
+                                       /*running_on_single_thread=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
-  boost::asio::io_service::work work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      main_service.get_executor());
 
   ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 

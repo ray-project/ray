@@ -1,0 +1,31 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "publisher",
+    srcs = ["publisher.cc"],
+    hdrs = ["publisher.h"],
+    deps = [
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        # NOTE(edoakes): we only seem to need `SendReplyCallback` from server_call.h.
+        # We should move that definition to its own target.
+        "//src/ray/rpc:server_call",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "subscriber",
+    srcs = ["subscriber.cc"],
+    hdrs = ["subscriber.h"],
+    deps = [
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        # NOTE(edoakes): we only seem to need `ClientCallback` from client_call.h.
+        # We should move that definition to its own target.
+        "//src/ray/rpc:client_call",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

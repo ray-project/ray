@@ -1,0 +1,355 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "core_worker_lib",
+    srcs = [
+        "core_worker.cc",
+        "core_worker_process.cc",
+    ],
+    hdrs = [
+        "core_worker.h",
+        "core_worker_process.h",
+        "core_worker_rpc_proxy.h",
+    ],
+    deps = [
+        ":actor_handle",
+        ":actor_manager",
+        ":common",
+        ":core_worker_context",
+        ":core_worker_options",
+        ":experimental_mutable_object_manager",
+        ":experimental_mutable_object_provider",
+        ":future_resolver",
+        ":generator_waiter",
+        ":memory_store",
+        ":object_recovery_manager",
+        ":plasma_store_provider",
+        ":profile_event",
+        ":reference_count",
+        ":task_event_buffer",
+        "//src/ray/common/cgroup:cgroup_context",
+        "//src/ray/common/cgroup:cgroup_manager",
+        "//src/ray/common/cgroup:constants",
+        "//src/ray/core_worker/task_execution:task_receiver",
+        "//src/ray/core_worker/task_submission:normal_task_submitter",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/ipc:raylet_ipc_client",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/pubsub:publisher",
+        "//src/ray/pubsub:subscriber",
+        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:core_worker_server",
+        "//src/ray/stats:stats_lib",
+        "//src/ray/util",
+        "//src/ray/util:container_util",
+        "//src/ray/util:env",
+        "//src/ray/util:event",
+        "//src/ray/util:mutex_protected",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:process",
+        "//src/ray/util:shared_lru",
+        "//src/ray/util:stream_redirection",
+        "//src/ray/util:stream_redirection_options",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "core_worker_options",
+    hdrs = ["core_worker_options.h"],
+    deps = [
+        ":common",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/util:process",
+    ],
+)
+
+ray_cc_library(
+    name = "common",
+    srcs = ["common.cc"],
+    hdrs = ["common.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
+    ],
+)
+
+ray_cc_library(
+    name = "core_worker_context",
+    srcs = ["context.cc"],
+    hdrs = ["context.h"],
+    deps = [
+        ":common",
+        "//src/ray/common:runtime_env",
+        "//src/ray/common:task_common",
+        "@boost//:thread",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_handle",
+    srcs = ["actor_handle.cc"],
+    hdrs = ["actor_handle.h"],
+    deps = [
+        ":core_worker_context",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_creator",
+    hdrs = ["actor_creator.h"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_manager",
+    srcs = ["actor_manager.cc"],
+    hdrs = ["actor_manager.h"],
+    deps = [
+        ":actor_creator",
+        ":actor_handle",
+        ":common",
+        ":core_worker_context",
+        ":reference_count",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker/task_submission:actor_task_submitter",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "reference_count",
+    srcs = ["reference_count.cc"],
+    hdrs = ["reference_count.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/core_worker:lease_policy",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/pubsub:publisher",
+        "//src/ray/pubsub:subscriber",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/util:logging",
+        "//src/ray/util:network_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "lease_policy",
+    srcs = ["lease_policy.cc"],
+    hdrs = ["lease_policy.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "task_event_buffer",
+    srcs = ["task_event_buffer.cc"],
+    hdrs = ["task_event_buffer.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/protobuf:export_task_event_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:event_aggregator_client",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:event",
+        "@boost//:circular_buffer",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_store",
+    srcs = ["store_provider/memory_store/memory_store.cc"],
+    hdrs = ["store_provider/memory_store/memory_store.h"],
+    deps = [
+        ":core_worker_context",
+        ":reference_count",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/ipc:raylet_ipc_client",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "task_manager_interface",
+    hdrs = ["task_manager_interface.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "task_manager",
+    srcs = ["task_manager.cc"],
+    hdrs = ["task_manager.h"],
+    deps = [
+        ":actor_manager",
+        ":memory_store",
+        ":task_event_buffer",
+        ":task_manager_interface",
+        "//src/ray/common:buffer",
+        "//src/ray/common:id",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:exponential_backoff",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "experimental_mutable_object_manager",
+    srcs = ["experimental_mutable_object_manager.cc"],
+    hdrs = ["experimental_mutable_object_manager.h"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/object_manager/plasma:plasma_client",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "future_resolver",
+    srcs = ["future_resolver.cc"],
+    hdrs = ["future_resolver.h"],
+    deps = [
+        ":memory_store",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/rpc:core_worker_client",
+    ],
+)
+
+ray_cc_library(
+    name = "experimental_mutable_object_provider",
+    srcs = ["experimental_mutable_object_provider.cc"],
+    hdrs = ["experimental_mutable_object_provider.h"],
+    deps = [
+        ":experimental_mutable_object_manager",
+        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:client_call",
+    ],
+)
+
+ray_cc_library(
+    name = "generator_waiter",
+    srcs = ["generator_waiter.cc"],
+    hdrs = ["generator_waiter.h"],
+    deps = [
+        ":common",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "object_recovery_manager",
+    srcs = ["object_recovery_manager.cc"],
+    hdrs = ["object_recovery_manager.h"],
+    deps = [
+        ":memory_store",
+        ":reference_count",
+        ":task_manager",
+        "//src/ray/common:id",
+        "//src/ray/raylet_client:raylet_client_lib",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "profile_event",
+    srcs = ["profile_event.cc"],
+    hdrs = ["profile_event.h"],
+    deps = [
+        ":core_worker_context",
+        ":task_event_buffer",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_store_provider",
+    srcs = ["store_provider/plasma_store_provider.cc"],
+    hdrs = ["store_provider/plasma_store_provider.h"],
+    deps = [
+        ":common",
+        ":core_worker_context",
+        ":reference_count",
+        "//src/ray/common:buffer",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        "//src/ray/ipc:raylet_ipc_client",
+        "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)

@@ -26,7 +26,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/util/thread_utils.h"
 
 namespace plasma {
@@ -158,8 +157,6 @@ void PlasmaStoreRunner::Shutdown() {
 bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return store_->IsObjectSpillable(object_id);
 }
-
-int64_t PlasmaStoreRunner::GetConsumedBytes() { return store_->GetConsumedBytes(); }
 
 int64_t PlasmaStoreRunner::GetFallbackAllocated() const {
   absl::MutexLock lock(&store_runner_mutex_);

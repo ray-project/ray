@@ -1,9 +1,10 @@
 """The base class for all stages."""
 import logging
-from typing import Any, Dict, AsyncIterator, List, Callable, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
 
 import pyarrow
 from pydantic import BaseModel, Field
+
 from ray.data.block import UserDefinedFunction
 
 logger = logging.getLogger(__name__)
@@ -68,17 +69,21 @@ class StatefulStageUDF:
 
     Args:
         data_column: The internal data column name of the processor. The
-        __call__ method will take the data column as the input of the udf
-        method, and encapsulate the output of the udf method into the data
-        column for the next stage.
+                     __call__ method takes the data column as the input of the UDF
+                     method, and encapsulates the output of the UDF method into the data
+                     column for the next stage.
+        expected_input_keys: The expected input keys of the stage.
     """
 
     # The internal column name for the index of the row in the batch.
     # This is used to align the output of the UDF with the input batch.
     IDX_IN_BATCH_COLUMN: str = "__idx_in_batch"
 
-    def __init__(self, data_column: str):
+    def __init__(
+        self, data_column: str, expected_input_keys: Optional[List[str]] = None
+    ):
         self.data_column = data_column
+        self.expected_input_keys = set(expected_input_keys or [])
 
     async def __call__(self, batch: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """A stage UDF wrapper that processes the input and output columns
@@ -155,14 +160,8 @@ class StatefulStageUDF:
         for idx, row in enumerate(inputs):
             row[self.IDX_IN_BATCH_COLUMN] = idx
 
-        # Always stream the outputs one by one to better overlapping
-        # batches. For example, when the output batch size is 64, Ray Data
-        # will collect 64 outputs, and 1) send the batch of 64 to the next stage,
-        # 2) get the next batch of this stage. Assuming the input batch size
-        # is 63 and we yield all 63 results at once, then Ray Data will wait
-        # for 2 batches (63 + 63 > 64) to continue proceeding. On the other hand,
-        # if we stream outputs one-by-one, Ray Data can form a batch of 64 before
-        # the second batch is done.
+        # Collect all outputs first, then return them in the original order
+        # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
         not_outputed_rows = set(range(len(inputs)))
         async for output in self.udf(inputs):
             if self.IDX_IN_BATCH_COLUMN not in output:
@@ -181,10 +180,12 @@ class StatefulStageUDF:
             # Add stage outputs to the data column of the row.
             inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
             inputs[idx_in_batch].update(output)
-            yield {self.data_column: [inputs[idx_in_batch]]}
 
         if not_outputed_rows:
             raise ValueError(f"The rows {not_outputed_rows} are not outputed.")
+
+        # Return all updated inputs in the original order
+        yield {self.data_column: inputs}
 
     def validate_inputs(self, inputs: List[Dict[str, Any]]):
         """Validate the inputs to make sure the required keys are present.
@@ -195,8 +196,6 @@ class StatefulStageUDF:
         Raises:
             ValueError: If the required keys are not found.
         """
-        expected_input_keys = set(self.expected_input_keys)
-
         for inp in inputs:
             input_keys = set(inp.keys())
 
@@ -206,25 +205,15 @@ class StatefulStageUDF:
                     "for internal use."
                 )
 
-            if not expected_input_keys:
+            if not self.expected_input_keys:
                 continue
 
-            missing_required = expected_input_keys - input_keys
+            missing_required = self.expected_input_keys - input_keys
             if missing_required:
                 raise ValueError(
                     f"Required input keys {missing_required} not found at the input of "
                     f"{self.__class__.__name__}. Input keys: {input_keys}"
                 )
-
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """A list of required input keys. Missing required keys will raise
-        an exception.
-
-        Returns:
-            A list of required input keys.
-        """
-        return []
 
     async def udf(self, rows: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         raise NotImplementedError("StageUDF must implement the udf method")
@@ -246,6 +235,14 @@ class StatefulStage(BaseModel):
         default_factory=lambda: {"concurrency": 1},
         description="The arguments of .map_batches(). Default {'concurrency': 1}.",
     )
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {}
+
+    def get_optional_input_keys(self) -> Dict[str, str]:
+        """The optional input keys of the stage and their descriptions."""
+        return {}
 
     def get_dataset_map_batches_kwargs(
         self,
@@ -280,6 +277,9 @@ class StatefulStage(BaseModel):
             )
 
         kwargs["fn_constructor_kwargs"]["data_column"] = data_column
+        kwargs["fn_constructor_kwargs"]["expected_input_keys"] = list(
+            self.get_required_input_keys().keys()
+        )
         return kwargs
 
     class Config:

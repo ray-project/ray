@@ -7,10 +7,8 @@ from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 import gymnasium as gym
 
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.models.distributions import Distribution
+from ray.rllib.core.distribution.distribution import Distribution
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
@@ -95,8 +93,6 @@ class RLModuleSpec:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
             raise ValueError("Observation space is not set.")
-        if self.action_space is None:
-            raise ValueError("Action space is not set.")
 
         try:
             module = self.module_class(
@@ -374,6 +370,11 @@ class RLModule(Checkpointable, abc.ABC):
             False by default.
         model_config: A config dict to specify features of this RLModule.
 
+    Attributes:
+        action_dist_cls: An optional ray.rllib.core.distribution.distribution.
+            Distribution subclass to use for sampling actions, given parameters from
+            a batch (`Columns.ACTION_DIST_INPUTS`).
+
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
 
@@ -401,6 +402,7 @@ class RLModule(Checkpointable, abc.ABC):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
         #  primitive components based on obs- and action spaces.
         self.catalog = None
+        self._catalog_ctor_error = None
 
         # Deprecated
         self.config = config
@@ -464,8 +466,15 @@ class RLModule(Checkpointable, abc.ABC):
                 "[Algo]RLModule) and that you are NOT overriding the constructor, but "
                 "only the `setup()` method of your subclass."
             )
-        self.setup()
+        try:
+            self.setup()
+        except AttributeError as e:
+            if "'NoneType' object has no attribute " in e.args[0]:
+                raise (self._catalog_ctor_error or e)
         self._is_setup = True
+        # Cache value for returning from `is_stateful` so we don't have to call
+        # the module's `get_initial_state()` method all the time (might be expensive).
+        self._is_stateful = None
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -476,22 +485,7 @@ class RLModule(Checkpointable, abc.ABC):
         abstraction can be used to create any components (e.g. NN layers) that your
         RLModule needs.
         """
-        return None
-
-    @OverrideToImplementCustomLogic
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for exploration.
-
-        This class is used to create action distributions from outputs of the
-        forward_exploration method. If the case that no action distribution class is
-        needed, this method can return None.
-
-        Note that RLlib's distribution classes all implement the `Distribution`
-        interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
-        """
-        raise NotImplementedError
+        pass
 
     @OverrideToImplementCustomLogic
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
@@ -504,7 +498,24 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
+
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -519,7 +530,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -553,8 +565,7 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_inference().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -573,8 +584,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad():
-            return self._forward(batch, **kwargs)
+        return self._forward(batch, **kwargs)
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
@@ -583,13 +593,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_exploration().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_exploration().
+            The output of the forward pass.
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -603,8 +611,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad():
-            return self._forward(batch, **kwargs)
+        return self._forward(batch, **kwargs)
 
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
@@ -613,13 +620,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_train().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_train().
+            The output of the forward pass.
         """
         if self.inference_only:
             raise RuntimeError(
@@ -659,12 +664,14 @@ class RLModule(Checkpointable, abc.ABC):
         state is an empty dict and recurrent otherwise.
         This behavior can be customized by overriding this method.
         """
-        initial_state = self.get_initial_state()
-        assert isinstance(initial_state, dict), (
-            "The initial state of an RLModule must be a dict, but is "
-            f"{type(initial_state)} instead."
-        )
-        return bool(initial_state)
+        if self._is_stateful is None:
+            initial_state = self.get_initial_state()
+            assert isinstance(initial_state, dict), (
+                "The initial state of an RLModule must be a dict, but is "
+                f"{type(initial_state)} instead."
+            )
+            self._is_stateful = bool(initial_state)
+        return self._is_stateful
 
     @OverrideToImplementCustomLogic
     @override(Checkpointable)
@@ -731,31 +738,33 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self
 
-    def output_specs_inference(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
+    @Deprecated(error=False)
+    def output_specs_train(self):
+        pass
 
-    def output_specs_exploration(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
 
-    def output_specs_train(self) -> SpecType:
-        """Returns the output specs of the forward_train method."""
-        return {}
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
 
-    def input_specs_inference(self) -> SpecType:
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
+    @Deprecated(error=False)
+    def input_specs_inference(self):
+        pass
 
-    def input_specs_exploration(self) -> SpecType:
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
+    @Deprecated(error=False)
+    def input_specs_exploration(self):
+        pass
 
-    def input_specs_train(self) -> SpecType:
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
+    @Deprecated(error=False)
+    def input_specs_train(self):
+        pass
 
-    def _default_input_specs(self) -> SpecType:
-        """Returns the default input specs."""
-        return [Columns.OBS]
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
 
 
 @Deprecated(

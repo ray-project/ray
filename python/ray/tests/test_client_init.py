@@ -1,11 +1,12 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
-import pytest
 
 import time
 import random
 import sys
 import subprocess
 from unittest.mock import patch
+
+import pytest
 
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -52,7 +53,7 @@ def init_and_serve_lazy(ray_start_cluster):
     def connect(job_config=None, **ray_init_kwargs):
         ray.init(address=address, job_config=job_config, **ray_init_kwargs)
 
-    server_handle = ray_client_server.serve("localhost:50051", connect)
+    server_handle = ray_client_server.serve("localhost", 50051, connect)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
 
@@ -196,10 +197,4 @@ def test_max_clients(init_and_serve):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

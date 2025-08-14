@@ -30,8 +30,9 @@
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
@@ -65,11 +66,11 @@ class GcsClientOptions {
       : cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
-    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    auto address = ParseAddress(gcs_address);
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
-    RAY_CHECK(address.size() == 2);
-    gcs_address_ = address[0];
-    gcs_port_ = std::stoi(address[1]);
+    RAY_CHECK(address.has_value());
+    gcs_address_ = (*address)[0];
+    gcs_port_ = std::stoi((*address)[1]);
   }
 
   GcsClientOptions() {}
@@ -86,7 +87,7 @@ class GcsClientOptions {
   std::string gcs_address_;
   int gcs_port_ = 0;
   ClusterID cluster_id_;
-  bool should_fetch_cluster_id_;
+  bool should_fetch_cluster_id_ = false;
 };
 
 /// \class GcsClient
@@ -210,6 +211,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *autoscaler_state_accessor_;
   }
 
+  PublisherAccessor &Publisher() {
+    RAY_CHECK(publisher_accessor_ != nullptr);
+    return *publisher_accessor_;
+  }
+
   // Gets ClusterID. If it's not set in Connect(), blocks on a sync RPC to GCS to get it.
   virtual ClusterID GetClusterId() const;
 
@@ -235,6 +241,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
+  std::unique_ptr<PublisherAccessor> publisher_accessor_;
 
  private:
   /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The

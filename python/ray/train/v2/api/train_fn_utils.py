@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
-from ray.util.annotations import PublicAPI
 
 from ray.train import Checkpoint
-from ray.train.v2._internal.execution.context import get_train_context
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -81,9 +81,14 @@ def report(
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
+        checkpoint_dir_name: Custom name for the checkpoint directory.
+            If not provided, a unique directory name will be automatically generated.
+            If provided, it must be unique across all checkpoints per worker to avoid
+            naming collisions. Consider including identifiers such as the epoch or batch
+            index in the name.
     """
 
-    get_train_context().report(
+    get_train_fn_utils().report(
         metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
     )
 
@@ -97,8 +102,8 @@ def get_context() -> TrainContext:
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     # TODO: Return a dummy train context on the controller and driver process
-    # instead of raising an exception the the train context does not exist.
-    return TrainContext()
+    # instead of raising an exception if the train context does not exist.
+    return get_train_fn_utils().get_context()
 
 
 @PublicAPI(stability="stable")
@@ -143,7 +148,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
-    return get_train_context().get_checkpoint()
+    return get_train_fn_utils().get_checkpoint()
 
 
 @PublicAPI(stability="stable")
@@ -190,4 +195,4 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_context().get_dataset_shard(dataset_name)
+    return get_train_fn_utils().get_dataset_shard(dataset_name)

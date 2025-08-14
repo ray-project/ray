@@ -72,9 +72,9 @@ class RuntimeContext(object):
             AssertionError: If not called in a driver or worker. Generally,
                 this means that ray.init() was not called.
         """
-        assert ray.is_initialized(), (
-            "Job ID is not available because " "Ray has not been initialized."
-        )
+        assert (
+            ray.is_initialized()
+        ), "Job ID is not available because Ray has not been initialized."
         job_id = self.worker.current_job_id
         return job_id.hex()
 
@@ -105,9 +105,9 @@ class RuntimeContext(object):
             AssertionError: If not called in a driver or worker. Generally,
                 this means that ray.init() was not called.
         """
-        assert ray.is_initialized(), (
-            "Node ID is not available because " "Ray has not been initialized."
-        )
+        assert (
+            ray.is_initialized()
+        ), "Node ID is not available because Ray has not been initialized."
         node_id = self.worker.current_node_id
         return node_id.hex()
 
@@ -532,6 +532,18 @@ class RuntimeContext(object):
             )
             ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
+
+    def get_node_labels(self) -> Dict[str, List[str]]:
+        """
+        Get the node labels of the current worker.
+
+        Returns:
+            A dictionary of label key-value pairs.
+        """
+        worker = self.worker
+        worker.check_connected()
+
+        return worker.current_node_labels
 
 
 _runtime_context = None

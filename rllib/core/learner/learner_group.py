@@ -48,24 +48,48 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.util.placement_group import PlacementGroup
 
 
 def _get_backend_config(learner_class: Type[Learner]) -> str:
     if learner_class.framework == "torch":
-        from ray.train.torch import TorchConfig
+        from ray.train.torch.config import TorchConfig, _TorchBackend
 
-        backend_config = TorchConfig()
-    elif learner_class.framework == "tf2":
-        from ray.train.tensorflow import TensorflowConfig
+        # Override `_TorchBackend` share_cuda_visible_devices=True setting.
+        # We need this to be False to make sure Learner actors only see their
+        # own GPU. There is no need in RLlib's LearnerGroups for 2 different Learner
+        # actors to communicate with each other through their GPUs.
+        class _RLlibTorchBackend(_TorchBackend):
+            share_cuda_visible_devices = False
 
-        backend_config = TensorflowConfig()
+        class RLlibTorchConfig(TorchConfig):
+            @property
+            def backend_cls(self):
+                return _RLlibTorchBackend
+
+        backend_config = RLlibTorchConfig()
+
     else:
         raise ValueError(
-            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            "`learner_class.framework` must be 'torch' (but is "
             f"{learner_class.framework}!"
         )
 
     return backend_config
+
+
+class RLlibBackendExecutor(BackendExecutor):
+    # Override `BackendExecutor` placement group creation logic. We need to pass our own
+    # to make sure the one of the Algorithm (Trainable) is used for all the
+    # Algorithm's actors.
+    def _create_placement_group(self):
+        pass
+
+    # TODO (sven): Change this once there is a better (public) API for this in the
+    #  superclass.
+    def set_placement_group(self, placement_group):
+        if placement_group is not None:
+            self._placement_group = placement_group
 
 
 @PublicAPI(stability="alpha")
@@ -82,6 +106,7 @@ class LearnerGroup(Checkpointable):
         config: "AlgorithmConfig",
         # TODO (sven): Rename into `rl_module_spec`.
         module_spec: Optional[RLModuleSpecType] = None,
+        placement_group: Optional["PlacementGroup"] = None,
     ):
         """Initializes a LearnerGroup instance.
 
@@ -98,6 +123,10 @@ class LearnerGroup(Checkpointable):
                 the specifics for your RLModule to be used in each Learner.
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
+            placement_group: An optional `PlacementGroup` instance to set the
+                `RLlibBackendExecutor`'s `self._placement_group` attribute to.
+                If run within an Algorithm (tune.Trainable), the placement group of tune
+                trial actor is passed through here.
         """
         self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
@@ -132,23 +161,20 @@ class LearnerGroup(Checkpointable):
                 if self.config.num_gpus_per_learner == 0
                 else 0
             )
-            num_gpus_per_learner = max(
-                0,
-                self.config.num_gpus_per_learner
-                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-                # - (0.01 * self.config.num_aggregator_actors_per_learner),
-            )
+            num_gpus_per_learner = max(0, self.config.num_gpus_per_learner)
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
             }
 
-            backend_executor = BackendExecutor(
+            backend_executor = RLlibBackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learners,
                 resources_per_worker=resources_per_learner,
                 max_retries=0,
             )
+            # Set the placement group - if any - of the BackendExecutor.
+            backend_executor.set_placement_group(placement_group)
             backend_executor.start(
                 train_cls=learner_class,
                 train_cls_kwargs={
@@ -159,6 +185,16 @@ class LearnerGroup(Checkpointable):
             self._backend_executor = backend_executor
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
+
+            ray.get(
+                [
+                    worker._set_learner_index_and_placement_group.remote(
+                        learner_index=idx,
+                        placement_group=placement_group,
+                    )
+                    for idx, worker in enumerate(self._workers)
+                ]
+            )
 
             # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])

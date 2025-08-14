@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type
 
 import torch
 
@@ -16,8 +16,6 @@ class AbstractNcclGroup(Communicator):
     """
     A dummy NCCL group for testing.
     """
-
-    import cupy as cp
 
     def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
         self._actor_handles = actor_handles
@@ -50,6 +48,13 @@ class AbstractNcclGroup(Communicator):
     ) -> "torch.Tensor":
         raise NotImplementedError
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        raise NotImplementedError
+
     def allreduce(
         self,
         send_buf: "torch.Tensor",
@@ -58,19 +63,31 @@ class AbstractNcclGroup(Communicator):
     ) -> None:
         raise NotImplementedError
 
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ) -> None:
+        raise NotImplementedError
+
     @property
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def recv_stream(self):
         return None
 
     @property
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def send_stream(self):
         return None
 
     def destroy(self) -> None:
         pass
 
     def get_transport_name(self) -> str:
-        return "nccl"
+        return "accelerator"
+
+    @classmethod
+    def generate_communicator_id(cls) -> str:
+        pass
 
 
 class MockNcclGroupSet:
@@ -86,6 +103,8 @@ class MockNcclGroupSet:
         actors: List["ray.actor.ActorHandle"],
         custom_nccl_group: Optional[Communicator] = None,
         use_communication_streams: bool = False,
+        accelerator_module_name: Optional[str] = None,
+        accelerator_communicator_cls: Optional[Type[Communicator]] = None,
     ) -> str:
         group_id = str(uuid.uuid4())
         self.ids_to_actors_and_custom_comms[group_id] = (
@@ -149,12 +168,17 @@ class CPUTorchTensorWorker:
     def __init__(self):
         self.device = "cpu"
 
-    def return_tensor(self, size: int) -> torch.Tensor:
-        return torch.ones(size, device=self.device)
+    def return_tensor(
+        self, size: int, dtype: Optional[torch.dtype] = None
+    ) -> torch.Tensor:
+        return torch.ones(size, dtype=dtype, device=self.device)
 
     def recv(self, tensor: torch.Tensor) -> Tuple[int, int]:
         assert tensor.device == self.device
         return tensor.shape, tensor[0]
+
+    def recv_tensors(self, *tensors) -> Tuple[torch.Tensor, ...]:
+        return tuple(tensors)
 
 
 def mock_do_init_nccl_group(

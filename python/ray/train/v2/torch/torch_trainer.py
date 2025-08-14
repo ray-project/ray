@@ -199,7 +199,8 @@ class TorchTrainer(DataParallelTrainer):
 
         torch_config = torch_config or TorchConfig()
         if not torch_config.backend:
-            torch_config.backend = "nccl" if scaling_config.use_gpu else "gloo"
+            is_gpu_training = scaling_config and scaling_config.use_gpu
+            torch_config.backend = "nccl" if is_gpu_training else "gloo"
 
         super(TorchTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,

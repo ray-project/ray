@@ -20,11 +20,14 @@
 
 namespace ray {
 
-ScopedCgroupHandler FakeCgroupSetup::AddSystemProcess(pid_t pid) {
+Status FakeCgroupSetup::AddSystemProcess(pid_t pid) {
   absl::MutexLock lock(&mtx_);
   const bool is_new = system_cgroup_.emplace(pid).second;
-  RAY_CHECK(is_new);
-  return ScopedCgroupHandler{[this, pid]() { CleanupSystemProcess(pid); }};
+  if (!is_new) {
+    return Status::InvalidArgument("")
+           << "Failed to add " << pid << " into system cgroup.";
+  }
+  return Status::OK();
 }
 
 ScopedCgroupHandler FakeCgroupSetup::ApplyCgroupContext(
@@ -63,9 +66,6 @@ void FakeCgroupSetup::CleanupCgroupContext(const AppProcCgroupMetadata &ctx) {
   }
 }
 
-FakeCgroupSetup::~FakeCgroupSetup() {
-  RAY_CHECK(system_cgroup_.empty());
-  RAY_CHECK(cgroup_to_pids_.empty());
-}
+FakeCgroupSetup::~FakeCgroupSetup() { RAY_CHECK(cgroup_to_pids_.empty()); }
 
 }  // namespace ray

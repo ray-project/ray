@@ -19,7 +19,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -68,9 +68,6 @@ from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=150.0, default_timesteps=100000
-)
-parser.set_defaults(
-    enable_new_api_stack=True,
 )
 
 
@@ -230,7 +227,11 @@ if __name__ == "__main__":
         .experimental(_torch_grad_scaler_class=Float16GradScaler)
         # Plug in our custom env-to-module ConnectorV2 piece to convert all observations
         # and reward in the episodes (permanently) to float16.
-        .env_runners(env_to_module_connector=lambda env: WriteObsAndRewardsAsFloat16())
+        .env_runners(
+            env_to_module_connector=(
+                lambda env, spaces, device: WriteObsAndRewardsAsFloat16()
+            ),
+        )
         .training(
             # Plug in our custom TorchLearner (using a much larger, stabilizing epsilon
             # on the Adam optimizer).

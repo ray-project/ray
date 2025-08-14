@@ -12,8 +12,7 @@ libraries, so you can quickly map what you may already know to Ray Data APIs.
 
   - This is meant to map APIs that perform comparable but not necessarily identical operations.
     Select the API reference for exact semantics and usage.
-  - This list may not be exhaustive: Ray Data isn't a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
-    In addition, this list focuses on common APIs or APIs that are less obvious to see a connection.
+  - This list may not be exhaustive: It focuses on common APIs or APIs that are less obvious to see a connection.
 
 .. _api-guide-for-pandas-users:
 

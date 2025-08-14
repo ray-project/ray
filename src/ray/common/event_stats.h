@@ -114,7 +114,7 @@ class EventTracker {
   /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
   ///  in nanoseconds.
   /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
-  std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
+  std::shared_ptr<StatsHandle> RecordStart(std::string name,
                                            int64_t expected_queueing_delay_ns = 0);
 
   /// Records stats about the provided function's execution. This is used in conjunction
@@ -142,7 +142,7 @@ class EventTracker {
   ///
   /// \param event_name The name of the event whose stats should be returned.
   /// \return A snapshot view of the event's stats.
-  absl::optional<EventStats> get_event_stats(const std::string &event_name) const
+  std::optional<EventStats> get_event_stats(const std::string &event_name) const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns snapshot views of the count, queueing, and execution statistics for all

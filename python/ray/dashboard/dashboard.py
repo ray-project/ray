@@ -1,6 +1,5 @@
 import argparse
 import logging
-import logging.handlers
 import os
 import platform
 import signal
@@ -8,12 +7,17 @@ import sys
 import traceback
 from typing import Optional, Set
 
+import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.services
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import logging_utils
 from ray._private.ray_logging import setup_component_logger
 from ray._private.utils import (
     format_error_message,
@@ -39,7 +43,6 @@ class Dashboard:
         port_retries: The retry times to select a valid port.
         gcs_address: GCS address of the cluster.
         cluster_id_hex: Cluster ID hex string.
-        grpc_port: Port used to listen for gRPC on.
         node_ip_address: The IP address of the dashboard.
         serve_frontend: If configured, frontend HTML
             is not served from the dashboard.
@@ -58,7 +61,6 @@ class Dashboard:
         port_retries: int,
         gcs_address: str,
         cluster_id_hex: str,
-        grpc_port: int,
         node_ip_address: str,
         log_dir: str,
         logging_level: int,
@@ -79,7 +81,6 @@ class Dashboard:
             gcs_address=gcs_address,
             cluster_id_hex=cluster_id_hex,
             node_ip_address=node_ip_address,
-            grpc_port=grpc_port,
             log_dir=log_dir,
             logging_level=logging_level,
             logging_format=logging_format,
@@ -119,13 +120,6 @@ if __name__ == "__main__":
         "--cluster-id-hex", required=True, type=str, help="The cluster ID in hex."
     )
     parser.add_argument(
-        "--grpc-port",
-        required=False,
-        type=int,
-        default=dashboard_consts.DASHBOARD_RPC_PORT,
-        help="The port for the dashboard to listen for gRPC on.",
-    )
-    parser.add_argument(
         "--node-ip-address",
         required=True,
         type=str,
@@ -160,17 +154,17 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
+        default=LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+        "log file, default is {} bytes.".format(LOGGING_ROTATE_BYTES),
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        default=LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is {}.".format(
-            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+            LOGGING_ROTATE_BACKUP_COUNT
         ),
     )
     parser.add_argument(
@@ -218,17 +212,46 @@ if __name__ == "__main__":
         action="store_true",
         help=("If configured, frontend html is not served from the server."),
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard stderr.",
+    )
 
     args = parser.parse_args()
 
     try:
+        # Disable log rotation for windows platform.
+        logging_rotation_bytes = (
+            args.logging_rotate_bytes if sys.platform != "win32" else 0
+        )
+        logging_rotation_backup_count = (
+            args.logging_rotate_backup_count if sys.platform != "win32" else 1
+        )
         setup_component_logger(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
-            max_bytes=args.logging_rotate_bytes,
-            backup_count=args.logging_rotate_backup_count,
+            max_bytes=logging_rotation_bytes,
+            backup_count=logging_rotation_backup_count,
+        )
+
+        # Setup stdout/stderr redirect files if redirection enabled.
+        logging_utils.redirect_stdout_stderr_if_needed(
+            args.stdout_filepath,
+            args.stderr_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
         )
 
         if args.modules_to_load:
@@ -237,10 +260,6 @@ if __name__ == "__main__":
             # None == default.
             modules_to_load = None
 
-        # NOTE: Creating and attaching the event loop to the main OS thread be called
-        # before initializing Dashboard, which will initialize the grpc aio server,
-        # which assumes a working event loop. Ref:
-        # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
         loop = get_or_create_event_loop()
         dashboard = Dashboard(
             host=args.host,
@@ -248,14 +267,13 @@ if __name__ == "__main__":
             port_retries=args.port_retries,
             gcs_address=args.gcs_address,
             cluster_id_hex=args.cluster_id_hex,
-            grpc_port=args.grpc_port,
             node_ip_address=args.node_ip_address,
             log_dir=args.log_dir,
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             logging_filename=args.logging_filename,
-            logging_rotate_bytes=args.logging_rotate_bytes,
-            logging_rotate_backup_count=args.logging_rotate_backup_count,
+            logging_rotate_bytes=logging_rotation_bytes,
+            logging_rotate_backup_count=logging_rotation_backup_count,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
@@ -291,9 +309,8 @@ if __name__ == "__main__":
             raise e
 
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
         publish_error_to_driver(
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
-            gcs_publisher=gcs_publisher,
+            gcs_client=ray._raylet.GcsClient(address=args.gcs_address),
         )

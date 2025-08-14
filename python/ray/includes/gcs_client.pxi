@@ -23,12 +23,14 @@ from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
-    CStatusCode,
-    CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
     CGetClusterStatusReply,
+    CStatusOr,
+    CGcsNodeState,
+    CNodeSelector,
+    CGcsNodeInfo,
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
@@ -74,7 +76,7 @@ cdef class InnerGcsClient:
         cdef c_pair[c_string, int] pair = self.inner.get().GetGcsServerAddress()
         host = pair.first.decode("utf-8")
         port = pair.second
-        return f"{host}:{port}"
+        return build_address(host, port)
 
     @property
     def cluster_id(self) -> ray.ClusterID:
@@ -180,13 +182,12 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVGet(
-                    ns, key, timeout_ms,
-                    OptionalItemPyCallback[c_string](
-                        &convert_optional_str_none_for_not_found,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVGet(
+                ns, key, timeout_ms,
+                OptionalItemPyCallback[c_string](
+                    &convert_optional_str_none_for_not_found,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_multi_get(
@@ -198,13 +199,12 @@ cdef class InnerGcsClient:
             c_vector[c_string] c_keys = [key for key in keys]
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVMultiGet(
-                    ns, c_keys, timeout_ms,
-                    OptionalItemPyCallback[unordered_map[c_string, c_string]](
-                        &convert_optional_multi_get,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVMultiGet(
+                ns, c_keys, timeout_ms,
+                OptionalItemPyCallback[unordered_map[c_string, c_string]](
+                    &convert_optional_multi_get,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_put(
@@ -216,13 +216,12 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVPut(
-                    ns, key, value, overwrite, timeout_ms,
-                    OptionalItemPyCallback[c_bool](
-                        &convert_optional_bool,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVPut(
+                ns, key, value, overwrite, timeout_ms,
+                OptionalItemPyCallback[c_bool](
+                    &convert_optional_bool,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
@@ -232,13 +231,12 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVDel(
-                    ns, key, del_by_prefix, timeout_ms,
-                    OptionalItemPyCallback[int](
-                        &convert_optional_int,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVDel(
+                ns, key, del_by_prefix, timeout_ms,
+                OptionalItemPyCallback[int](
+                    &convert_optional_int,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None
@@ -248,13 +246,12 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVKeys(
-                    ns, prefix, timeout_ms,
-                    OptionalItemPyCallback[c_vector[c_string]](
-                        &convert_optional_vector_str,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVKeys(
+                ns, prefix, timeout_ms,
+                OptionalItemPyCallback[c_vector[c_string]](
+                    &convert_optional_vector_str,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None
@@ -264,46 +261,50 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVExists(
-                    ns, key, timeout_ms,
-                    OptionalItemPyCallback[c_bool](
-                        &convert_optional_bool,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVExists(
+                ns, key, timeout_ms,
+                OptionalItemPyCallback[c_bool](
+                    &convert_optional_bool,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     #############################################################
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[CNodeID] c_node_ids;
             c_vector[c_bool] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
+        for node_id in node_ids:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
-                c_node_ips, timeout_ms, results)
+                c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[CNodeID] c_node_ids;
             fut = incremented_fut()
+        c_node_ids.reserve(len(node_ids));
+        for node_id in node_ids:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().AsyncCheckAlive(
-                    c_node_ips, timeout_ms,
-                    MultiItemPyCallback[c_bool](
-                        &convert_multi_bool,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().Nodes().AsyncCheckAlive(
+                c_node_ids, timeout_ms,
+                MultiItemPyCallback[c_bool](
+                    &convert_multi_bool,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
@@ -315,6 +316,7 @@ cdef class InnerGcsClient:
             c_vector[CNodeID] c_node_ids
             c_vector[c_string] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
             c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
@@ -323,13 +325,23 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
-        self, timeout: Optional[int | float] = None
+        self, timeout: Optional[int | float] = None,
+        state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        cdef c_vector[CGcsNodeInfo] reply
-        cdef CRayStatus status
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[CGcsNodeInfo] reply
+            CRayStatus status
+            optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
+            optional[CGcsNodeState] c_state_filter = nullopt
+            optional[CNodeSelector] c_node_selector = nullopt
+        if state_filter is not None:
+            c_state_filter.emplace(<CGcsNodeState>state_filter)
         with nogil:
-            status = self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
+            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
+        status = status_or.value().status()
+        if status_or.value().ok():
+            reply = move(status_or.value().value())
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
@@ -337,19 +349,18 @@ cdef class InnerGcsClient:
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            optional[CNodeID] c_node_id
+            c_vector[CNodeID] c_node_ids
             fut = incremented_fut()
         if node_id:
-            c_node_id = (<NodeID>node_id).native()
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().AsyncGetAll(
-                    MultiItemPyCallback[CGcsNodeInfo](
-                        convert_get_all_node_info,
-                        assign_and_decrement_fut,
-                        fut),
-                    timeout_ms,
-                    c_node_id))
+            self.inner.get().Nodes().AsyncGetAll(
+                MultiItemPyCallback[CGcsNodeInfo](
+                    convert_get_all_node_info,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms,
+                c_node_ids)
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -397,14 +408,13 @@ cdef class InnerGcsClient:
             c_actor_state_name = <c_string>actor_state_name.encode()
 
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Actors().AsyncGetAllByFilter(
-                    c_actor_id, c_job_id, c_actor_state_name,
-                    MultiItemPyCallback[CActorTableData](
-                        &convert_get_all_actor_info,
-                        assign_and_decrement_fut,
-                        fut),
-                    timeout_ms))
+            self.inner.get().Actors().AsyncGetAllByFilter(
+                c_actor_id, c_job_id, c_actor_state_name,
+                MultiItemPyCallback[CActorTableData](
+                    &convert_get_all_actor_info,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms)
         return asyncio.wrap_future(fut)
 
     def async_kill_actor(
@@ -425,7 +435,7 @@ cdef class InnerGcsClient:
                 c_actor_id,
                 force_kill,
                 no_restart,
-                StatusPyCallback(convert_status, assign_and_decrement_fut,  fut),
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                 timeout_ms
             )
         return asyncio.wrap_future(fut)
@@ -474,16 +484,15 @@ cdef class InnerGcsClient:
             c_optional_job_or_submission_id = \
                 make_optional[c_string](c_job_or_submission_id)
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Jobs().AsyncGetAll(
-                    c_optional_job_or_submission_id,
-                    c_skip_submission_job_info_field,
-                    c_skip_is_running_tasks_field,
-                    MultiItemPyCallback[CJobTableData](
-                        &convert_get_all_job_info,
-                        assign_and_decrement_fut,
-                        fut),
-                    timeout_ms))
+            self.inner.get().Jobs().AsyncGetAll(
+                c_optional_job_or_submission_id,
+                c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field,
+                MultiItemPyCallback[CJobTableData](
+                    &convert_get_all_job_info,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms)
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -555,18 +564,12 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get()
-                .Autoscaler()
-                .AsyncGetClusterStatus(
-                    timeout_ms,
-                    OptionalItemPyCallback[CGetClusterStatusReply](
-                        &convert_get_cluster_status_reply,
-                        assign_and_decrement_fut,
-                        fut
-                    )
-                )
-            )
+            self.inner.get().Autoscaler().AsyncGetClusterStatus(
+                timeout_ms,
+                OptionalItemPyCallback[CGetClusterStatusReply](
+                    &convert_get_cluster_status_reply,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def report_autoscaling_state(
@@ -605,6 +608,67 @@ cdef class InnerGcsClient:
                 rejection_reason_message))
 
         return (is_accepted, rejection_reason_message.decode())
+
+    #############################################################
+    # Publisher methods
+    #############################################################
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id: Optional[JobID] = None, timeout = None):
+        cdef:
+            CErrorTableData error_info
+            c_string c_key_id = key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
+
+        with nogil:
+            self.inner.get().Publisher().PublishError(
+                move(c_key_id), move(error_info), timeout_ms)
+
+    def publish_logs(self, log_json: dict, timeout = None):
+        cdef:
+            CLogBatch log_batch
+            c_string c_key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
+
+        c_key_id = job_id.encode() if job_id else b""
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Publisher().PublishLogs(
+                    move(c_key_id), move(log_batch), timeout_ms))
+
+    def async_publish_node_resource_usage(
+            self, key_id: str, node_resource_usage_json: str) -> Future[None]:
+        cdef:
+            c_string c_key_id = key_id
+            c_string c_node_resource_usage_json = node_resource_usage_json.encode()
+            fut = incremented_fut()
+        with nogil:
+            self.inner.get().Publisher().AsyncPublishNodeResourceUsage(
+                move(c_key_id),
+                move(c_node_resource_usage_json),
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut))
+        return asyncio.wrap_future(fut)
 
     def report_cluster_config(
                 self,

@@ -5,8 +5,8 @@ import pytest
 import requests
 
 import ray
-from ray.tests.conftest import *  # noqa
 from ray.job_submission import JobSubmissionClient
+from ray.tests.conftest import *  # noqa
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
@@ -36,6 +36,7 @@ RESPONSE_SCHEMA = [
 OPERATOR_SCHEMA = [
     "name",
     "operator",
+    "queued_blocks",
 ] + DATA_SCHEMA
 
 
@@ -68,7 +69,7 @@ def test_unique_operator_id(ray_start_regular_shared):
     dataset = datasets[0]
 
     operators = dataset["operators"]
-    assert len(operators) == 14
+    assert len(operators) == 3  # Should be 3 because of limiter operator fusion.
 
 
 @pytest.mark.skipif(
@@ -76,7 +77,7 @@ def test_unique_operator_id(ray_start_regular_shared):
 )
 def test_get_datasets(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds._set_name("data_head_test")
+    ds.set_name("data_head_test")
     ds.materialize()
 
     client = JobSubmissionClient()

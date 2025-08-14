@@ -14,7 +14,7 @@ import pytest
 
 import ray
 import ray.train
-from ray._private.test_utils import simulate_storage
+from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 from ray.train import (
     Checkpoint,
@@ -24,9 +24,12 @@ from ray.train import (
     ScalingConfig,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.execution.context import (
+    get_train_context as get_internal_train_context,
+)
 from ray.train.v2._internal.execution.storage import _download_from_fs_path
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2._internal.execution.context import get_train_context
 
 
 class TestConstants:
@@ -41,7 +44,7 @@ class TestConstants:
 def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
-    with simulate_storage("s3", port=port, region=region) as s3_uri:
+    with simulate_s3_bucket(port=port, region=region) as s3_uri:
         import boto3
 
         s3 = boto3.client(
@@ -212,16 +215,15 @@ def train_fn(config):
         # which will cause the test assertions to fail.
         # This should be fixed by forcing a queue flush on all workers before
         # executing the failure decisions.
-        # Note: this `get_train_context` is not a public API.
-        # TODO (hpguo): Think about expose `get_synchronization_actor` as a
-        # public API, which will be a useful collection of communication utils.
-        train_context = get_train_context()
-        sync_actor = train_context.get_synchronization_actor()
+        sync_actor = get_internal_train_context().get_synchronization_actor()
+        train_context = get_train_fn_utils().get_context()
+
         ray.get(
             sync_actor.broadcast_from_rank_zero.remote(
                 world_rank=train_context.get_world_rank(),
                 world_size=train_context.get_world_size(),
                 data="barrier",
+                caller_method_name="caller_method_name",
             )
         )
 

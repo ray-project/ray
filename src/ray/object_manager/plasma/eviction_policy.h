@@ -33,7 +33,6 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
-#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 

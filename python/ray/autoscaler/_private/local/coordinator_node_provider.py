@@ -44,7 +44,7 @@ class CoordinatorSenderNodeProvider(NodeProvider):
                 "Could not connect to: "
                 + http_coordinator_address
                 + ". Did you run python coordinator_server.py"
-                + " --ips <list_of_node_ips> --port <PORT>?"
+                + " --ips <list_of_node_ips> --host <HOST> --port <PORT>?"
             )
             raise
         except ImportError:

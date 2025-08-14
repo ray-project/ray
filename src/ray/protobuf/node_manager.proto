@@ -226,18 +226,16 @@ message ObjectStoreStats {
   int64 object_store_bytes_fallback = 10;
   // The number of local objects total.
   int64 num_local_objects = 11;
-  // The number of plasma object bytes that are consumed by core workers.
-  int64 consumed_bytes = 12;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory.
-  bool object_pulls_queued = 13;
+  bool object_pulls_queued = 12;
   // The number of primary copies of objects in the local node.
-  int64 num_object_store_primary_copies = 14;
+  int64 num_object_store_primary_copies = 13;
   // The total number of objects that have been allocated to plasma.
-  int64 cumulative_created_objects = 15;
+  int64 cumulative_created_objects = 14;
   // The total number of bytes that have been allocated to plasma objects.
-  int64 cumulative_created_bytes = 16;
+  int64 cumulative_created_bytes = 15;
 }
 
 message GetNodeStatsReply {
@@ -364,12 +362,14 @@ message PushMutableObjectRequest {
   // The total size of the metadata (across all chunks).
   uint64 total_metadata_size = 3;
 
-  // The offset of the chunk (in bytes) within the object.
+  // The offset of the chunk (in bytes) within the object's data.
   uint64 offset = 4;
-  // The size of this chunk. Note that this size could include both data and metadata.
+  // The size of data payload chunk.
   uint64 chunk_size = 5;
-  // The chunk payload. Note that this could include both data and metadata.
-  bytes payload = 6 [ctype = CORD];
+  // The data payload.
+  bytes data = 6;
+  // The metadata payload. Note that the size of metadata is minimal.
+  bytes metadata = 7;
 }
 
 message PushMutableObjectReply {
@@ -391,71 +391,104 @@ message IsLocalWorkerDeadReply {
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
+  // Failure: TODO: Needs to be retried, need to check/make idempotent.
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
+  // Failure: Doesn't need to be retried since it will keep getting periodically called,
+  // and is not critical.
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Cancel tasks that require certain resource shapes. This method is intended to only
   // used for cancelling infeasible tasks. To make it a general-purpose task
   // cancellation method, we need to add the failure type and failure message to the
   // request.
+  // Failure: This doesn't explicitly retry, only logs on failure, but autoscaler will
+  // keep calling this so it will be retried at a layer above.
   rpc CancelTasksWithResourceShapes(CancelTasksWithResourceShapesRequest)
       returns (CancelTasksWithResourceShapesReply);
   // Request a worker from the raylet.
+  // Failure: Does retry if request to remote raylet fails. Just logs warning if request
+  // to local raylet fails.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Request to prestart workers.
+  // Failure: Shouldn't fail because always sends to local raylet. Has a log on failure to
+  // send.
   rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
   // Report task backlog information from a worker to the raylet
+  // Failure: Doesn't need to be retried since it will keep getting periodically called,
+  // and is not critical.
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Release a worker back to its raylet.
+  // Failure:  TODO: Failure behavior needs to be fixed.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // This method is only used by GCS, and the purpose is to release leased workers
   // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
   // in the previous lifecycle. In this case, GCS will send a list of worker ids that
   // are still needed. And Raylet will release other leased workers.
+  // Failure: TODO: We log warning, but need to fix to retry.
   rpc ReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest)
       returns (ReleaseUnusedActorWorkersReply);
-  /// Shutdown the raylet (node manager).
+  // Shutdown the raylet (node manager).
+  // Failure: TODO: This + DrainRaylet should retry behavior needs to be thought of from
+  // oss autoscaler level.
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request to drain the raylet.
+  // Failure: TODO: See above todo + gcs autoscaler manager will call this, think about
+  // whether gcs -> raylet retry should stay at autoscaler level or move to gcs level.
   rpc DrainRaylet(DrainRayletRequest) returns (DrainRayletReply);
   // Request a raylet to lock resources for a bundle.
-  // This is the first phase of 2PC protocol for atomic placement group creation.
+  // Failure: This is the first phase of 2PC protocol for atomic placement group creation.
+  // We'll add back to pending queue if the request fails.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)
       returns (PrepareBundleResourcesReply);
   // Commit bundle resources to a raylet.
-  // This is the second phase of 2PC protocol for atomic placement group creation.
+  // Failure: This is the second phase of 2PC protocol for atomic placement group
+  // creation. Same as above for failure behavior.
   rpc CommitBundleResources(CommitBundleResourcesRequest)
       returns (CommitBundleResourcesReply);
   // Return resource for the raylet.
+  // Failure: Has retry behavior, could be improved to just use retriable grpc client.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
+  // Failure: TODO: This needs to handle network failure
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.
+  // Failure: Always to local raylet should never fail.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
+  // Failure: For observability, periodically called so failure is ok.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.
+  // Failure: Requests are sent periodically sent, so failure is ok.
   rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
   // Get global object reference stats in formatted form.
+  // Failure: For observability, caller can retry on failure.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
   // This method is only used by GCS, and the purpose is to release bundles
   // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
   // in the previous lifecycle. In this case, GCS will send a list of bundles that
   // are still needed. And Raylet will release other bundles.
+  // TODO: Need to handle network failure.
   rpc ReleaseUnusedBundles(ReleaseUnusedBundlesRequest)
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
+  // Failure: Sends to local raylet, so should never fail. Has failure logging.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // [State API] Get the all object information of the node.
+  // Failure: State API user can retry.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
   // Gets the task execution result. May contain a result if
   // the task completed in error.
+  // Failure: Gives user error message on failure.
   rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  // Failure: TODO: Handle network failure for cgraphs.
   rpc RegisterMutableObject(RegisterMutableObjectRequest)
       returns (RegisterMutableObjectReply);
+  // Failure: TODO: Handle network failure for cgraphs.
   rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
+  // Failure: Is currently only used when grpc channel is unavailable for retryable core
+  // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
 }

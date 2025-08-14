@@ -1,5 +1,5 @@
 import collections
-import enum
+import copy
 import logging
 import threading
 import time
@@ -14,23 +14,31 @@ import numpy as np
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
     MetricsGroup,
+    MetricsType,
     NodeMetrics,
     OpRuntimeMetrics,
 )
+from ray.data._internal.metadata_exporter import (
+    DatasetMetadata,
+    Topology,
+    get_dataset_metadata_exporter,
+)
 from ray.data._internal.util import capfirst
-from ray.data.block import BlockMetadata, BlockStats
+from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
-from ray.util.metrics import Gauge
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+UNKNOWN = "unknown"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -58,7 +66,7 @@ class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
-        self._value: float = 0
+        self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
@@ -72,7 +80,7 @@ class Timer:
             self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
-        self._value += value
+        self._total += value
         if value < self._min:
             self._min = value
         if value > self._max:
@@ -80,7 +88,7 @@ class Timer:
         self._total_count += 1
 
     def get(self) -> float:
-        return self._value
+        return self._total
 
     def min(self) -> float:
         return self._min
@@ -89,7 +97,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count if self._total_count else float("inf")
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -165,6 +173,10 @@ class _StatsActor:
         # Cache of calls to ray.nodes() to prevent unnecessary network calls
         self._ray_nodes_cache: Dict[str, str] = {}
 
+        # Initialize the metadata exporter
+        self._metadata_exporter = get_dataset_metadata_exporter()
+        self.dataset_metadatas: Dict[str, DatasetMetadata] = {}
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -177,11 +189,6 @@ class _StatsActor:
             description="""Bytes spilled by dataset operators.
                 DataContext.enable_get_object_locations_for_metrics
                 must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
-        self.allocated_bytes = Gauge(
-            "data_allocated_bytes",
-            description="Bytes allocated by dataset operators",
             tag_keys=op_tags_keys,
         )
         self.freed_bytes = Gauge(
@@ -248,6 +255,14 @@ class _StatsActor:
             )
         )
 
+        # Actor related metrics
+        self.execution_metrics_actors = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.ACTORS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
@@ -305,6 +320,11 @@ class _StatsActor:
             description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
+            tag_keys=operator_tags,
+        )
         self.data_operator_state = Gauge(
             "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
@@ -313,18 +333,32 @@ class _StatsActor:
 
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
-    ) -> Dict[str, Gauge]:
+    ) -> Dict[str, Metric]:
         metrics = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
                 continue
             metric_name = f"data_{metric.name}"
             metric_description = metric.description
-            metrics[metric.name] = Gauge(
-                metric_name,
-                description=metric_description,
-                tag_keys=tag_keys,
-            )
+            if metric.metrics_type == MetricsType.Gauge:
+                metrics[metric.name] = Gauge(
+                    metric_name,
+                    description=metric_description,
+                    tag_keys=tag_keys,
+                )
+            elif metric.metrics_type == MetricsType.Histogram:
+                metrics[metric.name] = Histogram(
+                    metric_name,
+                    description=metric_description,
+                    tag_keys=tag_keys,
+                    **metric.metrics_args,
+                )
+            elif metric.metrics_type == MetricsType.Counter:
+                metrics[metric.name] = Counter(
+                    metric_name,
+                    description=metric_description,
+                    tag_keys=tag_keys,
+                )
         return metrics
 
     def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
@@ -337,41 +371,6 @@ class _StatsActor:
                 tag_keys=("dataset", "node_ip"),
             )
         return metrics
-
-    def record_start(self, stats_uuid):
-        self.start_time[stats_uuid] = time.perf_counter()
-        self.fifo_queue.append(stats_uuid)
-        # Purge the oldest stats if the limit is exceeded.
-        if len(self.fifo_queue) > self.max_stats:
-            uuid = self.fifo_queue.pop(0)
-            if uuid in self.start_time:
-                del self.start_time[uuid]
-            if uuid in self.last_time:
-                del self.last_time[uuid]
-            if uuid in self.metadata:
-                del self.metadata[uuid]
-
-    def record_task(
-        self, stats_uuid: str, task_idx: int, blocks_metadata: List[BlockMetadata]
-    ):
-        # Null out the schema to keep the stats size small.
-        # TODO(chengsu): ideally schema should be null out on caller side.
-        for metadata in blocks_metadata:
-            metadata.schema = None
-        if stats_uuid in self.start_time:
-            self.metadata[stats_uuid][task_idx] = blocks_metadata
-            self.last_time[stats_uuid] = time.perf_counter()
-
-    def get(self, stats_uuid):
-        if stats_uuid not in self.metadata:
-            return {}, 0.0
-        return (
-            self.metadata[stats_uuid],
-            self.last_time[stats_uuid] - self.start_time[stats_uuid],
-        )
-
-    def _get_stats_dict_size(self):
-        return len(self.start_time), len(self.last_time), len(self.metadata)
 
     def get_dataset_id(self):
         dataset_id = str(self.next_dataset_id)
@@ -392,6 +391,16 @@ class _StatsActor:
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
+        def _record(
+            prom_metric: Metric, value: Union[int, float], tags: Dict[str, str] = None
+        ):
+            if isinstance(prom_metric, Gauge):
+                prom_metric.set(value, tags)
+            elif isinstance(prom_metric, Counter):
+                prom_metric.inc(value, tags)
+            elif isinstance(prom_metric, Histogram):
+                prom_metric.observe(value, tags)
+
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
@@ -399,27 +408,28 @@ class _StatsActor:
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
-
             for field_name, prom_metric in self.execution_metrics_inputs.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
-
+                _record(prom_metric, stats.get(field_name, 0), tags)
             for field_name, prom_metric in self.execution_metrics_outputs.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_tasks.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for (
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_actors.items():
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_misc.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
         # by the _data_context.enable_per_node_metrics flag in the streaming executor but
@@ -438,7 +448,7 @@ class _StatsActor:
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
-                    prom_metric.set(metric_value, tags)
+                    _record(prom_metric, metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -462,24 +472,47 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(
+        self,
+        job_id: str,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+        data_context: DataContext,
+    ):
+        start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
-            "state": DatasetState.RUNNING.name,
+            "state": DatasetState.PENDING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
-            "start_time": time.time(),
+            "start_time": start_time,
             "end_time": None,
             "operators": {
                 operator: {
-                    "state": DatasetState.RUNNING.name,
+                    "state": DatasetState.PENDING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
         }
+        if self._metadata_exporter is not None:
+            self.dataset_metadatas[dataset_tag] = DatasetMetadata(
+                job_id=job_id,
+                topology=topology,
+                dataset_id=dataset_tag,
+                start_time=start_time,
+                data_context=data_context,
+                execution_start_time=None,
+                execution_end_time=None,
+                state=DatasetState.PENDING.name,
+            )
+            self._metadata_exporter.export_dataset_metadata(
+                self.dataset_metadatas[dataset_tag]
+            )
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -503,8 +536,10 @@ class _StatsActor:
         state_string = state.get("state", DatasetState.UNKNOWN.name)
         state_enum = DatasetState.from_string(state_string)
         self.data_dataset_state.set(state_enum.value, dataset_tags)
+        self.update_dataset_metadata_state(dataset_tag, state_string)
 
         # Update operator-level metrics
+        operator_states: Dict[str, str] = {}
         for operator, op_state in state.get("operators", {}).items():
             operator_tags = {
                 "dataset": dataset_tag,
@@ -516,16 +551,86 @@ class _StatsActor:
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
             )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
+            )
 
             # Get state code directly from enum
             state_string = op_state.get("state", DatasetState.UNKNOWN.name)
             state_enum = DatasetState.from_string(state_string)
             self.data_operator_state.set(state_enum.value, operator_tags)
+            operator_states[operator] = state_string
+
+        self.update_dataset_metadata_operator_states(dataset_tag, operator_states)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
+
+    def update_dataset_metadata_state(self, dataset_id: str, new_state: str):
+        if dataset_id not in self.dataset_metadatas:
+            return
+        update_time = time.time()
+        dataset_metadata = self.dataset_metadatas[dataset_id]
+        if dataset_metadata.state == new_state:
+            return
+        updated_dataset_metadata = copy.deepcopy(dataset_metadata)
+        updated_dataset_metadata.state = new_state
+        if new_state == DatasetState.RUNNING.name:
+            updated_dataset_metadata.execution_start_time = update_time
+        elif new_state in (DatasetState.FINISHED.name, DatasetState.FAILED.name):
+            updated_dataset_metadata.execution_end_time = update_time
+            # Update metadata of running operators
+            for operator in updated_dataset_metadata.topology.operators:
+                if operator.state == DatasetState.RUNNING.name:
+                    operator.state = new_state
+                    operator.execution_end_time = update_time
+
+        self.dataset_metadatas[dataset_id] = updated_dataset_metadata
+        self._metadata_exporter.export_dataset_metadata(updated_dataset_metadata)
+
+    def update_dataset_metadata_operator_states(
+        self, dataset_id: str, operator_states: Dict[str, str]
+    ):
+        if dataset_id not in self.dataset_metadatas:
+            return
+
+        dataset_metadata = self.dataset_metadatas[dataset_id]
+        update_needed = False
+        for operator in dataset_metadata.topology.operators:
+            if (
+                operator.id in operator_states
+                and operator.state != operator_states[operator.id]
+            ):
+                update_needed = True
+                break
+
+        if not update_needed:
+            return
+
+        updated_dataset_metadata = copy.deepcopy(dataset_metadata)
+        update_time = time.time()
+        for operator in updated_dataset_metadata.topology.operators:
+            if operator.id in operator_states:
+                new_state = operator_states[operator.id]
+                if operator.state == new_state:
+                    continue
+                operator.state = new_state
+                if new_state == DatasetState.RUNNING.name:
+                    operator.execution_start_time = update_time
+                elif new_state in (
+                    DatasetState.FINISHED.name,
+                    DatasetState.FAILED.name,
+                ):
+                    operator.execution_end_time = update_time
+                    # Handle outlier case for InputDataBuffer, which is marked as finished immediately and does not have a RUNNING state.
+                    # Set the execution time the same as its end time
+                    if not operator.execution_start_time:
+                        operator.execution_start_time = update_time
+
+        self.dataset_metadatas[dataset_id] = updated_dataset_metadata
+        self._metadata_exporter.export_dataset_metadata(updated_dataset_metadata)
 
     def _create_tags(
         self,
@@ -606,24 +711,33 @@ class _StatsManager:
         self._update_thread: Optional[threading.Thread] = None
         self._update_thread_lock: threading.Lock = threading.Lock()
 
-    def _stats_actor(self, create_if_not_exists=True) -> Optional[ActorHandle]:
+    def _get_or_create_stats_actor(
+        self, skip_cache: bool = False
+    ) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
-            raise RuntimeError("Global node is not initialized.")
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
+
         current_cluster_id = ray._private.worker._global_node.cluster_id
+
         if (
             self._stats_actor_handle is None
             or self._stats_actor_cluster_id != current_cluster_id
+            or skip_cache
         ):
-            if create_if_not_exists:
+            try:
+                self._stats_actor_handle = ray.get_actor(
+                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
+                )
+                self._stats_actor_cluster_id = current_cluster_id
+            except ValueError:
+                # Create an actor if it doesn't exist
                 self._stats_actor_handle = _get_or_create_stats_actor()
-            else:
-                try:
-                    self._stats_actor_handle = ray.get_actor(
-                        name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
-                    )
-                except ValueError:
-                    return None
-            self._stats_actor_cluster_id = current_cluster_id
+                self._stats_actor_cluster_id = (
+                    ray._private.worker._global_node.cluster_id
+                )
+
         return self._stats_actor_handle
 
     def _start_thread_if_not_running(self):
@@ -636,13 +750,7 @@ class _StatsManager:
                     while True:
                         if self._last_iteration_stats or self._last_execution_stats:
                             try:
-                                # Do not create _StatsActor if it doesn't exist because
-                                # this thread can be running even after the cluster is
-                                # shutdown. Creating an actor will automatically start
-                                # a new cluster.
-                                stats_actor = self._stats_actor(
-                                    create_if_not_exists=False
-                                )
+                                stats_actor = self._get_or_create_stats_actor()
                                 if stats_actor is None:
                                     continue
                                 stats_actor.update_metrics.remote(
@@ -713,7 +821,7 @@ class _StatsManager:
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
-            self._stats_actor().update_execution_metrics.remote(*args)
+            self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
             with self._stats_lock:
                 self._last_execution_stats[dataset_tag] = args
@@ -745,16 +853,45 @@ class _StatsManager:
 
     # Other methods
 
-    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
-        self._stats_actor().register_dataset.remote(
+    def register_dataset_to_stats_actor(
+        self,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+        data_context: DataContext,
+    ):
+        """Register a dataset with the stats actor.
+
+        Args:
+            dataset_tag: Tag for the dataset
+            operator_tags: List of operator tags
+            topology: Optional Topology representing the DAG structure to export
+            data_context: The DataContext attached to the dataset
+        """
+
+        # NOTE: In some cases (for ex, when registering dataset) actor might be gone
+        #       (for ex, when prior driver disconnects) and therefore to avoid using
+        #       stale handle we force looking up the actor with Ray to determine if
+        #       we should create a new one.
+        stats_actor = self._get_or_create_stats_actor(skip_cache=True)
+
+        stats_actor.register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
+            topology,
+            data_context,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:
         try:
-            return ray.get(self._stats_actor().get_dataset_id.remote())
+            # NOTE: In some cases (for ex, when registering dataset) actor might be gone
+            #       (for ex, when prior driver disconnects) and therefore to avoid using
+            #       stale handle we force looking up the actor with Ray to determine if
+            #       we should create a new one.
+            stats_actor = self._get_or_create_stats_actor(skip_cache=True)
+
+            return ray.get(stats_actor.get_dataset_id.remote())
         except Exception:
             # Getting dataset id from _StatsActor may fail, in this case
             # fall back to uuid4
@@ -762,26 +899,6 @@ class _StatsManager:
 
 
 StatsManager = _StatsManager()
-
-
-class DatasetState(enum.IntEnum):
-    """Enum representing the possible states of a dataset during execution."""
-
-    UNKNOWN = 0
-    RUNNING = 1
-    FINISHED = 2
-    FAILED = 3
-
-    def __str__(self):
-        return self.name
-
-    @classmethod
-    def from_string(cls, text):
-        """Get enum by name."""
-        try:
-            return cls[text]  # This uses the name to lookup the enum
-        except KeyError:
-            return cls.UNKNOWN
 
 
 class DatasetStats:
@@ -796,8 +913,6 @@ class DatasetStats:
         *,
         metadata: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
-        needs_stats_actor: bool = False,
-        stats_uuid: str = None,
         base_name: str = None,
     ):
         """Create dataset stats.
@@ -807,11 +922,6 @@ class DatasetStats:
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
-            needs_stats_actor: Whether this Dataset's stats needs a stats actor for
-                stats collection. This is currently only used for Datasets using a
-                lazy datasource (i.e. a LazyBlockList).
-            stats_uuid: The uuid for the stats, used to fetch the right stats
-                from the stats actor.
             base_name: The name of the base operation for a multi-operator operation.
         """
 
@@ -827,8 +937,6 @@ class DatasetStats:
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
-        self.needs_stats_actor = needs_stats_actor
-        self.stats_uuid = stats_uuid
 
         # Streaming executor stats
         self.streaming_exec_schedule_s: Timer = Timer()
@@ -877,17 +985,6 @@ class DatasetStats:
     def to_summary(self) -> "DatasetStatsSummary":
         """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
         object, which can be used to generate a summary string."""
-        if self.needs_stats_actor:
-            ac = self.stats_actor
-            # TODO(chengsu): this is a super hack, clean it up.
-            stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            # Only populate stats when stats from all read tasks are ready at
-            # stats actor.
-            if len(stats_map.items()) == len(self.metadata["Read"]):
-                self.metadata["Read"] = []
-                for _, blocks_metadata in sorted(stats_map.items()):
-                    self.metadata["Read"] += blocks_metadata
-
         operators_stats = []
         is_sub_operator = len(self.metadata) > 1
         for name, stats in self.metadata.items():
@@ -973,9 +1070,9 @@ class DatasetStatsSummary:
 
         Args:
             already_printed: Set of operator IDs that have already had its stats printed
-            out.
+               out.
             include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest operator.
+               log stats of the latest operator.
             add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
@@ -1100,7 +1197,8 @@ class DatasetStatsSummary:
         total_wall_time = self.get_total_wall_time()
 
         def fmt_line(name: str, time: float) -> str:
-            return f"* {name}: {fmt(time)} ({time / total_wall_time * 100:.3f}%)\n"
+            fraction = time / total_wall_time if total_wall_time > 0 else 0
+            return f"* {name}: {fmt(time)} ({fraction * 100:.3f}%)\n"
 
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"
@@ -1473,7 +1571,7 @@ class OperatorStatsSummary:
             # time_total_s.
 
             # The estimated single node operator throughput is computed by dividing the
-            # total number of rows produced by the the sum of the wall times across all
+            # total number of rows produced by the sum of the wall times across all
             # blocks of the operator. This assumes that on a single node the work done
             # would be equivalent, with no concurrency.
             total_num_out_rows = output_num_rows_stats["sum"]
@@ -1603,7 +1701,7 @@ class IterStatsSummary:
                 )
             if self.next_time.get():
                 batch_creation_str = (
-                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch creation: {} min, {} max, {} avg, {} total\n"
                 )
                 out += batch_creation_str.format(
                     fmt(self.next_time.min()),
@@ -1613,7 +1711,7 @@ class IterStatsSummary:
                 )
             if self.format_time.get():
                 format_str = (
-                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch formatting: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.format_time.min()),

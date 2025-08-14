@@ -104,7 +104,7 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
       const TaskID &parent_task_id = TaskID::Nil(),
       int job_id = 0,
-      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt,
+      std::optional<rpc::RayErrorInfo> error_info = absl::nullopt,
       ActorID actor_id = ActorID::Nil()) {
     auto events = GenTaskEvents(
         tasks,
@@ -228,7 +228,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
-                                            absl::optional<JobID> job_id = absl::nullopt,
+                                            std::optional<JobID> job_id = absl::nullopt,
                                             int64_t limit = -1,
                                             bool exclude_driver = true,
                                             const std::string &task_name = "",
@@ -307,10 +307,10 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<TaskID> &task_ids,
       int32_t attempt_number = 0,
       int32_t job_id = 0,
-      absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
-      absl::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
-      absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
-      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
+      std::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
+      std::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
+      std::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
+      std::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
     std::vector<rpc::TaskEvents> result;
     for (auto const &task_id : task_ids) {
       rpc::TaskEvents events;
@@ -395,8 +395,7 @@ class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
         R"(
 {
   "task_events_max_num_task_in_gcs": 10,
-  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5,
-  "task_events_dropped_task_attempts_gc_threshold_s": 3
+  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5
 }
   )");
   }
@@ -1222,7 +1221,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesWithoutTaskEvents) {
 
   task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
 
-  boost::asio::io_service io;
+  boost::asio::io_context io;
   boost::asio::deadline_timer timer(
       io,
       boost::posix_time::milliseconds(
@@ -1250,7 +1249,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
   task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
 
   // Wait for longer than the default timer
-  boost::asio::io_service io;
+  boost::asio::io_context io;
   boost::asio::deadline_timer timer(
       io,
       boost::posix_time::milliseconds(
@@ -1351,11 +1350,11 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
 
   // Evict all of them with tasks with single attempt, no parent, same job, no worker id.
   {
-    auto task_ids = GenTaskIDs(num_limit);
+    auto tids = GenTaskIDs(num_limit);
     auto job_id = 0;
     auto attempt_number = 0;
     for (size_t i = 0; i < num_limit; i++) {
-      auto events = GenTaskEvents({task_ids[i]},
+      auto events = GenTaskEvents({tids[i]},
                                   /* attempt_number */ attempt_number,
                                   job_id,
                                   GenProfileEvents("event", 1, 1),
@@ -1583,7 +1582,7 @@ TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
     task_manager->OnJobFinished(JobID::FromInt(0), 3);
 
     // Wait for longer than the default timer
-    boost::asio::io_service io;
+    boost::asio::io_context io;
     boost::asio::deadline_timer timer(
         io,
         boost::posix_time::milliseconds(

@@ -22,6 +22,14 @@ def reduce_health_check_interval(monkeypatch):
     yield
 
 
+def test_minimal(ray_start_4_cpus):
+    def train_func():
+        pass
+
+    trainer = TorchTrainer(train_func)
+    trainer.fit()
+
+
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_torch_linear(ray_start_4_cpus, num_workers):
     def train_func(config):

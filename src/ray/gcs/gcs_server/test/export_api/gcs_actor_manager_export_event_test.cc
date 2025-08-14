@@ -23,7 +23,6 @@
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -34,6 +33,8 @@
 // clang-format on
 
 namespace ray {
+
+namespace gcs {
 
 using ::testing::_;
 using ::testing::Return;
@@ -132,8 +133,8 @@ class GcsActorManagerTest : public ::testing::Test {
   )");
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));
@@ -154,9 +155,11 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto actor_scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = actor_scheduler.get();
+    worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &address) { return worker_client_; });
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(actor_scheduler),
         gcs_table_storage_.get(),
@@ -165,7 +168,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
-        [this](const rpc::Address &addr) { return worker_client_; });
+        *worker_client_pool_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -209,7 +212,7 @@ class GcsActorManagerTest : public ::testing::Test {
     rpc::Address address;
     auto node_id = NodeID::FromRandom();
     auto worker_id = WorkerID::FromRandom();
-    address.set_raylet_id(node_id.Binary());
+    address.set_node_id(node_id.Binary());
     address.set_worker_id(worker_id.Binary());
     return address;
   }
@@ -230,9 +233,13 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request,
-              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
-                promise.set_value(std::move(actor));
+              request, [this, request, &promise](const Status &status) {
+                auto actor_id = ActorID::FromBinary(
+                    request.task_spec().actor_creation_task_spec().actor_id());
+                promise.set_value(
+                    gcs_actor_manager_->registered_actors_.contains(actor_id)
+                        ? gcs_actor_manager_->registered_actors_[actor_id]
+                        : nullptr);
               });
           if (!status.ok()) {
             promise.set_value(nullptr);
@@ -248,13 +255,14 @@ class GcsActorManagerTest : public ::testing::Test {
   // Actor scheduler's ownership lies in actor manager.
   MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;
-  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
@@ -269,6 +277,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   rpc::CreateActorRequest create_actor_request;
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
+  create_actor_request.mutable_task_spec()->mutable_labels()->insert({"w00t", "hi"});
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
 
@@ -319,6 +328,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
               "The actor is dead because all references to the actor were removed "
               "including lineage ref count.");
         }
+        if (expected_states[event_idx] == "ALIVE") {
+          ASSERT_EQ(event_data["labels"]["w00t"], "hi");
+        }
       }
       return;
     } else {
@@ -336,5 +348,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
                      << " lines, but expecting " << num_export_events << ".\nLines:\n"
                      << lines.str();
 }
+
+}  // namespace gcs
 
 }  // namespace ray

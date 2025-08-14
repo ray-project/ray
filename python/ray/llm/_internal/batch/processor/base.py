@@ -1,44 +1,113 @@
+import logging
 from collections import OrderedDict
-from typing import Optional, List, Type, Callable, Dict
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import Field
 
-from ray.data.block import UserDefinedFunction
+import ray
 from ray.data import Dataset
-from ray.util.annotations import PublicAPI, DeveloperAPI
-
+from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.stages import (
     StatefulStage,
-    wrap_preprocess,
     wrap_postprocess,
+    wrap_preprocess,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(__name__)
+
+
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 
 class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
     batch_size: int = Field(
-        default=64,
+        default=32,
         description="Large batch sizes are likely to saturate the compute resources "
         "and could achieve higher throughput. On the other hand, small batch sizes "
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
-        "based on your use case. Defaults to 64.",
+        "based on your use case. Defaults to 32.",
+    )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: int = Field(
+    concurrency: Optional[int] = Field(
         default=1,
         description="The number of workers for data parallelism. Default to 1.",
+    )
+
+    experimental: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="[Experimental] Experimental configurations."
+        "Supported keys:\n"
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
     )
 
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
+
+
+class OfflineProcessorConfig(ProcessorConfig):
+    """The processor configuration for offline processing."""
+
+    model_source: str = Field(
+        description="The model source to use for the offline processing.",
+    )
+    runtime_env: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="The runtime environment to use for the offline processing.",
+    )
+    max_pending_requests: Optional[int] = Field(
+        default=None,
+        description="The maximum number of pending requests. If not specified, "
+        "will use the default value from the backend engine.",
+    )
+    max_concurrent_batches: int = Field(
+        default=8,
+        description="The maximum number of concurrent batches in the engine. "
+        "This is to overlap the batch processing to avoid the tail latency of "
+        "each batch. The default value may not be optimal when the batch size "
+        "or the batch processing latency is too small, but it should be good "
+        "enough for batch size >= 32.",
+    )
+
+    # Processor stage configurations.
+    apply_chat_template: bool = Field(
+        default=True, description="Whether to apply chat template."
+    )
+    chat_template: Optional[str] = Field(
+        default=None,
+        description="The chat template to use. This is usually not needed if the "
+        "model checkpoint already contains the chat template.",
+    )
+    tokenize: bool = Field(
+        default=True,
+        description="Whether to tokenize the input before passing it to the "
+        "backend engine. If not, the backend engine will tokenize the prompt.",
+    )
+    detokenize: bool = Field(
+        default=True,
+        description="Whether to detokenize the output.",
+    )
+    has_image: bool = Field(
+        default=False,
+        description="Whether the input messages have images.",
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -72,6 +141,14 @@ class Processor:
         self.preprocess = None
         self.postprocess = None
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
+
+        # FIXES: https://github.com/ray-project/ray/issues/53124
+        # TODO (Kourosh): Remove this once the issue is fixed
+        data_context = ray.data.DataContext.get_current()
+        data_context.wait_for_min_actors_s = 600
+        # TODO: Remove this when https://github.com/ray-project/ray/issues/53169
+        # is fixed.
+        data_context._enable_actor_pool_on_exit_hook = True
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column
@@ -157,6 +234,25 @@ class Processor:
         if name in self.stages:
             return self.stages[name]
         raise ValueError(f"Stage {name} not found")
+
+    def log_input_column_names(self):
+        """Log.info the input stage and column names of this processor.
+        If the input dataset does not contain these columns, you have to
+        provide a preprocess function to bridge the gap.
+        """
+        name, stage = list(self.stages.items())[0]
+        expected_input_keys = stage.get_required_input_keys()
+        optional_input_keys = stage.get_optional_input_keys()
+
+        message = f"The first stage of the processor is {name}."
+        if expected_input_keys:
+            message += "\nRequired input columns:\n"
+            message += "\n".join(f"\t{k}: {v}" for k, v in expected_input_keys.items())
+        if optional_input_keys:
+            message += "\nOptional input columns:\n"
+            message += "\n".join(f"\t{k}: {v}" for k, v in optional_input_keys.items())
+
+        logger.info(message)
 
 
 @DeveloperAPI

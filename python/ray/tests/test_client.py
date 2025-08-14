@@ -14,6 +14,7 @@ import pytest
 from pydantic import BaseModel as BaseModelV2
 from pydantic.v1 import BaseModel as BaseModelV1
 
+import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import (
@@ -21,6 +22,7 @@ from ray._private.client_mode_hook import (
     disable_client_hook,
     enable_client_mode,
 )
+from ray._common.network_utils import build_address
 from ray._private.test_utils import run_string_as_driver
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
@@ -29,6 +31,7 @@ from ray.tests.client_test_utils import (
 from ray.tests.conftest import call_ray_start_context
 from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE, ClientObjectRef
 from ray.util.client.ray_client_helpers import (
+    ray_start_client_server,
     ray_start_client_server_for_address,
 )
 
@@ -46,7 +49,9 @@ from ray.util.client.ray_client_helpers import (
 
 # Client server port of the shared Ray instance
 SHARED_CLIENT_SERVER_PORT = 25555
-SHARED_CLIENT_SERVER_ADDRESS = f"ray://localhost:{SHARED_CLIENT_SERVER_PORT}"
+SHARED_CLIENT_SERVER_ADDRESS = (
+    f"ray://{build_address('localhost', SHARED_CLIENT_SERVER_PORT)}"
+)
 
 
 @pytest.fixture(scope="module")
@@ -62,8 +67,6 @@ def call_ray_start_shared(request):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_client_context_manager(call_ray_start_shared, connect_to_client):
-    import ray
-
     if connect_to_client:
         with ray_start_client_server_for_address(
             call_ray_start_shared
@@ -107,8 +110,6 @@ def test_client_thread_safe(call_ray_start_shared):
         b.join()
 
 
-# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-# @pytest.mark.skip()
 def test_client_mode_hook_thread_safe(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared):
         with enable_client_mode():
@@ -547,6 +548,21 @@ def test_create_remote_before_start(call_ray_start_shared):
         assert ray.get(a.doit.remote()) == "foo"
 
 
+# Regression test for https://github.com/ray-project/ray/pull/51683
+def test_runtime_env_py_executable(ray_start_regular):
+    """Test that Ray Client works with a custom py_executable."""
+
+    with ray_start_client_server(
+        ray_init_kwargs={"runtime_env": {"py_executable": sys.executable + " -q"}}
+    ) as ray:
+
+        @ray.remote
+        def f():
+            return "hi"
+
+        assert ray.get(f.remote()) == "hi"
+
+
 def test_basic_named_actor(call_ray_start_shared):
     """Test that ray.get_actor() can create and return a detached actor."""
     with ray_start_client_server_for_address(call_ray_start_shared) as ray:
@@ -638,7 +654,7 @@ def test_startup_retry(call_ray_start_shared):
     thread = threading.Thread(target=run_client, daemon=True)
     thread.start()
     time.sleep(3)
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     thread.join()
     server.stop(0)
     ray_client._inside_client_test = False
@@ -658,7 +674,7 @@ def test_dataclient_server_drop(call_ray_start_shared):
         time.sleep(2)
         server.stop(0)
 
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     ray_client.connect("localhost:50051")
     thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()
@@ -949,7 +965,4 @@ def test_internal_kv_in_proxy_mode(call_ray_start_shared):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

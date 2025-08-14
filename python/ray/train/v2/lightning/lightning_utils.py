@@ -4,11 +4,11 @@ import tempfile
 from pathlib import Path
 
 import ray.train
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.lightning._lightning_utils import (
     RayTrainReportCallback as RayTrainReportCallbackV1,
+    import_lightning,
 )
-from ray.train.lightning._lightning_utils import import_lightning
 from ray.util import PublicAPI
 
 pl = import_lightning()

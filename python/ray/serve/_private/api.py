@@ -4,20 +4,16 @@ from types import FunctionType
 from typing import Any, Dict, Union
 
 import ray
-from ray._private.pydantic_compat import is_subclass_of_base_model
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.usage import usage_lib
+from ray._common.pydantic_compat import is_subclass_of_base_model
+from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
-    RAY_SERVE_ENABLE_TASK_EVENTS,
-    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.controller import ServeController
+from ray.serve._private.default_impl import get_controller_impl
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application
@@ -94,17 +90,8 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller = ServeController.options(
-        num_cpus=0,
-        name=SERVE_CONTROLLER_NAME,
-        lifetime="detached",
-        max_restarts=-1,
-        max_task_retries=-1,
-        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-        namespace=SERVE_NAMESPACE,
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    ).remote(
+    controller_impl = get_controller_impl()
+    controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,

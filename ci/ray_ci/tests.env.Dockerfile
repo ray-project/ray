@@ -29,7 +29,7 @@ if [[ "$BUILD_TYPE" == "skip" || "${BUILD_TYPE}" == "ubsan" ]]; then
   exit 0
 fi
 
-if [[ "$BUILD_TYPE" == "clang" || "$BUILD_TYPE" == "asan-clang" || "$BUILD_TYPE" == "tsan-clang" ]]; then
+if [[ "$BUILD_TYPE" == "clang" || "$BUILD_TYPE" == "asan-clang" || "$BUILD_TYPE" == "tsan-clang" || "$BUILD_TYPE" == "cgroup" ]]; then
   echo "--- Install LLVM dependencies (and skip building ray package)"
   bash ci/env/install-llvm-binaries.sh
   exit 0
@@ -39,6 +39,7 @@ if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   echo "--- Apply mask: $RAY_INSTALL_MASK"
   if [[ "$RAY_INSTALL_MASK" =~ all-ray-libraries ]]; then
     rm -rf python/ray/air
+    rm -rf python/ray/data
     rm -rf python/ray/llm
     # Remove the actual directory and the symlink.
     rm -rf rllib python/ray/rllib
@@ -63,7 +64,7 @@ if [[ "$BUILD_TYPE" == "debug" ]]; then
   RAY_DEBUG_BUILD=debug pip install -v -e python/
 elif [[ "$BUILD_TYPE" == "asan" ]]; then
   pip install -v -e python/
-  bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
+  bazel run $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:gen_ray_pkg
 elif [[ "$BUILD_TYPE" == "java" ]]; then
   bash java/build-jar-multiplatform.sh linux
   RAY_INSTALL_JAVA=1 pip install -v -e python/

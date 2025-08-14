@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import sys
 from typing import (
     Any,
@@ -11,34 +10,28 @@ from typing import (
     List,
     Optional,
     Tuple,
+    TypeVar,
     Union,
 )
 
-
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from ray import serve
-from ray._common.utils import get_or_create_event_loop
-from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_HTTP_TIMEOUT,
-    ROUTER_TO_MODEL_REPLICA_RATIO,
-    RAYLLM_ROUTER_MIN_REPLICAS,
-    RAYLLM_ROUTER_INITIAL_REPLICAS,
-    RAYLLM_ROUTER_MAX_REPLICAS,
-    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
-)
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
-    add_http_metrics_middleware,
-    metrics_lifespan,
-)
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
+from ray import serve
+from ray._common.utils import get_or_create_event_loop
+from ray.llm._internal.common.utils.lora_utils import (
     get_base_model_id,
     get_lora_model_ids,
-    get_lora_model_metadata,
+)
+from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
+    DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
+    DEFAULT_LLM_ROUTER_MAX_REPLICAS,
+    DEFAULT_LLM_ROUTER_MIN_REPLICAS,
+    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -47,25 +40,33 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    ErrorResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
+    LLMEmbeddingsResponse,
+    ModelCard,
+    ModelList,
     OpenAIHTTPException,
     to_model_metadata,
 )
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
-    ErrorResponse,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
-    ModelData,
-    Model,
-)
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
+    add_http_metrics_middleware,
+    metrics_lifespan,
+)
+from ray.llm._internal.serve.utils.lora_serve_utils import (
+    get_lora_model_metadata,
+)
 from ray.serve.config import AutoscalingConfig
+from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
@@ -74,6 +75,38 @@ else:
     from async_timeout import timeout
 
 logger = get_logger(__name__)
+
+T = TypeVar("T")
+
+
+def _sanitize_chat_completion_request(
+    request: ChatCompletionRequest,
+) -> ChatCompletionRequest:
+    """Sanitize ChatCompletionRequest to fix Pydantic ValidatorIterator serialization issue.
+
+    This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
+    objects that cannot be pickled for Ray remote calls.
+
+    References:
+    - vLLM PR that introduces the workaround: https://github.com/vllm-project/vllm/pull/9951
+    - Pydantic Issue: https://github.com/pydantic/pydantic/issues/9467
+    - Related Issue: https://github.com/pydantic/pydantic/issues/9541
+    - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
+
+    TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
+    """
+    from vllm.transformers_utils.tokenizers.mistral import maybe_serialize_tool_calls
+
+    maybe_serialize_tool_calls(request)
+
+    return request
+
+
+StreamResponseType = Union[
+    ChatCompletionStreamResponse,
+    CompletionStreamResponse,
+]
+BatchedStreamResponseType = List[StreamResponseType]
 
 
 def init() -> FastAPI:
@@ -115,9 +148,9 @@ fastapi_router_app = init()
 
 
 def _apply_openai_json_format(
-    response: Union[ChatCompletionStreamResponse, CompletionStreamResponse]
+    response: Union[StreamResponseType, BatchedStreamResponseType]
 ) -> str:
-    """Converts a CompletionStreamResponse to OpenAI format.
+    """Converts the stream response to OpenAI format.
 
     Each model response is converted to the string:
         data: <response-json1>\n\n
@@ -125,49 +158,61 @@ def _apply_openai_json_format(
     The converted strings are concatenated and returned:
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
+    if isinstance(response, list):
+        first_response = next(iter(response))
+        if isinstance(first_response, str):
+            return "".join(response)
+        if isinstance(first_response, dict):
+            return "".join(f"data: {json.dumps(r)}\n\n" for r in response)
+        if hasattr(first_response, "model_dump_json"):
+            return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+        raise ValueError(
+            f"Unexpected response type: {type(first_response)}, {first_response=}"
+        )
+    if hasattr(response, "model_dump_json"):
+        return f"data: {response.model_dump_json()}\n\n"
+    if isinstance(response, str):
+        return response
+    raise ValueError(f"Unexpected response type: {type(response)}, {response=}")
 
-    return "".join(f"data: {response.model_dump_json()}\n\n")
+
+async def _peek_at_generator(
+    gen: AsyncGenerator[T, None]
+) -> Tuple[T, AsyncGenerator[T, None]]:
+    # Peek at the first element
+    first_item = await gen.__anext__()
+
+    # Create a new generator that yields the peeked item first
+    async def new_generator() -> AsyncGenerator[T, None]:
+        yield first_item
+        async for item in gen:
+            yield item
+
+    return first_item, new_generator()
 
 
 async def _openai_json_wrapper(
     generator: AsyncGenerator[
-        Union[ChatCompletionStreamResponse, CompletionStreamResponse], None
+        Union[StreamResponseType, BatchedStreamResponseType], None
     ],
-    first_response: Union[ChatCompletionStreamResponse, CompletionStreamResponse],
 ) -> AsyncGenerator[str, None]:
-    """Wrapper that converts CompletionStreamResponse into OpenAI JSON strings.
+    """Wrapper that converts stream responses into OpenAI JSON strings.
 
     Args:
-        generator: an async generator that yields CompletionStreamResponse.
-            Each response is converted into OpenAI JSON
-            format. The jsonified responses from a list are concatenated
-            together and yielded as a single string.
-        first_response: the first CompletionStreamResponse to yield.
+        generator: an async generator that yields either individual stream responses
+            (StreamResponseType) or batches of stream responses (BatchedStreamResponseType).
+            Each response is converted into OpenAI JSON format and streamed to the client.
+            For batched responses, the items are concatenated together as a single string.
 
     Yields:
-        Concatenated JSON strings that represent CompletionStreamResponse.
+        String chunks in OpenAI SSE format: "data: {json}\n\n", with a final
+        "data: [DONE]\n\n" to indicate completion.
     """
-    yield _apply_openai_json_format(first_response)
-
     async for response in generator:
-        yield _apply_openai_json_format(response)
+        packet = _apply_openai_json_format(response)
+        yield packet
 
     yield "data: [DONE]\n\n"
-
-
-async def _peek_at_openai_json_generator(
-    generator: Union[LLMChatResponse, LLMCompletionsResponse],
-) -> Tuple[
-    Union[ChatCompletionStreamResponse, CompletionStreamResponse, ErrorResponse],
-    AsyncGenerator[str, None],
-]:
-    """Runs one iteration of the underlying generator
-    and returns the result, alongside the generator itself (with the
-    first iteration still there).
-    """
-    first_response = await generator.__anext__()
-
-    return first_response, _openai_json_wrapper(generator, first_response)
 
 
 class LLMRouter:
@@ -265,9 +310,11 @@ class LLMRouter:
     async def _get_response(
         self,
         *,
-        body: Union[CompletionRequest, ChatCompletionRequest],
+        body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
         call_method: str,
-    ) -> AsyncGenerator[Union[LLMChatResponse, LLMCompletionsResponse], None]:
+    ) -> AsyncGenerator[
+        Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
+    ]:
         """Calls the model deployment and returns the stream."""
         model: str = body.model
         base_model_id = get_base_model_id(model)
@@ -280,10 +327,15 @@ class LLMRouter:
 
         model_handle = self._get_configured_serve_handle(model)
 
+        # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
+        # for tool calling ValidatorIterator serialization issue.
+        if isinstance(body, ChatCompletionRequest):
+            body = _sanitize_chat_completion_request(body)
+
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
 
-    async def model(self, model_id: str) -> Optional[ModelData]:
+    async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._llm_configs:
             return to_model_metadata(model_id, self._llm_configs[model_id])
 
@@ -309,8 +361,8 @@ class LLMRouter:
                     "Check that adapter config file exists in cloud bucket."
                 )
 
-    @fastapi_router_app.get("/v1/models", response_model=Model)
-    async def models(self) -> Model:
+    @fastapi_router_app.get("/v1/models", response_model=ModelList)
+    async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
         for base_model_id, llm_config in self._llm_configs.items():
@@ -328,11 +380,11 @@ class LLMRouter:
                     if model_data is not None:
                         all_models[lora_id] = model_data
 
-        return Model(data=list(all_models.values()))
+        return ModelList(data=list(all_models.values()))
 
     # :path allows us to have slashes in the model name
-    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelData)
-    async def model_data(self, model: str) -> ModelData:
+    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelCard)
+    async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
 
         :param model: The model ID (e.g. "amazon/LightGPT")
@@ -347,6 +399,44 @@ class LLMRouter:
             )
         return model_data
 
+    async def _process_llm_request(
+        self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
+    ) -> Response:
+        NoneStreamingResponseType = (
+            ChatCompletionResponse if is_chat else CompletionResponse
+        )
+        call_method = "chat" if is_chat else "completions"
+
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+
+            gen = self._get_response(body=body, call_method=call_method)
+
+            # In streaming with batching enabled, this first response can be a list of chunks.
+            initial_response, gen = await _peek_at_generator(gen)
+
+            if isinstance(initial_response, list):
+                first_chunk = initial_response[0]
+            else:
+                first_chunk = initial_response
+
+            if isinstance(first_chunk, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=first_chunk.message,
+                    status_code=first_chunk.code,
+                    type=first_chunk.type,
+                )
+
+            if isinstance(first_chunk, NoneStreamingResponseType):
+                # Not streaming, first chunk should be a single response
+                return JSONResponse(content=first_chunk.model_dump())
+
+            # In case of streaming we need to iterate over the chunks and yield them
+            openai_stream_generator = _openai_json_wrapper(gen)
+
+            return StreamingResponse(
+                openai_stream_generator, media_type="text/event-stream"
+            )
+
     @fastapi_router_app.post("/v1/completions")
     async def completions(self, body: CompletionRequest) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
@@ -355,28 +445,7 @@ class LLMRouter:
         Returns:
             A response object with completions.
         """
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="completions")
-            if body.stream:
-                first_response, wrapper = await _peek_at_openai_json_generator(results)
-                if isinstance(first_response, ErrorResponse):
-                    raise OpenAIHTTPException(
-                        message=first_response.message,
-                        status_code=first_response.code,
-                        type=first_response.type,
-                    )
-                return StreamingResponse(wrapper, media_type="text/event-stream")
-
-            result = await results.__anext__()
-            if isinstance(result, ErrorResponse):
-                raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
-                )
-
-            if isinstance(result, CompletionResponse):
-                return JSONResponse(content=result.model_dump())
+        return await self._process_llm_request(body, is_chat=False)
 
     @fastapi_router_app.post("/v1/chat/completions")
     async def chat(self, body: ChatCompletionRequest) -> Response:
@@ -387,18 +456,17 @@ class LLMRouter:
             A response object with completions.
         """
 
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="chat")
-            if body.stream:
-                first_response, wrapper = await _peek_at_openai_json_generator(results)
-                if isinstance(first_response, ErrorResponse):
-                    raise OpenAIHTTPException(
-                        message=first_response.message,
-                        status_code=first_response.code,
-                        type=first_response.type,
-                    )
-                return StreamingResponse(wrapper, media_type="text/event-stream")
+        return await self._process_llm_request(body, is_chat=True)
 
+    @fastapi_router_app.post("/v1/embeddings")
+    async def embeddings(self, body: EmbeddingRequest) -> Response:
+        """Create embeddings for the provided input.
+
+        Returns:
+            A response object with embeddings.
+        """
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(body=body, call_method="embeddings")
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
@@ -407,7 +475,7 @@ class LLMRouter:
                     type=result.type,
                 )
 
-            if isinstance(result, ChatCompletionResponse):
+            if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod
@@ -419,9 +487,10 @@ class LLMRouter:
         Returns:
             A Ray Serve deployment.
         """
-        min_replicas = RAYLLM_ROUTER_MIN_REPLICAS
-        initial_replicas = RAYLLM_ROUTER_INITIAL_REPLICAS
-        max_replicas = RAYLLM_ROUTER_MAX_REPLICAS
+        min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
+        initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
+        max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
+        num_router_replicas = 0
 
         # Note (genesu): Based on our internal benchmark, we are currently bottleneck
         # by the router replicas during high concurrency situation. We are setting the
@@ -431,6 +500,11 @@ class LLMRouter:
             model_initial_replicas = 0
             model_max_replicas = 0
             for llm_config in llm_configs:
+                num_router_replicas = max(
+                    num_router_replicas,
+                    llm_config.experimental_configs.get("num_router_replicas", 0),
+                )
+
                 if "autoscaling_config" in llm_config.deployment_config:
                     autoscaling_config = llm_config.deployment_config[
                         "autoscaling_config"
@@ -448,11 +522,15 @@ class LLMRouter:
                     or autoscaling_config.min_replicas
                 )
                 model_max_replicas += autoscaling_config.max_replicas
-            min_replicas = int(model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
-            initial_replicas = int(
-                model_initial_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+            min_replicas = num_router_replicas or int(
+                model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
-            max_replicas = int(model_max_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
+            initial_replicas = num_router_replicas or int(
+                model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
+            )
+            max_replicas = num_router_replicas or int(
+                model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
+            )
 
         ingress_cls = serve.ingress(fastapi_router_app)(cls)
         deployment_decorator = serve.deployment(
@@ -460,12 +538,9 @@ class LLMRouter:
                 "min_replicas": min_replicas,
                 "initial_replicas": initial_replicas,
                 "max_replicas": max_replicas,
-                "target_ongoing_requests": RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+                "target_ongoing_requests": DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
             },
-            ray_actor_options=json.loads(
-                os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
-            ),
-            max_ongoing_requests=1000,  # Maximum backlog for a single replica
+            max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
         )
 
         deployment_cls = deployment_decorator(ingress_cls)

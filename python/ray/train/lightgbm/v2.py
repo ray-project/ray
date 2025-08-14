@@ -22,8 +22,7 @@ class LightGBMTrainer(DataParallelTrainer):
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -50,7 +49,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 "objective": "regression",
                 # Adding the line below is the only change needed
                 # for your `lgb.train` call!
-                **ray.train.lightgbm.v2.get_network_params(),
+                **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
                 params,

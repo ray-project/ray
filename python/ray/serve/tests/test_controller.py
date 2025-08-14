@@ -5,9 +5,11 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -77,9 +79,9 @@ def test_deploy_app_custom_exception(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "policy", [None, DEFAULT_AUTOSCALING_POLICY, default_autoscaling_policy]
+    "policy_name", [None, DEFAULT_AUTOSCALING_POLICY_NAME, default_autoscaling_policy]
 )
-def test_get_serve_instance_details_json_serializable(serve_instance, policy):
+def test_get_serve_instance_details_json_serializable(serve_instance, policy_name):
     """Test the result from get_serve_instance_details is json serializable."""
 
     controller = _get_global_client()._controller
@@ -87,9 +89,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "_policy": policy,
+        "_policy": {"name": policy_name},
     }
-    if policy is None:
+    if policy_name is None:
         autoscaling_config.pop("_policy")
 
     @serve.deployment(autoscaling_config=autoscaling_config)
@@ -102,6 +104,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
     node_ip = controller_details.node_ip
+    node_instance_id = controller_details.node_instance_id
     proxy_details = ray.get(controller.get_proxy_details.remote(node_id=node_id))
     deployment_timestamp = ray.get(
         controller.get_deployment_timestamps.remote(app_name="default")
@@ -110,12 +113,12 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-
     expected_json = json.dumps(
         {
             "controller_info": {
                 "node_id": node_id,
                 "node_ip": node_ip,
+                "node_instance_id": node_instance_id,
                 "actor_id": controller_details.actor_id,
                 "actor_name": controller_details.actor_name,
                 "worker_id": controller_details.worker_id,
@@ -131,6 +134,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 node_id: {
                     "node_id": node_id,
                     "node_ip": node_ip,
+                    "node_instance_id": node_instance_id,
                     "actor_id": proxy_details.actor_id,
                     "actor_name": proxy_details.actor_name,
                     "worker_id": proxy_details.worker_id,
@@ -181,6 +185,12 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },
+                                "request_router_config": {
+                                    "request_router_class": "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter",
+                                    "request_router_kwargs": {},
+                                    "request_routing_stats_period_s": 10.0,
+                                    "request_routing_stats_timeout_s": 30.0,
+                                },
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
@@ -188,6 +198,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 {
                                     "node_id": node_id,
                                     "node_ip": node_ip,
+                                    "node_instance_id": node_instance_id,
                                     "actor_id": replica.actor_id,
                                     "actor_name": replica.actor_name,
                                     "worker_id": replica.worker_id,
@@ -203,6 +214,30 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 }
             },
             "target_capacity": None,
+            "target_groups": [
+                {
+                    "targets": [
+                        {
+                            "ip": node_ip,
+                            "port": 8000,
+                            "instance_id": node_instance_id,
+                        },
+                    ],
+                    "route_prefix": "/",
+                    "protocol": "HTTP",
+                },
+                {
+                    "targets": [
+                        {
+                            "ip": node_ip,
+                            "port": 9000,
+                            "instance_id": node_instance_id,
+                        },
+                    ],
+                    "route_prefix": "/",
+                    "protocol": "gRPC",
+                },
+            ],
         }
     )
     assert details_json == expected_json
@@ -212,6 +247,30 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     deployment = application["deployments"]["autoscaling_app"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_get_deployment_config(serve_instance):
+    """Test getting deployment config."""
+
+    controller = _get_global_client()._controller
+    deployment_id = DeploymentID(name="App", app_name="default")
+    deployment_config = ray.get(
+        controller.get_deployment_config.remote(deployment_id=deployment_id)
+    )
+    # Before any deployment is created, the config should be None.
+    assert deployment_config is None
+
+    @serve.deployment
+    class App:
+        pass
+
+    serve.run(App.bind())
+
+    deployment_config = ray.get(
+        controller.get_deployment_config.remote(deployment_id=deployment_id)
+    )
+    # After the deployment is created, the config should be DeploymentConfig.
+    assert isinstance(deployment_config, DeploymentConfig)
 
 
 if __name__ == "__main__":

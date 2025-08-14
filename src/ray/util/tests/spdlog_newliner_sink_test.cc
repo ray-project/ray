@@ -35,7 +35,7 @@ namespace {
 std::shared_ptr<spdlog::logger> CreateLogger() {
   auto fd_formatter = std::make_unique<spdlog::pattern_formatter>(
       "%v", spdlog::pattern_time_type::local, std::string(""));
-  auto fd_sink = std::make_shared<non_owned_fd_sink_st>(GetStdoutHandle());
+  auto fd_sink = std::make_shared<non_owned_fd_sink_st>(GetStdoutFd());
   // We have to manually set the formatter, since it's not managed by logger.
   fd_sink->set_formatter(std::move(fd_formatter));
 

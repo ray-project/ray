@@ -9,11 +9,11 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_snapshot,
+    restore_data_context,  # noqa: F401
 )
 from ray.tests.conftest import shutdown_only  # noqa: F401
 
@@ -90,7 +90,9 @@ def _build_dataset(
     # - The consumer op has `num_blocks` tasks, each of which consumes 1 block.
     ctx = ray.data.DataContext.get_current()
     ctx.target_max_block_size = block_size
-    ctx.execution_options.resource_limits.object_store_memory = obj_store_limit
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=obj_store_limit
+    )
 
     def producer(batch):
         for i in range(num_blocks):
@@ -208,7 +210,11 @@ def test_no_deadlock_with_preserve_order(
     data_context.target_max_block_size = block_size
     data_context._max_num_blocks_in_streaming_gen_buffer = 1
     data_context.execution_options.preserve_order = True
-    data_context.execution_options.resource_limits.object_store_memory = 5 * block_size
+    data_context.execution_options.resource_limits = (
+        data_context.execution_options.resource_limits.copy(
+            object_store_memory=5 * block_size
+        )
+    )
 
     # Some tasks are slower than others.
     # The faster tasks will finish first and occupy Map op's internal output buffer.
@@ -263,7 +269,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
                     BlockMetadata(
                         num_rows=n // parallelism,
                         size_bytes=sz,
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),
@@ -273,7 +278,9 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
 
     source = CountingRangeDatasource()
     ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.resource_limits.object_store_memory = 10e6
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=10e6
+    )
 
     # 10GiB dataset.
     ds = ray.data.read_datasource(source, n=10000, override_num_blocks=1000)
@@ -287,9 +294,15 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
     assert launched <= 10, launched
 
 
-def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
+def test_streaming_backpressure_e2e(
+    shutdown_only, monkeypatch, restore_data_context  # noqa: F811
+):
     # This test case is particularly challenging since there is a large input->output
     # increase in data size: https://github.com/ray-project/ray/issues/34041
+
+    # Increase the Ray Core spilling threshold to 100% to avoid flakiness.
+    monkeypatch.setenv("RAY_object_spilling_threshold", "1")
+
     class TestSlow:
         def __call__(self, df: np.ndarray):
             time.sleep(2)

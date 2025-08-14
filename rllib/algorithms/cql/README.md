@@ -10,4 +10,4 @@ Conservative Q-Learning (CQL).
 
    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#cql)**
 
-   **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/cql/cql.py)**
+   **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py)**

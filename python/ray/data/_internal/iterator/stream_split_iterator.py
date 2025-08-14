@@ -7,11 +7,9 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
@@ -28,6 +26,13 @@ logger = logging.getLogger(__name__)
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
+class _DatasetWrapper:
+    # A temporary workaround for https://github.com/ray-project/ray/issues/52549
+
+    def __init__(self, dataset: "Dataset") -> None:
+        self._dataset = dataset
+
+
 class StreamSplitDataIterator(DataIterator):
     """Implements a collection of iterators over a shared data stream."""
 
@@ -35,7 +40,6 @@ class StreamSplitDataIterator(DataIterator):
     def create(
         base_dataset: "Dataset",
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
@@ -48,7 +52,7 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(base_dataset, n, equal, locality_hints)
+        ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -78,16 +82,18 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[ObjectRef[Block], BlockMetadata]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
+                    yield RefBundle(
+                        blocks=block_ref_and_md.blocks,
+                        owns_blocks=False,
+                        schema=block_ref_and_md.schema,
+                    )
 
         return gen_blocks(), self._iter_stats, False
 
@@ -107,16 +113,15 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
 
     def _get_dataset_tag(self):
-        return create_dataset_tag(
-            self._base_dataset._plan._dataset_name,
-            self._base_dataset._uuid,
-            self._output_split_idx,
-        )
+        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
 
 
 @ray.remote(num_cpus=0)
@@ -129,22 +134,19 @@ class SplitCoordinator:
 
     def __init__(
         self,
-        dataset: "Dataset",
+        dataset_wrapper: _DatasetWrapper,
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        dataset = dataset_wrapper._dataset
         # Set current DataContext.
         self._data_context = dataset.context
         ray.data.DataContext._set_current(self._data_context)
-        # Automatically set locality with output to the specified location hints.
-        if locality_hints:
+        if self._data_context.execution_options.locality_with_output is True:
             self._data_context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
-
         self._base_dataset = dataset
         self._n = n
-        self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
         self._executor = None
@@ -154,29 +156,14 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
 
+        # Add a new stats field to track coordinator overhead
+        self._coordinator_overhead_s = 0.0
+
         def gen_epochs():
             while True:
-                executor = StreamingExecutor(
-                    self._data_context,
-                    create_dataset_tag(
-                        self._base_dataset._name, self._base_dataset._uuid
-                    ),
-                )
-                self._executor = executor
-
-                def add_split_op(dag):
-                    return OutputSplitter(
-                        dag,
-                        n,
-                        equal,
-                        self._data_context,
-                        locality_hints,
-                    )
-
+                self._executor = self._base_dataset._plan.create_executor()
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    executor,
-                    dataset._plan,
-                    dag_rewrite=add_split_op,
+                    self._executor, dataset._plan
                 )
                 yield output_iterator
 
@@ -188,8 +175,14 @@ class SplitCoordinator:
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats()
-        return self._base_dataset._plan.stats()
+            stats = self._executor.get_stats()
+        else:
+            stats = self._base_dataset._plan.stats()
+
+        # Set the tracked overhead time
+        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
+
+        return stats
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -202,9 +195,7 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(
-        self, epoch_id: int, output_split_idx: int
-    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[RefBundle]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -228,6 +219,7 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
+            schema = next_bundle.schema
             block = next_bundle.blocks[-1]
             next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
@@ -237,15 +229,14 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return block
+            return RefBundle(
+                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+            )
         except StopIteration:
             return None
         finally:
-            stats = self.stats()
-            if stats and stats.streaming_split_coordinator_s:
-                stats.streaming_split_coordinator_s.add(
-                    time.perf_counter() - start_time
-                )
+            # Track overhead time in the instance variable
+            self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

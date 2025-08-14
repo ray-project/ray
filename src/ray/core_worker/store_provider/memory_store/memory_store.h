@@ -16,6 +16,9 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -24,6 +27,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/ipc/raylet_ipc_client.h"
 
 namespace ray {
 namespace core {
@@ -46,11 +50,11 @@ class CoreWorkerMemoryStore {
   /// \param[in] io_context Posts async callbacks to this context.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
-  /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
+  /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
       ReferenceCounter *counter = nullptr,
-      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
+      std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
@@ -63,9 +67,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  /// \return Whether the object was put into the memory store. If false, then
-  /// this is because the object was promoted to and stored in plasma instead.
-  bool Put(const RayObject &object, const ObjectID &object_id);
+  void Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -127,14 +129,12 @@ class CoreWorkerMemoryStore {
   /// \param[out] plasma_ids_to_delete This will be extended to
   /// include the IDs of the plasma objects to delete, based on the
   /// in-memory objects that contained InPlasmaError.
-  /// \return Void.
   void Delete(const absl::flat_hash_set<ObjectID> &object_ids,
               absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
 
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
-  /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
   /// Check whether this store contains the object.
@@ -207,10 +207,10 @@ class CoreWorkerMemoryStore {
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
-  ReferenceCounter *ref_counter_ = nullptr;
+  ReferenceCounter *ref_counter_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
+  std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client_;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;

@@ -13,6 +13,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
+from ray._common.utils import load_class
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
 import requests
@@ -25,14 +26,19 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.utils import (
-    check_ray_client_dependencies_installed,
-    load_class,
-    parse_resources_json,
+from ray._private.label_utils import (
     parse_node_labels_json,
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_string,
 )
+from ray._private.utils import (
+    get_ray_client_dependency_error,
+    parse_resources_json,
+)
+from ray._common.network_utils import parse_address, build_address
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
+import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -53,13 +59,14 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 
 logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
@@ -190,7 +197,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = parse_address(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -331,7 +338,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = parse_address(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -393,12 +400,6 @@ def debug(address: str, verbose: bool):
     help="the port to use for starting the node manager",
 )
 @click.option(
-    "--gcs-server-port",
-    required=False,
-    type=int,
-    help="Port number for the GCS server.",
-)
-@click.option(
     "--min-worker-port",
     required=False,
     type=int,
@@ -441,10 +442,8 @@ def debug(address: str, verbose: bool):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is 30% (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION) "
-    "of available system memory capped by "
-    "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
-    "but can be set higher.",
+    "By default, this is 30% of available system memory capped by "
+    "the shm size and 200G but can be set higher.",
 )
 @click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
@@ -517,16 +516,10 @@ Windows powershell users need additional escaping:
     help="the port for dashboard agents to listen for grpc on.",
 )
 @click.option(
-    "--dashboard-grpc-port",
-    type=int,
-    default=None,
-    help="The port for the dashboard head to listen for grpc on.",
-)
-@click.option(
     "--runtime-env-agent-port",
     type=int,
     default=None,
-    help="The port for the runtime enviroment agents to listen for http on.",
+    help="The port for the runtime environment agents to listen for http on.",
 )
 @click.option(
     "--block",
@@ -541,6 +534,12 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
+)
+@click.option(
     "--autoscaling-config",
     required=False,
     type=str,
@@ -553,28 +552,10 @@ Windows powershell users need additional escaping:
     help="do not redirect non-worker stdout and stderr to files",
 )
 @click.option(
-    "--plasma-store-socket-name",
-    default=None,
-    help="manually specify the socket name of the plasma store",
-)
-@click.option(
-    "--raylet-socket-name",
-    default=None,
-    help="manually specify the socket path of the raylet process",
-)
-@click.option(
     "--temp-dir",
     default=None,
     help="manually specify the root temporary dir of the Ray process, only "
     "works when --head is specified",
-)
-@click.option(
-    "--storage",
-    default=None,
-    help=(
-        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
-        "future version of Ray."
-    ),
 )
 @click.option(
     "--system-config",
@@ -629,9 +610,19 @@ Windows powershell users need additional escaping:
     "--labels",
     required=False,
     hidden=True,
-    default="{}",
+    default="",
     type=str,
-    help="a JSON serialized dictionary mapping label name to label value.",
+    help="a string list of key-value pairs mapping label name to label value."
+    "These values take precedence over conflicting keys passed in from --labels-file."
+    'Ex: --labels "key1=val1,key2=val2"',
+)
+@click.option(
+    "--labels-file",
+    required=False,
+    hidden=True,
+    default="",
+    type=str,
+    help="a path to a YAML file containing a dictionary mapping of label keys to values.",
 )
 @click.option(
     "--include-log-monitor",
@@ -641,6 +632,46 @@ Windows powershell users need additional escaping:
     "the log files of all processes on this node and push their contents to GCS. "
     "Only one log monitor should be started per physical host to avoid log "
     "duplication on the driver process.",
+)
+@click.option(
+    "--enable-resource-isolation",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Enable resource isolation through cgroupv2 by reserving memory and cpu "
+    "resources for ray system processes. To use, only cgroupv2 (not cgroupv1) must "
+    "be enabled with read and write permissions for the raylet. Cgroup memory and "
+    "cpu controllers must also be enabled.",
+)
+@click.option(
+    "--system-reserved-cpu",
+    required=False,
+    type=float,
+    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
+    "fractional i.e. 0.5 means half a cpu core. "
+    "By default, the min of 20% and 1 core will be reserved."
+    "Must be >= 0.5 and < total number of available cores. "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--system-reserved-memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to reserve for ray system processes. "
+    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
+    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--cgroup-path",
+    required=False,
+    hidden=True,
+    type=str,
+    help="The path for the cgroup the raylet should use to enforce resource isolation. "
+    "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
+    "The raylet must have read/write permissions to this path. "
+    "Cgroup memory and cpu controllers be enabled for this cgroup. "
+    "This option only works if --enable-resource-isolation is set.",
 )
 @add_click_logging_options
 @PublicAPI
@@ -654,7 +685,6 @@ def start(
     redis_shard_ports,
     object_manager_port,
     node_manager_port,
-    gcs_server_port,
     min_worker_port,
     max_worker_port,
     worker_port_list,
@@ -670,16 +700,13 @@ def start(
     dashboard_port,
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
-    dashboard_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
-    plasma_store_socket_name,
-    raylet_socket_name,
     temp_dir,
-    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -688,19 +715,15 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    labels_file,
     include_log_monitor,
+    enable_resource_isolation,
+    system_reserved_cpu,
+    system_reserved_memory,
+    cgroup_path,
 ):
     """Start Ray processes manually on the local machine."""
-    # TODO(hjiang): Expose physical mode interface to ray cluster start command after
-    # all features implemented.
 
-    if gcs_server_port is not None:
-        cli_logger.error(
-            "`{}` is deprecated and ignored. Use {} to specify "
-            "GCS server port on head node.",
-            cf.bold("--gcs-server-port"),
-            cf.bold("--port"),
-        )
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
     if node_ip_address is not None:
@@ -708,22 +731,42 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
-    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
 
-    if plasma_store_socket_name is not None:
-        warnings.warn(
-            "plasma_store_socket_name is deprecated and will be removed. You are not "
-            "supposed to specify this parameter as it's internal.",
-            DeprecationWarning,
-            stacklevel=2,
+    # Compose labels passed in with `--labels` and `--labels-file`.
+    # In the case of duplicate keys, the values from `--labels` take precedence.
+    try:
+        labels_from_file = parse_node_labels_from_yaml_file(labels_file)
+    except Exception as e:
+        cli_logger.abort(
+            "The file at `{}` is not a valid YAML file, detailed error: {} "
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels-file={labels_file}"),
+            str(e),
+            cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
         )
-    if raylet_socket_name is not None:
-        warnings.warn(
-            "raylet_socket_name is deprecated and will be removed. You are not "
-            "supposed to specify this parameter as it's internal.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+    try:
+        # Attempt to parse labels from new string format first.
+        labels_from_string = parse_node_labels_string(labels)
+    except Exception as e:
+        try:
+            # Fall back to JSON format if parsing from string fails.
+            labels_from_string = parse_node_labels_json(labels)
+            warnings.warn(
+                "passing node labels with `--labels` in JSON format is "
+                "deprecated and will be removed in a future version of Ray.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        except Exception:
+            # If parsing labels from both formats fails, return the original error message.
+            cli_logger.abort(
+                "`{}` is not a valid string of key-value pairs, detailed error: {} "
+                "Valid values look like this: `{}`",
+                cf.bold(f"--labels={labels}"),
+                str(e),
+                cf.bold('--labels="key1=val1,key2=val2"'),
+            )
+    labels_dict = {**labels_from_file, **labels_from_string}
     if temp_dir and not head:
         cli_logger.warning(
             f"`--temp-dir={temp_dir}` option will be ignored. "
@@ -733,20 +776,23 @@ def start(
         )
         temp_dir = None
 
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
+
     redirect_output = None if not no_redirect_output else True
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
-    if storage is not None:
-        warnings.warn(
-            "--storage is deprecated and will be removed in a future version of Ray.",
-        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -767,17 +813,14 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
-        plasma_store_socket_name=plasma_store_socket_name,
-        raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -785,8 +828,8 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
+        resource_isolation_config=resource_isolation_config,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -812,6 +855,15 @@ def start(
             ray_params.env_vars = {
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
             }
+
+        if (
+            usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
+            and "RAY_CLOUD_INSTANCE_ID" in os.environ  # required by autoscaler v2.
+            and "RAY_NODE_TYPE_NAME" in os.environ  # required by autoscaler v2.
+        ):
+            # If this Ray cluster is managed by KubeRay and RAY_CLOUD_INSTANCE_ID and RAY_NODE_TYPE_NAME are set,
+            # we enable the v2 autoscaler by default if RAY_enable_autoscaler_v2 is not set.
+            os.environ.setdefault("RAY_enable_autoscaler_v2", "1")
 
         num_redis_shards = None
         # Start Ray on the head node.
@@ -869,7 +921,7 @@ def start(
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{ray_params.node_ip_address}:{port}"
+            default_address = build_address(ray_params.node_ip_address, port)
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if (
                 default_address == bootstrap_address
@@ -931,7 +983,7 @@ def start(
                 cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "  RAY_API_SERVER_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),
@@ -1300,7 +1352,7 @@ def stop(force: bool, grace_period: int):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @cli.command()
@@ -1979,7 +2031,7 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._private.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
@@ -2596,6 +2648,22 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@cli.command(hidden=True)
+def sanity_check():
+    """Run a sanity check to check that the Ray installation works.
+
+    This is not a public API and is intended to be used by Ray developers only.
+    """
+
+    @ray.remote
+    def get_version() -> str:
+        return ray.__version__
+
+    v = ray.get(get_version.remote())
+    assert v == ray.__version__
+    cli_logger.success(f"Success! Ray version: {v}")
+
+
 @click.group(name="metrics")
 def metrics_group():
     pass
@@ -2653,6 +2721,7 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (

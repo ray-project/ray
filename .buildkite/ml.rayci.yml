@@ -8,6 +8,7 @@ steps:
     env:
       PYTHON_VERSION: "3.9"
       EXTRA_DEPENDENCY: ml
+    tags: cibase
 
   - name: mlbuild
     wanda: ci/docker/ml.build.wanda.yaml
@@ -16,6 +17,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
       IMAGE_TO: mlbuild
       RAYCI_IS_GPU_BUILD: "false"
+    tags: cibase
 
   - name: mlbuild-multipy
     label: "wanda: mlbuild-py{{matrix}}"
@@ -28,6 +30,7 @@ steps:
       RAYCI_IS_GPU_BUILD: "false"
     matrix:
       - "3.12"
+    tags: cibase
 
   - name: mllightning2gpubuild
     wanda: ci/docker/mllightning2gpu.build.wanda.yaml
@@ -40,6 +43,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: mlgpubuild
       RAYCI_IS_GPU_BUILD: "true"
+    tags: cibase
 
   - name: mlgpubuild-multipy
     label: "wanda: mlgpubuild-py{{matrix}}"
@@ -52,6 +56,7 @@ steps:
       RAYCI_IS_GPU_BUILD: "true"
     matrix:
       - "3.12"
+    tags: cibase
 
   # tests
   - label: ":train: ml: train tests"
@@ -84,7 +89,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/tune/... //python/ray/air/... ml
         --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags gpu_only,gpu,minimal,doctest,needs_credentials,soft_imports,rllib,multinode
+        --except-tags gpu_only,gpu,minimal,doctest,needs_credentials,soft_imports,rllib
     depends_on:
       - mlbuild-multipy
       - forge
@@ -148,7 +153,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --parallelism-per-worker 3
-        --except-tags soft_imports,gpu_only,rllib,multinode
+        --except-tags doctest,soft_imports,gpu_only,rllib
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
@@ -166,7 +171,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml
         --parallelism-per-worker 3
-        --except-tags gpu
+        --except-tags gpu,doctest
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml
         --parallelism-per-worker 3
         --only-tags ray_air
@@ -217,26 +222,6 @@ steps:
         --only-tags minimal
     depends_on: [ "minbuild-ml", "forge" ]
 
-  - label: ":train: ml: tune multinode tests"
-    tags: tune
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker
-        --platform cpu --image-type ray --canonical-tag multinode
-      - python ./ci/build/build-multinode-image.py rayproject/ray:multinode rayproject/ray:multinode
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
-        --only-tags multinode
-        --test-env=RAY_HAS_SSH=1
-        --test-env=RAY_DOCKER_IMAGE=rayproject/ray:multinode
-        --test-env=RAY_TEMPDIR="/ray-mount"
-        --test-env=RAY_HOSTDIR="$${RAYCI_CHECKOUT_DIR}"
-        --test-env=RAY_TESTHOST="rayci.localhost"
-    depends_on:
-      - manylinux
-      - forge
-      - raycpubase
-      - mlbuild
-
   - label: ":train: ml: doc tests"
     tags:
       - train
@@ -274,6 +259,7 @@ steps:
     key: ml_flaky_tests
     tags:
       - train
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:

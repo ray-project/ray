@@ -125,17 +125,21 @@ class DelayManager {
   std::pair<int64_t, int64_t> default_delay_range_us_ = {0, 0};
 };
 
-static DelayManager _delay_manager;
+auto &delay_manager = []() -> DelayManager & {
+  static auto *manager = new DelayManager();
+  return *manager;
+}();
+
 }  // namespace
 
-int64_t get_delay_us(const std::string &name) {
+int64_t GetDelayUs(const std::string &name) {
   if (RayConfig::instance().testing_asio_delay_us().empty()) {
     return 0;
   }
-  return _delay_manager.GetMethodDelay(name);
+  return delay_manager.GetMethodDelay(name);
 }
 
-void init() { return _delay_manager.Init(); }  // namespace testing
+void Init() { return delay_manager.Init(); }  // namespace testing
 
 }  // namespace testing
 }  // namespace asio

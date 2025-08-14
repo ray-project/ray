@@ -8,8 +8,9 @@ import platform
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient, JobStatus
-from ray._private.test_utils import format_web_url, wait_for_condition
+from ray._private.test_utils import format_web_url
 
 
 def _hook():
@@ -256,7 +257,4 @@ ray.get(f.remote())
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -11,10 +11,12 @@ import grpc
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+from ray._common.network_utils import parse_address
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 
@@ -89,7 +91,7 @@ def test_proxy_manager_bad_startup(shutdown_only):
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
     ctx = ray.init(ignore_reinit_error=True)
-    port_to_conflict = ctx.dashboard_url.split(":")[1]
+    _, port_to_conflict = parse_address(ctx.dashboard_url)
 
     pm.create_specific_server(client)
     # Intentionally bind to the wrong port so that the
@@ -181,7 +183,8 @@ def test_delay_in_rewriting_environment(shutdown_only):
     """
     ray_instance = ray.init()
     server = proxier.serve_proxier(
-        "localhost:25010",
+        "localhost",
+        25010,
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
     )
@@ -219,7 +222,8 @@ def test_startup_error_yields_clean_result(shutdown_only):
     """
     ray_instance = ray.init()
     server = proxier.serve_proxier(
-        "localhost:25030",
+        "localhost",
+        25030,
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
     )
@@ -321,9 +325,8 @@ def test_prepare_runtime_init_req_modified_job():
         (["ipython", "-m", "ray.util.client.server"], True),
         (["ipython -m ray.util.client.server"], True),
         (["ipython -m", "ray.util.client.server"], True),
-        (["bash", "ipython", "-m", "ray.util.client.server"], False),
-        (["bash", "ipython -m ray.util.client.server"], False),
-        (["python", "-m", "bash", "ipython -m ray.util.client.server"], False),
+        (["bash", "-c", "ipython -m ray.util.client.server"], True),
+        (["python", "-m", "bash", "ipython"], False),
     ],
 )
 def test_match_running_client_server(test_case):
@@ -484,9 +487,4 @@ def test_proxy_cancelled_grpc_request_stream():
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

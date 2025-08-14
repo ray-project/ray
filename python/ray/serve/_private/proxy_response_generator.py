@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Union
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import calculate_remaining_timeout
+from ray.serve.exceptions import RequestCancelledError
 from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -45,15 +46,30 @@ class _ProxyResponseGeneratorBase(ABC):
         """Return the next message in the stream.
 
         Raises:
-            - TimeoutError on timeout.
-            - asyncio.CancelledError on disconnect.
-            - StopAsyncIteration when the stream is completed.
+            TimeoutError: On timeout.
+            asyncio.CancelledError: On disconnect.
+            StopAsyncIteration: When the stream is completed.
         """
         pass
 
     def stop_checking_for_disconnect(self):
         """Once this is called, the disconnected_task will be ignored."""
         self._disconnected_task = None
+
+
+def swallow_cancelled(task: asyncio.Task):
+    try:
+        task.result()
+    except (RequestCancelledError, asyncio.CancelledError):
+        # We expect RequestCancelledError to be raised because for disconnect or
+        # timeouts, we explicitly call resp.cancel(). To avoid "Task exception
+        # was never retrieved" errors from spamming the proxy logs, swallow
+        # them here.
+        pass
+    except Exception:
+        # For all other exceptions, do not catch and instead re-raise here so that
+        # they will be logged properly.
+        raise
 
 
 class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
@@ -134,10 +150,12 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
             return next_result_task.result()
         elif self._disconnected_task in done:
             next_result_task.cancel()
+            next_result_task.add_done_callback(swallow_cancelled)
             self._response.cancel()
             raise asyncio.CancelledError()
         else:
             next_result_task.cancel()
+            next_result_task.add_done_callback(swallow_cancelled)
             self._response.cancel()
             raise TimeoutError()
 

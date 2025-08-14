@@ -66,41 +66,42 @@ class LightGBMPredictor(Predictor):
                 ``lightgbm.Booster.predict``.
 
         Examples:
-            >>> import numpy as np
-            >>> import lightgbm as lgbm
-            >>> from ray.train.lightgbm import LightGBMPredictor
-            >>>
-            >>> train_X = np.array([[1, 2], [3, 4]])
-            >>> train_y = np.array([0, 1])
-            >>>
-            >>> model = lgbm.LGBMClassifier().fit(train_X, train_y)
-            >>> predictor = LightGBMPredictor(model=model.booster_)
-            >>>
-            >>> data = np.array([[1, 2], [3, 4]])
-            >>> predictions = predictor.predict(data)
-            >>>
-            >>> # Only use first and second column as the feature
-            >>> data = np.array([[1, 2, 8], [3, 4, 9]])
-            >>> predictions = predictor.predict(data, feature_columns=[0, 1])
+            .. testcode::
 
-            >>> import pandas as pd
-            >>> import lightgbm as lgbm
-            >>> from ray.train.lightgbm import LightGBMPredictor
-            >>>
-            >>> train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-            >>> train_y = pd.Series([0, 1])
-            >>>
-            >>> model = lgbm.LGBMClassifier().fit(train_X, train_y)
-            >>> predictor = LightGBMPredictor(model=model.booster_)
-            >>>
-            >>> # Pandas dataframe.
-            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-            >>> predictions = predictor.predict(data)
-            >>>
-            >>> # Only use first and second column as the feature
-            >>> data = pd.DataFrame([[1, 2, 8], [3, 4, 9]], columns=["A", "B", "C"])
-            >>> predictions = predictor.predict(data, feature_columns=["A", "B"])
+                import numpy as np
+                import lightgbm as lgbm
+                from ray.train.lightgbm import LightGBMPredictor
 
+                train_X = np.array([[1, 2], [3, 4]])
+                train_y = np.array([0, 1])
+
+                model = lgbm.LGBMClassifier().fit(train_X, train_y)
+                predictor = LightGBMPredictor(model=model.booster_)
+
+                data = np.array([[1, 2], [3, 4]])
+                predictions = predictor.predict(data)
+
+                # Only use first and second column as the feature
+                data = np.array([[1, 2, 8], [3, 4, 9]])
+                predictions = predictor.predict(data, feature_columns=[0, 1])
+
+                import pandas as pd
+                import lightgbm as lgbm
+                from ray.train.lightgbm import LightGBMPredictor
+
+                train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+                train_y = pd.Series([0, 1])
+
+                model = lgbm.LGBMClassifier().fit(train_X, train_y)
+                predictor = LightGBMPredictor(model=model.booster_)
+
+                # Pandas dataframe.
+                data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+                predictions = predictor.predict(data)
+
+                # Only use first and second column as the feature
+                data = pd.DataFrame([[1, 2, 8], [3, 4, 9]], columns=["A", "B", "C"])
+                predictions = predictor.predict(data, feature_columns=["A", "B"])
 
         Returns:
             Prediction result.

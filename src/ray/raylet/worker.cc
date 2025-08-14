@@ -19,8 +19,7 @@
 #include <string>
 #include <utility>
 
-#include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet.h"
+#include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -49,16 +48,56 @@ Worker::Worker(const JobID &job_id,
       assigned_job_id_(job_id),
       runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
-      dead_(false),
+      killing_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager),
-      is_detached_actor_(false) {}
+      client_call_manager_(client_call_manager) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
-void Worker::MarkDead() { dead_ = true; }
+void Worker::MarkDead() {
+  bool expected = false;
+  killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+}
 
-bool Worker::IsDead() const { return dead_; }
+bool Worker::IsDead() const { return killing_.load(std::memory_order_acquire); }
+
+void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
+  bool expected = false;
+  if (!killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    return;  // This is not the first time calling KillAsync or MarkDead, do nothing.
+  }
+  const auto worker = shared_from_this();
+  if (force) {
+    worker->GetProcess().Kill();
+    return;
+  }
+#ifdef _WIN32
+  // TODO(mehrdadn): implement graceful process termination mechanism
+#else
+  // Attempt to gracefully shutdown the worker before force killing it.
+  kill(worker->GetProcess().GetId(), SIGTERM);
+#endif
+
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
+  auto timeout = RayConfig::instance().kill_worker_timeout_milliseconds();
+  auto retry_duration = boost::posix_time::milliseconds(timeout);
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait(
+      [timeout, retry_timer, worker](const boost::system::error_code &error) {
+#ifdef _WIN32
+#else
+        if (worker->GetProcess().IsAlive()) {
+          RAY_LOG(INFO) << "Worker with PID=" << worker->GetProcess().GetId()
+                        << " did not exit after " << timeout
+                        << "ms, force killing with SIGKILL.";
+        } else {
+          return;
+        }
+#endif
+        // Force kill worker
+        worker->GetProcess().Kill();
+      });
+}
 
 void Worker::MarkBlocked() { blocked_ = true; }
 
@@ -170,22 +209,22 @@ const std::string Worker::GetTaskOrActorIdAsDebugString() const {
   return id_ss.str();
 }
 
-void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
-
-bool Worker::IsDetachedActor() const { return is_detached_actor_; }
+bool Worker::IsDetachedActor() const {
+  return assigned_task_.GetTaskSpecification().IsDetachedActor();
+}
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
 
-void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+void Worker::ActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
-  rpc::DirectActorCallArgWaitCompleteRequest request;
+  rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  rpc_client_->DirectActorCallArgWaitComplete(
-      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+  rpc_client_->ActorCallArgWaitComplete(
+      request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }

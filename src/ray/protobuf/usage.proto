@@ -98,6 +98,8 @@ enum TagKey {
   SERVE_NUM_NODE_COMPACTIONS = 30;
   // Whether the num_replicas="auto" API was used ("1" if used)
   SERVE_AUTO_NUM_REPLICAS_USED = 31;
+  // Whether custom request router was used ("1" if used)
+  SERVE_CUSTOM_REQUEST_ROUTER_USED = 32;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
@@ -255,9 +257,12 @@ enum TagKey {
   // Comma separated list of pipeline parallelism degrees used to build vLLM engine
   // processor. Example: "4"
   LLM_BATCH_PIPELINE_PARALLEL_SIZE = 620;
-  // Comma separated list of tensor parallelism degrees used to build vLLM engine
+  // Comma separated list of tensor parallelism degrees used to build vLLM/SGLang engine
   // processor. Example: "4"
   LLM_BATCH_TENSOR_PARALLEL_SIZE = 621;
+  // Comma separated list of data parallelism degrees used to build SGLang engine
+  // processor. Example: "4"
+  LLM_BATCH_DATA_PARALLEL_SIZE = 622;
 
   //
   // (a Haiku about Ray in the ocean; please keep this at the bottom.)

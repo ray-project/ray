@@ -209,6 +209,8 @@ extern jfieldID java_actor_creation_options_namespace;
 extern jfieldID java_actor_creation_options_max_pending_calls;
 /// isAsync field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_is_async;
+/// allowOutOfOrderExecution field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_allow_out_of_order_execution;
 /// ActorLifetime enum class
 extern jclass java_actor_lifetime_class;
 /// ordinal method of ActorLifetime class
@@ -303,23 +305,23 @@ extern JavaVM *jvm;
 
 #define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \
   {                                                                                   \
-    jthrowable throwable = env->ExceptionOccurred();                                  \
-    if (throwable) {                                                                  \
-      jstring java_file_name = env->NewStringUTF(__FILE__);                           \
-      jstring java_function = env->NewStringUTF(__func__);                            \
-      jobject java_error_message =                                                    \
+    jthrowable __throwable = env->ExceptionOccurred();                                \
+    if (__throwable) {                                                                \
+      jstring __java_file_name = env->NewStringUTF(__FILE__);                         \
+      jstring __java_function = env->NewStringUTF(__func__);                          \
+      jobject __java_error_message =                                                  \
           env->CallStaticObjectMethod(java_jni_exception_util_class,                  \
                                       java_jni_exception_util_get_stack_trace,        \
-                                      java_file_name,                                 \
+                                      __java_file_name,                               \
                                       __LINE__,                                       \
-                                      java_function,                                  \
-                                      throwable);                                     \
+                                      __java_function,                                \
+                                      __throwable);                                   \
       std::string error_message =                                                     \
-          JavaStringToNativeString(env, static_cast<jstring>(java_error_message));    \
-      env->DeleteLocalRef(throwable);                                                 \
-      env->DeleteLocalRef(java_file_name);                                            \
-      env->DeleteLocalRef(java_function);                                             \
-      env->DeleteLocalRef(java_error_message);                                        \
+          JavaStringToNativeString(env, static_cast<jstring>(__java_error_message));  \
+      env->DeleteLocalRef(__throwable);                                               \
+      env->DeleteLocalRef(__java_file_name);                                          \
+      env->DeleteLocalRef(__java_function);                                           \
+      env->DeleteLocalRef(__java_error_message);                                      \
       RAY_LOG(FATAL) << "An unexpected exception occurred while executing Java code " \
                         "from JNI ("                                                  \
                      << __FILE__ << ":" << __LINE__ << " " << __func__ << ")."        \
@@ -436,8 +438,8 @@ inline void JavaStringListToNativeStringVector(JNIEnv *env,
                                                jobject java_list,
                                                std::vector<std::string> *native_vector) {
   JavaListToNativeVector<std::string>(
-      env, java_list, native_vector, [](JNIEnv *env, jobject jstr) {
-        return JavaStringToNativeString(env, static_cast<jstring>(jstr));
+      env, java_list, native_vector, [](JNIEnv *env_arg, jobject jstr) {
+        return JavaStringToNativeString(env_arg, static_cast<jstring>(jstr));
       });
 }
 
@@ -488,17 +490,18 @@ inline jobject NativeVectorToJavaList(
 inline jobject NativeStringVectorToJavaStringList(
     JNIEnv *env, const std::vector<std::string> &native_vector) {
   return NativeVectorToJavaList<std::string>(
-      env, native_vector, [](JNIEnv *env, const std::string &str) {
-        return env->NewStringUTF(str.c_str());
+      env, native_vector, [](JNIEnv *env_arg, const std::string &str) {
+        return env_arg->NewStringUTF(str.c_str());
       });
 }
 
 template <typename ID>
 inline jobject NativeIdVectorToJavaByteArrayList(JNIEnv *env,
                                                  const std::vector<ID> &native_vector) {
-  return NativeVectorToJavaList<ID>(env, native_vector, [](JNIEnv *env, const ID &id) {
-    return IdToJavaByteArray<ID>(env, id);
-  });
+  return NativeVectorToJavaList<ID>(
+      env, native_vector, [](JNIEnv *env_arg, const ID &id) {
+        return IdToJavaByteArray<ID>(env_arg, id);
+      });
 }
 
 /// Convert a Java Map<?, ?> to a C++ std::unordered_map<?, ?>
@@ -608,8 +611,8 @@ inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
       env->GetObjectField(java_obj, java_native_ray_object_contained_object_ids);
   std::vector<ObjectID> contained_object_ids;
   JavaListToNativeVector<ObjectID>(
-      env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
+      env, java_contained_ids, &contained_object_ids, [](JNIEnv *env_arg, jobject id) {
+        return JavaByteArrayToId<ObjectID>(env_arg, static_cast<jbyteArray>(id));
       });
   env->DeleteLocalRef(java_contained_ids);
   auto contained_object_refs =

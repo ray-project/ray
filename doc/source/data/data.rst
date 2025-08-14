@@ -141,7 +141,7 @@ Case studies for Ray Data
 **Training ingest using Ray Data**
 
 - `Pinterest uses Ray Data to do last mile data processing for model training <https://medium.com/pinterest-engineering/last-mile-data-processing-with-ray-629affbf34ff>`_
-- `DoorDash elevates model training with Ray Data <https://raysummit.anyscale.com/agenda/sessions/144>`_
+- `DoorDash elevates model training with Ray Data <https://www.youtube.com/watch?v=pzemMnpctVY>`_
 - `Instacart builds distributed machine learning model training on Ray Data <https://tech.instacart.com/distributed-machine-learning-at-instacart-4b11d7569423>`_
 - `Predibase speeds up image augmentation for model training using Ray Data <https://predibase.com/blog/ludwig-v0-7-fine-tuning-pretrained-image-and-text-models-50x-faster-and>`_
 

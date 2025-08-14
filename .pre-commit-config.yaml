@@ -10,6 +10,7 @@ exclude: |
     release/release_logs/|
     rllib/tests/data|
     thirdparty/patches/|
+    src/ray/thirdparty/|
     doc/external/|
     doc/source/
   )
@@ -29,7 +30,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/test_runtime_env_validation_bad_2_schema.json|
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
             # json5 comments prevent parsing
             python/asv.conf.json|
             rllib/asv.conf.json
@@ -41,22 +42,51 @@ repos:
     hooks:
       - id: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
+      - id: ruff
+        args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/'
+
+  - repo: https://github.com/jsh9/pydoclint
+    rev: "0.6.6"
+    hooks:
+      - id: pydoclint
+        args: [
+          --style=google,
+          --baseline=ci/lint/pydoclint-baseline.txt,
+          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$|^python/ray/_private/parameter\.py$,
+          # --generate-baseline=True, # Not generally needed, but documenting since this is how we generate the initial baseline
+          --auto-regenerate-baseline=True,
+          # Current settings (not because we think they're right, but because we
+          # don't want a baseline the size of the codebase)
+          --arg-type-hints-in-docstring=False,
+          --skip-checking-raises=True,
+          --check-return-types=False,
+          --allow-init-docstring=True,
+          --check-class-attributes=False,
+          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
+        ]
+        types: [python]
+        files: '^python/ray/'
 
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0
     hooks:
       - id: cpplint
         args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
-        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|common|object_manager|rpc(?:/.*)?|raylet|core_worker/transport)/.*\.(h|cc)$
-        exclude: ^src/ray/raylet/scheduling/.*\.(h|cc)$
+        files: ^src/ray/(common/cgroup2|common/scheduling|common/ray_syncer|common/test|util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker)/.*\.(h|cc)$
+        exclude: |
+          (?x)^(
+            src/ray/raylet/scheduling/.*\.(h|cc)$ |
+            src/ray/core_worker/lib/java/.*\.h$
+          )
 
   - repo: https://github.com/keith/pre-commit-buildifier
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python)(/[^/]+)*/BUILD$
+        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python)(/[^/]+)*/BUILD$
+        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -144,6 +174,12 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
+
+  - repo: https://github.com/errata-ai/vale
+    rev: v3.4.1
+    hooks:
+      - id: vale
+        files: ^doc/source/data/.*\.(md|rst)$
 
   - repo: local
     hooks:

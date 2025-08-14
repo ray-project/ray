@@ -34,12 +34,12 @@ void BundleLocationIndex::AddBundleLocations(
   }
 
   // Update `node_to_leased_bundles_`.
-  for (auto iter : *bundle_locations) {
-    const auto &node_id = iter.second.first;
+  for (auto bundle_iter : *bundle_locations) {
+    const auto &node_id = bundle_iter.second.first;
     if (!node_to_leased_bundles_.contains(node_id)) {
       node_to_leased_bundles_[node_id] = std::make_shared<BundleLocations>();
     }
-    node_to_leased_bundles_[node_id]->emplace(iter.first, iter.second);
+    node_to_leased_bundles_[node_id]->emplace(bundle_iter.first, bundle_iter.second);
   }
 }
 
@@ -119,7 +119,7 @@ bool BundleLocationIndex::Erase(const PlacementGroupID &placement_group_id) {
   return true;
 }
 
-const absl::optional<std::shared_ptr<BundleLocations> const>
+const std::optional<std::shared_ptr<BundleLocations> const>
 BundleLocationIndex::GetBundleLocations(
     const PlacementGroupID &placement_group_id) const {
   auto it = placement_group_to_bundle_locations_.find(placement_group_id);
@@ -129,7 +129,7 @@ BundleLocationIndex::GetBundleLocations(
   return it->second;
 }
 
-const absl::optional<std::shared_ptr<BundleLocations> const>
+const std::optional<std::shared_ptr<BundleLocations> const>
 BundleLocationIndex::GetBundleLocationsOnNode(const NodeID &node_id) const {
   auto it = node_to_leased_bundles_.find(node_id);
   if (it == node_to_leased_bundles_.end()) {

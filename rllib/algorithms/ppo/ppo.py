@@ -418,9 +418,7 @@ class PPO(Algorithm):
                 return
 
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(
-                env_runner_results, key=ENV_RUNNER_RESULTS
-            )
+            self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Perform a learner update step on the collected episodes.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -437,7 +435,7 @@ class PPO(Algorithm):
                 minibatch_size=self.config.minibatch_size,
                 shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
-            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -446,7 +444,7 @@ class PPO(Algorithm):
             # But we also return a total_loss key at the same level as the ModuleID
             # keys. So we need to subtract that to get the correct set of ModuleIDs to
             # update.
-            # TODO (sven): We should also not be using `learner_results` as a messenger
+            # TODO (sven): We should not be using `learner_results` as a messenger
             #  to infer which modules to update. `policies_to_train` might also NOT work
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.

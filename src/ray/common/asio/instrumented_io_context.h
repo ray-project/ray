@@ -34,7 +34,8 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param enable_lag_probe If true, and if related Ray configs are set, schedule a
   /// probe to measure the event loop lag. After a probe is done, it schedules another one
   /// so a io_context.run() call will never return.
-  explicit instrumented_io_context(bool enable_lag_probe = false);
+  explicit instrumented_io_context(bool enable_lag_probe = false,
+                                   bool running_on_single_thread = false);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -43,7 +44,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
   /// \param delay_us Delay time before the handler will be executed.
-  void post(std::function<void()> handler, const std::string &name, int64_t delay_us = 0);
+  void post(std::function<void()> handler, std::string name, int64_t delay_us = 0);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -51,7 +52,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void dispatch(std::function<void()> handler, const std::string &name);
+  void dispatch(std::function<void()> handler, std::string name);
 
   EventTracker &stats() const { return *event_stats_; };
 

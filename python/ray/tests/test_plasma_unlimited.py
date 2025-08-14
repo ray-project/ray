@@ -3,16 +3,19 @@ import json
 import random
 import os
 import shutil
+import sys
 import platform
-import pytest
 import psutil
 
+import pytest
+
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     check_spilled_mb,
     fetch_prometheus,
-    wait_for_condition,
 )
+from ray._common.network_utils import build_address
 
 MB = 1024 * 1024
 
@@ -22,7 +25,11 @@ pytestmark = [pytest.mark.timeout(1800 if platform.system() == "Darwin" else 180
 
 
 def _init_ray():
-    return ray.init(num_cpus=2, object_store_memory=700e6)
+    return ray.init(
+        num_cpus=2,
+        object_store_memory=700e6,
+        object_spilling_directory="/tmp/ray/plasma",
+    )
 
 
 @pytest.mark.skipif(
@@ -226,12 +233,11 @@ def test_fallback_allocation_failure(shutdown_only):
     file_system_config = {
         "type": "filesystem",
         "params": {
-            "directory_path": "/tmp",
+            "directory_path": "/dev/shm",
         },
     }
     ray.init(
         object_store_memory=100e6,
-        _temp_dir="/dev/shm",
         _system_config={
             "object_spilling_config": json.dumps(file_system_config),
             # set local fs capacity to 100% so it never errors with out of disk.
@@ -316,7 +322,7 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
     )
     metrics_export_port = address["metrics_export_port"]
     addr = address["node_ip_address"]
-    prom_addr = f"{addr}:{metrics_export_port}"
+    prom_addr = build_address(addr, metrics_export_port)
 
     x1 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
     # x1 will be spilled.
@@ -368,9 +374,4 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

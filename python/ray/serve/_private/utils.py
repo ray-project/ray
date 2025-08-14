@@ -1,13 +1,16 @@
 import asyncio
+import collections
+import concurrent.futures
 import copy
 import importlib
 import inspect
 import logging
-import os
 import random
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
+from asyncio import coroutines, ensure_future, futures
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -17,14 +20,14 @@ import requests
 
 import ray
 import ray.util.serialization_addons
-from ray._common.utils import import_attr
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
+from ray.serve.config import gRPCOptions
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 
@@ -37,6 +40,8 @@ try:
     import numpy as np
 except ImportError:
     np = None
+
+FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
@@ -335,20 +340,6 @@ def in_interactive_shell():
     return not hasattr(main, "__file__")
 
 
-def guarded_deprecation_warning(*args, **kwargs):
-    """Wrapper for deprecation warnings, guarded by a flag."""
-    if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
-        from ray._private.utils import deprecated
-
-        return deprecated(*args, **kwargs)
-    else:
-
-        def noop_decorator(func):
-            return func
-
-        return noop_decorator
-
-
 def snake_to_camel_case(snake_str: str) -> str:
     """Convert a snake case string to camel case."""
 
@@ -555,7 +546,8 @@ def get_component_file_name(
     component_type: Optional[ServeComponentType],
     suffix: str = "",
 ) -> str:
-    """Get the component's file name."""
+    """Get the component's file name. Replaces special characters with underscores."""
+    component_name = re.sub(FILE_NAME_REGEX, "_", component_name)
 
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.
@@ -590,7 +582,7 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if "{" in route_prefix or "}" in route_prefix:
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+            f"Invalid route_prefix '{route_prefix}', may not contain wildcards."
         )
 
 
@@ -618,3 +610,130 @@ def wait_for_interrupt() -> None:
         # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
         # from the main script.
         raise
+
+
+def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+    return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
+
+
+def run_coroutine_or_future_threadsafe(coro_or_future, loop):
+    """Submit a coroutine object or future to a given event loop.
+
+    Ref: https://github.com/python/cpython/blob/eef49c359505eaf109d519d39e53dfd3c78d066a/Lib/asyncio/tasks.py#L991
+
+    Return a concurrent.futures.Future to access the result.
+    """
+    if not coroutines.iscoroutine(coro_or_future) and not futures.isfuture(
+        coro_or_future
+    ):
+        raise TypeError("A coroutine object or future is required")
+
+    if futures.isfuture(coro_or_future):
+        assert loop == coro_or_future.get_loop()
+
+    future = concurrent.futures.Future()
+
+    def callback():
+        try:
+            futures._chain_future(ensure_future(coro_or_future, loop=loop), future)
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except BaseException as exc:
+            if future.set_running_or_notify_cancel():
+                future.set_exception(exc)
+            raise
+
+    loop.call_soon_threadsafe(callback)
+    return future
+
+
+class Semaphore:
+    """Based on asyncio.Semaphore.
+
+    This is a semaphore that can be used to limit the number of concurrent requests.
+    Its maximum value is dynamic and is determined by the `get_value_fn` function.
+    """
+
+    def __init__(self, get_value_fn: Callable[[], int]):
+        self._waiters = None
+        self._value = 0
+        self._get_value_fn = get_value_fn
+
+    def __repr__(self):
+        res = super().__repr__()
+        extra = "locked" if self.locked() else f"unlocked, value:{self._value}"
+        if self._waiters:
+            extra = f"{extra}, waiters:{len(self._waiters)}"
+        return f"<{res[1:-1]} [{extra}]>"
+
+    async def __aenter__(self):
+        await self.acquire()
+        # We have no use for the "as ..."  clause in the with
+        # statement for locks.
+        return None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.release()
+
+    def get_max_value(self):
+        return self._get_value_fn()
+
+    def locked(self):
+        """Returns True if semaphore cannot be acquired immediately."""
+        return self._value >= self.get_max_value() or (
+            any(not w.cancelled() for w in (self._waiters or ()))
+        )
+
+    async def acquire(self):
+        """Acquire a semaphore.
+        If the internal counter is larger than zero on entry,
+        decrement it by one and return True immediately.  If it is
+        zero on entry, block, waiting until some other coroutine has
+        called release() to make it larger than 0, and then return
+        True.
+        """
+        if not self.locked():
+            self._value += 1
+            return True
+
+        if self._waiters is None:
+            self._waiters = collections.deque()
+        fut = asyncio.Future()
+        self._waiters.append(fut)
+
+        # Finally block should be called before the CancelledError
+        # handling as we don't want CancelledError to call
+        # _wake_up_first() and attempt to wake up itself.
+        try:
+            try:
+                await fut
+            finally:
+                self._waiters.remove(fut)
+        except asyncio.CancelledError:
+            if not fut.cancelled():
+                self._value -= 1
+                self._wake_up_next()
+            raise
+
+        if self._value < self.get_max_value():
+            self._wake_up_next()
+        return True
+
+    def release(self):
+        """Release a semaphore, incrementing the internal counter by one.
+        When it was zero on entry and another coroutine is waiting for it to
+        become larger than zero again, wake up that coroutine.
+        """
+        self._value -= 1
+        self._wake_up_next()
+
+    def _wake_up_next(self):
+        """Wake up the first waiter that isn't done."""
+        if not self._waiters:
+            return
+
+        for fut in self._waiters:
+            if not fut.done():
+                self._value += 1
+                fut.set_result(True)
+                return

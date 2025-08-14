@@ -20,7 +20,7 @@ from ray.util.state import (
     list_workers,
     list_nodes,
 )
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_timeline(shutdown_only):
@@ -377,9 +377,4 @@ def test_ray_timeline(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

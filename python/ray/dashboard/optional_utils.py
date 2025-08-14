@@ -24,11 +24,11 @@ from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_boo
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.routes import method_route_table_factory, rest_response
 from ray.dashboard.utils import (
     DashboardAgentModule,
     DashboardHeadModule,
 )
-from ray.dashboard.routes import method_route_table_factory, rest_response
 
 try:
     create_task = asyncio.create_task
@@ -66,6 +66,10 @@ def aiohttp_cache(
                 #   * (Request, )
                 #   * (self, Request)
                 req = args[-1]
+                # If nocache=1 in query string, bypass cache.
+                if req.query.get("nocache") == "1":
+                    return await handler(*args)
+
                 # Make key.
                 if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
                     key = req.path_qs

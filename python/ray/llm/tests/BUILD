@@ -12,7 +12,7 @@ py_library(
 # Common tests
 py_test_module_list(
     size = "small",
-    files = glob(["common/**/test_cloud_utils.py"]),
+    files = glob(["common/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -23,7 +23,7 @@ py_test_module_list(
 
 # Batch test
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob([
         "batch/cpu/**/test_*.py",
         "batch/observability/usage_telemetry/test_*.py",
@@ -41,7 +41,9 @@ py_test_module_list(
     env = {
         "VLLM_FLASH_ATTN_VERSION": "2",
     },
-    files = glob(["batch/gpu/**/test_*.py"]),
+    files = glob(
+        ["batch/gpu/**/test_*.py"],
+    ),
     tags = [
         "exclusive",
         "gpu",
@@ -54,43 +56,11 @@ py_test_module_list(
 )
 
 # Serve test
-# Small tests
+# CPU tests
 py_test_module_list(
-    size = "small",
+    size = "large",
     data = glob(["serve/**/*.yaml"]),
-    files = [
-        "serve/config_generator/test_input_converter.py",
-        "serve/config_generator/test_text_completion.py",
-        "serve/configs/test_json_mode_utils.py",
-        "serve/configs/test_models.py",
-        "serve/configs/test_prompt_formats.py",
-        "serve/deployments/llm/multiplex/test_lora_model_loader.py",
-        "serve/deployments/llm/multiplex/test_multiplex_deployment.py",
-        "serve/deployments/llm/multiplex/test_multiplex_utils.py",
-        "serve/deployments/llm/test_image_retriever.py",
-        "serve/deployments/llm/vllm/test_vllm_engine.py",
-        "serve/deployments/test_streaming_error_handler.py",
-        "serve/observability/usage_telemetry/test_usage.py",
-    ],
-    tags = [
-        "cpu",
-        "exclusive",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-# Medium tests
-py_test_module_list(
-    size = "medium",
-    data = glob(["serve/**/*.yaml"]),
-    files = [
-        "serve/builders/test_application_builders.py",
-        "serve/deployments/llm/multiplex/test_lora_deployment_base_client.py",
-    ],
+    files = glob(["serve/cpu/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -106,10 +76,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
-    files = [
-        "serve/integration/test_openai_compatibility.py",
-        "serve/integration/test_openai_compatibility_no_accelerator_type.py",
-    ],
+    files = glob(["serve/gpu/**/test_*.py"]),
     tags = [
         "exclusive",
         "gpu",

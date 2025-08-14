@@ -56,6 +56,8 @@ constexpr int kPublicDNSServerPort = 53;
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
 constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
 
+constexpr char kEnvVarKeyGrpcThreadCount[] = "RAY_num_grpc_internal_threads";
+
 /// for cross-langueage serialization
 constexpr int kMessagePackOffset = 9;
 
@@ -76,7 +78,11 @@ constexpr char kGcsAutoscalerClusterConfigKey[] = "__autoscaler_cluster_config";
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
 
+/// ENV keys for Ray node labels
 constexpr char kNodeTypeNameEnv[] = "RAY_NODE_TYPE_NAME";
+constexpr char kNodeMarketTypeEnv[] = "RAY_NODE_MARKET_TYPE";
+constexpr char kNodeRegionEnv[] = "RAY_NODE_REGION";
+constexpr char kNodeZoneEnv[] = "RAY_NODE_ZONE";
 
 constexpr char kNodeCloudInstanceTypeNameEnv[] = "RAY_CLOUD_INSTANCE_TYPE_NAME";
 
@@ -96,9 +102,44 @@ constexpr char kLibraryPathEnvName[] = "PATH";
 constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #endif
 
+/// Default node label keys populated by the Raylet
 #define RAY_LABEL_KEY_PREFIX "ray.io/"
-/// Default node label key: node_id
-constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+
+// The unique ID assigned to this node by the Raylet.
+constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node-id";
+
+// The accelerator type associated with the Ray node (e.g., "A100").
+constexpr char kLabelKeyNodeAcceleratorType[] = RAY_LABEL_KEY_PREFIX "accelerator-type";
+
+// The market type of the cloud instance this Ray node runs on (e.g., "on-demand" or
+// "spot").
+constexpr char kLabelKeyNodeMarketType[] = RAY_LABEL_KEY_PREFIX "market-type";
+
+// The region of the cloud instance this Ray node runs on (e.g., "us-central2").
+constexpr char kLabelKeyNodeRegion[] = RAY_LABEL_KEY_PREFIX "availability-region";
+
+// The zone of the cloud instance this Ray node runs on (e.g., "us-central2-b").
+constexpr char kLabelKeyNodeZone[] = RAY_LABEL_KEY_PREFIX "availability-zone";
+
+// The name of the head or worker group this Ray node is a part of.
+constexpr char kLabelKeyNodeGroup[] = RAY_LABEL_KEY_PREFIX "node-group";
+
+/// TPU specific default labels. Used for multi-host TPU workload scheduling.
+
+// The physical chip topology of the TPU accelerator of this Ray node.
+constexpr char kLabelKeyTpuTopology[] = RAY_LABEL_KEY_PREFIX "tpu-topology";
+
+// A unique identifier within the RayCluster for the TPU slice this Ray
+// node is scheduled on.
+constexpr char kLabelKeyTpuSliceName[] = RAY_LABEL_KEY_PREFIX "tpu-slice-name";
+
+// A unique integer ID for a Ray node with TPU resources within the TPU slice
+// it's scheduled on. Valid values are 0 to N-1 where N is the number of TPU hosts.
+constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
+
+// A string representing the current TPU pod type, e.g. v6e-32.
+constexpr char kLabelKeyTpuPodType[] = RAY_LABEL_KEY_PREFIX "tpu-pod-type";
+
 #undef RAY_LABEL_KEY_PREFIX
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.
@@ -107,3 +148,6 @@ constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
 /// can be shared but protobuf doesn't support defining string constants.
 /// https://docs.google.com/document/d/151T4VnknX_5EtPy6E-LbpL-r1T4ZSO0UBvSgWdSjx4Q/edit#heading=h.2ews5m5fmz
 constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
+
+/// PID of GCS process to record metrics.
+constexpr char kGcsPidKey[] = "gcs_pid";

@@ -554,6 +554,11 @@ std::string BaseID<T>::Hex() const {
 }
 
 template <>
+struct DefaultLogKey<ClusterID> {
+  constexpr static std::string_view key = kLogKeyClusterID;
+};
+
+template <>
 struct DefaultLogKey<JobID> {
   constexpr static std::string_view key = kLogKeyJobID;
 };

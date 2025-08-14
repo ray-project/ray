@@ -11,7 +11,6 @@ from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(default_timesteps=5000000)
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
     num_env_runners=4,
 )
@@ -31,7 +30,7 @@ config = (
     # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
     #  training.
     # .env_runners(
-    #    env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+    #    env_to_module_connector=lambda env, spaces, device: MeanStdFilter(multi_agent=True),
     # )
     .training(
         train_batch_size_per_learner=600,

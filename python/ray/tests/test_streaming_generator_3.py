@@ -8,7 +8,7 @@ from collections import Counter
 
 import ray
 from ray._raylet import ObjectRefGenerator
-from ray.exceptions import WorkerCrashedError
+from ray.exceptions import TaskCancelledError
 
 
 def test_threaded_actor_generator(shutdown_only):
@@ -290,18 +290,14 @@ def test_completed_next_ready_is_finished(shutdown_only):
     # The last exception is not taken yet.
     assert gen.next_ready()
     assert not gen.is_finished()
-    with pytest.raises(WorkerCrashedError):
+    with pytest.raises(TaskCancelledError):
         ray.get(gen.completed())
-    with pytest.raises(WorkerCrashedError):
+    with pytest.raises(TaskCancelledError):
         ray.get(next(gen))
     assert not gen.next_ready()
     assert gen.is_finished()
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <memory>
 
-#include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/test/gcs_table_storage_test_base.h"

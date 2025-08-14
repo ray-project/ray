@@ -11,7 +11,7 @@ More Ray ML Libraries
     raydp
     mars-on-ray
     modin/index
-    Ray Workflows (Deprecated) <../workflows/index>
+    data_juicer_distributed_data_processing
 
 
 .. TODO: we added the three Ray Core examples below, since they don't really belong there.
@@ -27,6 +27,7 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`spark-on-ray`
 - :ref:`mars-on-ray`
 - :ref:`modin-on-ray`
+- `daft <https://www.getdaft.io>`_
 
 .. _air-ecosystem-map:
 

@@ -16,6 +16,11 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "mock/ray/core_worker/memory_store.h"
@@ -46,7 +51,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   InstrumentedIOContextWithThread io_context("TestReportUnhandledErrors");
 
-  std::shared_ptr<CoreWorkerMemoryStore> provider =
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
           io_context.GetIoService(),
           nullptr,
@@ -59,44 +64,44 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   auto id2 = ObjectID::FromRandom();
 
   // Check basic put and get.
-  ASSERT_TRUE(provider->GetIfExists(id1) == nullptr);
-  RAY_CHECK(provider->Put(obj1, id1));
-  RAY_CHECK(provider->Put(obj2, id2));
-  ASSERT_TRUE(provider->GetIfExists(id1) != nullptr);
+  ASSERT_TRUE(memory_store->GetIfExists(id1) == nullptr);
+  memory_store->Put(obj1, id1);
+  memory_store->Put(obj2, id2);
+  ASSERT_TRUE(memory_store->GetIfExists(id1) != nullptr);
   ASSERT_EQ(unhandled_count, 0);
 
   // Check delete without get.
-  provider->Delete({id1, id2});
+  memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 1);
   unhandled_count = 0;
 
   // Check delete after get.
-  RAY_CHECK(provider->Put(obj1, id1));
-  RAY_CHECK(provider->Put(obj1, id2));
-  RAY_UNUSED(provider->Get({id1}, 1, 100, context, false, &results));
-  RAY_UNUSED(provider->Get({id2}, 1, 100, context, false, &results));
-  provider->Delete({id1, id2});
+  memory_store->Put(obj1, id1);
+  memory_store->Put(obj1, id2);
+  RAY_UNUSED(memory_store->Get({id1}, 1, 100, context, false, &results));
+  RAY_UNUSED(memory_store->Get({id2}, 1, 100, context, false, &results));
+  memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 
   // Check delete after async get.
-  provider->GetAsync({id2}, [](std::shared_ptr<RayObject> obj) {});
-  RAY_CHECK(provider->Put(obj1, id1));
-  RAY_CHECK(provider->Put(obj2, id2));
-  provider->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
-  provider->Delete({id1, id2});
+  memory_store->GetAsync({id2}, [](std::shared_ptr<RayObject> obj) {});
+  memory_store->Put(obj1, id1);
+  memory_store->Put(obj2, id2);
+  memory_store->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
+  memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 }
 
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
-  auto provider = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.
   auto fill_expected_memory_stats = [&](MemoryStoreStats &expected_item) {
     {
-      absl::MutexLock lock(&provider->mu_);
-      for (const auto &it : provider->objects_) {
+      absl::MutexLock lock(&memory_store->mu_);
+      for (const auto &it : memory_store->objects_) {
         if (it.second->IsInPlasmaError()) {
           expected_item.num_in_plasma += 1;
         } else {
@@ -114,34 +119,34 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   auto id2 = ObjectID::FromRandom();
   auto id3 = ObjectID::FromRandom();
 
-  RAY_CHECK(provider->Put(obj1, id1));
-  RAY_CHECK(provider->Put(obj2, id2));
-  RAY_CHECK(provider->Put(obj3, id3));
-  provider->Delete({id3});
+  memory_store->Put(obj1, id1);
+  memory_store->Put(obj2, id2);
+  memory_store->Put(obj3, id3);
+  memory_store->Delete({id3});
 
   MemoryStoreStats expected_item;
   fill_expected_memory_stats(expected_item);
-  MemoryStoreStats item = provider->GetMemoryStoreStatisticalData();
+  MemoryStoreStats item = memory_store->GetMemoryStoreStatisticalData();
   ASSERT_EQ(item.num_in_plasma, expected_item.num_in_plasma);
   ASSERT_EQ(item.num_local_objects, expected_item.num_local_objects);
   ASSERT_EQ(item.num_local_objects_bytes, expected_item.num_local_objects_bytes);
 
   // Delete all other objects and see if stats are recorded correctly.
-  provider->Delete({id1, id2});
+  memory_store->Delete({id1, id2});
 
   MemoryStoreStats expected_item2;
   fill_expected_memory_stats(expected_item2);
-  item = provider->GetMemoryStoreStatisticalData();
+  item = memory_store->GetMemoryStoreStatisticalData();
   ASSERT_EQ(item.num_in_plasma, expected_item2.num_in_plasma);
   ASSERT_EQ(item.num_local_objects, expected_item2.num_local_objects);
   ASSERT_EQ(item.num_local_objects_bytes, expected_item2.num_local_objects_bytes);
 
-  RAY_CHECK(provider->Put(obj1, id1));
-  RAY_CHECK(provider->Put(obj2, id2));
-  RAY_CHECK(provider->Put(obj3, id3));
+  memory_store->Put(obj1, id1);
+  memory_store->Put(obj2, id2);
+  memory_store->Put(obj3, id3);
   MemoryStoreStats expected_item3;
   fill_expected_memory_stats(expected_item3);
-  item = provider->GetMemoryStoreStatisticalData();
+  item = memory_store->GetMemoryStoreStatisticalData();
   ASSERT_EQ(item.num_in_plasma, expected_item3.num_in_plasma);
   ASSERT_EQ(item.num_local_objects, expected_item3.num_local_objects);
   ASSERT_EQ(item.num_local_objects_bytes, expected_item3.num_local_objects_bytes);

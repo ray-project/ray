@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import threading
 import time
@@ -7,7 +8,7 @@ from typing import Callable, Coroutine, Optional, Union
 
 import ray
 from ray.serve._private.common import RequestMetadata
-from ray.serve._private.utils import calculate_remaining_timeout
+from ray.serve._private.utils import calculate_remaining_timeout, generate_request_id
 from ray.serve.exceptions import RequestCancelledError
 
 
@@ -62,6 +63,7 @@ class ActorReplicaResult(ReplicaResult):
         self._is_streaming: bool = metadata.is_streaming
         self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
+        self._lazy_object_ref_or_gen_asyncio_lock = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -72,6 +74,27 @@ class ActorReplicaResult(ReplicaResult):
             assert (
                 self._obj_ref_gen is not None
             ), "An ObjectRefGenerator must be passed for streaming requests."
+
+        request_context = ray.serve.context._get_serve_request_context()
+        if request_context.cancel_on_parent_request_cancel:
+            # Keep track of in-flight requests.
+            self._response_id = generate_request_id()
+            ray.serve.context._add_in_flight_request(
+                request_context._internal_request_id, self._response_id, self
+            )
+            self.add_done_callback(
+                lambda _: ray.serve.context._remove_in_flight_request(
+                    request_context._internal_request_id, self._response_id
+                )
+            )
+
+    @property
+    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
+        """Lazy `asyncio.Lock` object."""
+        if self._lazy_object_ref_or_gen_asyncio_lock is None:
+            self._lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
+
+        return self._lazy_object_ref_or_gen_asyncio_lock
 
     def _process_response(f: Union[Callable, Coroutine]):
         @wraps(f)
@@ -86,7 +109,7 @@ class ActorReplicaResult(ReplicaResult):
             try:
                 return await f(self, *args, **kwargs)
             except ray.exceptions.TaskCancelledError:
-                raise RequestCancelledError(self._request_id)
+                raise asyncio.CancelledError()
 
         if inspect.iscoroutinefunction(f):
             return async_wrapper
@@ -174,7 +197,7 @@ class ActorReplicaResult(ReplicaResult):
         # object ref cached in order to avoid calling `__anext__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
-        with self._object_ref_or_gen_sync_lock:
+        async with self._object_ref_or_gen_asyncio_lock:
             if self._obj_ref is None:
                 self._obj_ref = await self._obj_ref_gen.__anext__()
 

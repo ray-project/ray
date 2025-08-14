@@ -1,13 +1,14 @@
 import asyncio
-import os
 import sys
 import time
+import concurrent.futures
 from collections import defaultdict
 
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.util.state import list_tasks
 
@@ -134,70 +135,6 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
         ray.get(ref_dep_not_resolved)
 
 
-@pytest.mark.skip(
-    reason=("The guarantee in this case is too weak now. " "Need more work.")
-)
-def test_in_flight_queued_requests_canceled(shutdown_only, monkeypatch):
-    """
-    When there are large input size in-flight actor tasks
-    tasks are queued inside a RPC layer (core_worker_client.h)
-    In this case, we don't cancel a request from a client side
-    but wait until it is sent to the server side and cancel it.
-    See SendRequests() inside core_worker_client.h
-    """
-    # Currently the max bytes is
-    # const int64_t kMaxBytesInFlight = 16 * 1024 * 1024.
-    # See core_worker_client.h.
-    input_arg = b"1" * 15 * 1024  # 15KB.
-    # Tasks are queued when there are more than 1024 tasks.
-    sig = SignalActor.remote()
-
-    @ray.remote
-    class Actor:
-        def __init__(self, signal_actor):
-            self.signal_actor = signal_actor
-
-        def f(self, input_arg):
-            ray.get(self.signal_actor.wait.remote())
-            return True
-
-    a = Actor.remote(sig)
-    refs = [a.f.remote(input_arg) for _ in range(5000)]
-
-    # Wait until the first task runs.
-    wait_for_condition(
-        lambda: len(list_tasks(filters=[("STATE", "=", "RUNNING")])) == 1
-    )
-
-    # Cancel all tasks.
-    for ref in refs:
-        ray.cancel(ref)
-
-    # The first ref is in progress, so we pop it out
-    first_ref = refs.pop(0)
-    ray.get(sig.send.remote())
-
-    # Make sure all tasks that are queued (including queued
-    # due to in-flight bytes) are canceled.
-    canceled = 0
-    for ref in refs:
-        try:
-            ray.get(ref)
-        except TaskCancelledError:
-            canceled += 1
-
-    # Verify at least half of tasks are canceled.
-    # Currently, the guarantee is weak because we cannot
-    # detect queued tasks due to inflight bytes limit.
-    # TODO(sang): Move the in flight bytes logic into
-    # actor submission queue instead of doing it inside
-    # core worker client.
-    assert canceled > 2500
-
-    # first ref shouldn't have been canceled.
-    assert ray.get(first_ref)
-
-
 def test_async_actor_server_side_cancel(shutdown_only):
     """
     Test Cancelation when a task is queued on a server side.
@@ -291,16 +228,15 @@ def test_async_actor_cancel_restart(ray_start_cluster, monkeypatch):
         cluster.remove_node(node)
         r, ur = ray.wait([ref])
         # When cancel is called, the task won't be retried anymore.
-        # Since an actor is dead, in this case, it will raise
-        # RayActorError.
-        with pytest.raises(ray.exceptions.RayActorError):
+        # It will raise TaskCancelledError.
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
         # This will restart actor, but task won't be retried.
         cluster.add_node(num_cpus=1)
         # Verify actor is restarted. f should be retried
         ray.get(a.__ray_ready__.remote())
-        with pytest.raises(ray.exceptions.RayActorError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
 
@@ -322,34 +258,6 @@ def test_remote_cancel(ray_start_regular):
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
         ray.get(sleep_ref)
-
-
-@pytest.mark.skip(reason=("Currently not passing. There's one edge case to fix."))
-def test_cancel_stress(shutdown_only):
-    ray.init()
-
-    @ray.remote
-    class Actor:
-        async def sleep(self):
-            await asyncio.sleep(1000)
-
-    actors = [Actor.remote() for _ in range(30)]
-
-    refs = []
-    for _ in range(20):
-        for actor in actors:
-            for i in range(100):
-                ref = actor.sleep.remote()
-                refs.append(ref)
-                if i % 2 == 0:
-                    ray.cancel(ref)
-
-    for ref in refs:
-        ray.cancel(ref)
-
-    for ref in refs:
-        with pytest.raises((ray.exceptions.TaskCancelledError, TaskCancelledError)):
-            ray.get(ref)
 
 
 def test_cancel_recursive_tree(shutdown_only):
@@ -529,8 +437,39 @@ def test_cancel_recursive_chain(shutdown_only, recursive):
             ray.get(ref)
 
 
+def test_concurrent_submission_and_cancellation(shutdown_only):
+    """Test submitting and then cancelling many tasks concurrently.
+
+    This is a regression test for race conditions such as:
+        https://github.com/ray-project/ray/issues/52628.
+    """
+    NUM_TASKS = 2500
+
+    @ray.remote(num_cpus=0)
+    class Worker:
+        async def sleep(self, i: int):
+            # NOTE: all tasks should be cancelled, so this won't actually sleep for the
+            # full duration if the test is passing.
+            await asyncio.sleep(30)
+
+    worker = Worker.remote()
+
+    # Submit many tasks in parallel to cause queueing on the caller and receiver.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_TASKS) as executor:
+        futures = [executor.submit(worker.sleep.remote, i) for i in range(NUM_TASKS)]
+        refs = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    # Cancel the tasks in reverse order of submission.
+    for ref in reversed(refs):
+        ray.cancel(ref)
+
+    # Check that all tasks were successfully cancelled (none ran to completion).
+    for ref in refs:
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ref)
+
+    print(f"All {NUM_TASKS} tasks were cancelled successfully.")
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

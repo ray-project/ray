@@ -8,7 +8,7 @@ import pytest
 
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
     NodeData,
@@ -117,9 +117,9 @@ class BatchingAutoscalingCluster(AutoscalingCluster):
         )
         # Load the node provider class above.
         config["provider"]["type"] = "external"
-        config["provider"]["module"] = (
-            "ray.tests." "test_batch_node_provider_integration.FakeBatchingNodeProvider"
-        )
+        config["provider"][
+            "module"
+        ] = "ray.tests.test_batch_node_provider_integration.FakeBatchingNodeProvider"
         # Need to run in single threaded mode to use BatchingNodeProvider.
         config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         return config
@@ -178,10 +178,4 @@ def test_fake_batching_autoscaler_e2e(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

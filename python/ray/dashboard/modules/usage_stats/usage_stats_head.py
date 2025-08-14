@@ -7,10 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 import ray
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_lib as ray_usage_lib
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.utils import async_loop_forever
+from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +30,15 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
-        self._dashboard_url_base = f"http://{self.http_host}:{self.http_port}"
+        self._dashboard_url_base = (
+            f"http://{build_address(self.http_host, self.http_port)}"
+        )
         # We want to record stats for anyone who has run ray with grafana or
         # prometheus at any point in time during a ray session.
         self._grafana_ran_before = False
         self._prometheus_ran_before = False
 
-    if ray._private.utils.check_dashboard_dependencies_installed():
+    if ray._private.utils.get_dashboard_dependency_error() is None:
         import aiohttp
 
         import ray.dashboard.optional_utils
@@ -60,7 +63,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             )
 
     def _check_grafana_running(self):
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
         if self._grafana_ran_before:
             return
@@ -86,7 +89,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             self._grafana_ran_before = True
 
     def _check_prometheus_running(self):
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
         if self._prometheus_ran_before:
             return
@@ -189,7 +192,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     async def periodically_report_usage(self):
         await self._report_usage_async()
 
-    async def run(self, server):
+    async def run(self):
         self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
             os.path.expanduser("~/ray_bootstrap_config.yaml")
         )

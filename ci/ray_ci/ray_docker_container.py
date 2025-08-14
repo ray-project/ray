@@ -1,11 +1,12 @@
 import os
 from typing import List
 
+from ray_release.configs.global_config import get_global_config
+
+from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, PYTHON_VERSIONS
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import DockerContainer
-from ci.ray_ci.builder_container import PYTHON_VERSIONS, DEFAULT_ARCHITECTURE
-from ci.ray_ci.utils import docker_pull, RAY_VERSION
-from ray_release.configs.global_config import get_global_config
+from ci.ray_ci.utils import RAY_VERSION, docker_pull
 
 
 class RayDockerContainer(DockerContainer):
@@ -13,16 +14,17 @@ class RayDockerContainer(DockerContainer):
     Container for building and publishing ray docker images
     """
 
-    def run(self) -> None:
+    def run(self, use_base_extra: bool = False) -> None:
         """
         Build and publish ray docker images
         """
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
+        base_name = "base" if not use_base_extra else "base-extra"
         if self.architecture == DEFAULT_ARCHITECTURE:
-            suffix = "base"
+            suffix = base_name
         else:
-            suffix = f"base-{self.architecture}"
+            suffix = f"{base_name}-{self.architecture}"
 
         base_image = (
             f"{_DOCKER_ECR_REPO}:{rayci_build_id}"
@@ -46,8 +48,7 @@ class RayDockerContainer(DockerContainer):
         ]
         if self._should_upload():
             cmds += [
-                "pip install -q aws_requests_auth requests",
-                "python .buildkite/copy_files.py --destination docker_login",
+                "bazel run .buildkite:copy_files -- --destination docker_login",
             ]
             for alias in self._get_image_names():
                 cmds += [

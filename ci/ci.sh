@@ -13,10 +13,6 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
-keep_alive() {
-  "${WORKSPACE_DIR}"/ci/keep_alive "$@"
-}
-
 # Calls the provided command with set -x temporarily suppressed
 suppress_xtrace() {
   {
@@ -54,18 +50,6 @@ reload_env() {
   fi
 }
 
-_need_wheels() {
-  local result="false"
-  case "${OSTYPE}" in
-    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
-  esac
-  echo "${result}"
-}
-
-NEED_WHEELS="$(_need_wheels)"
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -85,7 +69,7 @@ compile_pip_dependencies() {
     cd "${WORKSPACE_DIR}"
 
     echo "Target file: $TARGET"
-    pip install pip-tools
+    pip install "pip-tools==7.4.1" "wheel==0.45.1"
 
     # Required packages to lookup e.g. dragonfly-opt
     HAS_TORCH=0
@@ -137,6 +121,7 @@ test_cpp() {
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
+  bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
@@ -153,10 +138,10 @@ test_cpp() {
   fi
 }
 
-test_wheels() {
+test_macos_wheels() {
   local TEST_WHEEL_RESULT=0
 
-  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
+  "${WORKSPACE_DIR}"/ci/build/test-macos-wheels.sh || TEST_WHEEL_RESULT=$?
 
   if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
@@ -224,23 +209,14 @@ check_sphinx_links() {
 }
 
 _bazel_build_before_install() {
-  local target
-  if [ "${OSTYPE}" = msys ]; then
-    target="//:ray_pkg"
-  else
-    # Just build Python on other platforms.
-    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
-    target="//:ray_pkg"
-  fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
-    bazel build "${target}"
-  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
-    # bazel build --config asan "${target}"
-    echo "Not needed"
-  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel build --config debug "${target}"
+  if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
+    bazel run //:gen_ray_pkg
+  elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
+    echo "No need to build anything before install"
+  elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
+    bazel run --config debug //:gen_ray_pkg
   else
     echo "Invalid config given"
     exit 1
@@ -252,12 +228,17 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -e .
+
+    # This is required so that pip does not pick up a cython version that is
+    # too high that can break CI, especially on MacOS.
+    pip install -q cython==3.0.12
+
+    pip install -v -e . -c requirements_compiled.txt
   )
   (
     # For runtime_env tests, wheels are needed
     cd "${WORKSPACE_DIR}"
-    keep_alive pip wheel -e python -w .whl
+    pip wheel -e python -w .whl
   )
 }
 
@@ -376,7 +357,7 @@ build_wheels_and_jars() {
       validate_wheels_commit_str
       ;;
     msys*)
-      keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }
@@ -411,11 +392,6 @@ init() {
 }
 
 build() {
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels_and_jars
-    return
-  fi
-
   # Build and install ray into the system.
   # For building the wheel, see build_wheels_and_jars.
   _bazel_build_before_install

@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
@@ -34,7 +35,6 @@ LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
     TaskDependencyManagerInterface &task_dependency_manager,
-    std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
     internal::NodeInfoGetter get_node_info,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -45,9 +45,9 @@ LocalTaskManager::LocalTaskManager(
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
+      self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
-      is_owner_alive_(is_owner_alive),
       get_node_info_(get_node_info),
       max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
@@ -64,16 +64,27 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
   RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
+  // The local node must be feasible if the cluster task manager decides to run the task
+  // locally.
+  RAY_CHECK(cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
+      self_scheduling_node_id_,
+      ResourceMapToResourceRequest(work->task.GetTaskSpecification()
+                                       .GetRequiredPlacementResources()
+                                       .GetResourceMap(),
+                                   /*requires_object_store_memory=*/false)))
+      << work->task.GetTaskSpecification().DebugString() << " "
+      << cluster_resource_scheduler_.GetClusterResourceManager()
+             .GetNodeResources(self_scheduling_node_id_)
+             .DebugString();
   WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
 
-bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
+void LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
   const auto &task = work->task;
   const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
   auto object_ids = task.GetTaskSpecification().GetDependencies();
-  bool can_dispatch = true;
   if (!object_ids.empty()) {
     bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task_id,
@@ -85,7 +96,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
-      can_dispatch = false;
       auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(work));
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
@@ -94,7 +104,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
                    << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
   }
-  return can_dispatch;
 }
 
 void LocalTaskManager::ScheduleAndDispatchTasks() {
@@ -171,17 +180,17 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // Count the number of scheduling classes that require CPU and sum their total CPU
     // requests.
     size_t num_classes_with_cpu = 0;
-    for (const auto &entry : tasks_to_dispatch_) {
-      const auto &dispatch_queue = entry.second;
-      for (const auto &work : dispatch_queue) {
-        const auto &task_spec = work->task.GetTaskSpecification();
-        auto cpu_request_ =
-            task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
-        if (cpu_request_ > 0) {
-          num_classes_with_cpu++;
-          total_cpu_requests_ += dispatch_queue.size() * cpu_request_;
-          break;
-        }
+    for (const auto &[_, cur_dispatch_queue] : tasks_to_dispatch_) {
+      // Only need to check the first because all tasks with the same scheduling class
+      // have the same CPU resource requirements.
+      RAY_CHECK(!cur_dispatch_queue.empty());
+      const auto &work = cur_dispatch_queue.front();
+      const auto &task_spec = work->task.GetTaskSpecification();
+      auto cpu_request_ =
+          task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+      if (cpu_request_ > 0) {
+        num_classes_with_cpu++;
+        total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
       }
     }
     const auto &sched_cls_desc =
@@ -201,9 +210,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       size_t total_cpu_running_tasks = 0;
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
-        const auto &sched_cls_desc =
+        const auto &cur_sched_cls_desc =
             TaskSpecification::GetSchedulingClassDescriptor(entry.first);
-        if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0) {
+        if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() >
+            0) {
           total_cpu_running_tasks += entry.second.running_tasks.size();
         }
       }
@@ -316,22 +326,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         continue;
       }
 
-      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
-      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
-
-      // If the owner has died since this task was queued, cancel the task by
-      // killing the worker (unless this task is for a detached actor).
-      if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
-        RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
-                         << "'s caller is no longer running. Cancelling task.";
-        if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(task_id);
-        }
-        ReleaseTaskArgs(task_id);
-        work_it = dispatch_queue.erase(work_it);
-        continue;
-      }
-
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
@@ -406,8 +400,18 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      // TODO(scv119): fail the request.
-      // Call CancelTask
+      const auto &front_task = dispatch_queue.front()->task.GetTaskSpecification();
+      RAY_LOG(ERROR) << "A task got scheduled to a node even though it was infeasible. "
+                        "Please report an issue on GitHub.\nTask: "
+                     << front_task.DebugString();
+      auto dispatch_queue_iter = dispatch_queue.begin();
+      while (dispatch_queue_iter != dispatch_queue.end()) {
+        CancelTaskToDispatch(
+            *dispatch_queue_iter,
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+            "Scheduling failed due to the task becoming infeasible.");
+        dispatch_queue_iter = dispatch_queue.erase(dispatch_queue_iter);
+      }
       tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
       tasks_to_dispatch_.erase(shapes_it++);
@@ -462,11 +466,10 @@ void LocalTaskManager::SpillWaitingTasks() {
       // If scheduling strategy is spread, we prefer honoring spread decision
       // and waiting for task dependencies to be pulled
       // locally than spilling back and causing uneven spread.
-      scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
+      scheduling_node_id = self_scheduling_node_id_;
     }
 
-    if (!scheduling_node_id.IsNil() &&
-        scheduling_node_id.Binary() != self_node_id_.Binary()) {
+    if (!scheduling_node_id.IsNil() && scheduling_node_id != self_scheduling_node_id_) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
       if (!spec.GetDependencies().empty()) {
@@ -505,7 +508,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
-      scheduling_node_id.Binary() == self_node_id_.Binary()) {
+      scheduling_node_id == self_scheduling_node_id_) {
     return false;
   }
 
@@ -529,17 +532,9 @@ bool LocalTaskManager::PoppedWorkerHandler(
     const std::string &runtime_env_setup_error_message) {
   const auto &reply = work->reply;
   const auto &callback = work->callback;
-  bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
+  const bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
   bool dispatched = false;
-
-  // Check whether owner worker or owner node dead.
-  bool not_detached_with_owner_failed = false;
-  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  const auto owner_node_id = NodeID::FromBinary(owner_address.raylet_id());
-  if (!is_detached_actor && !is_owner_alive_(owner_worker_id, owner_node_id)) {
-    not_detached_with_owner_failed = true;
-  }
 
   if (!canceled) {
     const auto &required_resource =
@@ -596,14 +591,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     return false;
   }
 
-  if (!worker || not_detached_with_owner_failed) {
-    // There are two cases that will not dispatch the task at this time:
-    // Case 1: Empty worker popped.
-    // Case 2: The task owner failed (not alive), except the creation task of
-    // detached actor.
-    // In that two case, we should also release worker resources, release task
-    // args.
-
+  if (!worker) {
     dispatched = false;
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
@@ -613,45 +601,41 @@ bool LocalTaskManager::PoppedWorkerHandler(
     ReleaseTaskArgs(task_id);
     RemoveFromRunningTasksIfExists(task);
 
-    if (!worker) {
-      // Empty worker popped.
-      RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
-                        "to grant the lease "
-                     << task_id;
-      if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
-        // In case of runtime env creation failed, we cancel this task
-        // directly and raise a `RuntimeEnvSetupError` exception to user
-        // eventually. The task will be removed from dispatch queue in
-        // `CancelTask`.
-        CancelTask(
-            task_id,
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
-            /*scheduling_failure_message*/ runtime_env_setup_error_message);
-      } else if (status == PopWorkerStatus::JobFinished) {
-        // The task job finished.
-        // Just remove the task from dispatch queue.
-        RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
-        erase_from_dispatch_queue_fn(work, scheduling_class);
-      } else {
-        // In other cases, set the work status `WAITING` to make this task
-        // could be re-dispatched.
-        internal::UnscheduledWorkCause cause =
-            internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        if (status == PopWorkerStatus::JobConfigMissing) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
-        } else {
-          RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
-                         << status;
-        }
-        work->SetStateWaiting(cause);
-      }
-    } else if (not_detached_with_owner_failed) {
-      // The task owner failed.
+    // Empty worker popped.
+    RAY_LOG(DEBUG).WithField(task_id)
+        << "This node has available resources, but no worker processes "
+           "to grant the lease: status "
+        << status;
+    if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
+      // In case of runtime env creation failed, we cancel this task
+      // directly and raise a `RuntimeEnvSetupError` exception to user
+      // eventually. The task will be removed from dispatch queue in
+      // `CancelTask`.
+      CancelTasks(
+          [task_id](const auto &work) {
+            return task_id == work->task.GetTaskSpecification().TaskId();
+          },
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
+          /*scheduling_failure_message*/ runtime_env_setup_error_message);
+    } else if (status == PopWorkerStatus::JobFinished) {
+      // The task job finished.
       // Just remove the task from dispatch queue.
-      RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
+      RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
+    } else {
+      // In other cases, set the work status `WAITING` to make this task
+      // could be re-dispatched.
+      internal::UnscheduledWorkCause cause =
+          internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+      if (status == PopWorkerStatus::JobConfigMissing) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+      } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+      } else {
+        RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
+                       << status;
+      }
+      work->SetStateWaiting(cause);
     }
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
@@ -697,7 +681,7 @@ void LocalTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_ip_address(
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();
 }
@@ -812,13 +796,12 @@ void LocalTaskManager::PinTaskArgs(const TaskSpecification &spec,
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate task request if there is a failure and the original
   // version of the task has not yet been canceled.
-  auto inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
-  if (inserted) {
+  auto executed_task_inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
+  if (executed_task_inserted) {
     for (size_t i = 0; i < deps.size(); i++) {
-      auto inserted =
+      auto [it, pinned_task_inserted] =
           pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-      auto it = inserted.first;
-      if (inserted.second) {
+      if (pinned_task_inserted) {
         // This is the first task that needed this argument.
         pinned_task_arguments_bytes_ += it->second.first->GetSize();
       }
@@ -872,28 +855,12 @@ bool LocalTaskManager::CancelTasks(
 
   ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
       tasks_to_dispatch_, [&](const std::shared_ptr<internal::Work> &work) {
-        if (predicate(work)) {
-          const TaskID task_id = work->task.GetTaskSpecification().TaskId();
-          RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
-          ReplyCancelled(work, failure_type, scheduling_failure_message);
-          if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-            // We've already acquired resources so we need to release them.
-            cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
-                work->allocated_instances);
-            // Release pinned task args.
-            ReleaseTaskArgs(task_id);
-          }
-          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
-            task_dependency_manager_.RemoveTaskDependencies(
-                work->task.GetTaskSpecification().TaskId());
-          }
-          RemoveFromRunningTasksIfExists(work->task);
-          work->SetStateCancelled();
-          tasks_cancelled = true;
-          return true;
-        } else {
+        if (!predicate(work)) {
           return false;
         }
+        CancelTaskToDispatch(work, failure_type, scheduling_failure_message);
+        tasks_cancelled = true;
+        return true;
       });
 
   ray::erase_if<std::shared_ptr<internal::Work>>(
@@ -915,23 +882,31 @@ bool LocalTaskManager::CancelTasks(
   return tasks_cancelled;
 }
 
-bool LocalTaskManager::CancelTask(
-    const TaskID &task_id,
+void LocalTaskManager::CancelTaskToDispatch(
+    const std::shared_ptr<internal::Work> &work,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  return CancelTasks(
-      [task_id](const std::shared_ptr<internal::Work> &work) {
-        return work->task.GetTaskSpecification().TaskId() == task_id;
-      },
-      failure_type,
-      scheduling_failure_message);
+  const TaskID task_id = work->task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
+  ReplyCancelled(work, failure_type, scheduling_failure_message);
+  if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+    // We've already acquired resources so we need to release them.
+    cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
+        work->allocated_instances);
+    // Release pinned task args.
+    ReleaseTaskArgs(task_id);
+  }
+  if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(
+        work->task.GetTaskSpecification().TaskId());
+  }
+  RemoveFromRunningTasksIfExists(work->task);
+  work->SetStateCancelled();
 }
 
-bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar,
-    bool *any_pending,
-    int *num_pending_actor_creation,
-    int *num_pending_tasks) const {
+const RayTask *LocalTaskManager::AnyPendingTasksForResourceAcquisition(
+    int *num_pending_actor_creation, int *num_pending_tasks) const {
+  const RayTask *exemplar = nullptr;
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
@@ -964,14 +939,12 @@ bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
         *num_pending_tasks += 1;
       }
 
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
+      if (exemplar == nullptr) {
+        exemplar = &task;
       }
     }
   }
-  // If there's any pending task, at this point, there's no progress being made.
-  return *any_pending;
+  return exemplar;
 }
 
 void LocalTaskManager::Dispatch(
@@ -996,7 +969,7 @@ void LocalTaskManager::Dispatch(
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
-  reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+  reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;

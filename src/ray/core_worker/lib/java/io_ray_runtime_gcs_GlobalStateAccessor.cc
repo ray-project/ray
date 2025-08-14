@@ -16,8 +16,10 @@
 
 #include <jni.h>
 
+#include <string>
+
 #include "boost/algorithm/string.hpp"
-#include "jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"

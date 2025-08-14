@@ -4,6 +4,7 @@ from typing import List
 
 import openai
 import pytest
+import vllm
 from pydantic import BaseModel, Field
 
 from probes.messages import messages, system, user
@@ -58,12 +59,14 @@ class NestedResponse(BaseModel):
     sorted_list: List[Person] = Field(description="List of the sorted objects")
 
 
-def get_params_and_expected_type(response_type: str):
+def get_params_and_expected_type(response_type: str, test_id: str):
     params = {}
     if response_type == "basic":
         params.update(
             **messages(
-                system("You are a helpful assistant designed to output JSON."),
+                system(
+                    f"{test_id} You are a helpful assistant designed to output JSON."
+                ),
                 user("Who won the world series in 2020?"),
             )
         )
@@ -71,7 +74,9 @@ def get_params_and_expected_type(response_type: str):
     elif response_type == "array":
         params.update(
             **messages(
-                system("You are a helpful assistant designed to output JSON."),
+                system(
+                    f"{test_id} You are a helpful assistant designed to output JSON."
+                ),
                 user("Sort the numbers 3, 1, 2, 4, 5"),
             )
         )
@@ -79,7 +84,9 @@ def get_params_and_expected_type(response_type: str):
     elif response_type == "nested":
         params.update(
             **messages(
-                system("You are a helpful assistant designed to output JSON."),
+                system(
+                    f"{test_id} You are a helpful assistant designed to output JSON."
+                ),
                 user(
                     "Sort these people by age: John, 20 years old, Mary, 30 years old, Bob, 10 years old."
                 ),
@@ -94,8 +101,11 @@ def get_params_and_expected_type(response_type: str):
     params.update(
         {
             "response_format": {
-                "type": "json_object",
-                "schema": expected_type.schema_json(),
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "expected_schema",
+                    "schema": expected_type.model_json_schema(),
+                },
             }
         }
     )
@@ -111,22 +121,24 @@ def get_response_formats():
         {"type": "json_object", "schema": json.dumps({})},
         {"type": "json_object", "schema": json.loads(BasicResponse.schema_json())},
         {"type": "json_object", "schema": BasicResponse.schema_json()},
-        {"type": "grammar", "grammar": JSON_GRAMMAR_EBNF_STR},
     ]
 
 
 async def query_json_model(
-    model: str, response_type: str, stream: bool, openai_async_client
+    model: str, response_type: str, stream: bool, openai_async_client, test_id: str
 ):
     querier = TextGenerationProbeQuerier(openai_async_client, {"temperature": 0.0})
 
-    params, expected_type = get_params_and_expected_type(response_type)
+    params, expected_type = get_params_and_expected_type(response_type, test_id)
     response = await querier.query(model, stream=stream, **params)
     response_str = response.full()
 
     return response_str, expected_type
 
 
+@pytest.mark.skipif(
+    "0.8.2" <= vllm.__version__ < "0.8.5", reason="vllm will hang for json requests"
+)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model", MODEL_IDS)
 # @pytest.mark.parametrize("response_type", ["basic", "array", "nested"])
@@ -148,7 +160,7 @@ async def test_json_mode(
 
     responses = await asyncio.gather(
         *[
-            query_json_model(model, response_type, stream, openai_async_client)
+            query_json_model(model, response_type, stream, openai_async_client, test_id)
             for _ in range(n_concurrent_requests)
         ]
     )
@@ -159,6 +171,9 @@ async def test_json_mode(
         expected_type(**json.loads(response_str))
 
 
+@pytest.mark.skipif(
+    "0.8.2" <= vllm.__version__ < "0.8.5", reason="vllm will hang for json requests"
+)
 @pytest.mark.parametrize("model", MODEL_IDS)
 @pytest.mark.parametrize("response_format", get_response_formats())
 @pytest.mark.parametrize("stream", [True, False])
@@ -172,7 +187,7 @@ async def test_response_format_options(
 
     params = {
         **messages(
-            system("You are a helpful assistant designed to output JSON."),
+            system(f"{test_id} You are a helpful assistant designed to output JSON."),
             user("Who won the world series in 2020?"),
         ),
         "response_format": response_format,
@@ -188,8 +203,11 @@ async def test_response_format_options(
 async def test_invalid_schema(model: str, openai_async_client):
     querier = TextGenerationProbeQuerier(openai_async_client, {"temperature": 0.0})
     response_format = {
-        "type": "json_object",
-        "schema": {"type": "object", "properties": {"name": {"type": "str"}}},
+        "type": "json_schema",
+        "json_schema": {
+            "name": "expected_schema",
+            "schema": {"type": "object", "properties": {"name": {"type": "str"}}},
+        },
     }
 
     params = {

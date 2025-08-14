@@ -242,8 +242,14 @@ def _generate_config_from_file_or_import_path(
                 "Application arguments cannot be specified for a config file."
             )
 
-        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        # TODO(edoakes): should we enable overriding?
         with open(config_path, "r") as config_file:
+            if runtime_env and len(runtime_env) > 0:
+                cli_logger.warning(
+                    "Passed in runtime_env is ignored when using config file"
+                )
+            if name is not None:
+                cli_logger.warning("Passed in name is ignored when using config file")
             config_dict = yaml.safe_load(config_file)
             config = ServeDeploySchema.parse_obj(config_dict)
     else:
@@ -282,14 +288,20 @@ def _generate_config_from_file_or_import_path(
     type=str,
     default=None,
     required=False,
-    help="Path to a local YAML file containing a runtime_env definition.",
+    help=(
+        "Path to a local YAML file containing a runtime_env definition. Ignored "
+        "when deploying from a config file."
+    ),
 )
 @click.option(
     "--runtime-env-json",
     type=str,
     default=None,
     required=False,
-    help="JSON-serialized runtime_env dictionary.",
+    help=(
+        "JSON-serialized runtime_env dictionary. Ignored when deploying from a "
+        "config file."
+    ),
 )
 @click.option(
     "--working-dir",
@@ -299,7 +311,8 @@ def _generate_config_from_file_or_import_path(
     help=(
         "Directory containing files that your application(s) will run in. This must "
         "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
-        "working_dir in --runtime-env if both are specified."
+        "working_dir in --runtime-env if both are specified. Ignored when deploying "
+        "from a config file."
     ),
 )
 @click.option(
@@ -616,23 +629,25 @@ def config(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    applications = serve_details.applications
 
     # Fetch app configs for all live applications on the cluster
     if name is None:
-        print(
-            "\n---\n\n".join(
-                yaml.safe_dump(
-                    app.deployed_app_config.dict(exclude_unset=True),
-                    sort_keys=False,
-                )
-                for app in serve_details.applications.values()
-                if app.deployed_app_config is not None
-            ),
-            end="",
-        )
+        configs = [
+            yaml.safe_dump(
+                app.deployed_app_config.dict(exclude_unset=True),
+                sort_keys=False,
+            )
+            for app in applications.values()
+            if app.deployed_app_config is not None
+        ]
+        if configs:
+            print("\n---\n\n".join(configs), end="")
+        else:
+            print("No configuration was found.")
     # Fetch a specific app config by name.
     else:
-        app = serve_details.applications.get(name)
+        app = applications.get(name)
         if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:

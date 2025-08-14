@@ -1,24 +1,25 @@
 """Prepare Image Stage"""
-import requests
-import aiohttp
 import asyncio
 import base64
-import logging
 import importlib
-from urllib.parse import urlparse
-from pathlib import Path
+import logging
 from io import BytesIO
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
     AsyncIterator,
+    Dict,
     List,
-    Union,
-    Optional,
-    MutableMapping,
     Mapping,
+    MutableMapping,
+    Optional,
+    Union,
 )
+from urllib.parse import urlparse
+
+import aiohttp
+import requests
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -304,8 +305,8 @@ class ImageProcessor:
 
 
 class PrepareImageUDF(StatefulStageUDF):
-    def __init__(self, data_column: str):
-        super().__init__(data_column)
+    def __init__(self, data_column: str, expected_input_keys: List[str]):
+        super().__init__(data_column, expected_input_keys)
         self.Image = importlib.import_module("PIL.Image")
         self.image_processor = ImageProcessor()
 
@@ -365,13 +366,16 @@ class PrepareImageUDF(StatefulStageUDF):
                 img_start_idx += num_images_in_req
             yield ret
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-        return ["messages"]
-
 
 class PrepareImageStage(StatefulStage):
     """A stage to prepare images from OpenAI chat template messages."""
 
     fn: StatefulStageUDF = PrepareImageUDF
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {
+            "messages": "A list of messages in OpenAI chat format. "
+            "See https://platform.openai.com/docs/api-reference/chat/create "
+            "for details."
+        }

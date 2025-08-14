@@ -2,24 +2,20 @@ import argparse
 import asyncio
 import json
 import logging
-import logging.handlers
 import os
 import signal
 import sys
 
-import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient
+from ray._private import logging_utils
+from ray._common.network_utils import build_address
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import StreamRedirector
-from ray._private.utils import open_log
+from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +30,7 @@ class DashboardAgent:
         minimal,
         metrics_export_port=None,
         node_manager_port=None,
+        events_export_addr=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
         *,  # the following are required kwargs
@@ -42,12 +39,11 @@ class DashboardAgent:
         log_dir: str,
         temp_dir: str,
         session_dir: str,
-        logging_params: dict,
-        agent_id: int,
         session_name: str,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
+        assert node_ip_address is not None
         self.ip = node_ip_address
         self.minimal = minimal
 
@@ -61,13 +57,12 @@ class DashboardAgent:
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
+        self.events_export_addr = events_export_addr
         self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
-        self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
-        self.agent_id = agent_id
         self.session_name = session_name
 
         # grpc server is None in mininal.
@@ -76,7 +71,7 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        self.gcs_aio_client = GcsAioClient(
+        self.gcs_client = GcsClient(
             address=self.gcs_address,
             cluster_id=self.cluster_id_hex,
         )
@@ -85,11 +80,10 @@ class DashboardAgent:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
-        from ray._private.gcs_pubsub import GcsAioPublisher
-        from ray.dashboard.http_server_agent import HttpServerAgent
-
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
         from grpc import aio as aiogrpc
+
+        from ray._private.tls_utils import add_port_to_grpc_server
+        from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
@@ -119,8 +113,8 @@ class DashboardAgent:
         )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
-            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
+            self.grpc_port = add_port_to_grpc_server(
+                self.server, build_address(grpc_ip, self.dashboard_agent_port)
             )
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
@@ -133,7 +127,10 @@ class DashboardAgent:
             self.server = None
             self.grpc_port = None
         else:
-            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+            logger.info(
+                "Dashboard agent grpc address: %s",
+                build_address(grpc_ip, self.grpc_port),
+            )
 
         # If the agent is not minimal it should start the http server
         # to communicate with the dashboard in a head node.
@@ -164,13 +161,6 @@ class DashboardAgent:
         ), "Accessing unsupported API (HttpServerAgent) in a minimal ray."
         return self.http_server.http_session
 
-    @property
-    def publisher(self):
-        assert (
-            self.aio_publisher
-        ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
-        return self.aio_publisher
-
     def get_node_id(self) -> str:
         return self.node_id
 
@@ -181,38 +171,43 @@ class DashboardAgent:
 
         modules = self._load_modules()
 
+        launch_http_server = True
         if self.http_server:
             try:
                 await self.http_server.start(modules)
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
+            except Exception as e:
+                # TODO(kevin85421): We should fail the agent if the HTTP server
+                # fails to start to avoid hiding the root cause. However,
+                # agent processes are not cleaned up correctly after some tests
+                # finish. If we fail the agent, the CI will always fail until
+                # we fix the leak.
                 logger.exception(
-                    "Failed to start http server. Agent will stay alive but "
-                    "disable the http service."
+                    f"Failed to start HTTP server with exception: {e}. "
+                    "The agent will stay alive but the HTTP service will be disabled.",
                 )
+                launch_http_server = False
 
-        # Writes agent address to kv.
-        # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
-        # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
-        # -1 should indicate that http server is not started.
-        http_port = -1 if not self.http_server else self.http_server.http_port
-        grpc_port = -1 if not self.server else self.grpc_port
-        put_by_node_id = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-            json.dumps([self.ip, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-        put_by_ip = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-            json.dumps([self.node_id, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
+        if launch_http_server:
+            # Writes agent address to kv.
+            # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+            # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
+            # -1 should indicate that http server is not started.
+            http_port = -1 if not self.http_server else self.http_server.http_port
+            grpc_port = -1 if not self.server else self.grpc_port
+            put_by_node_id = self.gcs_client.async_internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+                json.dumps([self.ip, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            put_by_ip = self.gcs_client.async_internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+                json.dumps([self.node_id, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
 
-        await asyncio.gather(put_by_node_id, put_by_ip)
+            await asyncio.gather(put_by_node_id, put_by_ip)
 
         tasks = [m.run(self.server) for m in modules]
 
@@ -224,7 +219,7 @@ class DashboardAgent:
                 )
 
             check_parent_task = create_check_raylet_task(
-                self.log_dir, self.gcs_address, callback, loop
+                self.log_dir, self.gcs_client, callback, loop
             )
             tasks.append(check_parent_task)
 
@@ -242,18 +237,6 @@ class DashboardAgent:
 
         if self.http_server:
             await self.http_server.cleanup()
-
-
-def get_capture_filepaths(log_dir):
-    """Get filepaths for the given [log_dir].
-    log_dir:
-        Logging directory to place output and error logs.
-    """
-    filename = f"agent-{args.agent_id}"
-    return (
-        f"{log_dir}/{filename}.out",
-        f"{log_dir}/{filename}.err",
-    )
 
 
 if __name__ == "__main__":
@@ -386,18 +369,25 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
-        "--agent-id",
-        required=True,
-        type=int,
-        help="ID to report when registering with raylet",
-        default=os.getpid(),
-    )
-    parser.add_argument(
         "--session-name",
         required=False,
         type=str,
         default=None,
-        help="The session name (cluster id) of this cluster.",
+        help="The current Ray session name.",
+    )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard agent stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard agent stderr.",
     )
 
     args = parser.parse_args()
@@ -411,7 +401,7 @@ if __name__ == "__main__":
             args.logging_rotate_backup_count if sys.platform != "win32" else 1
         )
 
-        logging_params = dict(
+        logger = setup_component_logger(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
@@ -419,39 +409,18 @@ if __name__ == "__main__":
             max_bytes=logging_rotation_bytes,
             backup_count=logging_rotation_backup_count,
         )
-        logger = setup_component_logger(**logging_params)
+
+        # Setup stdout/stderr redirect files if redirection enabled.
+        logging_utils.redirect_stdout_stderr_if_needed(
+            args.stdout_filepath,
+            args.stderr_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+        )
 
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.
         loop = get_or_create_event_loop()
-
-        # Setup stdout/stderr redirect files
-        out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
-        StreamRedirector.redirect_stdout(
-            out_filepath,
-            logging_rotation_bytes,
-            logging_rotation_backup_count,
-            False,
-            False,
-        )
-        StreamRedirector.redirect_stderr(
-            err_filepath,
-            logging_rotation_bytes,
-            logging_rotation_backup_count,
-            False,
-            False,
-        )
-
-        # Setup stdout/stderr redirect files
-        stdout_fileno = sys.stdout.fileno()
-        stderr_fileno = sys.stderr.fileno()
-        # We also manually set sys.stdout and sys.stderr because that seems to
-        # have an effect on the output buffering. Without doing this, stdout
-        # and stderr are heavily buffered resulting in seemingly lost logging
-        # statements. We never want to close the stdout file descriptor, dup2 will
-        # close it when necessary and we don't want python's GC to close it.
-        sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
-        sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
         agent = DashboardAgent(
             args.node_ip_address,
@@ -467,9 +436,7 @@ if __name__ == "__main__":
             listen_port=args.listen_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
-            logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
-            agent_id=args.agent_id,
             session_name=args.session_name,
         )
 

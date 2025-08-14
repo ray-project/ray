@@ -29,11 +29,10 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
-using namespace std;          // NOLINT
-using namespace ray::syncer;  // NOLINT
+#include "ray/util/network_util.h"
 using ray::PeriodicalRunner;
 
-class LocalNode : public ReporterInterface {
+class LocalNode : public ray::syncer::ReporterInterface {
  public:
   LocalNode(instrumented_io_context &io_context, ray::NodeID node_id)
       : node_id_(node_id), timer_(PeriodicalRunner::Create(io_context)) {
@@ -53,8 +52,8 @@ class LocalNode : public ReporterInterface {
         "LocalNodeStateUpdate");
   }
 
-  std::optional<RaySyncMessage> CreateSyncMessage(int64_t current_version,
-                                                  MessageType) const override {
+  std::optional<ray::syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t current_version, ray::syncer::MessageType) const override {
     if (current_version > version_) {
       return std::nullopt;
     }
@@ -74,7 +73,7 @@ class LocalNode : public ReporterInterface {
   std::shared_ptr<PeriodicalRunner> timer_;
 };
 
-class RemoteNodes : public ReceiverInterface {
+class RemoteNodes : public ray::syncer::ReceiverInterface {
  public:
   RemoteNodes() {}
   void ConsumeSyncMessage(
@@ -102,18 +101,18 @@ int main(int argc, char *argv[]) {
   auto leader_port = std::string(argv[2]);
   auto local_node = std::make_unique<LocalNode>(io_context, node_id);
   auto remote_node = std::make_unique<RemoteNodes>();
-  RaySyncer syncer(io_context, node_id.Binary());
+  ray::syncer::RaySyncer syncer(io_context, node_id.Binary());
   // RPC related field
   grpc::ServerBuilder builder;
-  std::unique_ptr<RaySyncerService> service;
+  std::unique_ptr<ray::syncer::RaySyncerService> service;
   std::unique_ptr<grpc::Server> server;
   std::shared_ptr<grpc::Channel> channel;
   syncer.Register(
       ray::rpc::syncer::MessageType::RESOURCE_VIEW, local_node.get(), remote_node.get());
   if (server_port != ".") {
     RAY_LOG(INFO) << "Start server on port " << server_port;
-    auto server_address = "0.0.0.0:" + server_port;
-    service = std::make_unique<RaySyncerService>(syncer);
+    auto server_address = ray::BuildAddress("0.0.0.0", server_port);
+    service = std::make_unique<ray::syncer::RaySyncerService>(syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(service.get());
     server = builder.BuildAndStart();
@@ -125,13 +124,15 @@ int main(int argc, char *argv[]) {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    channel = grpc::CreateCustomChannel(
-        "localhost:" + leader_port, grpc::InsecureChannelCredentials(), argument);
+    channel = grpc::CreateCustomChannel(ray::BuildAddress("localhost", leader_port),
+                                        grpc::InsecureChannelCredentials(),
+                                        argument);
 
     syncer.Connect(ray::NodeID::FromRandom().Binary(), channel);
   }
 
-  boost::asio::io_context::work work(io_context);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      io_context.get_executor());
   io_context.run();
 
   return 0;

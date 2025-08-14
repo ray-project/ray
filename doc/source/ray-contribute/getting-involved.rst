@@ -47,7 +47,7 @@ What can I work on?
 -------------------
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
-ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ for a place to start.
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__ for a place to start.
 
 Setting up your development environment
 ---------------------------------------
@@ -241,7 +241,7 @@ We also have tests for code formatting and linting that need to pass before merg
 
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
-* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
+* If developing for C++, you will need `clang-format <https://docs.kernel.org/dev-tools/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 You can run the following locally:
 

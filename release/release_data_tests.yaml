@@ -13,54 +13,63 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
-    cluster_compute: autoscaling_cpu_compute.yaml
+    cluster_compute: fixed_size_cpu_compute.yaml
 
 ###############
 # Reading tests
 ###############
 
-- name: read_parquet
+- name: "read_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
-  variations:
-  - __suffix__: fixed_size_compute
-    cluster:
-      cluster_compute: fixed_size_cpu_compute.yaml
+- name: "read_images_{{scaling}}"
 
-- name: read_images
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
-  variations:
-  - __suffix__: fixed_size_compute
-    cluster:
-      cluster_compute: fixed_size_cpu_compute.yaml
-
 - name: read_tfrecords
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: read_from_uris
+- name: "read_from_uris_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
   run:
     timeout: 5400
     script: python read_from_uris_benchmark.py
-
-  variations:
-    - __suffix__: fixed_size_compute
-      cluster:
-        cluster_compute: fixed_size_cpu_compute.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   frequency: manual
@@ -85,16 +94,19 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
-  variations:
-    - __suffix__: fixed_size_compute
-      cluster:
-        cluster_compute: fixed_size_cpu_compute.yaml
-
 ###################
 # Aggregation tests
 ###################
 
-- name: count_parquet
+- name: "count_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
   run:
     timeout: 600
     script: >
@@ -126,56 +138,97 @@
 
 # TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
 
-- name: aggregate_groups
+- name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+      shuffle_strategy: [sort_shuffle_pull_based]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+        - "column02 column14"  # 7M groups
 
   cluster:
-    cluster_compute: all_to_all_compute.yaml
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 10 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
 
-  variations:
-    - __suffix__: few_groups__sort_shuffle_pull_based
-      run:
-        script: >
-          python groupby_benchmark.py --sf 10 --aggregate --group-by column08 column13 column14
-          --shuffle-strategy sort_shuffle_pull_based
 
-    - __suffix__: many_groups__sort_shuffle_pull_based
-      run:
-        script: >
-          python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
-          --shuffle-strategy sort_shuffle_pull_based
+- name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
 
-- name: map_groups
+  matrix:
+    setup:
+      # This test consistently fails on fixed-size clusters due to head OOM from
+      # too many objects references on the head node. So, we only run it on
+      # autoscaling clusters.
+      scaling: [autoscaling]
+      shuffle_strategy: [sort_shuffle_pull_based]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+        - "column02 column14"  # 7M groups
 
   cluster:
-    cluster_compute: all_to_all_compute.yaml
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
 
-  variations:
-    - __suffix__: few_groups__sort_shuffle_pull_based
-      run:
-        script: >
-          python groupby_benchmark.py --sf 10 --map-groups --group-by column08 column13 column14
-          --shuffle-strategy sort_shuffle_pull_based
+###############
+# Join tests
+###############
 
-    - __suffix__: many_groups__sort_shuffle_pull_based
-      run:
-        script: >
-          python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
-          --shuffle-strategy sort_shuffle_pull_based
+# NOTE:
+# Joining on Benchmark TPCH parquet datasets
+# Left dataset 'LINEITEM' = SF*6M rows
+# Right dataset 'ORDERS' = SF*1.5M rows
+# Join key = 'l_orderkey', 'o_orderkey' respectively from 'LINEITEM', 'ORDERS' dataset. In the generated dataset,
+# * For 'LINEITEM' dataset, 'column_00' corresponds to l_orderkey
+# * For 'ORDERS' dataset, 'column_0' corresponds to o_orderkey.
+# Join type = inner, left_join, right_join and full_join
+#
+# Dataset TPCH Scale Factor (SF) for CSV files. Note that parquet files will be low smaller with column compression.
+# SF1 = 1GB
+# SF10 = 10GB
+# SF100 = 100GB
+# SF1000 = 1TB
+# SF10000 = 10TB
+#
+# Do adjust timeout below based on SF above.
+#
+
+- name: joins_{{dataset}}_{{join_type}}
+
+  cluster:
+    cluster_compute: fixed_size_100_cpu_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf100]
+      join_type: [inner, left_outer, right_outer, full_outer]
+
+  run:
+    timeout: 3600
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type {{join_type}}
+      --num_partitions 50
 
 #######################
 # Streaming split tests
 #######################
 
 - name: streaming_split
-
-  cluster:
-    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 300
@@ -224,30 +277,18 @@
 # Iteration tests
 #################
 
-- name: iter_batches
+- name: "iter_batches_{{format}}"
+
+  matrix:
+    setup:
+      format: [numpy, pandas, pyarrow]
 
   run:
     timeout: 2400
-
-  variations:
-    - __suffix__: numpy
-      run:
-        script: >
-          python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-          --iter-batches numpy
-    - __suffix__: pandas
-      run:
-        script: >
-          python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-          --iter-batches pandas
-    - __suffix__: pyarrow
-      run:
-        script: >
-          python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-          --iter-batches pyarrow
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches {{format}}
 
 - name: to_tf
 
@@ -261,7 +302,7 @@
 - name: iter_torch_batches
 
   cluster:
-    cluster_compute: autoscaling_gpu_head_compute.yaml
+    cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
     timeout: 2400
@@ -284,35 +325,56 @@
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: map_batches
-  run:
-    timeout: 5400
+- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
 
-  variations:
-    - __suffix__: numpy
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --batch-format numpy --sf 1000
-    - __suffix__: pandas
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --batch-format pandas --sf 1000
-    - __suffix__: pyarrow
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --batch-format pyarrow --sf 1000
-    - __suffix__: actors
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --compute actors --sf 1000
+  matrix:
+    setup:
+      # Fixed-size task tests with different formats.
+      format: [numpy, pandas, pyarrow]
+      compute: [tasks]
+      scaling: [fixed_size]
+      repeat_map_batches: [once, repeat]
+    adjustments:
+      # Fixed-size actor test.
+      - with:
+          format: numpy
+          compute: actors
+          scaling: fixed_size
+          repeat_map_batches: once
+      # Autoscaling task test
+      - with:
+          format: numpy
+          compute: tasks
+          scaling: autoscaling
+          repeat_map_batches: once
+      # Autoscaling actor test
+      - with:
+          format: numpy
+          compute: actors
+          scaling: autoscaling
+          repeat_map_batches: once
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: >
+      python map_benchmark.py --api map_batches --batch-format {{format}}
+      --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
+
 
 ########################
 # Sort and shuffle tests
 ########################
 
-- name: random_shuffle
-  working_dir: nightly_tests
-  stable: False
+- name: "random_shuffle_{{scaling}}"
+
+  matrix:
+    setup:
+      # This release test consistently fails on autoscaling clusters. So, we only run
+      # it on fixed-size clusters. The reason for the failure is unclear.
+      scaling: [fixed_size]
 
   cluster:
     byod:
@@ -320,23 +382,15 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_compute: dataset/all_to_all_compute.yaml
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 10800
     script: >
-      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
-      --shuffle
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
 
-  variations:
-    - __suffix__: regular
-    - __suffix__: chaos
-      run:
-        prepare: >
-          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
-          --max-to-kill 2
 
-- name: sort
+- name: random_shuffle_chaos
   working_dir: nightly_tests
   stable: False
 
@@ -346,19 +400,55 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_compute: dataset/all_to_all_compute.yaml
+    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
   run:
     timeout: 10800
-    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
+      --max-to-kill 2
+    script: >
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+      --shuffle
 
-  variations:
-    - __suffix__: regular
-    - __suffix__: chaos
-      run:
-        prepare: >
-          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
-          --max-to-kill 3
+
+- name: "sort_{{scaling}}"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+
+- name: sort_chaos
+  working_dir: nightly_tests
+  stable: False
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
+      --max-to-kill 3
+    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
 #######################
@@ -367,33 +457,20 @@
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
-- name: batch_inference
+- name: "batch_inference_{{scaling}}"
 
   cluster:
-    cluster_compute: autoscaling_gpu_compute.yaml
+    cluster_compute: "{{scaling}}_gpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
 
   run:
     timeout: 1800
     script: >
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
-
-  variations:
-    - __suffix__: autoscaling_compute
-    - __suffix__: fixed_size_compute
-      cluster:
-        cluster_compute: fixed_size_gpu_compute.yaml
-
-- name: batch_inference_from_metadata
-  # This benchmark errors because of the issues described in PLAN-383.
-  frequency: manual
-
-  cluster:
-    cluster_compute: autoscaling_hetero_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python batch_inference_benchmark.py
 
 - name: batch_inference_chaos
   stable: False
@@ -425,28 +502,90 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-# 10 TB image classification parquet data with autoscaling heterogenous cluster
-# 10 g4dn.12xlarge, 10 m5.16xlarge
-- name: batch_inference_hetero
-  frequency: weekly
+- name: batch_inference_mock_image_pipeline
+  frequency: manual
+  working_dir: nightly_tests
 
   cluster:
-    cluster_compute: autoscaling_hetero_compute.yaml
+    cluster_compute: dataset/autoscaling_100_cpu_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 3600
     script: >
-      python gpu_batch_inference.py
-      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+      python dataset/batch_inference_mock_image_pipeline.py
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
+- name: batch_inference_mock_image_pipeline_fixed
+  frequency: manual
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/fixed_size_100_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/batch_inference_mock_image_pipeline.py
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
+- name: batch_inference_hetero_{{case}}
+  frequency: manual
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 40
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40 --chaos
+
+  cluster:
+    cluster_compute: batch_inference_hetero/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      post_build_script: byod_install_pybase64.sh
+
+  run:
+    timeout: 3600
+    script: python batch_inference_hetero/main.py {{args}}
+
 
 ##############
 # TPCH Queries
 ##############
 
-- name: tpch_q1
+- name: "tpch_q1_{{scaling}}"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
 
   cluster:
-    cluster_compute: all_to_all_compute.yaml
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400

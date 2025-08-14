@@ -6,10 +6,9 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, async_wait_for_condition
+from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
 )
 from ray.serve.exceptions import RayServeException
@@ -411,10 +410,6 @@ def test_handle_eager_execution(serve_instance):
 @pytest.mark.skipif(
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't respect max_ongoing_requests",
-)
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
-    reason="Strict enforcement must be enabled",
 )
 @pytest.mark.asyncio
 async def test_max_ongoing_requests_enforced(serve_instance):

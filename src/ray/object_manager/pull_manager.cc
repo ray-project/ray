@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/common_protocol.h"
+#include "ray/common/ray_config.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {

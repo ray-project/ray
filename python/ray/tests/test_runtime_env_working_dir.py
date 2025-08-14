@@ -10,7 +10,6 @@ from unittest import mock
 import pytest
 
 import ray
-from ray._private import gcs_utils
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
@@ -28,10 +27,12 @@ from ray._private.utils import get_directory_size_bytes
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
 TEST_IMPORT_DIR = "test_import_dir"
+
+
+def using_ray_client():
+    return ray._private.client_mode_hook.is_client_mode_enabled
 
 
 # Set scope to "module" to force this to run before start_cluster, whose scope
@@ -47,11 +48,9 @@ def insert_test_dir_in_pythonpath():
 
 @pytest.mark.asyncio
 async def test_working_dir_cleanup(tmpdir, ray_start_regular):
-    gcs_aio_client = gcs_utils.GcsAioClient(
-        address=ray.worker.global_worker.gcs_client.address
-    )
+    gcs_client = ray.worker.global_worker.gcs_client
 
-    plugin = WorkingDirPlugin(tmpdir, gcs_aio_client)
+    plugin = WorkingDirPlugin(tmpdir, gcs_client)
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
 
     files = os.listdir(f"{tmpdir}/working_dir_files")
@@ -74,12 +73,13 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
         assert creation_metadata[file] != creation_time_after
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
-    gcs_aio_client = gcs_utils.GcsAioClient(
-        address=ray.worker.global_worker.gcs_client.address
-    )
+    gcs_client = ray.worker.global_worker.gcs_client
     # Create an arbitrary nonempty directory to upload.
     path = Path(tmpdir)
     dir_to_upload = path / "dir_to_upload"
@@ -94,7 +94,7 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
     assert uploaded
 
-    manager = WorkingDirPlugin(tmpdir, gcs_aio_client)
+    manager = WorkingDirPlugin(tmpdir, gcs_client)
 
     created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
@@ -352,6 +352,10 @@ def test_empty_working_dir(start_cluster):
         ray.init(address, runtime_env={"working_dir": working_dir})
 
 
+@pytest.mark.skipif(
+    using_ray_client(),
+    reason="Ray Client doesn't clean up global state properly on ray.init() failure.",
+)
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_input_validation(start_cluster, option: str):
     """Tests input validation for working_dir and py_modules."""
@@ -607,7 +611,4 @@ def test_override_failure(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

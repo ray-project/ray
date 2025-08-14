@@ -13,6 +13,6 @@ researchers, and folks that love machine learning. Here's a list of tips for get
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Pull Requests`: https://github.com/ray-project/ray/pulls
-.. _`Twitter`: https://twitter.com/raydistributed
+.. _`Twitter`: https://x.com/raydistributed
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`on GitHub`: https://github.com/ray-project/ray

@@ -20,7 +20,7 @@ check_java_version() {
   local VERSION
   VERSION=$(java  -version 2>&1 | awk -F '"' '/version/ {print $2}')
   if [[ ! $VERSION =~ 1.8 ]]; then
-    echo "Java version is $VERSION. Please install jkd8."
+    echo "Java version is $VERSION. Please install jdk8."
     exit 1
   fi
 }
@@ -34,10 +34,11 @@ build_jars() {
   mkdir -p "$JAR_DIR"
   for p in "${JAVA_DIRS_PATH[@]}"; do
     cd "$WORKSPACE_DIR/$p"
-    bazel build cp_java_generated
+    bazel run ":gen_pom_files"
+    bazel run ":gen_proto_files"
     if [[ $bazel_build == "true" ]]; then
       echo "Starting building java native dependencies for $p"
-      bazel build gen_maven_deps
+      bazel build ":gen_maven_deps"
       echo "Finished building java native dependencies for $p"
     fi
     echo "Start building jars for $p"

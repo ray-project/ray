@@ -2,10 +2,11 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 from typing import AsyncIterator
 
+from ray.dashboard import optional_utils
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
@@ -13,14 +14,22 @@ from ray.dashboard.subprocesses.utils import ResponseType
 logger = logging.getLogger(__name__)
 
 
-class TestModule(SubprocessModule):
-    """
-    For some reason you can't put this inline with the pytest that calls pytest.main.
-    """
+class BaseTestModule(SubprocessModule):
+    @property
+    def gcs_client(self):
+        return None
 
+    @property
+    def aiogrpc_gcs_channel(self):
+        return None
+
+
+class TestModule(BaseTestModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.run_finished = False
+        self.not_cached_count = 0
+        self.cached_count = 0
 
     async def run(self):
         await super().run()
@@ -28,10 +37,6 @@ class TestModule(SubprocessModule):
         self.run_finished = True
         await asyncio.sleep(0.1)
         logger.info("TestModule is done initing")
-
-    @property
-    def gcs_aio_client(self):
-        return None
 
     @routes.get("/test")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -45,6 +50,21 @@ class TestModule(SubprocessModule):
         await asyncio.sleep(0.1)
         body = await req.text()
         return aiohttp.web.Response(text="Hello, World from POST /echo from " + body)
+
+    @routes.get("/not_cached")
+    async def not_cached(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        self.not_cached_count += 1
+        return aiohttp.web.Response(
+            text=f"Hello, World from GET /not_cached, count: {self.not_cached_count}"
+        )
+
+    @routes.get("/cached")
+    @optional_utils.aiohttp_cache
+    async def cached(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        self.cached_count += 1
+        return aiohttp.web.Response(
+            text=f"Hello, World from GET /cached, count: {self.cached_count}"
+        )
 
     @routes.put("/error")
     async def make_error(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -106,6 +126,18 @@ class TestModule(SubprocessModule):
         await ws.close()
         return ws
 
+    @routes.get("/websocket_raise_http_error", resp_type=ResponseType.WEBSOCKET)
+    async def websocket_raise_http_error(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
+        raise aiohttp.web.HTTPBadRequest(reason="Hello this is a bad request")
+
+    @routes.get("/websocket_raise_non_http_error", resp_type=ResponseType.WEBSOCKET)
+    async def websocket_raise_non_http_error(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
+        raise ValueError("Hello world")
+
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         while True:
@@ -116,6 +148,8 @@ class TestModule(SubprocessModule):
     async def logging_in_module(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         request_body_str = await req.text()
         logger.info(f"In /logging_in_module, {request_body_str}.")
+        print("In /logging_in_module, stdout")
+        print("In /logging_in_module, stderr", file=sys.stderr)
         return aiohttp.web.Response(text="done!")
 
     @routes.post("/kill_self")
@@ -126,15 +160,20 @@ class TestModule(SubprocessModule):
         return aiohttp.web.Response(text="done!")
 
 
-class TestModule1(SubprocessModule):
-    """
-    For some reason you can't put this inline with the pytest that calls pytest.main.
-    """
-
-    @property
-    def gcs_aio_client(self):
-        return None
-
+class TestModule1(BaseTestModule):
     @routes.get("/test1")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return aiohttp.web.Response(text="Hello from TestModule1")
+
+    @routes.get("/redirect_between_modules")
+    async def redirect_between_modules(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        # Redirect to the /test route in TestModule
+        raise aiohttp.web.HTTPFound(location="/test")
+
+    @routes.get("/redirect_within_module")
+    async def redirect_within_module(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        raise aiohttp.web.HTTPFound(location="/test1")

@@ -26,7 +26,7 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Raw images
 
-        To load raw images like JPEG files, call :func:`~ray.data.read_images`.
+        To load raw images like JPEG files, call :func:`~ray.data.read_images`.  In the schema, the column name defaults to "image".
 
         .. note::
 
@@ -106,7 +106,7 @@ To view the full list of supported file formats, see the
             def decode_bytes(row: Dict[str, Any]) -> Dict[str, Any]:
                 data = row["image"]
                 image = Image.open(io.BytesIO(data))
-                row["image"] = np.array(image)
+                row["image"] = np.asarray(image)
                 return row
 
             ds = (

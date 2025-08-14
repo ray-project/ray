@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -6,6 +7,7 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
+from ray.data.expressions import Expr
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
@@ -37,8 +39,8 @@ class AbstractMap(AbstractOneToOne):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
+            min_rows_per_bundled_input: Min number of rows a single bundle of blocks
+                passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -64,6 +66,7 @@ class AbstractUDFMap(AbstractMap):
         name: str,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        *,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -132,6 +135,9 @@ class AbstractUDFMap(AbstractMap):
             elif inspect.isfunction(fn):
                 # normal function or lambda function.
                 return f"{op_name}({fn.__name__})"
+            elif isinstance(fn, functools.partial):
+                # functools.partial
+                return f"{op_name}({fn.func.__name__})"
             else:
                 # callable object.
                 return f"{op_name}({fn.__class__.__name__})"
@@ -176,7 +182,6 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -209,7 +214,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -248,7 +252,6 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -261,6 +264,9 @@ class Project(AbstractMap):
         input_op: LogicalOperator,
         cols: Optional[List[str]] = None,
         cols_rename: Optional[Dict[str, str]] = None,
+        exprs: Optional[
+            Dict[str, "Expr"]
+        ] = None,  # TODO Remove cols and cols_rename and replace them with corresponding exprs
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -271,10 +277,19 @@ class Project(AbstractMap):
             compute=compute,
         )
         self._batch_size = None
-        self._cols = cols or []
-        self._cols_rename = cols_rename or {}
+        self._cols = cols
+        self._cols_rename = cols_rename
+        self._exprs = exprs
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
+
+        if exprs is not None:
+            # Validate that all values are expressions
+            for name, expr in exprs.items():
+                if not isinstance(expr, Expr):
+                    raise TypeError(
+                        f"Expected Expr for column '{name}', got {type(expr)}"
+                    )
 
     @property
     def cols(self) -> Optional[List[str]]:
@@ -285,6 +300,9 @@ class Project(AbstractMap):
         return self._cols_rename
 
     @property
+    def exprs(self) -> Optional[Dict[str, "Expr"]]:
+        return self._exprs
+
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -317,7 +335,6 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -325,8 +342,8 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
-        target_num_rows_per_block: The targetr number of rows per block granularity for
-        streaming repartition.
+        target_num_rows_per_block: The target number of rows per block granularity for
+           streaming repartition.
     """
 
     def __init__(
@@ -341,6 +358,5 @@ class StreamingRepartition(AbstractMap):
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False

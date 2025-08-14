@@ -15,7 +15,6 @@
 #include "ray/object_manager/object_manager.h"
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -23,9 +22,9 @@
 #include <vector>
 
 #include "ray/common/common_protocol.h"
-#include "ray/object_manager/plasma/store.h"
+#include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
 
 namespace asio = boost::asio;
 
@@ -64,6 +63,7 @@ ObjectManager::ObjectManager(
     instrumented_io_context &main_service,
     const NodeID &self_node_id,
     const ObjectManagerConfig &config,
+    gcs::GcsClient &gcs_client,
     IObjectDirectory *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
@@ -76,6 +76,7 @@ ObjectManager::ObjectManager(
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
+      gcs_client_(gcs_client),
       object_directory_(object_directory),
       object_store_internal_(std::make_unique<ObjectStoreRunner>(
           config,
@@ -103,15 +104,16 @@ ObjectManager::ObjectManager(
           })),
       buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
-      rpc_work_(rpc_service_),
+      rpc_work_(rpc_service_.get_executor()),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
                              ClusterID::Nil(),
                              config_.rpc_service_threads_number),
-      object_manager_service_(rpc_service_, *this),
-      client_call_manager_(
-          main_service, ClusterID::Nil(), config_.rpc_service_threads_number),
+      client_call_manager_(main_service,
+                           /*record_stats=*/true,
+                           ClusterID::Nil(),
+                           config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
@@ -151,7 +153,7 @@ ObjectManager::ObjectManager(
                                                 get_spilled_object_url_);
 
   RAY_CHECK_OK(
-      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
+      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 300));
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
@@ -183,7 +185,9 @@ void ObjectManager::StartRpcService() {
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
     rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this, i);
   }
-  object_manager_server_.RegisterService(object_manager_service_, false /* token_auth */);
+  object_manager_server_.RegisterService(
+      std::make_unique<rpc::ObjectManagerGrpcService>(rpc_service_, *this),
+      false /* token_auth */);
   object_manager_server_.Run();
 }
 
@@ -297,7 +301,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
                 if (!status.ok()) {
                   RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
                       << "Send pull " << object_id << " request to client " << client_id
-                      << " failed due to " << status.message();
+                      << " failed due to " << status;
                 }
               });
         },
@@ -338,7 +342,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
                                        ray::Status status) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "HandleSendFinished on " << self_node_id_ << " to " << node_id
-      << " of object, chunk " << chunk_index << ", status: " << status.ToString();
+      << " of object, chunk " << chunk_index << ", status: " << status;
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
     RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
@@ -397,7 +401,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
 
   rpc::Address owner_address;
-  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  owner_address.set_node_id(object_info.owner_node_id.Binary());
   owner_address.set_ip_address(object_info.owner_ip_address);
   owner_address.set_port(object_info.owner_port);
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
@@ -504,11 +508,8 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
-                    main_service_->post(
-                        [this, node_id, object_id]() {
-                          push_manager_->OnChunkComplete(node_id, object_id);
-                        },
-                        "ObjectManager.Push");
+                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
+                                        "ObjectManager.Push");
                   },
                   chunk_reader,
                   from_disk);
@@ -559,7 +560,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
         // TODO(Eric Liang): Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
           RAY_LOG(WARNING).WithField(object_id).WithField(node_id)
-              << "Send object chunk to node failed due to" << status.ToString()
+              << "Send object chunk to node failed due to" << status
               << ", chunk index: " << chunk_index;
         }
         double end_time = absl::GetCurrentTimeNanos() / 1e9;
@@ -636,7 +637,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
-    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
+    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status;
     if (chunk_status.IsOutOfDisk()) {
       pull_manager_->SetOutOfDisk(object_id);
     }
@@ -672,16 +673,19 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
-    const auto remote_connections = object_directory_->LookupAllRemoteConnections();
     std::vector<std::shared_ptr<rpc::ObjectManagerClient>> rpc_clients;
-    for (const auto &connection_info : remote_connections) {
-      auto rpc_client = GetRpcClient(connection_info.node_id);
+    const auto &node_info_map = gcs_client_.Nodes().GetAll();
+    for (const auto &[node_id, node_info] : node_info_map) {
+      if (node_id == self_node_id_) {
+        continue;
+      }
+      auto rpc_client = GetRpcClient(node_id);
       if (rpc_client != nullptr) {
-        rpc_clients.push_back(rpc_client);
+        rpc_clients.push_back(std::move(rpc_client));
       }
     }
     rpc_service_.post(
-        [this, object_ids, rpc_clients]() {
+        [this, object_ids, rpc_clients = std::move(rpc_clients)]() {
           SpreadFreeObjectsRequest(object_ids, rpc_clients);
         },
         "ObjectManager.FreeObjects");
@@ -712,23 +716,30 @@ void ObjectManager::SpreadFreeObjectsRequest(
 std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
     const NodeID &node_id) {
   auto it = remote_object_manager_clients_.find(node_id);
-  if (it == remote_object_manager_clients_.end()) {
-    RemoteConnectionInfo connection_info(node_id);
-    object_directory_->LookupRemoteConnectionInfo(connection_info);
-    if (!connection_info.Connected()) {
-      return nullptr;
-    }
-    auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
-        connection_info.ip, connection_info.port, client_call_manager_);
-
-    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip
-                   << ", port: " << connection_info.port
-                   << ", local port: " << GetServerPort();
-
-    it = remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client))
-             .first;
+  if (it != remote_object_manager_clients_.end()) {
+    return it->second;
   }
+  auto *node_info = gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+  if (node_info == nullptr) {
+    return nullptr;
+  }
+  auto object_manager_client =
+      std::make_shared<rpc::ObjectManagerClient>(node_info->node_manager_address(),
+                                                 node_info->object_manager_port(),
+                                                 client_call_manager_);
+
+  RAY_LOG(DEBUG) << "Get rpc client, address: " << node_info->node_manager_address()
+                 << ", port: " << node_info->object_manager_port()
+                 << ", local port: " << GetServerPort();
+
+  it = remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client))
+           .first;
   return it->second;
+}
+
+void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
+  push_manager_->HandleNodeRemoved(node_id);
+  remote_object_manager_clients_.erase(node_id);
 }
 
 std::string ObjectManager::DebugString() const {
@@ -756,17 +767,17 @@ void ObjectManager::RecordMetrics() {
   push_manager_->RecordMetrics();
   // used_memory_ includes the fallback allocation, so we should add it again here
   // to calculate the exact available memory.
-  stats::ObjectStoreAvailableMemory().Record(
+  ray_metric_object_store_available_memory_.Record(
       config_.object_store_memory - used_memory_ +
       plasma::plasma_store_runner->GetFallbackAllocated());
   // Subtract fallback allocated memory. It is tracked separately by
   // `ObjectStoreFallbackMemory`.
-  stats::ObjectStoreUsedMemory().Record(
+  ray_metric_object_store_used_memory_.Record(
       used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreFallbackMemory().Record(
+  ray_metric_object_store_fallback_memory_.Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
+  ray_metric_object_store_local_objects_.Record(local_objects_.size());
+  ray_metric_object_manager_pull_requests_.Record(pull_manager_->NumObjectPullRequests());
 
   ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
                                                 "PushedFromLocalPlasma");
@@ -791,7 +802,6 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
-  stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
   stats->set_cumulative_created_objects(
       plasma::plasma_store_runner->GetCumulativeCreatedObjects());
   stats->set_cumulative_created_bytes(

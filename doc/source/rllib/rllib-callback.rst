@@ -310,6 +310,10 @@ Also, see this more complex example that
     from ray.rllib.callbacks.callbacks import RLlibCallback
 
     class LogAcrobotAngle(RLlibCallback):
+        def on_episode_created(self, *, episode, **kwargs):
+            # Initialize an empty list in the `custom_data` property of `episode`.
+            episode.custom_data["theta1"] = []
+
         def on_episode_step(self, *, episode, env, **kwargs):
             # First get the angle from the env (note that `env` is a VectorEnv).
             # See https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py
@@ -319,11 +323,11 @@ Also, see this more complex example that
             deg_theta1 = math.degrees(math.atan2(sin_theta1, cos_theta1))
 
             # Log the theta1 degree value in the episode object, temporarily.
-            episode.add_temporary_timestep_data("theta1", deg_theta1)
+            episode.custom_data["theta1"].append(deg_theta1)
 
         def on_episode_end(self, *, episode, metrics_logger, **kwargs):
             # Get all the logged theta1 degree values and average them.
-            theta1s = episode.get_temporary_timestep_data("theta1")
+            theta1s = episode.custom_data["theta1"]
             avg_theta1 = np.mean(theta1s)
 
             # Log the final result - per episode - to the MetricsLogger.

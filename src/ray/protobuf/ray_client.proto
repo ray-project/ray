@@ -139,9 +139,6 @@ message GetRequest {
   // The chunk_id to start retrieving data from, in case the request is interrupted
   // after partial retrieval by a disconnect
   int32 start_chunk_id = 5;
-
-  // Deprecated fields.
-  bytes id = 1 [deprecated = true];
 }
 
 message GetResponse {
@@ -378,9 +375,6 @@ message ConnectionInfoResponse {
   string ray_commit = 3;
   // The Python version (e.g., "3.7.2").
   string python_version = 4;
-  // The protocol version of the server (e.g., "2020-02-01").
-  // DEPRECATED. Not used anywhere. Will remove.
-  string protocol_version = 5;
 }
 
 message ConnectionCleanupRequest {

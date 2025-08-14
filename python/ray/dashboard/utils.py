@@ -9,17 +9,16 @@ import os
 import pkgutil
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
-from collections import namedtuple
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from enum import IntEnum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from ray._common.utils import binary_to_hex
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
-import aiosignal  # noqa: F401
-from frozenlist import FrozenList  # noqa: F401
 from packaging.version import Version
 
 import ray
@@ -28,14 +27,13 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsChannel
+from ray._common.network_utils import parse_address
 from ray._private.utils import (
-    binary_to_hex,
-    check_dashboard_dependencies_installed,
+    get_dashboard_dependency_error,
     split_address,
 )
 from ray._raylet import GcsClient
-from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 try:
     create_task = asyncio.create_task
@@ -103,10 +101,6 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
-    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
-    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
-    # is, single argument.
-    metrics: DashboardPrometheusMetrics
 
 
 class DashboardHeadModule(abc.ABC):
@@ -117,7 +111,6 @@ class DashboardHeadModule(abc.ABC):
         """
         self._config = config
         self._gcs_client = None
-        self._gcs_aio_client = None  # lazy init
         self._aiogrpc_gcs_channel = None  # lazy init
         self._http_session = None  # lazy init
 
@@ -173,28 +166,15 @@ class DashboardHeadModule(abc.ABC):
         return self._http_session
 
     @property
-    def metrics(self):
-        return self._config.metrics
-
-    @property
     def gcs_client(self):
         if self._gcs_client is None:
             self._gcs_client = GcsClient(
                 address=self._config.gcs_address,
                 cluster_id=self._config.cluster_id_hex,
             )
-        return self._gcs_client
-
-    @property
-    def gcs_aio_client(self):
-        if self._gcs_aio_client is None:
-            self._gcs_aio_client = GcsAioClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
             if not internal_kv._internal_kv_initialized():
-                internal_kv._initialize_internal_kv(self.gcs_client)
-        return self._gcs_aio_client
+                internal_kv._initialize_internal_kv(self._gcs_client)
+        return self._gcs_client
 
     @property
     def aiogrpc_gcs_channel(self):
@@ -208,11 +188,10 @@ class DashboardHeadModule(abc.ABC):
         return self._aiogrpc_gcs_channel
 
     @abc.abstractmethod
-    async def run(self, server):
+    async def run(self):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -326,7 +305,7 @@ def get_all_modules(module_type):
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
-    should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
+    should_only_load_minimal_modules = get_dashboard_dependency_error() is not None
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
@@ -367,7 +346,7 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
-    ip, port = address.split(":")
+    ip, port = parse_address(address)
     return ip, int(port)
 
 
@@ -381,7 +360,7 @@ def node_stats_to_dict(
         "parentTaskId",
         "sourceActorId",
         "callerId",
-        "rayletId",
+        "nodeId",
         "workerId",
         "placementGroupId",
     }
@@ -463,28 +442,6 @@ def message_to_dict(message, decode_keys=None, **kwargs):
         return d
 
 
-class SignalManager:
-    _signals = FrozenList()
-
-    @classmethod
-    def register(cls, sig):
-        cls._signals.append(sig)
-
-    @classmethod
-    def freeze(cls):
-        cls._signals.freeze()
-        for sig in cls._signals:
-            sig.freeze()
-
-
-class Signal(aiosignal.Signal):
-    __slots__ = ()
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        SignalManager.register(self)
-
-
 class Bunch(dict):
     """A dict with attribute-access."""
 
@@ -496,42 +453,6 @@ class Bunch(dict):
 
     def __setattr__(self, key, value):
         self.__setitem__(key, value)
-
-
-class Change:
-    """Notify change object."""
-
-    def __init__(self, owner=None, old=None, new=None):
-        self.owner = owner
-        self.old = old
-        self.new = new
-
-    def __str__(self):
-        return (
-            f"Change(owner: {type(self.owner)}), " f"old: {self.old}, new: {self.new}"
-        )
-
-
-class NotifyQueue:
-    """Asyncio notify queue for Dict signal."""
-
-    _queue = None
-
-    @classmethod
-    def queue(cls):
-        # Lazy initialization to avoid creating a asyncio.Queue
-        # whenever this Python file is imported.
-        if cls._queue is None:
-            cls._queue = asyncio.Queue()
-        return cls._queue
-
-    @classmethod
-    def put(cls, co):
-        cls.queue().put_nowait(co)
-
-    @classmethod
-    async def get(cls):
-        return await cls.queue().get()
 
 
 """
@@ -685,101 +606,6 @@ class ImmutableDict(Immutable, Mapping):
         return "%s(%s)" % (self.__class__.__name__, dict.__repr__(self._dict))
 
 
-class MutableNotificationDict(dict, MutableMapping):
-    """A simple descriptor for dict type to notify data changes.
-    :note: Only the first level data report change.
-    """
-
-    ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._signal = Signal(self)
-
-    def mutable(self):
-        return self
-
-    @property
-    def signal(self):
-        return self._signal
-
-    def __setitem__(self, key, value):
-        old = self.pop(key, None)
-        super().__setitem__(key, value)
-        if len(self._signal) and old != value:
-            if old is None:
-                co = self._signal.send(
-                    Change(owner=self, new=Dict.ChangeItem(key, value))
-                )
-            else:
-                co = self._signal.send(
-                    Change(
-                        owner=self,
-                        old=Dict.ChangeItem(key, old),
-                        new=Dict.ChangeItem(key, value),
-                    )
-                )
-            NotifyQueue.put(co)
-
-    def __delitem__(self, key):
-        old = self.pop(key, None)
-        if len(self._signal) and old is not None:
-            co = self._signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
-            NotifyQueue.put(co)
-
-    def reset(self, d):
-        assert isinstance(d, Mapping)
-        for key in self.keys() - d.keys():
-            del self[key]
-        for key, value in d.items():
-            self[key] = value
-
-
-class Dict(ImmutableDict, MutableMapping):
-    """A simple descriptor for dict type to notify data changes.
-    :note: Only the first level data report change.
-    """
-
-    ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(dict(*args, **kwargs))
-        self.signal = Signal(self)
-
-    def __setitem__(self, key, value):
-        old = self._dict.pop(key, None)
-        self._proxy.pop(key, None)
-        self._dict[key] = value
-        if len(self.signal) and old != value:
-            if old is None:
-                co = self.signal.send(
-                    Change(owner=self, new=Dict.ChangeItem(key, value))
-                )
-            else:
-                co = self.signal.send(
-                    Change(
-                        owner=self,
-                        old=Dict.ChangeItem(key, old),
-                        new=Dict.ChangeItem(key, value),
-                    )
-                )
-            NotifyQueue.put(co)
-
-    def __delitem__(self, key):
-        old = self._dict.pop(key, None)
-        self._proxy.pop(key, None)
-        if len(self.signal) and old is not None:
-            co = self.signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
-            NotifyQueue.put(co)
-
-    def reset(self, d):
-        assert isinstance(d, Mapping)
-        for key in self._dict.keys() - d.keys():
-            del self[key]
-        for key, value in d.items():
-            self[key] = value
-
-
 # Register immutable types.
 for immutable_type in Immutable.__subclasses__():
     _json_compatible_types.add(immutable_type)
@@ -883,9 +709,15 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     Returns:
         API server HTTP URL, e.g. "http://<head-node-ip>:8265".
     """
-    if os.environ.get("RAY_ADDRESS"):
-        logger.debug(f"Using RAY_ADDRESS={os.environ['RAY_ADDRESS']}")
-        address = os.environ["RAY_ADDRESS"]
+    if api_server_address := os.environ.get(
+        ray_constants.RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE
+    ):
+        address = api_server_address
+        logger.debug(f"Using RAY_API_SERVER_ADDRESS={address}")
+    # Fall back to RAY_ADDRESS if RAY_API_SERVER_ADDRESS not set
+    elif ray_address := os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE):
+        address = ray_address
+        logger.debug(f"Using RAY_ADDRESS={address}")
 
     if address and "://" in address:
         module_string, _ = split_address(address)

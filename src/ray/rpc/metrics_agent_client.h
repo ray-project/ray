@@ -23,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/reporter.grpc.pb.h"
 #include "src/ray/protobuf/reporter.pb.h"
 
@@ -51,9 +52,9 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   MetricsAgentClientImpl(const std::string &address,
                          const int port,
                          instrumented_io_context &io_service)
-      : client_call_manager_(io_service) {
-    RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
-                   << " port:" << port;
+      : client_call_manager_(io_service, /*record_stats=*/true) {
+    RAY_LOG(DEBUG) << "Initiate the metrics client of address:"
+                   << BuildAddress(address, port);
     grpc_client_ = std::make_unique<GrpcClient<ReporterService>>(
         address, port, client_call_manager_);
   };

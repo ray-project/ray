@@ -89,10 +89,7 @@ class MapTransformFn:
     def output_block_size_option(self):
         return self._output_block_size_option
 
-    def set_target_max_block_size(self, target_max_block_size: int):
-        assert (
-            self._output_block_size_option is None and target_max_block_size is not None
-        )
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )
@@ -105,10 +102,7 @@ class MapTransformFn:
             return self._output_block_size_option.target_max_block_size
 
     def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
-        assert (
-            self._output_block_size_option is None
-            and target_num_rows_per_block is not None
-        )
+        assert target_num_rows_per_block is not None
         self._output_block_size_option = OutputBlockSizeOption(
             target_num_rows_per_block=target_num_rows_per_block
         )
@@ -225,9 +219,6 @@ class MapTransformer:
         ctx: TaskContext,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
-        assert (
-            self.target_max_block_size is not None
-        ), "target_max_block_size must be set before running"
         for transform_fn in self._transform_fns:
             if not transform_fn.output_block_size_option:
                 transform_fn.set_target_max_block_size(self.target_max_block_size)
@@ -494,9 +485,9 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
     def __eq__(self, other):
         return (
             isinstance(other, BlocksToBatchesMapTransformFn)
-            and self.batch_format == other.batch_format
-            and self.batch_size == other.batch_size
-            and self.zero_copy_batch == other.zero_copy_batch
+            and self._batch_format == other._batch_format
+            and self._batch_size == other._batch_size
+            and self._ensure_copy == other._ensure_copy
         )
 
 
@@ -563,7 +554,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     def __eq__(self, other):
         return (
             isinstance(other, BuildOutputBlocksMapTransformFn)
-            and self.input_type == other.input_type
+            and self._input_type == other._input_type
         )
 
 
@@ -592,7 +583,7 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
         """
         Args:
           additional_output_splits: The number of additional splits, must be
-          greater than 1.
+             greater than 1.
         """
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor

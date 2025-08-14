@@ -7,7 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.test_utils import async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
     DeploymentID,
@@ -25,8 +25,10 @@ from ray.serve._private.long_poll import (
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo as DeploymentTargetInfoProto,
+    EndpointSet,
+    LongPollRequest,
+    LongPollResult,
 )
-from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
 
 
 def test_notifier_events_cleared_without_update(serve_instance):
@@ -130,7 +132,7 @@ def test_long_poll_restarts(serve_instance):
     # But the retried task will not because self.should_exit is false.
     host.exit_if_set.remote()
 
-    # on_going_ref should return succesfully with a differnt value.
+    # on_going_ref should return successfully with a differnt value.
     new_timer: UpdatedObject = ray.get(on_going_ref)["timer"]
     assert new_timer.snapshot_id != timer.snapshot_id + 1
     assert new_timer.object_snapshot != timer.object_snapshot

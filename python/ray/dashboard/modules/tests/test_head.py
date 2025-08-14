@@ -8,7 +8,6 @@ import ray.dashboard.modules.tests.test_utils as test_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_bool
-from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -40,28 +39,6 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     @routes.view("/test/route_view")
     async def route_view(self, req) -> aiohttp.web.Response:
         pass
-
-    @routes.get("/test/dump")
-    async def dump(self, req) -> aiohttp.web.Response:
-        key = req.query.get("key")
-        if key is None:
-            all_data = {
-                k: dict(v)
-                for k, v in DataSource.__dict__.items()
-                if not k.startswith("_")
-            }
-            return dashboard_optional_utils.rest_response(
-                status_code=dashboard_utils.HTTPStatusCode.OK,
-                message="Fetch all data from datacenter success.",
-                **all_data,
-            )
-        else:
-            data = dict(DataSource.__dict__.get(key))
-            return dashboard_optional_utils.rest_response(
-                status_code=dashboard_utils.HTTPStatusCode.OK,
-                message=f"Fetch {key} from datacenter success.",
-                **{key: data},
-            )
 
     @routes.get("/test/http_get")
     async def get_url(self, req) -> aiohttp.web.Response:
@@ -112,7 +89,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             timestamp=time.time(),
         )
 
-    async def run(self, server):
+    async def run(self):
         pass
 
 

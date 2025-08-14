@@ -20,37 +20,37 @@
 #include "gtest/gtest.h"
 
 namespace ray {
-using namespace ray::scheduling;  // NOLINT
 
 struct SchedulingIDsTest : public ::testing::Test {};
 
 TEST_F(SchedulingIDsTest, BasicTest) {
   std::vector<std::string> string_ids = {"hello", "whaaat", "yes"};
-  std::vector<NodeID> node_ids;
+  std::vector<scheduling::NodeID> node_ids;
   for (auto &string_id : string_ids) {
-    node_ids.emplace_back(NodeID(string_id));
+    node_ids.emplace_back(scheduling::NodeID(string_id));
     ASSERT_EQ(node_ids.back().Binary(), string_id);
   }
-  ASSERT_EQ(node_ids[0], NodeID(string_ids[0]));
-  ASSERT_EQ(node_ids[0], NodeID(node_ids[0].ToInt()));
+  ASSERT_EQ(node_ids[0], scheduling::NodeID(string_ids[0]));
+  ASSERT_EQ(node_ids[0], scheduling::NodeID(node_ids[0].ToInt()));
 
-  ASSERT_TRUE(NodeID::Nil().IsNil());
-  ASSERT_EQ(NodeID::Nil().ToInt(), -1);
-  ASSERT_EQ(NodeID::Nil().Binary(), "-1");
+  ASSERT_TRUE(scheduling::NodeID::Nil().IsNil());
+  ASSERT_EQ(scheduling::NodeID::Nil().ToInt(), -1);
+  ASSERT_EQ(scheduling::NodeID::Nil().Binary(), "-1");
 
-  ASSERT_EQ(NodeID(13), NodeID(13));
-  ASSERT_NE(NodeID(1), NodeID(2));
-  ASSERT_TRUE(NodeID(1) < NodeID(2));
+  ASSERT_EQ(scheduling::NodeID(13), scheduling::NodeID(13));
+  ASSERT_NE(scheduling::NodeID(1), scheduling::NodeID(2));
+  ASSERT_TRUE(scheduling::NodeID(1) < scheduling::NodeID(2));
 }
 
 TEST_F(SchedulingIDsTest, PrepopulateResourceIDTest) {
-  ASSERT_EQ(kCPU_ResourceLabel, ResourceID(CPU).Binary());
-  ASSERT_EQ(kGPU_ResourceLabel, ResourceID(GPU).Binary());
-  ASSERT_EQ(kObjectStoreMemory_ResourceLabel, ResourceID(OBJECT_STORE_MEM).Binary());
-  ASSERT_EQ(kMemory_ResourceLabel, ResourceID(MEM).Binary());
+  ASSERT_EQ(kCPU_ResourceLabel, scheduling::ResourceID(CPU).Binary());
+  ASSERT_EQ(kGPU_ResourceLabel, scheduling::ResourceID(GPU).Binary());
+  ASSERT_EQ(kObjectStoreMemory_ResourceLabel,
+            scheduling::ResourceID(OBJECT_STORE_MEM).Binary());
+  ASSERT_EQ(kMemory_ResourceLabel, scheduling::ResourceID(MEM).Binary());
 
   // mean while NodeID is not populated.
-  ASSERT_NE(kCPU_ResourceLabel, NodeID(CPU).Binary());
+  ASSERT_NE(kCPU_ResourceLabel, scheduling::NodeID(CPU).Binary());
 }
 
 TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
@@ -61,13 +61,13 @@ TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
   "custom_unit_instance_resources": "neuron_cores,TPU,custom1"
 }
   )");
-  ASSERT_TRUE(ResourceID::CPU().IsUnitInstanceResource());
-  ASSERT_TRUE(ResourceID::GPU().IsUnitInstanceResource());
-  ASSERT_TRUE(ResourceID("custom1").IsUnitInstanceResource());
-  ASSERT_TRUE(ResourceID("neuron_cores").IsUnitInstanceResource());
-  ASSERT_TRUE(ResourceID("TPU").IsUnitInstanceResource());
+  ASSERT_TRUE(scheduling::ResourceID::CPU().IsUnitInstanceResource());
+  ASSERT_TRUE(scheduling::ResourceID::GPU().IsUnitInstanceResource());
+  ASSERT_TRUE(scheduling::ResourceID("custom1").IsUnitInstanceResource());
+  ASSERT_TRUE(scheduling::ResourceID("neuron_cores").IsUnitInstanceResource());
+  ASSERT_TRUE(scheduling::ResourceID("TPU").IsUnitInstanceResource());
 
-  ASSERT_FALSE(ResourceID::Memory().IsUnitInstanceResource());
-  ASSERT_FALSE(ResourceID("custom2").IsUnitInstanceResource());
+  ASSERT_FALSE(scheduling::ResourceID::Memory().IsUnitInstanceResource());
+  ASSERT_FALSE(scheduling::ResourceID("custom2").IsUnitInstanceResource());
 }
 }  // namespace ray

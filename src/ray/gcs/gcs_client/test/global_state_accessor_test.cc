@@ -20,10 +20,10 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/util/path_utils.h"
 
 namespace ray {
 
@@ -65,7 +65,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
-    work_ = std::make_unique<boost::asio::io_service::work>(*io_service_);
+    work_ = std::make_unique<
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+        io_service_->get_executor());
     thread_io_service_.reset(new std::thread([this] { io_service_->run(); }));
 
     // Wait until server starts listening.
@@ -119,7 +121,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
-  std::unique_ptr<boost::asio::io_service::work> work_;
+  std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
+      work_;
 };
 
 TEST_P(GlobalStateAccessorTest, TestJobTable) {
@@ -129,8 +133,8 @@ TEST_P(GlobalStateAccessorTest, TestJobTable) {
     auto job_id = JobID::FromInt(index);
     auto job_table_data = Mocker::GenJobTableData(job_id);
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
@@ -149,8 +153,8 @@ TEST_P(GlobalStateAccessorTest, TestJobTableWithSubmissionId) {
           std::to_string(index);
     }
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
@@ -166,8 +170,8 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
                             std::string("127.0.0.") + std::to_string(index),
                             "Mocker_node_" + std::to_string(index * 10));
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Nodes().AsyncRegister(
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     WaitReady(promise.get_future(), timeout_ms_);
   }
   auto node_table = global_state_->GetAllNodeInfo();
@@ -192,8 +196,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllTotalResources) {
   node_table_data->mutable_resources_total()->insert({"GPU", 10});
 
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
   WaitReady(promise.get_future(), timeout_ms_);
   ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 1);
 
@@ -221,8 +225,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   node_table_data->mutable_resources_total()->insert({"CPU", 1});
 
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
   WaitReady(promise.get_future(), timeout_ms_);
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), 1);
@@ -351,8 +355,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

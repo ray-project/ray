@@ -1,6 +1,7 @@
 # coding: utf-8
 import gc
 import logging
+import sys
 import weakref
 
 import numpy as np
@@ -9,7 +10,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.internal_api import global_gc
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -216,10 +217,4 @@ def test_global_gc_actors(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
@@ -21,15 +26,13 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 
 namespace ray {
 namespace core {
 
-using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<PinObjectsInterface>(
-    const std::string &ip_address, int port)>;
-
 using ObjectLookupCallback = std::function<void(
-    const ObjectID &object_id, const std::vector<rpc::Address> &raylet_locations)>;
+    const ObjectID &object_id, std::vector<rpc::Address> raylet_locations)>;
 
 // A callback for if we fail to recover an object.
 using ObjectRecoveryFailureCallback = std::function<void(
@@ -39,19 +42,17 @@ class ObjectRecoveryManager {
  public:
   ObjectRecoveryManager(
       rpc::Address rpc_address,
-      ObjectPinningClientFactoryFn client_factory,
-      std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
-      std::function<Status(const ObjectID &object_id,
-                           const ObjectLookupCallback &callback)> object_lookup,
-      TaskResubmissionInterface &task_resubmitter,
+      std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+          object_lookup,
+      TaskManagerInterface &task_manager,
       ReferenceCounter &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
       ObjectRecoveryFailureCallback recovery_failure_callback)
-      : task_resubmitter_(task_resubmitter),
+      : task_manager_(task_manager),
         reference_counter_(reference_counter),
         rpc_address_(std::move(rpc_address)),
-        client_factory_(std::move(client_factory)),
-        local_object_pinning_client_(std::move(local_object_pinning_client)),
+        raylet_client_pool_(std::move(raylet_client_pool)),
         object_lookup_(std::move(object_lookup)),
         in_memory_store_(in_memory_store),
         recovery_failure_callback_(std::move(recovery_failure_callback)) {}
@@ -76,8 +77,9 @@ class ObjectRecoveryManager {
   /// storing a new value for the object in the direct memory store.
   /// 3. If pinning fails at all locations for the object (or there are no
   /// locations), attempt to reconstruct the object by resubmitting the task
-  /// that created the object. If the task resubmission fails, then the
-  /// fail the recovery operation.
+  /// that created the object. If the task resubmission fails, then fail the recovery
+  /// operation. If the task is a streaming generator task that has been pushed to the
+  /// worker and hasn't finished, cancel the task and resubmit it.
   /// 4. If task resubmission succeeds, recursively attempt to recover any
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
@@ -94,19 +96,19 @@ class ObjectRecoveryManager {
   /// fails, attempt to reconstruct it by resubmitting the task that created
   /// the object.
   void PinOrReconstructObject(const ObjectID &object_id,
-                              const std::vector<rpc::Address> &locations);
+                              std::vector<rpc::Address> locations);
 
   /// Pin a new copy for the object at the given location. If that fails, then
   /// try one of the other locations.
   void PinExistingObjectCopy(const ObjectID &object_id,
                              const rpc::Address &raylet_address,
-                             const std::vector<rpc::Address> &other_locations);
+                             std::vector<rpc::Address> other_locations);
 
   /// Reconstruct an object by resubmitting the task that created it.
   void ReconstructObject(const ObjectID &object_id);
 
   /// Used to resubmit tasks.
-  TaskResubmissionInterface &task_resubmitter_;
+  TaskManagerInterface &task_manager_;
 
   /// Used to check whether we own an object.
   ReferenceCounter &reference_counter_;
@@ -114,14 +116,11 @@ class ObjectRecoveryManager {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Factory for producing new clients to pin objects at remote nodes.
-  ObjectPinningClientFactoryFn client_factory_;
-
-  // Client that can be used to pin objects from the local raylet.
-  std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
+  /// Raylet client pool for producing clients to pin objects
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   /// Function to lookup an object's locations from the global database.
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.
@@ -130,16 +129,11 @@ class ObjectRecoveryManager {
   /// Callback to call if recovery fails.
   ObjectRecoveryFailureCallback recovery_failure_callback_;
 
-  /// Protects below fields.
-  mutable absl::Mutex mu_;
-
-  /// Cache of gRPC clients to remote raylets for pinning objects.
-  absl::flat_hash_map<NodeID, std::shared_ptr<PinObjectsInterface>>
-      remote_object_pinning_clients_ ABSL_GUARDED_BY(mu_);
-
   /// Objects that are currently pending recovery. Calls to RecoverObject for
   /// objects currently in this set are idempotent.
-  absl::flat_hash_set<ObjectID> objects_pending_recovery_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex objects_pending_recovery_mu_;
+  absl::flat_hash_set<ObjectID> objects_pending_recovery_
+      ABSL_GUARDED_BY(objects_pending_recovery_mu_);
 };
 
 }  // namespace core

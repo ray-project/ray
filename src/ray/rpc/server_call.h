@@ -241,7 +241,7 @@ class ServerCallImpl : public ServerCall {
                        call_name_ + ".HandleRequestImpl",
                        // Implement the delay of the rpc server call as the
                        // delay of HandleRequestImpl().
-                       ray::asio::testing::get_delay_us(call_name_));
+                       ray::asio::testing::GetDelayUs(call_name_));
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -256,7 +256,10 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl(bool auth_success) {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      service_handler_.WaitUntilInitialized();
+      if (!service_handler_initialized_) {
+        service_handler_.WaitUntilInitialized();
+        service_handler_initialized_ = true;
+      }
     }
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
@@ -296,10 +299,12 @@ class ServerCallImpl : public ServerCall {
   void OnReplySent() override {
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
+      ray::stats::STATS_grpc_server_req_succeeded.Record(1.0, call_name_);
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
+      io_service_.post(
+          [callback = std::move(send_reply_success_callback_)]() { callback(); },
+          call_name_ + ".success_callback");
     }
     LogProcessTime();
   }
@@ -307,10 +312,12 @@ class ServerCallImpl : public ServerCall {
   void OnReplyFailed() override {
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
+      ray::stats::STATS_grpc_server_req_failed.Record(1.0, call_name_);
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_failure_callback_);
-      io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
+      io_service_.post(
+          [callback = std::move(send_reply_failure_callback_)]() { callback(); },
+          call_name_ + ".failure_callback");
     }
     LogProcessTime();
   }
@@ -350,6 +357,9 @@ class ServerCallImpl : public ServerCall {
 
   /// The service handler that handles the request.
   ServiceHandler &service_handler_;
+
+  // A boolean to track if the service handler has been initialized.
+  bool service_handler_initialized_ = false;
 
   /// Pointer to the service handler function.
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;

@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 from ci.ray_ci.container import Container
 
@@ -19,6 +19,7 @@ class LinuxContainer(Container):
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
         tmp_filesystem: Optional[str] = None,
+        privileged: bool = False,
     ) -> None:
         super().__init__(docker_tag, volumes, envs)
 
@@ -26,6 +27,7 @@ class LinuxContainer(Container):
             if tmp_filesystem != "tmpfs":
                 raise ValueError("Only tmpfs is supported for tmp filesystem")
         self.tmp_filesystem = tmp_filesystem
+        self.privileged = privileged
 
     def install_ray(
         self, build_type: Optional[str] = None, mask: Optional[str] = None
@@ -78,8 +80,11 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
-        for cap in _DOCKER_CAP_ADD:
-            extra_args += ["--cap-add", cap]
+        if self.privileged:
+            extra_args += ["--privileged"]
+        else:
+            for cap in _DOCKER_CAP_ADD:
+                extra_args += ["--cap-add", cap]
         if gpu_ids:
             extra_args += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
         extra_args += [
@@ -87,7 +92,6 @@ class LinuxContainer(Container):
             "/rayci",
             "--shm-size=2.5gb",
         ]
-
         return extra_args
 
     def get_artifact_mount(self) -> Tuple[str, str]:

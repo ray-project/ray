@@ -79,6 +79,7 @@ const absl::flat_hash_map<StatusCode, std::string_view> kCodeToStr = {
     {StatusCode::InvalidArgument, "InvalidArgument"},
     {StatusCode::ChannelError, "ChannelError"},
     {StatusCode::ChannelTimeoutError, "ChannelTimeoutError"},
+    {StatusCode::PermissionDenied, "PermissionDenied"},
 };
 
 const absl::flat_hash_map<std::string_view, StatusCode> kStrToCode = []() {
@@ -145,6 +146,11 @@ std::string Status::ToString() const {
 
   result += ": ";
   result += state_->msg;
+
+  if (IsRpcError()) {
+    result += " rpc_code: ";
+    result += absl::StrFormat("%d", state_->rpc_code);
+  }
 
   if (IsValidSourceLoc(state_->loc)) {
     std::stringstream ss;

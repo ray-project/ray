@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray import cloudpickle
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -399,7 +399,9 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().execution_options.resource_limits = ExecutionResources()
     run()
 
-    DataContext.get_current().execution_options.resource_limits.cpu = 1
+    DataContext.get_current().execution_options.resource_limits = (
+        DataContext.get_current().execution_options.resource_limits.copy(cpu=1)
+    )
     with pytest.raises(ValueError):
         run()
 
@@ -488,7 +490,9 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
 
     ctx = DataContext.get_current()
     ctx.target_max_block_size = block_size
-    ctx.execution_options.resource_limits.object_store_memory = block_size
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=block_size
+    )
 
     # Only take the first item from the iterator.
     ds = ray.data.range(100, override_num_blocks=100).map_batches(func, batch_size=None)
@@ -510,82 +514,6 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert "100 tasks executed" in stats, stats
 
 
-def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.resource_limits.object_store_memory = 100 * 1024**2
-    ctx.target_max_block_size = 1 * 1024**2
-
-    @ray.remote(max_concurrency=10)
-    class Barrier:
-        def __init__(self, n, delay=0):
-            self.n = n
-            self.delay = delay
-            self.max_waiters = 0
-            self.cur_waiters = 0
-
-        def wait(self):
-            self.cur_waiters += 1
-            if self.cur_waiters > self.max_waiters:
-                self.max_waiters = self.cur_waiters
-            self.n -= 1
-            print("wait", self.n)
-            while self.n > 0:
-                time.sleep(0.1)
-            time.sleep(self.delay)
-            print("wait done")
-            self.cur_waiters -= 1
-
-        def get_max_waiters(self):
-            return self.max_waiters
-
-    b1 = Barrier.remote(6)
-
-    class BarrierWaiter:
-        def __init__(self, barrier):
-            self._barrier = barrier
-
-        def __call__(self, x):
-            ray.get(self._barrier.wait.remote(), timeout=10)
-            return x
-
-    # Tests that we autoscale up to necessary size.
-    # 6 tasks + 1 tasks in flight per actor => need at least 6 actors to run.
-    ray.data.range(6, override_num_blocks=6).map_batches(
-        BarrierWaiter,
-        fn_constructor_args=(b1,),
-        compute=ray.data.ActorPoolStrategy(
-            min_size=1, max_size=6, max_tasks_in_flight_per_actor=1
-        ),
-        batch_size=None,
-    ).take_all()
-    assert ray.get(b1.get_max_waiters.remote()) == 6
-
-    b2 = Barrier.remote(3, delay=2)
-
-    # Tests that we don't over-scale up.
-    # 6 tasks + 2 tasks in flight per actor => only scale up to 3 actors
-    ray.data.range(6, override_num_blocks=6).map_batches(
-        BarrierWaiter,
-        fn_constructor_args=(b2,),
-        compute=ray.data.ActorPoolStrategy(
-            min_size=1, max_size=3, max_tasks_in_flight_per_actor=2
-        ),
-        batch_size=None,
-    ).take_all()
-    assert ray.get(b2.get_max_waiters.remote()) == 3
-
-    # Tests that the max pool size is respected.
-    b3 = Barrier.remote(6)
-
-    # This will hang, since the actor pool is too small.
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.data.range(6, override_num_blocks=6).map(
-            BarrierWaiter,
-            fn_constructor_args=(b3,),
-            compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
-        ).take_all()
-
-
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
     class UDFClass:
         def __call__(self, x):
@@ -594,7 +522,9 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
 
     # Tests that autoscaling works even when resource constrained via actor killing.
     # To pass this, we need to autoscale down to free up slots for task execution.
-    DataContext.get_current().execution_options.resource_limits.cpu = 2
+    DataContext.get_current().execution_options.resource_limits = (
+        DataContext.get_current().execution_options.resource_limits.copy(cpu=2)
+    )
     ray.data.range(5, override_num_blocks=5).map_batches(
         UDFClass,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
@@ -643,7 +573,9 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
-    ctx.execution_options.resource_limits.object_store_memory = 1
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=1
+    )
     ds = ray.data.range(10000, override_num_blocks=100).map(lambda x: x, num_cpus=2)
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.

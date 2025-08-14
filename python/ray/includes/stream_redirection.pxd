@@ -11,6 +11,6 @@ cdef extern from "ray/util/stream_redirection_options.h" nogil:
         c_bool tee_to_stdout
         c_bool tee_to_stderr
 
-cdef extern from "ray/util/stream_redirection_utils.h" namespace "ray" nogil:
-    void RedirectStdout(const CStreamRedirectionOptions& opt)
-    void RedirectStderr(const CStreamRedirectionOptions& opt)
+cdef extern from "ray/util/stream_redirection.h" namespace "ray" nogil:
+    void RedirectStdoutOncePerProcess(const CStreamRedirectionOptions& opt)
+    void RedirectStderrOncePerProcess(const CStreamRedirectionOptions& opt)
