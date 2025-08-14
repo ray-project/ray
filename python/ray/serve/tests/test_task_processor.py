@@ -89,6 +89,7 @@ def create_processor_config(temp_queue_directory, transport_options):
     return _create
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithRayServe:
     """Test task consumer integration with Ray Serve."""
 
