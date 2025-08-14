@@ -2469,6 +2469,7 @@ class Dataset:
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        broadcast: bool = False,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
@@ -2496,6 +2497,13 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            broadcast: (Optional) Whether to use broadcast join instead of hash shuffle
+                join. In broadcast join, the smaller dataset is loaded into memory and
+                broadcasted to all workers using map_batches with PyArrow joins.
+                This is efficient when the smaller dataset is much smaller than the larger
+                dataset and can fit in a worker node's memory. Defaults to False.
+                Note that this will check the dataset counts and could materialize the
+                both datasets, triggering a full execution of the dataset.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2618,18 +2626,73 @@ class Dataset:
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
         plan = self._plan.copy()
-        op = Join(
-            left_input_op=self._logical_plan.dag,
-            right_input_op=ds._logical_plan.dag,
-            left_key_columns=on,
-            right_key_columns=right_on,
-            join_type=join_type,
-            num_partitions=num_partitions,
-            left_columns_suffix=left_suffix,
-            right_columns_suffix=right_suffix,
-            partition_size_hint=partition_size_hint,
-            aggregator_ray_remote_args=aggregator_ray_remote_args,
-        )
+
+        if broadcast:
+            # Create the broadcast join callable class
+            from ray.data._internal.logical.operators.broadcast_join import (
+                BroadcastJoinFunction,
+            )
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            # Determine which dataset is larger and which is smaller
+            ds_count = ds.count()
+            self_count = self.count()
+            if ds_count == 0 or self_count == 0:
+                raise ValueError("Cannot perform broadcast join on empty datasets")
+
+            # Always broadcast the smaller dataset and map over the larger one
+            if self_count >= ds_count:
+                # self (left) is larger, ds (right) is smaller
+                large_ds = self
+                small_ds = ds
+                large_key_columns = on
+                small_key_columns = right_on
+                large_suffix = left_suffix
+                small_suffix = right_suffix
+                datasets_swapped = False
+            else:
+                # ds (right) is larger, self (left) is smaller
+                large_ds = ds
+                small_ds = self
+                large_key_columns = right_on
+                small_key_columns = on
+                large_suffix = right_suffix
+                small_suffix = left_suffix
+                datasets_swapped = True
+
+            # Create the broadcast join function - PyArrow will handle all join types natively
+            join_type_enum = JoinType(join_type)
+            join_fn = BroadcastJoinFunction(
+                small_table_dataset=small_ds,
+                join_type=join_type_enum,
+                large_table_key_columns=large_key_columns,
+                small_table_key_columns=small_key_columns,
+                large_table_columns_suffix=large_suffix,
+                small_table_columns_suffix=small_suffix,
+                datasets_swapped=datasets_swapped,
+            )
+
+            # Use PyArrow's native join functionality for all join types
+            result = large_ds.map_batches(
+                join_fn,
+                batch_format="pyarrow",
+                concurrency=num_partitions,
+            )
+
+            return result
+        else:
+            op = Join(
+                left_input_op=self._logical_plan.dag,
+                right_input_op=ds._logical_plan.dag,
+                left_key_columns=on,
+                right_key_columns=right_on,
+                join_type=join_type,
+                num_partitions=num_partitions,
+                left_columns_suffix=left_suffix,
+                right_columns_suffix=right_suffix,
+                partition_size_hint=partition_size_hint,
+                aggregator_ray_remote_args=aggregator_ray_remote_args,
+            )
 
         return Dataset(plan, LogicalPlan(op, self.context))
 
