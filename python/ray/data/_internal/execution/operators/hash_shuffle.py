@@ -469,11 +469,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         # Determine max number of shuffle aggregators (defaults to
         # `DataContext.min_parallelism`)
+        total_available_cluster_resources = _get_total_cluster_resources()
+
         if data_context.max_hash_shuffle_aggregators is not None:
             max_shuffle_aggregators = data_context.max_hash_shuffle_aggregators
         else:
             max_shuffle_aggregators = _derive_max_shuffle_aggregators(
-                _get_total_cluster_resources()
+                total_available_cluster_resources
             )
 
         # Cap number of aggregators to not exceed max configured
@@ -488,6 +490,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 or self._get_default_aggregator_ray_remote_args(
                     num_partitions=num_partitions,
                     num_aggregators=num_aggregators,
+                    total_available_cluster_resources=total_available_cluster_resources,
                     partition_size_hint=partition_size_hint,
                 )
             ),
@@ -982,6 +985,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         *,
         num_partitions: int,
         num_aggregators: int,
+        total_available_cluster_resources: ExecutionResources,
         partition_size_hint: Optional[int] = None,
     ):
         assert num_partitions >= num_aggregators
@@ -1002,16 +1006,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 ),
             )
 
-        # Since aggregators can handle multiple individual partitions,
-        # CPU allocation is proportionately scaled with the number of partitions
-        partition_aggregator_ratio: int = math.ceil(num_partitions / num_aggregators)
-        assert partition_aggregator_ratio >= 1
-
         remote_args = {
-            "num_cpus": self._get_aggregator_num_cpus_per_partition(
-                num_partitions=num_partitions
-            )
-            * partition_aggregator_ratio,
+            "num_cpus": self._get_aggregator_num_cpus(
+                total_available_cluster_resources,
+                num_aggregators=num_aggregators
+            ),
             "memory": aggregator_total_memory_required,
             # NOTE: By default aggregating actors should be spread across available
             #       nodes to prevent any single node being overloaded with a "thundering
@@ -1022,34 +1021,33 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         return remote_args
 
     @abc.abstractmethod
-    def _get_default_num_cpus_per_partition(self) -> int:
-        pass
-
-    @abc.abstractmethod
     def _get_operator_num_cpus_per_partition_override(self) -> int:
         pass
 
-    def _get_aggregator_num_cpus_per_partition(self, num_partitions: int):
-        # 1. Check whether there is an override
+    def _get_aggregator_num_cpus(
+        self,
+        total_available_cluster_resources: ExecutionResources,
+        num_aggregators: int
+    ) -> float:
+        # First, check whether there is an override
         if self._get_operator_num_cpus_per_partition_override() is not None:
             return self._get_operator_num_cpus_per_partition_override()
 
-        # 2. Fetch total available cluster resources
+        # Note that
         #
-        # NOTE: If cluster configuration is not available fallback to `ray.cluster_resources()`
-        total_cluster_resources = _get_total_cluster_resources()
-
-        if total_cluster_resources.cpu > 0:
-            # NOTE: For shuffling operations we aim to allocate no more than
-            #       10% of CPUs, but no more than 0.25 CPU per partition
-            #
-            # TODO finalization stage of shuffle operation always executes standalone,
-            #      hence there's no need to allocate actual CPU resources to it as
-            #      there are no other ops to contend w/ it
-            return min(0.25, (total_cluster_resources.cpu * 0.1) / num_partitions)
-
-        # 3. Fallback to defaults if the first two options are not available
-        return self._get_default_num_cpus_per_partition()
+        #  - Shuffle aggregators have modest computational footprint until
+        #    finalization stage
+        #  - Finalization stage actually always executes standalone, since it only
+        #    starts when all preceding operations complete
+        #
+        # As such, we don't need to purposefully allocate any meaningful amount
+        # of CPU resources to the shuffle aggregators, we're still allocating
+        # nominal amount of CPUs to it:
+        #
+        #   - 5% of total available CPUs but
+        #   - No more than 4 CPUs per aggregator
+        #
+        return min(4.0, total_available_cluster_resources.cpu * 0.05 / num_aggregators)
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -1405,10 +1403,6 @@ class HashShuffleAggregator:
     NOTE: This actor might have ``max_concurrency`` > 1 (depending on the number of
           assigned partitions, and has to be thread-safe!
     """
-
-    # Default minimum value of `max_concurrency` configured
-    # for a `ShuffleAggregator` actor
-    _DEFAULT_ACTOR_MAX_CONCURRENCY = 1
 
     def __init__(
         self,
