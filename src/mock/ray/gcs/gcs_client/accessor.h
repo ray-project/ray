@@ -192,11 +192,7 @@ namespace gcs {
 
 class MockErrorInfoAccessor : public ErrorInfoAccessor {
  public:
-  MOCK_METHOD(void,
-              AsyncReportJobError,
-              (const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
+  MOCK_METHOD(void, AsyncReportJobError, (rpc::ErrorTableData data), (override));
 };
 
 }  // namespace gcs
