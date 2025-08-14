@@ -1015,8 +1015,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
-                total_available_cluster_resources,
-                num_aggregators=num_aggregators
+                total_available_cluster_resources, num_aggregators=num_aggregators
             ),
             "memory": aggregator_total_memory_required,
             # NOTE: By default aggregating actors should be spread across available
@@ -1034,7 +1033,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     def _get_aggregator_num_cpus(
         self,
         total_available_cluster_resources: ExecutionResources,
-        num_aggregators: int
+        num_aggregators: int,
     ) -> float:
         # First, check whether there is an override
         if self._get_operator_num_cpus_override() is not None:
@@ -1310,7 +1309,9 @@ class AggregatorPool:
             DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY,
         )
 
-        assert max_concurrency >= 1, f"{max_partitions_per_aggregator=}, {DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS}"
+        assert (
+            max_concurrency >= 1
+        ), f"{max_partitions_per_aggregator=}, {DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS}"
 
         # NOTE: ShuffleAggregator is configured as threaded actor to allow for
         #       multiple requests to be handled "concurrently" (par GIL) --
