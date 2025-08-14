@@ -628,9 +628,8 @@ cdef class InnerGcsClient:
         error_info.set_timestamp(time.time())
 
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Publisher().PublishError(
-                    move(c_key_id), move(error_info), timeout_ms))
+            self.inner.get().Publisher().PublishError(
+                move(c_key_id), move(error_info), timeout_ms)
 
     def publish_logs(self, log_json: dict, timeout = None):
         cdef:
