@@ -1,6 +1,6 @@
 group: build
 steps:
-  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+  - label: ":tapioca: build: wheel 3.9 (x86_64)"
     key: linux_wheels
     tags:
       - release_wheels
@@ -8,13 +8,7 @@ steps:
       - oss
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.9 --architecture x86_64 --upload
     depends_on:
       - manylinux
       - forge
