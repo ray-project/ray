@@ -1,61 +1,4 @@
-.. _serving_llms:
-
-Serving LLMs
-============
-
-Ray Serve LLM APIs allow users to deploy multiple LLM models together with a familiar Ray Serve API, while providing compatibility with the OpenAI API.
-
-Features
---------
-- ⚡️ Automatic scaling and load balancing
-- 🌐 Unified multi-node multi-model deployment
-- 🔌 OpenAI compatible
-- 🔄 Multi-LoRA support with shared base models
-- 🚀 Engine agnostic architecture (i.e. vLLM, SGLang, etc)
-
-Requirements
---------------
-
-.. code-block:: bash
-
-    pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
-
-    # Suggested dependencies when using vllm 0.7.2:
-    pip install xgrammar==0.1.11 pynvml==12.0.0
-
-
-Key Components
---------------
-
-The :ref:`ray.serve.llm <serve-llm-api>` module provides two key deployment types for serving LLMs:
-
-LLMServer
-~~~~~~~~~~~~~~~~~~
-
-The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
-
-OpenAiIngress
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
-
-- ``/v1/chat/completions``: Chat interface (ChatGPT-style)
-- ``/v1/completions``: Text completion
-- ``/v1/embeddings``: Text embeddings
-- ``/v1/models``: List available models
-- ``/v1/models/{model}``: Model information
-
-Configuration
--------------
-
-LLMConfig
-~~~~~~~~~
-The :class:`LLMConfig <ray.serve.llm.LLMConfig>` class specifies model details such as:
-
-- Model loading sources (HuggingFace or cloud storage)
-- Hardware requirements (accelerator type)
-- Engine arguments (e.g. vLLM engine kwargs)
-- LoRA multiplexing configuration
-- Serve auto-scaling parameters
+.. _quick-start:
 
 Quickstart Examples
 -------------------
@@ -68,31 +11,10 @@ Deployment through :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>`
     .. tab-item:: Builder Pattern
         :sync: builder
 
-        .. code-block:: python
-
-            from ray import serve
-            from ray.serve.llm import LLMConfig, build_openai_app
-
-            llm_config = LLMConfig(
-                model_loading_config=dict(
-                    model_id="qwen-0.5b",
-                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1, max_replicas=2,
-                    )
-                ),
-                # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-                accelerator_type="A10G",
-                # You can customize the engine arguments (e.g. vLLM engine kwargs)
-                engine_kwargs=dict(
-                    tensor_parallel_size=2,
-                ),
-            )
-
-            app = build_openai_app({"llm_configs": [llm_config]})
-            serve.run(app, blocking=True)
+        .. literalinclude:: ../../llm/doc_code/serve/qwen/qwen_example.py
+            :language: python
+            :start-after: __qwen_example_start__
+            :end-before: __qwen_example_end__
 
     .. tab-item:: Bind Pattern
         :sync: bind
@@ -263,31 +185,8 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
     .. tab-item:: Inline Config
         :sync: inline
 
-        .. code-block:: yaml
-
-            # config.yaml
-            applications:
-            - args:
-                llm_configs:
-                    - model_loading_config:
-                        model_id: qwen-0.5b
-                        model_source: Qwen/Qwen2.5-0.5B-Instruct
-                      accelerator_type: A10G
-                      deployment_config:
-                        autoscaling_config:
-                            min_replicas: 1
-                            max_replicas: 2
-                    - model_loading_config:
-                        model_id: qwen-1.5b
-                        model_source: Qwen/Qwen2.5-1.5B-Instruct
-                      accelerator_type: A10G
-                      deployment_config:
-                        autoscaling_config:
-                            min_replicas: 1
-                            max_replicas: 2
-              import_path: ray.serve.llm:build_openai_app
-              name: llm_app
-              route_prefix: "/"
+        .. literalinclude:: ../../llm/doc_code/serve/qwen/llm_config_example.yaml
+            :language: yaml
 
 
     .. tab-item:: Standalone Config
