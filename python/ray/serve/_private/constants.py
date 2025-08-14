@@ -265,6 +265,11 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
 
+# The Prometheus host that Serve replicas will query autoscaling policy metrics from.
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST = get_env_str(
+    "RAY_PROMETHEUS_HOST", "http://localhost:9090"
+)
+
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
@@ -428,13 +433,13 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = get_env_int(
 
 # Interval at which metrics will be fetched by each replica, to later be reported to the serve controller.
 # Set to `0` to disable metrics fetching.
-RAY_SERVE_METRICS_FETCH_INTERVAL_MS = int(
-    os.environ.get("RAY_SERVE_METRICS_FETCH_INTERVAL_MS", "10000")
+RAY_SERVE_METRICS_FETCH_INTERVAL_MS = get_env_int(
+    "RAY_SERVE_METRICS_FETCH_INTERVAL_MS", "10000"
 )
 
 # Limit for all metrics_sources before timout error is thrown
-RAY_SERVE_METRICS_FETCH_TIMEOUT_MS = int(
-    os.environ.get("RAY_SERVE_METRICS_FETCH_TIMEOUT_MS", "5000")
+RAY_SERVE_METRICS_FETCH_TIMEOUT_MS = get_env_int(
+    "RAY_SERVE_METRICS_FETCH_TIMEOUT_MS", "5000"
 )
 
 # The default request router class to use if none is specified.
