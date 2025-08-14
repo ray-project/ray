@@ -200,11 +200,11 @@ def enable_open_telemetry(request):
     Fixture to enable OpenTelemetry for the test.
     """
     if request.param:
-        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "1"
+        os.environ["RAY_enable_open_telemetry"] = "1"
     else:
-        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "0"
+        os.environ["RAY_enable_open_telemetry"] = "0"
     yield
-    os.environ.pop("RAY_experimental_enable_open_telemetry_on_agent", None)
+    os.environ.pop("RAY_enable_open_telemetry", None)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
