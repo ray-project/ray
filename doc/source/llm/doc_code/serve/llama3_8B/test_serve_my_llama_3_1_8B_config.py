@@ -24,7 +24,9 @@ llm_configs = config_dict["applications"][0]["args"]["llm_configs"]
 for config in llm_configs:
     config.pop("accelerator_type", None)
     # Use ungated llama instead
-    config["model_loading_config"]["model_source"] = "unsloth/Meta-Llama-3.1-8B-Instruct"
+    config["model_loading_config"][
+        "model_source"
+    ] = "unsloth/Meta-Llama-3.1-8B-Instruct"
     config["engine_kwargs"]["hf_token"] = "PLACEHOLDER"
 
 app = llm.build_openai_app({"llm_configs": llm_configs})
