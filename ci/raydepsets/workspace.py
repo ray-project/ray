@@ -8,7 +8,6 @@ import yaml
 
 @dataclass
 class BuildArgSet:
-    name: str
     build_args: Dict[str, str]
 
 
@@ -23,7 +22,6 @@ class Depset:
     append_flags: List[str]
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
-    build_arg_set_name: Optional[str] = None
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -40,7 +38,7 @@ def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
         return obj
 
 
-def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> Depset:
+def _dict_to_depset(depset: dict) -> Depset:
     return Depset(
         name=depset.get("name"),
         requirements=depset.get("requirements", []),
@@ -49,7 +47,6 @@ def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> D
         output=depset.get("output"),
         source_depset=depset.get("source_depset"),
         depsets=depset.get("depsets", []),
-        build_arg_set_name=build_arg_set_name,
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
     )
@@ -58,42 +55,35 @@ def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> D
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
-    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
+    build_arg_sets: Dict[str, BuildArgSet] = field(default_factory=dict)
 
-    @staticmethod
-    def from_dict(data: dict) -> "Config":
-        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
+    @classmethod
+    def from_dict(cls, data: dict) -> "Config":
+        build_arg_sets = cls.parse_build_arg_sets(data.get("build_arg_sets", {}))
         raw_depsets = data.get("depsets", [])
         depsets = []
         for depset in raw_depsets:
-            build_arg_set_matrix = depset.get("build_arg_sets", [])
-            if build_arg_set_matrix:
-                for build_arg_set_name in build_arg_set_matrix:
-                    build_arg_set = next(
-                        (
-                            build_arg_set
-                            for build_arg_set in build_arg_sets
-                            if build_arg_set.name == build_arg_set_name
-                        ),
-                        None,
-                    )
+            build_arg_set_keys = depset.get("build_arg_sets", [])
+            if build_arg_set_keys:
+                # Expand the depset for each build arg set
+                for build_arg_set_key in build_arg_set_keys:
+                    build_arg_set = build_arg_sets[build_arg_set_key]
                     if build_arg_set is None:
-                        raise KeyError(f"Build arg set {build_arg_set_name} not found")
+                        raise KeyError(f"Build arg set {build_arg_set_key} not found")
                     depset_yaml = _substitute_build_args(depset, build_arg_set)
-                    depsets.append(_dict_to_depset(depset_yaml, build_arg_set_name))
+                    depsets.append(_dict_to_depset(depset_yaml))
             else:
-                depsets.append(_dict_to_depset(depset=depset))
+                depsets.append(_dict_to_depset(depset))
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
     @staticmethod
-    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List[BuildArgSet]:
-        return [
-            BuildArgSet(
-                name=build_arg_set.get("name", None),
-                build_args=build_arg_set.get("build_args", []),
+    def parse_build_arg_sets(build_arg_sets: Dict[str, dict]) -> Dict[str, BuildArgSet]:
+        return {
+            key: BuildArgSet(
+                build_args=build_arg_set,
             )
-            for build_arg_set in build_arg_sets
-        ]
+            for key, build_arg_set in build_arg_sets.items()
+        }
 
 
 class Workspace:

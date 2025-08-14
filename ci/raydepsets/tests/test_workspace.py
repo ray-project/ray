@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ci.raydepsets.tests.utils import copy_data_to_tmpdir
-from ci.raydepsets.workspace import BuildArgSet, Workspace, _substitute_build_args
+from ci.raydepsets.workspace import Workspace, _substitute_build_args, BuildArgSet
 
 
 def test_workspace_init():
@@ -19,30 +19,18 @@ def test_parse_build_arg_sets():
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-        assert config.build_arg_sets[0].name == "py311_cpu"
-        assert config.build_arg_sets[0].build_args == {
+        assert config.build_arg_sets["py311_cpu"].build_args == {
             "CUDA_VERSION": "cpu",
             "PYTHON_VERSION": "py311",
         }
-        assert config.build_arg_sets[1].name == "py311_cuda128"
-        assert config.build_arg_sets[1].build_args == {
+        assert config.build_arg_sets["py311_cuda128"].build_args == {
             "CUDA_VERSION": 128,
             "PYTHON_VERSION": "py311",
         }
 
 
-def test_from_dict_build_arg_set_matrix():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        copy_data_to_tmpdir(tmpdir)
-        workspace = Workspace(dir=tmpdir)
-        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-        config.build_arg_sets[0].build_args["PYTHON_VERSION"] = "py312"
-        config.build_arg_sets[0].build_args["CUDA_VERSION"] = "cu128"
-
-
 def test_substitute_build_args():
     build_arg_set = BuildArgSet(
-        name="py311_cpu",
         build_args={
             "PYTHON_VERSION": "py311",
             "CUDA_VERSION": "cu128",
