@@ -343,7 +343,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           absl::MutexLock lock(&mu_);
 
           auto &sched_entry = scheduling_key_entries_[scheduling_key];
-          auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+          auto raylet_lease_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
           sched_entry.pending_lease_requests.erase(task_id);
 
           if (status.ok()) {
