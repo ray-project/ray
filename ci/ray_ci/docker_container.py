@@ -47,7 +47,6 @@ class DockerContainer(LinuxContainer):
         architecture: str = DEFAULT_ARCHITECTURE,
         canonical_tag: str = None,
         upload: bool = False,
-        use_base_extra: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
 
