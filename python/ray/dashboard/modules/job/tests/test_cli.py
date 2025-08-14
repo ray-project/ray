@@ -416,7 +416,7 @@ class TestSubmit:
             print(result.output)
             assert result.exit_code == 0
             expected_kwargs = {
-                "entrypoint": "echo hello",
+                "entrypoint": '"echo hello"',
                 "submission_id": None,
                 "runtime_env": {},
                 "metadata": None,
