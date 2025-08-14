@@ -38,9 +38,7 @@ def _plan_hash_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=(
-            logical_op._num_outputs or data_context.default_hash_shuffle_parallelism
-        ),
+        num_partitions=logical_op._num_outputs,
         should_sort=logical_op._sort,
         # TODO wire in aggregator args overrides
     )
