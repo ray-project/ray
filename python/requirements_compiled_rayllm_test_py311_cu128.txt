@@ -133,6 +133,12 @@ alabaster==0.7.16 \
     --hash=sha256:75a8b99c28a5dad50dd7f8ccdd447a121ddb3892da9e53d1ca5cca3106d58d65 \
     --hash=sha256:b46733c07dce03ae4e150330b975c75737fa60f0a7c591b6c8bf4928a28e2c92
     # via sphinx
+amqp==5.3.1 \
+    --hash=sha256:43b3319e1b4e7d1251833a93d672b4af1e40f3d632d479b98661a95f117880a2 \
+    --hash=sha256:cddc00c725449522023bad949f70fff7b48f0b1ade74d170a6f10ab044739432
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   kombu
 annotated-types==0.6.0 \
     --hash=sha256:0641064de18ba7a25dee8f96403ebc39113d0cb953a01429249d5c7564666a43 \
     --hash=sha256:563339e807e53ffd9c267e99fc6d9ea23eb8443c08f112651963e24e22f84a5d
@@ -255,6 +261,12 @@ beautifulsoup4==4.11.1 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   nbconvert
+billiard==4.2.1 \
+    --hash=sha256:12b641b0c539073fc8d3f5b8b7be998956665c4233c7c1fcd66a7e677c4fb36f \
+    --hash=sha256:40b59a4ac8806ba2c2369ea98d876bc6108b051c227baffd928c644d15d8f3cb
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   celery
 blake3==1.0.5 \
     --hash=sha256:03638a6dc8546365c3576fdb293fb2c53b898ac80525b5742d9cf00b4f44dea5 \
     --hash=sha256:043a226cebfedff7b51ab9c87d4476c06d2cd10776855eaa9c619f2272b3c32e \
@@ -416,6 +428,12 @@ cbor2==5.6.5 \
     --hash=sha256:fde21ac1cf29336a31615a2c469a9cb03cf0add3ae480672d4d38cda467d07fc \
     --hash=sha256:fe11c2eb518c882cfbeed456e7a552e544893c17db66fe5d3230dbeaca6b615c
     # via vllm
+celery==5.5.3 \
+    --hash=sha256:0b5761a07057acee94694464ca482416b959568904c9dfa41ce8413a7d65d525 \
+    --hash=sha256:6c972ae7968c2b5281227f01c3a3f984037d21c5129d07bf3550cc2afc6b10a5
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   -r python/requirements.txt
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
     --hash=sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe
@@ -584,9 +602,31 @@ click==8.1.7 \
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
+    #   celery
+    #   click-didyoumean
+    #   click-plugins
+    #   click-repl
     #   ray
     #   typer
     #   uvicorn
+click-didyoumean==0.3.1 \
+    --hash=sha256:4f82fdff0dbe64ef8ab2279bd6aa3f6a99c3b28c05aa09cbfc07c9d7fbb5a463 \
+    --hash=sha256:5c4bb6007cfea5f2fd6583a2fb6701a22a41eb98957e63d0fac41c10e7c3117c
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   celery
+click-plugins==1.1.1.2 \
+    --hash=sha256:008d65743833ffc1f5417bf0e78e8d2c23aab04d9745ba817bd3e71b0feb6aa6 \
+    --hash=sha256:d7af3984a99d243c131aa1a828331e7630f4a88a9741fd05c927b204bcf92261
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   celery
+click-repl==0.3.0 \
+    --hash=sha256:17849c23dba3d667247dc4defe1757fff98694e90fe37474f3feebb69ced26a9 \
+    --hash=sha256:fb7e06deb8da8de86180a33a9da97ac316751c094c6899382da7feeeeb51b812
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   celery
 cloudpickle==2.2.0 \
     --hash=sha256:3f4219469c55453cfe4737e564b67c2a149109dabf7f242478948b895f61106f \
     --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
@@ -1660,6 +1700,12 @@ jupytext==1.17.2 \
     --hash=sha256:4f85dc43bb6a24b75491c5c434001ad5ef563932f68f15dd3e1c8ce12a4a426b \
     --hash=sha256:772d92898ac1f2ded69106f897b34af48ce4a85c985fa043a378ff5a65455f02
     # via -r python/requirements/llm/llm-test-requirements.txt
+kombu==5.5.4 \
+    --hash=sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363 \
+    --hash=sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   celery
 lark==1.2.2 \
     --hash=sha256:c2276486b02f0f1b90be155f2c8ba4a8e194d42775786db622faccd652d8e80c \
     --hash=sha256:ca807d0162cd16cef15a8feecb862d7319e7a09bdb13aef927968e45040fed80
@@ -2516,6 +2562,7 @@ packaging==23.0 \
     #   jupyterlab
     #   jupyterlab-server
     #   jupytext
+    #   kombu
     #   lazy-loader
     #   lm-format-enforcer
     #   nbconvert
@@ -2708,6 +2755,7 @@ prompt-toolkit==3.0.41 \
     --hash=sha256:f36fe301fafb7470e86aaf90f036eef600a3210be4decf461a5b1ca8403d3cb2
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   click-repl
     #   ipython
 propcache==0.3.0 \
     --hash=sha256:02df07041e0820cacc8f739510078f2aadcfd3fc57eaeeb16d5ded85c872c89e \
@@ -3335,6 +3383,7 @@ python-dateutil==2.8.2 \
     #   -r python/requirements/cloud-requirements.txt
     #   arrow
     #   botocore
+    #   celery
     #   jupyter-client
     #   pandas
 python-dotenv==1.1.0 \
@@ -4343,6 +4392,12 @@ typing-extensions==4.12.2 \
     #   torch
     #   typer
     #   vllm
+tzdata==2025.2 \
+    --hash=sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8 \
+    --hash=sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   kombu
 tzlocal==5.3 \
     --hash=sha256:2fafbfc07e9d8b49ade18f898d6bcd37ae88ce3ad6486842a2e4f03af68323d2 \
     --hash=sha256:3814135a1bb29763c6e4f08fd6e41dbb435c7a60bfbb03270211bcc537187d8c
@@ -4410,6 +4465,14 @@ uvloop==0.21.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'c
     --hash=sha256:f3df876acd7ec037a3d005b3ab85a7e4110422e4d9c1571d4fc89b0fc41b6816 \
     --hash=sha256:f7089d2dc73179ce5ac255bdf37c236a9f914b264825fdaacaded6990a7fb4c2
     # via uvicorn
+vine==5.1.0 \
+    --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
+    --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu128.txt
+    #   amqp
+    #   celery
+    #   kombu
 virtualenv==20.29.1 \
     --hash=sha256:4e4cb403c0b0da39e13b46b1b2476e505cb0046b25f242bee80f62bf990b2779 \
     --hash=sha256:b8b8970138d32fb606192cb97f6cd4bb644fa486be9308fb9b63f81091b5dc35
