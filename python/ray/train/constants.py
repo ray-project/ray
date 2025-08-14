@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -43,7 +44,9 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
 # Deprecated configs can use this value to detect if the user has set it.
-_DEPRECATED_VALUE = "DEPRECATED"
+# This has type Any to allow it to be assigned to any annotated parameter
+# without causing type errors.
+_DEPRECATED_VALUE: Any = "DEPRECATED"
 
 
 # ==================================================

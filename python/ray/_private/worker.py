@@ -38,6 +38,9 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+if TYPE_CHECKING:
+    import torch
+
 import colorama
 
 import ray
@@ -100,9 +103,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    from ray.experimental.gpu_object_manager import GPUObject
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -871,7 +871,7 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        gpu_objects: Dict[str, GPUObject] = {}
+        gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
@@ -886,7 +886,6 @@ class Worker:
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
                     object_id
                 )
-            gpu_objects[object_id].num_readers += 1
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -2584,7 +2583,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
