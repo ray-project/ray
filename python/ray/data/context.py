@@ -87,7 +87,7 @@ DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
 )
 
 DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
-    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -501,9 +501,11 @@ class DataContext:
     # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
     max_hash_shuffle_finalization_batch_size: Optional[int] = None
 
-    join_operator_actor_num_cpus_per_partition_override: float = None
-    hash_shuffle_operator_actor_num_cpus_per_partition_override: float = None
-    hash_aggregate_operator_actor_num_cpus_per_partition_override: float = None
+    # (Advanced) Following configuration allows to override `num_cpus` allocation for the
+    # Join/Aggregate/Shuffle workers (utilizing hash-shuffle)
+    join_operator_actor_num_cpus_override: float = None
+    hash_shuffle_operator_actor_num_cpus_override: float = None
+    hash_aggregate_operator_actor_num_cpus_override: float = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
