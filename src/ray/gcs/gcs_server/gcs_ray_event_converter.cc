@@ -34,6 +34,10 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequests(
       ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()), task_event);
       break;
     }
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
+      ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()), task_event);
+      break;
+    }
     default:
       // TODO(can-anyscale): Handle other event types
       break;
@@ -101,6 +105,15 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
         function_descriptor.java_function_descriptor().function_name());
   }
   task_info->mutable_required_resources()->swap(*event.mutable_required_resources());
+}
+
+void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event,
+                                               rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.attempt_number());
+  task_event.set_job_id(event.job_id());
+
+  task_event.mutable_profile_events()->Swap(event.mutable_profile_events());
 }
 
 }  // namespace gcs
