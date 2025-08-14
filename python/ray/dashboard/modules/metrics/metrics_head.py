@@ -120,10 +120,6 @@ class MetricsHead(SubprocessModule):
             GRAFANA_ORG_ID_ENV_VAR, DEFAULT_GRAFANA_ORG_ID
         )
 
-        self._prom_discovery_file_path = os.path.join(
-            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
-        )
-
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
 
@@ -397,10 +393,13 @@ class MetricsHead(SubprocessModule):
         # Prometheus config at PROMETHEUS_CONFIG_INPUT_PATH that always uses "/tmp/ray".
         # Other than the root path, the config file generated here is identical to that
         # hardcoded config file.
+        prom_discovery_file_path = os.path.join(
+            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
+        )
         with open(prometheus_config_output_path, "w") as f:
             f.write(
                 PROMETHEUS_YML_TEMPLATE.format(
-                    prom_metrics_service_discovery_file_path=self._prom_discovery_file_path
+                    prom_metrics_service_discovery_file_path=prom_discovery_file_path
                 )
             )
 
@@ -420,40 +419,3 @@ class MetricsHead(SubprocessModule):
 
             message = await resp.text()
             raise PrometheusQueryError(resp.status, message)
-
-    @routes.get("/api/prometheus/sd")
-    async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
-        """
-        Expose Prometheus metrics targets through HTTP Service Discovery.
-
-        Returns the same content as the file-based SD at
-        `/tmp/ray/prom_metrics_service_discovery.json`.
-        If that file is missing, return an empty list `[]`.
-        If the file is invalid, return an error.
-        """
-        try:
-            with open(self._prom_discovery_file_path, "r", encoding="utf-8") as f:
-                parsed = json.load(f)
-            # prometheus expects a JSON list
-            if not isinstance(parsed, list):
-                raise ValueError("service discovery file is not a list")
-        except FileNotFoundError:
-            logger.warning("http service discovery: SD file not found")
-            parsed = []
-        except Exception as e:
-            # Hard failure: Prometheus will keep previous targets until next refresh
-            error_message = f"http service discovery failure: {e}"
-            logger.warning(error_message, exc_info=e)
-            return aiohttp.web.json_response(
-                {"error": error_message},
-                status=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                headers={"Cache-Control": "no-store"},
-            )
-
-        return aiohttp.web.Response(
-            text=json.dumps(parsed),
-            content_type="application/json",
-            charset="utf-8",
-            status=dashboard_utils.HTTPStatusCode.OK,
-            headers={"Cache-Control": "no-store"},
-        )
