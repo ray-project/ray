@@ -349,6 +349,7 @@ void TaskProfileEvent::PopulateRpcRayEventBaseFields(
   ray_event.mutable_timestamp()->CopyFrom(timestamp);
   ray_event.set_severity(rpc::events::RayEvent::INFO);
   ray_event.set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
+  ray_event.set_session_name(session_name_);
 }
 
 void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
