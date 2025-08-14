@@ -2058,7 +2058,7 @@
 
   cluster:
     byod: {}
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
@@ -3002,6 +3002,40 @@
   run:
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
+
+- name: gpu_object_GPU
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/gpu_object_microbenchmark.py
+
+- name: gpu_object_GPU_multinode
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/gpu_object_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   group: core-daily-test
@@ -4519,6 +4553,26 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
+- name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+      post_build_script: byod_llm_lmcache_test.sh
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d_lmcache.yaml --skip-hf-token true
 
 ##############
 # LLM Batch

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 import threading
+from collections import defaultdict
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -52,7 +53,7 @@ def __ray_send__(self, obj_id: str, tensor_transport_meta: TensorTransportMetada
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
 
-    tensors = gpu_object_store.get_object(obj_id).data
+    tensors = gpu_object_store.get_object(obj_id)
 
     backend = collective.get_group_handle(
         tensor_transport_meta.communicator_name
@@ -116,21 +117,15 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     gpu_object = gpu_object_store.get_object(obj_id)
-    return gpu_object.data
+    return gpu_object
 
 
 @dataclass
-class GPUObject:
+class _GPUObject:
     # A list of tensors representing the GPU object.
     data: List["torch.Tensor"]
     # Whether the GPU object is the primary copy.
     is_primary: bool
-    # The number of reads allowed to the GPU object before it will be GCed from this actor.
-    # This is used to implement garbage collection for receiver actors,
-    # handling cases where the same GPU object reference is passed to the
-    # same actor task multiple times. For sender actors, we still rely on
-    # the object store's reference counting mechanism.
-    num_readers: int = 0
 
 
 class GPUObjectStore:
@@ -149,19 +144,27 @@ class GPUObjectStore:
         # A dictionary that maps from an object ID to a list of tensors.
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
-        self._gpu_object_store: Dict[str, GPUObject] = {}
+        self._gpu_object_store: Dict[str, _GPUObject] = {}
+        # Mapping from tensor to the IDs of objects that contain it.
+        self._tensor_to_object_ids: Dict["torch.Tensor", Set[str]] = defaultdict(set)
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
         self._object_present_cv = threading.Condition(self._lock)
+        # Signal when an object is freed from the object store.
+        self._object_freed_cv = threading.Condition(self._lock)
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
             return obj_id in self._gpu_object_store
 
-    def get_object(self, obj_id: str) -> Optional[GPUObject]:
+    def has_tensor(self, tensor: "torch.Tensor") -> bool:
         with self._lock:
-            return self._gpu_object_store[obj_id]
+            return tensor in self._tensor_to_object_ids
+
+    def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
+        with self._lock:
+            return self._gpu_object_store[obj_id].data
 
     def add_object(
         self,
@@ -178,7 +181,9 @@ class GPUObjectStore:
             is_primary: Whether the GPU object is the primary copy.
         """
         with self._object_present_cv:
-            self._gpu_object_store[obj_id] = GPUObject(
+            for tensor in gpu_object:
+                self._tensor_to_object_ids[tensor].add(obj_id)
+            self._gpu_object_store[obj_id] = _GPUObject(
                 gpu_object,
                 is_primary,
             )
@@ -193,7 +198,7 @@ class GPUObjectStore:
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> GPUObject:
+    ) -> List["torch.Tensor"]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then gets it. If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -212,7 +217,7 @@ class GPUObjectStore:
 
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> GPUObject:
+    ) -> List["torch.Tensor"]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then pops it.  If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -242,20 +247,39 @@ class GPUObjectStore:
                 indefinitely.
         """
         with self._object_present_cv:
-            present = self._object_present_cv.wait_for(
+            if not self._object_present_cv.wait_for(
                 lambda: obj_id in self._gpu_object_store, timeout=timeout
-            )
-            if not present:
+            ):
                 raise TimeoutError(
                     f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-    def pop_object(self, obj_id: str) -> GPUObject:
+    def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
             assert (
                 obj_id in self._gpu_object_store
             ), f"obj_id={obj_id} not found in GPU object store"
-            return self._gpu_object_store.pop(obj_id)
+            gpu_object = self._gpu_object_store.pop(obj_id)
+            for tensor in gpu_object.data:
+                self._tensor_to_object_ids[tensor].remove(obj_id)
+                if len(self._tensor_to_object_ids[tensor]) == 0:
+                    self._tensor_to_object_ids.pop(tensor)
+            self._object_freed_cv.notify_all()
+            return gpu_object.data
+
+    def wait_tensor_freed(
+        self, tensor: "torch.Tensor", timeout: Optional[float] = None
+    ) -> None:
+        """
+        Wait for the object to be freed from the GPU object store.
+        """
+        with self._object_freed_cv:
+            if not self._object_freed_cv.wait_for(
+                lambda: tensor not in self._tensor_to_object_ids, timeout=timeout
+            ):
+                raise TimeoutError(
+                    f"Tensor {tensor} not freed from GPU object store after {timeout}s. The tensor will not be freed until all ObjectRefs containing the tensor have gone out of scope."
+                )
 
     def get_num_objects(self) -> int:
         """

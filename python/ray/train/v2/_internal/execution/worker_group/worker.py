@@ -10,7 +10,6 @@ import ray
 import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
-from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
@@ -20,7 +19,6 @@ from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
 )
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
@@ -30,6 +28,10 @@ from ray.train.v2._internal.execution.context import (
     set_train_context,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.train_fn_utils import (
+    TrainFnUtils,
+    set_train_fn_utils,
+)
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
 from ray.train.v2._internal.logging.logging import LoggingManager
 from ray.train.v2._internal.logging.patch_print import patch_print_function
@@ -185,10 +187,10 @@ class RayTrainWorker:
         self,
         train_run_context: TrainRunContext,
         distributed_context: DistributedContext,
-        synchronization_actor: SynchronizationActor,
+        synchronization_actor: ActorHandle,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
-        dataset_shards: Dict[str, DataIterator] = None,
+        dataset_manager: Optional[ActorHandle] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
@@ -207,8 +209,8 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
-            dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
+            dataset_manager=dataset_manager,
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(
@@ -218,6 +220,9 @@ class RayTrainWorker:
         patch_print_function()
         # Set the train context global variable for the worker.
         set_train_context(context)
+
+        # user facing train fn utils
+        set_train_fn_utils(TrainFnUtils())
 
         for callback in self._callbacks:
             callback.after_init_train_context()

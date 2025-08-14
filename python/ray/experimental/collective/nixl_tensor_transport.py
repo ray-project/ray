@@ -42,7 +42,7 @@ class NixlTensorTransport(TensorTransportManager):
                 gpu_object.data
             )
             return NixlTransportMetadata(
-                tensor_meta=[(t.shape, t.dtype) for t in gpu_object.data],
+                tensor_meta=[(t.shape, t.dtype) for t in gpu_object],
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
             )

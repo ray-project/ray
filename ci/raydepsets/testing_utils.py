@@ -1,9 +1,10 @@
 """Shared test utilities for raydepsets tests."""
 
 import shutil
+
 import runfiles
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
