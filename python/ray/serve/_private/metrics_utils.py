@@ -231,50 +231,91 @@ class InMemoryMetricsStore:
         self,
         keys: Iterable[Hashable],
     ) -> Tuple[Optional[float], int]:
-        """Aggregate min value across the specified keys."""
+        """Find the min value across all timeseries values at the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the min across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the min.
+            Returns (None, 0) if no valid keys have data.
+        """
         return self._aggregate_reduce(keys, min)
 
     def aggregate_max(
         self,
         keys: Iterable[Hashable],
     ) -> Tuple[Optional[float], int]:
-        """Aggregate max value across the specified keys."""
+        """Find the max value across all timeseries values at the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the max across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the max.
+            Returns (None, 0) if no valid keys have data.
+        """
         return self._aggregate_reduce(keys, max)
 
     def aggregate_sum(
         self,
         keys: Iterable[Hashable],
     ) -> Tuple[Optional[float], int]:
-        """Aggregate sum value across the specified keys."""
+        """Sum the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the sum across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the sum.
+            Returns (None, 0) if no valid keys have data.
+        """
         return self._aggregate_reduce(keys, sum)
 
     def aggregate_avg(
         self,
         keys: Iterable[Hashable],
     ) -> Tuple[Optional[float], int]:
-        """Aggregate average value across the specified keys."""
+        """Average the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the mean across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the mean.
+            Returns (None, 0) if no valid keys have data.
+        """
         return self._aggregate_reduce(keys, statistics.mean)
 
 
 def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetricsStore:
-    merged = InMemoryMetricsStore()
+    """Consolidate multiple metrics stores into a single store. If duplicate keys
+    are found, the latest value is kept. If the QUEUED_REQUESTS_KEY is present,
+    the values are summed across all stores.
+
+    Args:
+        stores: A variable number of InMemoryMetricsStore instances to consolidate.
+    Returns:
+        A new InMemoryMetricsStore instance with data only from exclusive keys
+        or the latest values for duplicate keys.
+    """
     if len(stores) == 1:
-        return merged
+        return stores[0]
     else:
+        merged = InMemoryMetricsStore()
         merged.data[QUEUED_REQUESTS_KEY] = [TimeStampedValue(time.time(), 0.0)]
         for store in stores:
             for key, timeseries in store.data.items():
                 if key == QUEUED_REQUESTS_KEY:
                     # Sum queued requests across handle metrics.
                     merged.data[QUEUED_REQUESTS_KEY][-1].value += timeseries[-1].value
-                elif key not in merged.data or (
-                    timeseries
-                    and (
-                        not merged.data[key]
-                        or timeseries[-1].timestamp > merged.data[key][-1].timestamp
-                    )
-                ):
-                    # Replace if not present or if newer datapoints are available
+                elif not merged.data.get(key):
+                    merged.data[key] = timeseries.copy()
+                elif timeseries and timeseries[-1].timestamp > merged.data[key][-1].timestamp:
                     merged.data[key] = timeseries.copy()
 
     return merged
