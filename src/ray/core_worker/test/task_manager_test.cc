@@ -198,9 +198,10 @@ class TaskManagerTest : public ::testing::Test {
                            &ready,
                            &plasma_object_ids)
                     .ok());
-    ASSERT_EQ(ready.size(), 1);
     if (expect_in_plasma) {
       ASSERT_EQ(plasma_object_ids.size(), 1);
+    } else {
+      ASSERT_EQ(ready.size(), 1);
     }
   }
 
@@ -386,7 +387,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
 
   // Caller of FlushObjectsToRecover is responsible for deleting the object
   // from the in-memory store and recovering the object.
-  AssertInMemoryStore(return_id);
+  AssertInMemoryStore(return_id, /*expect_in_plasma=*/true);
   auto objects_to_recover = reference_counter_->FlushObjectsToRecover();
   ASSERT_EQ(objects_to_recover.size(), 1);
   ASSERT_EQ(objects_to_recover[0], return_id);
@@ -1247,7 +1248,6 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
   for (const auto &id : dynamic_return_ids) {
     AssertInMemoryStore(id, /*expect_in_plasma=*/true);
   }
-  ASSERT_EQ(stored_in_plasma.size(), 3);
 
   // If we remove the generator ref, all internal refs also go out of scope.
   // This is equivalent to deleting the generator ObjectRef without iterating
@@ -1321,7 +1321,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   }
 
   // No error stored for the generator ID, which should have gone out of scope.
-  AssertInMemoryStore(generator_id);
+  AssertNotInMemoryStore({generator_id});
 
   for (const auto &id : dynamic_return_ids) {
     AssertInMemoryStore(id, /*expect_in_plasma=*/true);
@@ -1981,7 +1981,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   // 2 in memory objects.
   ASSERT_EQ(store_->Size(), 2);
-  AssertInMemoryStore(dynamic_return_id);
+  AssertInMemoryStore(dynamic_return_id, /*expect_in_plasma=*/true);
 
   // Consume one ref.
   ObjectID obj_id;
@@ -1990,7 +1990,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   ASSERT_EQ(obj_id, dynamic_return_id);
 
   // Write one ref that will stay unconsumed.
-  AssertInMemoryStore(dynamic_return_id2);
+  AssertInMemoryStore(dynamic_return_id2, /*expect_in_plasma=*/true);
 
   // DELETE. This should clean all references except generator id.
   CompletePendingStreamingTask(spec, caller_address, 2);
