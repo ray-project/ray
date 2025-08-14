@@ -71,8 +71,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
   result_sbuffers.reserve(ids.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    auto data_buffer = results[ids[i]]->GetData();
+  for (const auto &id : ids) {
+    auto data_buffer = results[id]->GetData();
     auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
     sbuffer->write(reinterpret_cast<const char *>(data_buffer->Data()),
                    data_buffer->Size());
