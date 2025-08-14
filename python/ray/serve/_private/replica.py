@@ -787,10 +787,7 @@ class ReplicaBase(ABC):
                 servable_object=self._user_callable_wrapper.user_callable
             )
 
-            # Update the route prefix only when provided explicitly by controller.
-            # Keeps existing prefix for unrelated reconfigures.
-            if route_prefix is not None:
-                self._route_prefix = route_prefix
+            self._route_prefix = route_prefix
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None

@@ -47,8 +47,7 @@ class DeploymentVersion:
     ):
         version_copy = deepcopy(deployment_version)
         version_copy.deployment_config = deployment_config
-        if route_prefix is not None:
-            version_copy.route_prefix = route_prefix
+        version_copy.route_prefix = route_prefix
         version_copy.compute_hashes()
         return version_copy
 
