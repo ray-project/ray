@@ -7,7 +7,6 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.modules.node.datacenter import DataSource
 from ray._private.test_utils import get_resource_usage
 from ray.dashboard.utils import async_loop_forever
-import ray._private.ray_constants as ray_constants
 from ray.dashboard.modules.insight.insight_prompt import PROMPT_TEMPLATE
 from flow_insight import (
     BatchNodePhysicalStatsEvent,
@@ -66,7 +65,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
 
     @async_loop_forever(10)
     async def _emit_node_physical_stats(self):
-        insight_server_address = await self.gcs_aio_client.internal_kv_get(
+        insight_server_address = await self.gcs_client.async_internal_kv_get(
             "insight_monitor_address",
             namespace="flowinsight",
             timeout=5,
@@ -240,7 +239,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
             query_string = req.query_string
 
             if self._insight_server_address is None:
-                insight_server_address = await self.gcs_aio_client.internal_kv_get(
+                insight_server_address = await self.gcs_client.async_internal_kv_get(
                     "insight_monitor_address",
                     namespace="flowinsight",
                     timeout=5,
@@ -255,7 +254,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
 
             if not await self.is_insight_server_alive():
                 self._insight_server_address = (
-                    await self.gcs_aio_client.internal_kv_get(
+                    await self.gcs_client.async_internal_kv_get(
                         "insight_monitor_address",
                         namespace="flowinsight",
                         timeout=5,
