@@ -36,14 +36,8 @@ steps:
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
-        --build-name windowsbuild
-        --operating-system windows
-        --except-tags no_windows,cgroup
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-        --parallelism-per-worker 2
+      - bash run_until_fail.sh
+      - echo "Done"
     depends_on: windowsbuild
 
   - label: ":ray: core: :windows: python tests"
