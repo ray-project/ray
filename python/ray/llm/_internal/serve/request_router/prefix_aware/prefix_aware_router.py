@@ -142,6 +142,22 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         return self._normalize_prompt_to_string(prompt)
 
+    def _coerce_to_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "".join(self._coerce_to_text(item) for item in value)
+        if isinstance(value, dict):
+            text_value = value.get("text")
+            if isinstance(text_value, str):
+                return text_value
+            if "content" in value:
+                return self._coerce_to_text(value["content"])
+
+        return ""
+
     def _normalize_prompt_to_string(self, prompt: Any) -> str:
         """Normalize prompt/messages a single string of characters.
         This is not exhaustive (e.g. thinking parts, multimodal are not supported).
@@ -157,23 +173,12 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             return prompt
 
         if isinstance(prompt, list):
-            pieces: List[str] = []
-            for message in prompt:
-                if isinstance(message, dict):
-                    content = message.get("content")
-                    if isinstance(content, str):
-                        pieces.append(content)
-                    elif isinstance(content, list):
-                        for part in content:
-                            if isinstance(part, dict):
-                                text_value = part.get("text")
-                                if isinstance(text_value, str):
-                                    pieces.append(text_value)
-                            elif isinstance(part, str):
-                                pieces.append(part)
-                elif isinstance(message, str):
-                    pieces.append(message)
-            return "".join(pieces)
+            return "".join(
+                self._coerce_to_text(
+                    message.get("content") if isinstance(message, dict) else message
+                )
+                for message in prompt
+            )
 
         return ""
 
