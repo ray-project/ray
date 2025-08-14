@@ -32,6 +32,10 @@ class GPUTestActor:
             return data.apply(lambda x: x * 2)
         return data * 2
 
+    def increment(self, data):
+        data += 1
+        return data
+
     def get_out_of_band_tensors(self, obj_id: str, timeout=None):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -563,11 +567,11 @@ def test_write_after_save(ray_start_regular):
             # Write to the saved tensor.
             self.data += 1
             return self.data
-
+ 
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
-
+    
     medium_tensor = torch.randn((500, 500))
     sender, receiver = actors
     ref = sender.save.remote(medium_tensor)
@@ -651,6 +655,91 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
     assert not gpu_object_store.has_object(obj_id2)
+
+
+def test_duplicate_objectref_transfer(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+    actor0, actor1 = actors[0], actors[1]
+
+    small_tensor = torch.randn((1,))
+
+    # Store the original value for comparison
+    original_value = small_tensor
+
+    ref = actor0.echo.remote(small_tensor)
+
+    # Pass the same ref to actor1 twice
+    result1 = actor1.increment.remote(ref)
+    result2 = actor1.increment.remote(ref)
+
+    # Both should return original_value + 1 because each increment task should receive the same object value.
+    val1 = ray.get(result1)
+    val2 = ray.get(result2)
+
+    print(f"Original tensor: {original_value}")
+    print(f"Result1: {val1}, Expected: {original_value + 1}")
+    print(f"Result2: {val2}, Expected: {original_value + 1}")
+
+    # Check for correctness
+    assert val1 == pytest.approx(
+        original_value + 1
+    ), f"Result1 incorrect: got {val1}, expected {original_value + 1}"
+    assert val2 == pytest.approx(
+        original_value + 1
+    ), f"Result2 incorrect: got {val2}, expected {original_value + 1}"
+
+    # Additional check: results should be equal (both got clean copies)
+    assert val1 == pytest.approx(
+        val2
+    ), f"Results differ: result1={val1}, result2={val2}"
+
+
+def test_duplicate_objectref_race_stress(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    actor0, actor1 = actors[0], actors[1]
+
+    successes = 0
+    max_iterations = 100
+
+    for iteration in range(max_iterations):
+        tensor_value = float(iteration)
+        test_tensor = torch.tensor([tensor_value])
+
+        ref = actor0.echo.remote(test_tensor)
+
+        # Send the same ref multiple times to the same actor
+        num_calls = 5
+        results = []
+        for i in range(num_calls):
+            results.append(actor1.increment.remote(ref))
+
+        try:
+            # Get all results
+            values = ray.get(results)
+
+            # All results should be tensor_value + 1 (immutability)
+            expected = tensor_value + 1
+            for i, val in enumerate(values):
+                assert torch.allclose(
+                    val, torch.tensor([expected])
+                ), f"Iteration {iteration}, Call {i}: Expected {expected}, got {val.item()}"
+
+            successes += 1
+        except Exception as e:
+            print(
+                f"Race condition reproduced at iteration {iteration} after {successes} successful iterations"
+            )
+            print(f"Exception: {e}")
+            pytest.fail(
+                f"Race condition: failed at iteration {iteration} after {successes} successes: {e}"
+            )
+
+    print(f"No race condition detected after {successes} / {max_iterations} iterations")
 
 
 if __name__ == "__main__":
