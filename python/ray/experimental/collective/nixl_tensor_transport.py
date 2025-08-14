@@ -1,6 +1,5 @@
 from typing import Optional
 
-from ray.util.collective.collective_group.nixl_backend import NixlBackend
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
@@ -21,6 +20,8 @@ class NixlTensorTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport: TensorTransportEnum,
     ) -> TensorTransportMetadata:
+        from ray.util.collective.collective_group.nixl_backend import NixlBackend
+
         def __ray_get_tensor_transport_metadata__(
             self: "ray.actor.ActorHandle",
             obj_id: str,
@@ -38,9 +39,12 @@ class NixlTensorTransport(TensorTransportManager):
             from ray.util.collective.collective import get_group_handle
 
             nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
-            serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
-                gpu_object.data
-            )
+            if gpu_object:
+                serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
+                    gpu_object
+                )
+            else:
+                serialized_descs, agent_meta = None, None
             return NixlTransportMetadata(
                 tensor_meta=[(t.shape, t.dtype) for t in gpu_object],
                 nixl_serialized_descs=serialized_descs,
@@ -92,9 +96,10 @@ class NixlTensorTransport(TensorTransportManager):
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective import types
 
-        g = get_group_handle(group_name)
+        if tensors:
+            g = get_group_handle(group_name)
 
-        assert isinstance(
-            metadata, types.NixlTransportMetadata
-        ), "metadata must be a NixlTransportMetadata object for NIXL transport"
-        g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
+            assert isinstance(
+                metadata, types.NixlTransportMetadata
+            ), "metadata must be a NixlTransportMetadata object for NIXL transport"
+            g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
