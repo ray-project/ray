@@ -223,8 +223,16 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        try:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            self._supports_vision = hasattr(hf_config, "vision_config")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                f"Original error: {repr(e)}"
+            ) from e
 
     def _set_model_architecture(
         self,
@@ -236,9 +244,23 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures") and hf_config.architectures:
-                self._model_architecture = hf_config.architectures[0]
+            try:
+                hf_config = transformers.PretrainedConfig.from_pretrained(
+                    model_id_or_path
+                )
+                if (
+                    hf_config
+                    and hasattr(hf_config, "architectures")
+                    and hf_config.architectures
+                ):
+                    self._model_architecture = hf_config.architectures[0]
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                    f"Original error: {repr(e)}"
+                ) from e
 
         if model_architecture:
             self._model_architecture = model_architecture
