@@ -221,9 +221,7 @@ def _retry_get_telemetry_agent(
             #   ValueError: Actor with name 'llm_serve_telemetry' already
             #   exists in the namespace llm_serve_telemetry
             logger.info(
-                "Attempt %s/%s to get telemetry agent failed: %s",
-                attempt + 1,
-                max_retries,
+                "Attempt %s/%s to get telemetry agent failed", attempt + 1, max_retries
             )
             if attempt == max_retries - 1:
                 raise e
