@@ -189,7 +189,7 @@ class TaskManagerTest : public ::testing::Test {
     bool got_exception = false;
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    Status status = store_->Get({return_id}, 0.1, ctx, &results, &got_exception);
+    Status status = store_->Get({object_id}, 0, ctx, &results, &got_exception);
     ASSERT_EQ(status.code(), expected_status);
     if (!status.ok()) {
       return nullptr;
@@ -200,11 +200,11 @@ class TaskManagerTest : public ::testing::Test {
     rpc::ErrorType error;
     if (expected_error.has_value()) {
       ASSERT_TRUE(got_exception);
-      ASSERT_TRUE(results[return_id]->IsException(&error));
+      ASSERT_TRUE(results[object_id]->IsException(&error));
       ASSERT_EQ(error, *expected_error);
     }
 
-    return results[return_id];
+    return results[object_id];
   }
 
   void AssertNotInMemoryStore(const absl::flat_hash_set<ObjectID> &object_ids) {
@@ -468,7 +468,6 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  auto return_id = spec.ReturnId(0);
 
   manager_.MarkTaskCanceled(spec.TaskId());
   auto error = rpc::ErrorType::TASK_CANCELLED;
@@ -1232,8 +1231,8 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
 
   bool got_exception = false;
   absl::flat_hash_set<ObjectID> id_set(dynamic_return_ids.begin(),
-                                       dynamic_return_ids.end()),
-      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+                                       dynamic_return_ids.end());
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   ASSERT_OK(store_->Get(id_set, 0.1, ctx, &results, &got_exception));
   ASSERT_FALSE(got_exception);
