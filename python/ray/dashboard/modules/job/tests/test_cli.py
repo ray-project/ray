@@ -515,6 +515,42 @@ class TestSubmit:
                 None, True, headers=None, verify=verify_param
             )
 
+    def test_argument_parsing_preserves_quotes(self, mock_sdk_client):
+        """Test that entrypoint arguments with quotes and special characters are preserved correctly.
+        This test verifies the fix for the bug where ray job submit was losing quotes
+        in command line arguments, causing inconsistent behavior between ray job submit
+        and direct python execution.
+        """
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            # Test with complex argument containing quotes and special characters
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--",
+                    "python3",
+                    "test.py",
+                    "--config",
+                    '{"key": "value", "nested": {"data": "test"}}',
+                ],
+            )
+            check_exit_code(result, 0)
+
+            # Verify the entrypoint is correctly formatted without losing quotes
+            # This should now work correctly with cross-platform command line formatting
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='python3 test.py --config \'{"key": "value", "nested": {"data": "test"}}\'',
+                submission_id=None,
+                runtime_env={},
+                metadata=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_memory=None,
+                entrypoint_resources=None,
+            )
 
 class TestDelete:
     def test_address(self, mock_sdk_client):
