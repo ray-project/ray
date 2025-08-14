@@ -28,6 +28,8 @@ depsets:
     output: requirements_compiled_general_${PYTHON_VERSION}_${CUDA_VERSION}.txt
     build_arg_sets:
       - py311_cpu
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
   - name: subset_general_depset
     operation: subset
     source_depset: general_depset__py311_cpu

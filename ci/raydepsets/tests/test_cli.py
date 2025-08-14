@@ -281,6 +281,39 @@ class TestCli(unittest.TestCase):
             ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
         ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
 
+    def test_append_uv_flags_int(self):
+        assert _append_uv_flags(
+            ["--python-version=3.10"], DEFAULT_UV_FLAGS.copy()
+        ) == DEFAULT_UV_FLAGS.copy() + ["--python-version=3.10"]
+
+    def test_append_uv_flags_exist_in_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                append_flags=["--python-version=3.10"],
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--python-version=3.10" in output_text
+
+    def test_append_uv_flags_with_space_in_flag_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError):
+                manager.compile(
+                    constraints=[],
+                    requirements=["requirements_test.txt"],
+                    name="general_depset",
+                    output="requirements_compiled_general.txt",
+                    append_flags=["--python-version 3.10"],
+                )
+
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
         expected_flags.remove("--extra-index-url")
