@@ -390,16 +390,24 @@ class HashShuffleProgressBarMixin(abc.ABC):
 
 
 def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources) -> int:
-    # Max number of aggregators is determined as the smaller of:
-    #   - Total # of CPUs available in the cluster * 2
-    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (64 by default)
+    # Motivation for derivation of max # of shuffle aggregators is based on the
+    # following observations:
     #
-    # Limiting to no more than 2x of available CPUs while might potentially reduce
-    # concurrency (by reducing number of aggregators), helps to make sure that
-    # we're not overloading the OS by spawning excessive # of processes on small
-    # clusters
+    #   - Shuffle operation is necessarily a terminal operation: it terminates current
+    #     shuffle stage (set of operators that can execute concurrently)
+    #   - Shuffle operation has very low computation footprint until all preceding
+    #     operation complete (ie until shuffle finalization)
+    #   - When shuffle is finalized only shuffle operator is executing (ie it has
+    #     all of the cluster resources available at its disposal)
+    #
+    # As such we establish that the max number of shuffle
+    # aggregators (workers):
+    #
+    #   - Should not exceed total # of CPUs (to fully utilize cluster resources
+    #   while avoiding thrashing these due to over-allocation)
+    #   - Should be capped at fixed size (128 by default)
     return min(
-        math.ceil(total_cluster_resources.cpu * 2), DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+        math.ceil(total_cluster_resources.cpu), DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
     )
 
 
