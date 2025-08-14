@@ -96,9 +96,7 @@ class SetupSpec:
         self.extras: dict = {}
 
     def get_packages(self):
-        if PLACEHOLDER_WHEEL:
-            return ["ray"]
-        if self.type == SetupType.RAY:
+        if self.type == SetupType.RAY and not PLACEHOLDER_WHEEL:
             return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
