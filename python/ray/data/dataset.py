@@ -5972,7 +5972,7 @@ class Dataset:
         Example:
             >>> import ray
             >>> from ray.data import Dataset
-            >>> ds: Dataset = ray.data.range(10)
+            >>> ds: Dataset = ray.data.range(10,  override_num_blocks=10)
             >>> ds = ds.map(lambda x: x + 1)
             >>> print(ds.explain())
             -------- Logical Plan --------
@@ -5981,6 +5981,7 @@ class Dataset:
             -------- Physical Plan --------
             ReadRange->Map(<lambda>)
             +- Input
+            <BLANKLINE>
 
         """
         return self._plan.explain()
