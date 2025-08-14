@@ -180,8 +180,15 @@ class TaskEventBufferTest : public ::testing::Test {
   }
 
   std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
-    return std::make_unique<TaskProfileEvent>(
-        task_id, JobID::FromInt(0), attempt_num, "", "", "", "test_event", 1);
+    return std::make_unique<TaskProfileEvent>(task_id,
+                                              JobID::FromInt(0),
+                                              attempt_num,
+                                              "",
+                                              "",
+                                              "",
+                                              "test_event",
+                                              1,
+                                              "test_session_name");
   }
 
   static void CompareTaskEventData(const rpc::TaskEventData &actual_data,
@@ -934,7 +941,8 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
                                                           component_id,
                                                           node_ip,
                                                           event_name,
-                                                          start_time);
+                                                          start_time,
+                                                          "test_session_name");
 
   // Set end time and extra data to test full population
   profile_event->SetEndTime(2000);
@@ -960,6 +968,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   EXPECT_EQ(ray_event.event_type(), rpc::events::RayEvent::TASK_PROFILE_EVENT);
   EXPECT_EQ(ray_event.severity(), rpc::events::RayEvent::INFO);
   EXPECT_FALSE(ray_event.event_id().empty());
+  EXPECT_EQ(ray_event.session_name(), "test_session_name");
 
   // Verify task profile events are populated
   ASSERT_TRUE(ray_event.has_task_profile_events());
@@ -1003,7 +1012,8 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
                                                           "worker_456",
                                                           "192.168.1.2",
                                                           "profile_test",
-                                                          5000);
+                                                          5000,
+                                                          "test_session_name");
   profile_event->SetEndTime(6000);
 
   absl::flat_hash_map<TaskAttempt, RayEventsPair> agg_ray_events;
@@ -1025,6 +1035,7 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
 
   const auto &event = ray_events_data->events(0);
   EXPECT_EQ(event.event_type(), rpc::events::RayEvent::TASK_PROFILE_EVENT);
+  EXPECT_EQ(event.session_name(), "test_session_name");
   EXPECT_TRUE(event.has_task_profile_events());
 
   const auto &task_profile_events = event.task_profile_events();
@@ -1050,7 +1061,8 @@ TEST_F(TaskEventBufferTest, TestMixedStatusAndProfileEventsToRayEvents) {
                                                           "worker_789",
                                                           "192.168.1.3",
                                                           "mixed_test",
-                                                          7000);
+                                                          7000,
+                                                          "test_session_name");
 
   // Create aggregated events
   absl::flat_hash_map<TaskAttempt, RayEventsPair> agg_ray_events;

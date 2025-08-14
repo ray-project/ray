@@ -2717,8 +2717,11 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
-  return std::make_unique<worker::ProfileEvent>(
-      *task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
+  return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
+                                                *worker_context_,
+                                                options_.node_ip_address,
+                                                event_name,
+                                                options_.session_name);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
