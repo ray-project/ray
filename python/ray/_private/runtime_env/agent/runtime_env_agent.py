@@ -3,10 +3,11 @@ import logging
 import os
 import time
 import traceback
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 
+import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
@@ -18,7 +19,6 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
-from ray._private.runtime_env.mpi import MPIPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.plugin import (
@@ -162,6 +162,61 @@ class ReferenceTable:
         return self._runtime_env_reference
 
 
+class LRULoggerCache:
+    def __init__(self, maxsize=128):
+        self.maxsize = maxsize
+        self.cache = OrderedDict()
+
+    def get(
+        self, cache_key: str, create_func: Callable[[], logging.Logger]
+    ) -> logging.Logger:
+        """Retrieve or create a logger and update the access order"""
+        if cache_key in self.cache:
+            # Move to Recently Used
+            self.cache.move_to_end(cache_key)
+            return self.cache[cache_key]
+
+        # Create a new logger
+        logger = create_func()
+
+        # Check size before adding new logger to avoid temporary maxsize+1
+        if len(self.cache) >= self.maxsize:
+            self._evict_oldest()
+
+        # Now add the new logger
+        self.cache[cache_key] = logger
+        return logger
+
+    def _cleanup_logger(self, logger: logging.Logger) -> List[str]:
+        """
+        Internal helper to close logger handlers and return associated file paths.
+        Args:
+            logger: The logger object to be cleaned up.
+        Returns:
+            A list of file paths for log files that can be deleted.
+        """
+        pending_files = []
+        for handler in logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                try:
+                    filepath = handler.baseFilename
+                    handler.close()
+                    pending_files.append(filepath)
+                except Exception as e:
+                    default_logger.error(f"Failed to close handler: {str(e)}")
+            logger.removeHandler(handler)
+        return pending_files
+
+    def _evict_oldest(self):
+        """Eliminate the oldest unused recorder"""
+        if not self.cache:
+            return
+
+        _, oldest_logger = self.cache.popitem(last=False)
+        self._cleanup_logger(oldest_logger)
+        del oldest_logger
+
+
 class RuntimeEnvAgent:
     """An RPC server to create and delete runtime envs.
 
@@ -194,7 +249,15 @@ class RuntimeEnvAgent:
         self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
 
         self._runtime_env_dir = runtime_env_dir
-        self._per_job_logger_cache = dict()
+        try:
+            cache_size = int(os.environ.get("RAY_RUNTIME_ENV_LOG_CACHE_SIZE", 128))
+        except ValueError:
+            self._logger.warning(
+                "RAY_RUNTIME_ENV_LOG_CACHE_SIZE environment variable is set to a non-integer value, "
+                "using default value 128"
+            )
+            cache_size = 128
+        self._per_job_logger_cache = LRULoggerCache(maxsize=cache_size)
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
@@ -219,7 +282,6 @@ class RuntimeEnvAgent:
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
-        self._mpi_plugin = MPIPlugin()
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
@@ -236,7 +298,6 @@ class RuntimeEnvAgent:
             self._container_plugin,
             self._nsight_plugin,
             self._rocprof_sys_plugin,
-            self._mpi_plugin,
             self._image_uri_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
@@ -252,6 +313,13 @@ class RuntimeEnvAgent:
         self._logger.info(
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
+
+        try:
+            self._node_ip = ray.util.get_node_ip_address()
+            self._node_prefix = f"[Node {self._node_ip}] "
+        except Exception as e:
+            self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
+            self._node_prefix = "[Node unknown] "
 
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
@@ -286,14 +354,22 @@ class RuntimeEnvAgent:
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
-        if job_id not in self._per_job_logger_cache:
-            params = self._logging_params.copy()
-            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
-            params["logger_name"] = f"runtime_env_{job_id}"
-            params["propagate"] = False
-            per_job_logger = setup_component_logger(**params)
-            self._per_job_logger_cache[job_id] = per_job_logger
-        return self._per_job_logger_cache[job_id]
+        # Create a cache key that includes both job_id and log_files
+        # Create a unique cache key using length-prefixed encoding to avoid ambiguity
+        log_files_sorted = sorted(log_files)
+        cache_key = f"{job_id}_{len(log_files_sorted)}_{'|'.join(log_files_sorted)}"
+        # Using LRU cache to retrieve or create a logger
+        return self._per_job_logger_cache.get(
+            cache_key, lambda: self._create_logger(job_id, log_files, cache_key)
+        )
+
+    def _create_logger(self, job_id: str, log_files: List[str], cache_key: str):
+        params = self._logging_params.copy()
+        params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
+        # Use cache_key as logger name to ensure uniqueness based on both job_id and log_files
+        params["logger_name"] = f"runtime_env_{cache_key}"
+        params["propagate"] = False
+        return setup_component_logger(**params)
 
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
@@ -434,11 +510,14 @@ class RuntimeEnvAgent:
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
+
+            error_message = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)
-                ),
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
         # Increase reference
@@ -478,7 +557,7 @@ class RuntimeEnvAgent:
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                        error_message=error_message,
+                        error_message=f"{self._node_prefix}{error_message}",
                     )
 
             if SLEEP_FOR_TESTING_S:
@@ -523,7 +602,9 @@ class RuntimeEnvAgent:
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
-                error_message=error_message,
+                error_message=f"{self._node_prefix}{error_message}"
+                if not successful
+                else "",
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
@@ -540,11 +621,14 @@ class RuntimeEnvAgent:
                 "[Decrease] Failed to parse runtime env: "
                 f"{request.serialized_runtime_env}"
             )
+
+            error_message = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)
-                ),
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
         try:
@@ -554,7 +638,7 @@ class RuntimeEnvAgent:
         except Exception as e:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message=f"Fails to decrement reference for runtime env for {str(e)}",
+                error_message=f"{self._node_prefix}Failed to decrement reference for runtime env for {str(e)}",
             )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
