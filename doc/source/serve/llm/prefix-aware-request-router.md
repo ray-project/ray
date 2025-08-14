@@ -48,7 +48,7 @@ Like all custom routers in Ray Serve, the `PrefixCacheAffinityRouter` extends th
 - **`choose_replicas()`**: The main routing logic that selects which replicas should handle a request
 - **`on_request_routed()`**: A callback that updates router state after a request is successfully routed
 
-For a detailed explanation of these methods and their parameters, see the [simple uniform request router](simple-uniform-request-router) example in the custom request router guide.
+For a detailed explanation of these methods and their parameters, see the {ref}`simple-uniform-request-router` example in the custom request router guide.
 
 ### 1. Load Balance Detection Component
 
