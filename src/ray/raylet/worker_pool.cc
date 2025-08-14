@@ -1692,9 +1692,9 @@ void WorkerPool::WarnAboutSize() {
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
 
-      auto error_data_ptr = gcs::CreateErrorTableData(
+      auto error_data = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, get_time_());
-      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
+      gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
     }
   }
 }

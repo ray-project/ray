@@ -277,9 +277,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     return true;
   }
 
-  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
-                           rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override {}
+  void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback) override {}
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;

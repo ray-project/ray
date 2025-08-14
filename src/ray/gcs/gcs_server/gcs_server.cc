@@ -137,11 +137,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
 
-  // Init GCS publisher instance.
-  std::unique_ptr<pubsub::Publisher> inner_publisher;
-  // Init grpc based pubsub on GCS.
-  // TODO(yic): Move this into GcsPublisher.
-  inner_publisher = std::make_unique<pubsub::Publisher>(
+  auto inner_publisher = std::make_unique<pubsub::Publisher>(
       /*channels=*/
       std::vector<rpc::ChannelType>{
           rpc::ChannelType::GCS_ACTOR_CHANNEL,

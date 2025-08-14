@@ -20,7 +20,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs/gcs_rpc_server.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace gcs {
