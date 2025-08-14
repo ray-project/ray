@@ -21,7 +21,8 @@ steps:
       - oss
     instance_type: large
     commands:
-      - ./ci/build/build-manylinux-placeholder-wheel.sh 3.9
+      - export BUILD_PLACEHOLDER_WHEEL=true
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.9 --architecture x86_64 --upload
     depends_on:
       - manylinux
       - forge
