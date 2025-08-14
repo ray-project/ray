@@ -176,7 +176,9 @@ class JobInfo:
 
         # Convert enum values to strings.
         json_dict["status"] = str(json_dict["status"])
-        json_dict["error_type"] = json_dict["error_type"].value if json_dict.get("error_type") else None
+        json_dict["error_type"] = (
+            json_dict["error_type"].value if json_dict.get("error_type") else None
+        )
 
         # Convert runtime_env to a JSON-serialized string.
         if "runtime_env" in json_dict:
@@ -201,7 +203,11 @@ class JobInfo:
         """
         # Convert enum values to enum objects.
         json_dict["status"] = JobStatus(json_dict["status"])
-        json_dict["error_type"] = JobErrorType(json_dict["error_type"]) if json_dict.get("error_type") else None
+        json_dict["error_type"] = (
+            JobErrorType(json_dict["error_type"])
+            if json_dict.get("error_type")
+            else None
+        )
 
         # Convert runtime_env from a JSON-serialized string to a dictionary.
         if "runtime_env_json" in json_dict:
