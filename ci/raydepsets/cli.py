@@ -12,14 +12,14 @@ from ci.raydepsets.workspace import Depset, Workspace
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --no-strip-markers
-    --emit-index-url
-    --emit-find-links
     --unsafe-package ray
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
     --index-strategy unsafe-best-match
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
     --quiet
 """.split()
 
