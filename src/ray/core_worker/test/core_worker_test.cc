@@ -37,7 +37,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
