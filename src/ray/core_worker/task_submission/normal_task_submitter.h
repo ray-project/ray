@@ -107,7 +107,7 @@ class NormalTaskSubmitter {
         task_manager_(task_manager),
         lease_timeout_ms_(lease_timeout_ms),
         local_node_id_(local_node_id),
-        worker_id_(WorkerID::FromBinary(rpc_address.worker_id())),
+        worker_id_(WorkerID::FromBinary(rpc_address_.worker_id())),
         worker_type_(worker_type),
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
