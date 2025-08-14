@@ -1,11 +1,10 @@
 import os
-from typing import List
 from datetime import datetime
 from enum import Enum
+from typing import List
 
-from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
-
+from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
     "cpu",
@@ -48,6 +47,7 @@ class DockerContainer(LinuxContainer):
         architecture: str = DEFAULT_ARCHITECTURE,
         canonical_tag: str = None,
         upload: bool = False,
+        use_base_extra: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
 

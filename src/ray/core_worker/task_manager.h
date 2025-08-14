@@ -613,7 +613,7 @@ class TaskManager : public TaskManagerInterface {
   /// directly by value.
   bool HandleTaskReturn(const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
+                        const NodeID &worker_node_id,
                         bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
