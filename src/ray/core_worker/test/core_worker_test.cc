@@ -38,8 +38,8 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/actor_task_submitter.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
@@ -58,7 +58,6 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
     options.node_ip_address = "127.0.0.1";
-    options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback =
         [](const rpc::Address &caller_address,
            TaskType task_type,
@@ -115,7 +114,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     rpc::Address rpc_address;
     rpc_address.set_ip_address(options.node_ip_address);
     rpc_address.set_port(core_worker_server->GetPort());
-    rpc_address.set_raylet_id(NodeID::FromRandom().Binary());
+    rpc_address.set_node_id(NodeID::FromRandom().Binary());
     rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
 
     auto fake_object_info_publisher = std::make_unique<pubsub::FakePublisher>();
@@ -142,7 +141,8 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
-        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager));
+        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
+        "test_session");
 
     auto task_manager = std::make_shared<TaskManager>(
         *memory_store_,

@@ -259,10 +259,10 @@ def col(name: str) -> ColumnExpr:
         >>> # Reference columns in an expression
         >>> expr = col("price") * col("quantity")
         >>>
-        >>> # Use with Dataset.with_columns()
+        >>> # Use with Dataset.with_column()
         >>> import ray
         >>> ds = ray.data.from_items([{"price": 10, "quantity": 2}])
-        >>> ds = ds.with_columns({"total": col("price") * col("quantity")})
+        >>> ds = ds.with_column("total", col("price") * col("quantity"))
     """
     return ColumnExpr(name)
 
@@ -293,10 +293,10 @@ def lit(value: Any) -> LiteralExpr:
         >>> # Use in expressions
         >>> expr = col("age") + lit(1) # Add 1 to age column
         >>>
-        >>> # Use with Dataset.with_columns()
+        >>> # Use with Dataset.with_column()
         >>> import ray
         >>> ds = ray.data.from_items([{"age": 25}, {"age": 30}])
-        >>> ds = ds.with_columns({"age_plus_one": col("age") + lit(1)})
+        >>> ds = ds.with_column("age_plus_one", col("age") + lit(1))
     """
     return LiteralExpr(value)
 

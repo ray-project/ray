@@ -49,7 +49,7 @@ namespace {
 rpc::Address CreateRandomAddress(const std::string &addr) {
   rpc::Address address;
   address.set_ip_address(addr);
-  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_node_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
   return address;
 }
@@ -181,8 +181,8 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
       client_pool_->GetOrConnect(worker_2_address).get());
   AssertID(worker_id2, *client_pool_, true);
 
-  auto worker_1_node_id = NodeID::FromBinary(worker_1_address.raylet_id());
-  auto worker_2_node_id = NodeID::FromBinary(worker_2_address.raylet_id());
+  auto worker_1_node_id = NodeID::FromBinary(worker_1_address.node_id());
+  auto worker_2_node_id = NodeID::FromBinary(worker_2_address.node_id());
 
   rpc::GcsNodeInfo node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
