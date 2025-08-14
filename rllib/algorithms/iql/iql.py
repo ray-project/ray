@@ -22,7 +22,7 @@ class IQLConfig(MARWILConfig):
 
         from ray.rllib.algorithms.iql import IQLConfig
         # Run this from the ray directory root.
-        config = IQLConfig().training(lr=0.00001, gamma=0.99)
+        config = IQLConfig().training(actor_lr=0.00001, gamma=0.99)
         config = config.offline_data(
             input_="./rllib/tests/data/pendulum/pendulum-v1_enormous")
 
@@ -99,6 +99,31 @@ class IQLConfig(MARWILConfig):
         tau: Optional[float] = NotProvided,
         **kwargs,
     ) -> "IQLConfig":
+        """Sets the training related configuration.
+
+        Args:
+            beta: The temperature to scaling advantages in exponential terms.
+                Must be >> 0.0. The higher this parameter the less greedy
+                (exploitative) the policy becomes. It also means that the policy
+                is fitting less to the best actions in the dataset.
+            expectile: The expectile to use in expectile regression for the value
+                function. For high expectiles the value function tries to match
+                the upper tail of the Q-value distribution.
+            actor_lr: The learning rate for the actor network. Actor learning rates
+                greater than critic learning rates work well in experiments.
+            critic_lr: The learning rate for the Q-network. Critic learning rates
+                greater than value function learning rates work well in experiments.
+            value_lr: The learning rate for the value function network.
+            target_network_update_freq: The number of timesteps in between the target
+                Q-network is fixed. Note, too high values here could harm convergence.
+                The target network is updated via Polyak-averaging.
+            tau: The update parameter for Polyak-averaging of the target Q-network.
+                The higher this value the faster the weights move towards the actual
+                Q-network.
+
+        Return:
+            This updated `AlgorithmConfig` object.
+        """
         super().training(**kwargs)
 
         if twin_q is not NotProvided:
