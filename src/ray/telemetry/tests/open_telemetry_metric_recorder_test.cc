@@ -77,5 +77,12 @@ TEST_F(OpenTelemetryMetricRecorderTest, TestSumMetric) {
   ASSERT_TRUE(recorder_.IsMetricRegistered("test_sum"));
 }
 
+TEST_F(OpenTelemetryMetricRecorderTest, TestHistogramMetric) {
+  recorder_.RegisterHistogramMetric(
+      "test_histogram", "Test histogram description", {0.0, 10.0, 20.0, 30.0});
+  // Check that the histogram metric is registered
+  ASSERT_TRUE(recorder_.IsMetricRegistered("test_histogram"));
+}
+
 }  // namespace telemetry
 }  // namespace ray

@@ -405,6 +405,9 @@ py_test(
     name = "test_buildkite",
     size = "small",
     srcs = ["ray_release/tests/test_buildkite.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",

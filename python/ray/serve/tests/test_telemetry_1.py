@@ -10,7 +10,7 @@ from fastapi import FastAPI
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray._common.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.test_utils import (
     check_apps_running,

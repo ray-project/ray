@@ -27,6 +27,7 @@ import ray.dashboard.consts as dashboard_consts
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
+    events_base_event_pb2,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,15 +66,20 @@ REQUEST_BACKOFF_MAX = ray_constants.env_integer(
 REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
     f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
-# Address of the external service to send events
-EVENT_SEND_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENT_SEND_ADDR", "http://127.0.0.1"
-)
-# Port of the external service to send events
-EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+# Address of the external service to send events with format of "http://<ip>:<port>"
+EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
+)
+# Event filtering configurations
+# Comma-separated list of event types that are allowed to be exposed to external services
+# Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
+# The list of all supported event types can be found in src/ray/protobuf/events_base_event.proto (EventType enum)
+# By default TASK_PROFILE_EVENT is not exposed to external services
+DEFAULT_EXPOSABLE_EVENT_TYPES = "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT"
+EXPOSABLE_EVENT_TYPES = os.environ.get(
+    f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
 
 # Metrics
@@ -81,25 +87,37 @@ if prometheus_client:
     metrics_prefix = "event_aggregator_agent"
     events_received = Counter(
         f"{metrics_prefix}_events_received",
-        "Total number of events received.",
+        "Total number of events received from the upstream components from the "
+        "AddEvents gRPC call.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_dropped_at_core_worker = Counter(
-        f"{metrics_prefix}_events_dropped_at_core_worker",
-        "Total number of events dropped at core worker.",
+    events_failed_to_add_to_aggregator = Counter(
+        f"{metrics_prefix}_events_failed_to_add_to_aggregator",
+        "Total number of events failed to add to the event aggregator. The metric "
+        "counts the events received by the aggregator agent from the AddEvents gRPC "
+        "call but failed to add to the buffer due to unexpected errors.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_dropped_at_event_aggregator = Counter(
         f"{metrics_prefix}_events_dropped_at_event_aggregator",
-        "Total number of events dropped at the event aggregator.",
+        "Total number of events dropped at the event aggregator due to the buffer "
+        "being full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_published = Counter(
         f"{metrics_prefix}_events_published",
         "Total number of events successfully published to the external server.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_filtered_out = Counter(
+        f"{metrics_prefix}_events_filtered_out",
+        "Total number of events filtered out before publishing to external server. The "
+        "metric counts the events that are received by the aggregator agent but are "
+        "not part of the public API yet.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -115,7 +133,7 @@ class AggregatorAgent(
     external service with HTTP POST requests for further processing or storage
     """
 
-    def __init__(self, dashboard_agent):
+    def __init__(self, dashboard_agent) -> None:
         super().__init__(dashboard_agent)
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
@@ -140,9 +158,32 @@ class AggregatorAgent(
         self._stop_event = threading.Event()
         self._publisher_threads = []
         self._events_received_since_last_metrics_update = 0
-        self._events_dropped_at_core_worker_since_last_metrics_update = 0
+        self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
+        self._events_filtered_out_since_last_metrics_update = 0
+        self._events_export_addr = (
+            dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
+        )
+
+        self._event_http_target_enabled = bool(self._events_export_addr)
+        if not self._event_http_target_enabled:
+            logger.info(
+                "Event HTTP target not set, skipping sending events to "
+                f"external http service. events_export_addr: {self._events_export_addr}"
+            )
+
+        self._event_processing_enabled = self._event_http_target_enabled
+        if self._event_processing_enabled:
+            logger.info("Event processing enabled")
+        else:
+            logger.info("Event processing disabled")
+
+        self._exposable_event_types = {
+            event_type.strip()
+            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
+        }
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -151,7 +192,7 @@ class AggregatorAgent(
         self._is_cleanup = False
         self._cleanup_finished_event = threading.Event()
 
-    async def AddEvents(self, request, context):
+    async def AddEvents(self, request, context) -> None:
         """
         gRPC handler for adding events to the event aggregator
         """
@@ -165,77 +206,87 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
+        if not self._event_processing_enabled:
+            return events_event_aggregator_service_pb2.AddEventReply()
+
+        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
+        # metadata (e.g. dropped task attempts) to help with event processing at the
+        # downstream
         events_data = request.events_data
-        with self._lock:
-            self._events_dropped_at_core_worker_since_last_metrics_update += len(
-                events_data.task_events_metadata.dropped_task_attempts
-            )
-        # The status code is defined in `src/ray/common/status.h`
-        status_code = 0
-        error_messages = []
         for event in events_data.events:
+            with self._lock:
+                self._events_received_since_last_metrics_update += 1
             try:
                 self._event_buffer.put_nowait(event)
-                with self._lock:
-                    self._events_received_since_last_metrics_update += 1
             except queue.Full:
-                old_event = self._event_buffer.get_nowait()
+                # Remove the oldest event to make room for the new event.
+                self._event_buffer.get_nowait()
                 self._event_buffer.put_nowait(event)
                 with self._lock:
-                    self._events_received_since_last_metrics_update += 1
                     self._events_dropped_at_event_aggregator_since_last_metrics_update += (
                         1
                     )
-                if status_code == 0:
-                    status_code = 5
-                error_messages.append(
-                    f"event {old_event.event_id.decode()} dropped because event buffer full"
-                )
             except Exception as e:
                 logger.error(
-                    "Failed to add event to buffer. Error: %s",
+                    f"Failed to add event with id={event.event_id.decode()} to buffer. "
+                    "Error: %s",
                     e,
                 )
                 with self._lock:
-                    self._events_dropped_at_event_aggregator_since_last_metrics_update += (
+                    self._events_failed_to_add_to_aggregator_since_last_metrics_update += (
                         1
                     )
-                status_code = 9
-                error_messages.append(
-                    f"event {event.event_id.decode()} failed to add to buffer with error {e}"
-                )
 
-        status_message = "all events received"
-        if error_messages:
-            truncate_num = 5
-            status_message = ", ".join(error_messages[:truncate_num])
-            if len(error_messages) > truncate_num:
-                status_message += (
-                    f", and {len(error_messages) - truncate_num} more events dropped"
-                )
-        status = events_event_aggregator_service_pb2.AddEventStatus(
-            code=status_code, message=status_message
+        return events_event_aggregator_service_pb2.AddEventsReply()
+
+    def _can_expose_event(self, event) -> bool:
+        """
+        Check if an event should be allowed to be sent to external services.
+        """
+        return (
+            events_base_event_pb2.RayEvent.EventType.Name(event.event_type)
+            in self._exposable_event_types
         )
-        return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
-    def _send_events_to_external_service(self, event_batch):
+    def _send_events_to_external_service(self, event_batch) -> None:
         """
         Sends a batch of events to the external service via HTTP POST request
         """
-        if not event_batch:
+        if not event_batch or not self._event_http_target_enabled:
             return
+
+        filtered_event_batch = [
+            event for event in event_batch if self._can_expose_event(event)
+        ]
+        if not filtered_event_batch:
+            # All events were filtered out, update metrics and return to avoid an empty POST.
+            with self._lock:
+                self._events_filtered_out_since_last_metrics_update += len(event_batch)
+            event_batch.clear()
+            return
+
+        # Convert protobuf objects to JSON dictionaries for HTTP POST
+        filtered_event_batch_json = [
+            json.loads(MessageToJson(event)) for event in filtered_event_batch
+        ]
+
         try:
             response = self._http_session.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch
+                f"{self._events_export_addr}", json=filtered_event_batch_json
             )
             response.raise_for_status()
             with self._lock:
-                self._events_published_since_last_metrics_update += len(event_batch)
+                self._events_published_since_last_metrics_update += len(
+                    filtered_event_batch
+                )
+                self._events_filtered_out_since_last_metrics_update += len(
+                    event_batch
+                ) - len(filtered_event_batch)
             event_batch.clear()
         except Exception as e:
             logger.error("Failed to send events to external service. Error: %s", e)
 
-    def _publish_events(self):
+    def _publish_events(self) -> None:
         """
         Continuously publishes events from the event buffer to the external service
         """
@@ -245,7 +296,7 @@ class AggregatorAgent(
             while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
                 try:
                     event_proto = self._event_buffer.get(block=False)
-                    event_batch.append(json.loads(MessageToJson((event_proto))))
+                    event_batch.append(event_proto)
                 except queue.Empty:
                     break
 
@@ -261,7 +312,7 @@ class AggregatorAgent(
                     self._send_events_to_external_service(event_batch)
                     return
 
-    def _update_metrics(self):
+    def _update_metrics(self) -> None:
         """
         Updates the Prometheus metrics
         """
@@ -270,18 +321,20 @@ class AggregatorAgent(
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
-            _events_dropped_at_core_worker = (
-                self._events_dropped_at_core_worker_since_last_metrics_update
+            _events_failed_to_add_to_aggregator = (
+                self._events_failed_to_add_to_aggregator_since_last_metrics_update
             )
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
             _events_published = self._events_published_since_last_metrics_update
+            _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
-            self._events_dropped_at_core_worker_since_last_metrics_update = 0
+            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
+            self._events_filtered_out_since_last_metrics_update = 0
 
         labels = {
             "ip": self._ip,
@@ -291,15 +344,16 @@ class AggregatorAgent(
             "SessionName": self.session_name,
         }
         events_received.labels(**labels).inc(_events_received)
-        events_dropped_at_core_worker.labels(**labels).inc(
-            _events_dropped_at_core_worker
+        events_failed_to_add_to_aggregator.labels(**labels).inc(
+            _events_failed_to_add_to_aggregator
         )
         events_dropped_at_event_aggregator.labels(**labels).inc(
             _events_dropped_at_event_aggregator
         )
         events_published.labels(**labels).inc(_events_published)
+        events_filtered_out.labels(**labels).inc(_events_filtered_out)
 
-    def _check_main_thread_liveness(self):
+    def _check_main_thread_liveness(self) -> None:
         """
         Continuously checks if the main thread is alive. If the main thread is not alive,
         it sets the stop event to trigger cleanup and shutdown of the agent.
@@ -312,7 +366,7 @@ class AggregatorAgent(
                 break
             time.sleep(CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS)
 
-    def _cleanup(self):
+    def _cleanup(self) -> None:
         """
         Cleans up the aggregator agent by stopping the publisher threads,
         sending any remaining events in the buffer, and updating metrics.
@@ -334,7 +388,7 @@ class AggregatorAgent(
         while True:
             try:
                 event_proto = self._event_buffer.get(block=False)
-                event_batch.append(json.loads(MessageToJson((event_proto))))
+                event_batch.append(event_proto)
             except:  # noqa: E722
                 break
 
@@ -348,12 +402,12 @@ class AggregatorAgent(
 
         self._cleanup_finished_event.set()
 
-    def _sigterm_handler(self, signum, frame):
+    def _sigterm_handler(self, signum: int, frame) -> None:
         self._stop_event.set()
         self._cleanup()
         self._orig_sigterm_handler(signum, frame)
 
-    async def run(self, server):
+    async def run(self, server) -> None:
         if server:
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
                 self, server
@@ -380,5 +434,5 @@ class AggregatorAgent(
             await asyncio.sleep(METRICS_UPDATE_INTERVAL_SECONDS)
 
     @staticmethod
-    def is_minimal_module():
+    def is_minimal_module() -> bool:
         return False

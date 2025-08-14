@@ -11,11 +11,6 @@ class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
 
-    def __post_init__(self) -> None:
-        assert (self.target_max_block_size is None) != (
-            self.target_num_rows_per_block is None
-        ), "Exactly one of target_max_block_size or target_num_rows_per_block must be set."
-
 
 class BlockOutputBuffer:
     """Generates output blocks of a given size or number of rows given a stream of

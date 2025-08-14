@@ -68,6 +68,22 @@ class TestModelConfig:
                 accelerator_type="A100_40G",  # Should use A100-40G instead
             )
 
+    def test_model_loading_config_forbids_extra_fields(self):
+        """Test that ModelLoadingConfig rejects extra fields."""
+
+        with pytest.raises(pydantic.ValidationError, match="engine_kwargs"):
+            ModelLoadingConfig(
+                model_id="test_model",
+                model_source="test_source",
+                engine_kwargs={"max_model_len": 8000},  # This should be rejected
+            )
+
+        valid_config = ModelLoadingConfig(
+            model_id="test_model", model_source="test_source"
+        )
+        assert valid_config.model_id == "test_model"
+        assert valid_config.model_source == "test_source"
+
     def test_invalid_generation_config(self, disable_placement_bundles):
         """Test that passing an invalid generation_config raises an error."""
         with pytest.raises(
@@ -271,6 +287,18 @@ class TestModelConfig:
                     model_id="llm_model_id",
                 ),
                 experimental_configs={123: "value1"},
+            )
+
+    def test_log_engine_metrics_disable_log_stats_validation(self):
+        """Test that log_engine_metrics=True prevents disable_log_stats=True."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="disable_log_stats cannot be set to True when log_engine_metrics is enabled",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                log_engine_metrics=True,
+                engine_kwargs={"disable_log_stats": True},
             )
 
 

@@ -5,12 +5,6 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=("3.9" "3.10" "3.11" "3.12")
-
-bazel_preclean() {
-  "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
-}
-
 get_python_version() {
   python -s -c "import sys; sys.stdout.write('%s.%s' % sys.version_info[:2])"
 }
@@ -89,6 +83,11 @@ uninstall_ray() {
 }
 
 build_wheel_windows() {
+  if [[ "${BUILD_ONE_PYTHON_ONLY:-}" == "" ]]; then
+    echo "Please set BUILD_ONE_PYTHON_ONLY . Building all python versions is no longer supported."
+    exit 1
+  fi
+
   local ray_uninstall_status=0
   uninstall_ray || ray_uninstall_status=1
 
@@ -105,47 +104,41 @@ build_wheel_windows() {
     echo "build --remote_upload_local_results=false" >> ~/.bazelrc
   fi
 
-  for pyversion in "${PY_VERSIONS[@]}"; do
-    if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${pyversion}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
-      continue
+  local pyversion="${BUILD_ONE_PYTHON_ONLY}"
+
+  git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
+  git checkout -q -f -- .
+
+  # Start a subshell to prevent PATH and cd from affecting our shell environment
+  (
+    if ! is_python_version "${pyversion}"; then
+      conda install -y conda=24.1.2 python="${pyversion}"
+    fi
+    if ! is_python_version "${pyversion}"; then
+      echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
+      exit 1
     fi
 
-    bazel_preclean
-    git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
-    git checkout -q -f -- .
+    unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
+    install_ray
+    cd "${WORKSPACE_DIR}"/python
+    # Set the commit SHA in _version.py.
+    if [ -n "$BUILDKITE_COMMIT" ]; then
+      sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
+    else
+      echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
+      exit 1
+    fi
+    # build ray wheel
+    python -m pip wheel -q -w dist . --no-deps
+    # Pack any needed system dlls like msvcp140.dll
+    delvewheel repair dist/ray-*.whl
+    # build ray-cpp wheel
+    RAY_INSTALL_CPP=1 python -m pip wheel -q -w dist . --no-deps
+    # No extra dlls are needed, do not call delvewheel
+    uninstall_ray
+  )
 
-    # Start a subshell to prevent PATH and cd from affecting our shell environment
-    (
-      if ! is_python_version "${pyversion}"; then
-        conda install -y conda=24.1.2 python="${pyversion}"
-      fi
-      if ! is_python_version "${pyversion}"; then
-        echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
-        exit 1
-      fi
-
-      unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
-      install_ray
-      cd "${WORKSPACE_DIR}"/python
-      # Set the commit SHA in _version.py.
-      if [ -n "$BUILDKITE_COMMIT" ]; then
-        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
-      else
-        echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
-        exit 1
-      fi
-      # build ray wheel
-      python -m pip wheel -q -w dist . --no-deps
-      # Pack any needed system dlls like msvcp140.dll
-      delvewheel repair dist/ray-*.whl
-      # build ray-cpp wheel
-      RAY_INSTALL_CPP=1 python -m pip wheel -q -w dist . --no-deps
-      # No extra dlls are needed, do not call delvewheel
-      uninstall_ray
-    )
-  done
-
-  bazel_preclean
   if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
     install_ray
   fi

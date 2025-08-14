@@ -20,6 +20,10 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ray import serve
 from ray._common.utils import get_or_create_event_loop
+from ray.llm._internal.common.utils.lora_utils import (
+    get_base_model_id,
+    get_lora_model_ids,
+)
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
@@ -48,11 +52,6 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
-    get_base_model_id,
-    get_lora_model_ids,
-    get_lora_model_metadata,
-)
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
@@ -62,6 +61,9 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
     metrics_lifespan,
+)
+from ray.llm._internal.serve.utils.lora_serve_utils import (
+    get_lora_model_metadata,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
@@ -75,6 +77,31 @@ else:
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+
+def _sanitize_chat_completion_request(
+    request: ChatCompletionRequest,
+) -> ChatCompletionRequest:
+    """Sanitize ChatCompletionRequest to fix Pydantic ValidatorIterator serialization issue.
+
+    This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
+    objects that cannot be pickled for Ray remote calls.
+
+    References:
+    - vLLM PR that introduces the workaround: https://github.com/vllm-project/vllm/pull/9951
+    - Pydantic Issue: https://github.com/pydantic/pydantic/issues/9467
+    - Related Issue: https://github.com/pydantic/pydantic/issues/9541
+    - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
+
+    TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
+    """
+    from vllm.transformers_utils.tokenizers.mistral import maybe_serialize_tool_calls
+
+    maybe_serialize_tool_calls(request)
+
+    return request
+
+
 StreamResponseType = Union[
     ChatCompletionStreamResponse,
     CompletionStreamResponse,
@@ -299,6 +326,11 @@ class LLMRouter:
             )
 
         model_handle = self._get_configured_serve_handle(model)
+
+        # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
+        # for tool calling ValidatorIterator serialization issue.
+        if isinstance(body, ChatCompletionRequest):
+            body = _sanitize_chat_completion_request(body)
 
         async for response in getattr(model_handle, call_method).remote(body):
             yield response

@@ -401,7 +401,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
 
   rpc::Address owner_address;
-  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  owner_address.set_node_id(object_info.owner_node_id.Binary());
   owner_address.set_ip_address(object_info.owner_ip_address);
   owner_address.set_port(object_info.owner_port);
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
@@ -767,17 +767,17 @@ void ObjectManager::RecordMetrics() {
   push_manager_->RecordMetrics();
   // used_memory_ includes the fallback allocation, so we should add it again here
   // to calculate the exact available memory.
-  stats::ObjectStoreAvailableMemory().Record(
+  ray_metric_object_store_available_memory_.Record(
       config_.object_store_memory - used_memory_ +
       plasma::plasma_store_runner->GetFallbackAllocated());
   // Subtract fallback allocated memory. It is tracked separately by
   // `ObjectStoreFallbackMemory`.
-  stats::ObjectStoreUsedMemory().Record(
+  ray_metric_object_store_used_memory_.Record(
       used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreFallbackMemory().Record(
+  ray_metric_object_store_fallback_memory_.Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
+  ray_metric_object_store_local_objects_.Record(local_objects_.size());
+  ray_metric_object_manager_pull_requests_.Record(pull_manager_->NumObjectPullRequests());
 
   ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
                                                 "PushedFromLocalPlasma");
@@ -802,7 +802,6 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
-  stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
   stats->set_cumulative_created_objects(
       plasma::plasma_store_runner->GetCumulativeCreatedObjects());
   stats->set_cumulative_created_bytes(

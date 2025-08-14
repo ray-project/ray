@@ -121,6 +121,7 @@ test_cpp() {
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
+  bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
@@ -211,11 +212,11 @@ _bazel_build_before_install() {
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
   if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
-    bazel build //:ray_pkg
+    bazel run //:gen_ray_pkg
   elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
     echo "No need to build anything before install"
   elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
-    bazel build --config debug //:ray_pkg
+    bazel run --config debug //:gen_ray_pkg
   else
     echo "Invalid config given"
     exit 1

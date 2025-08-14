@@ -230,6 +230,7 @@ import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
+from ray._common.network_utils import build_address, parse_address
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
 
@@ -788,9 +789,16 @@ cdef int prepare_label_selector(
 
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+            raise ValueError(f"Label selector key type must be string, but got {type(key)}")
         if not isinstance(value, str):
             raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        if key == "":
+            raise ValueError("Label selector key must be a non-empty string.")
+        if (value.startswith("in(") and value.endswith(")")) or \
+           (value.startswith("!in(") and value.endswith(")")):
+            inner = value[value.index("(")+1:-1].strip()
+            if not inner:
+                raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
         label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
@@ -1081,7 +1089,8 @@ cdef store_task_errors(
         proctitle,
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error):
+        c_string* application_error,
+        CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -1127,7 +1136,9 @@ cdef store_task_errors(
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
         caller_address,
-        returns)
+        returns,
+        None,  # ref_generator_id
+        c_tensor_transport)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -2114,7 +2125,7 @@ cdef void execute_task(
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error)
+                    task_type, title, caller_address, returns, application_error, c_tensor_transport)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -2291,7 +2302,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+        gpu_object_manager.gpu_object_store.pop_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2380,11 +2391,7 @@ cdef CRayStatus task_execution_handler(
                     traceback_str = str(e)
                     logger.error("Exception raised "
                                  f"in creation task: {traceback_str}")
-                    # Cython's bug that doesn't allow reference assignment,
-                    # this is a workaroud.
-                    # See https://github.com/cython/cython/issues/1863
-                    (&creation_task_exception_pb_bytes)[0] = (
-                        ray_error_to_memory_buf(e))
+                    creation_task_exception_pb_bytes = ray_error_to_memory_buf(e)
                     sys_exit.is_creation_task_error = True
                     sys_exit.init_error_message = (
                         "Exception raised from an actor init method. "
@@ -2799,7 +2806,7 @@ cdef class _GcsSubscriber:
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        gcs_address, gcs_port = address.split(":")
+        gcs_address, gcs_port = parse_address(address)
         self.inner.reset(new CPythonGcsSubscriber(
             gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
 
@@ -2904,21 +2911,24 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
-        c_log_lines = PythonGetLogBatchLines(log_batch)
+        result = {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+        with nogil:
+            c_log_lines = PythonGetLogBatchLines(move(log_batch))
 
         log_lines = []
         for c_log_line in c_log_lines:
             log_lines.append(c_log_line.decode())
 
-        return {
-            "ip": log_batch.ip().decode(),
-            "pid": log_batch.pid().decode(),
-            "job": log_batch.job_id().decode(),
-            "is_err": log_batch.is_error(),
-            "lines": log_lines,
-            "actor_name": log_batch.actor_name().decode(),
-            "task_name": log_batch.task_name().decode(),
-        }
+        result["lines"] = log_lines
+        return result
 
 
 # This class should only be used for tests
@@ -2966,7 +2976,7 @@ cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port, raylet_ip_address,
+                  node_ip_address, node_manager_port,
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
@@ -3000,7 +3010,6 @@ cdef class CoreWorker:
         options.interactive = hasattr(sys, "ps1")
         options.node_ip_address = node_ip_address.encode("utf-8")
         options.node_manager_port = node_manager_port
-        options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
@@ -3226,48 +3235,6 @@ cdef class CoreWorker:
 
         return has_object and (not memory_store_only or not is_in_plasma)
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            c_bool created_by_worker,
-                            owner_address=None,
-                            c_bool inline_small_object=True,
-                            c_bool is_experimental_channel=False,
-                            ):
-        cdef:
-            unique_ptr[CAddress] c_owner_address
-
-        c_owner_address = move(self._convert_python_address(owner_address))
-
-        if object_ref is None:
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker()
-                             .CreateOwnedAndIncrementLocalRef(
-                             is_experimental_channel, metadata,
-                             data_size, contained_ids,
-                             c_object_id, data, created_by_worker,
-                             move(c_owner_address),
-                             inline_small_object))
-        else:
-            c_object_id[0] = object_ref.native()
-            if owner_address is None:
-                c_owner_address = make_unique[CAddress]()
-                dereference(
-                    c_owner_address
-                ).CopyFrom(CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
-                            metadata, data_size, c_object_id[0],
-                            dereference(c_owner_address), data,
-                            created_by_worker))
-
-        # If data is nullptr, that means the ObjectRef already existed,
-        # which we ignore.
-        # TODO(edoakes): this is hacky, we should return the error instead
-        # and deal with it here.
-        return data.get() == NULL
-
     cdef unique_ptr[CAddress] _convert_python_address(self, address=None):
         """ convert python address to `CAddress`, If not provided,
         return nullptr.
@@ -3301,8 +3268,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
-            unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
-                    object_ref.owner_address()))
+            unique_ptr[CAddress] c_owner_address = self._convert_python_address(
+                    object_ref.owner_address())
 
         # TODO(suquark): This method does not support put objects to
         # in memory store currently.
@@ -3399,11 +3366,10 @@ cdef class CoreWorker:
             c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(
-                            c_writer_ref,
-                            c_remote_reader_nodes,
-                        ))
+            CCoreWorkerProcess.GetCoreWorker().ExperimentalRegisterMutableObjectWriter(
+                    c_writer_ref,
+                    c_remote_reader_nodes,
+            )
             check_status(
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(
@@ -3421,8 +3387,8 @@ cdef class CoreWorker:
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
     def put_serialized_object_and_increment_local_ref(
-            self, serialized_object,
-            ObjectRef object_ref=None,
+            self,
+            serialized_object,
             c_bool pin_object=True,
             owner_address=None,
             c_bool inline_small_object=True,
@@ -3431,59 +3397,55 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata
-            unique_ptr[CAddress] c_owner_address
-            c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
-
-        metadata = string_to_buffer(serialized_object.metadata)
-        total_bytes = serialized_object.total_bytes
-        contained_object_ids = ObjectRefsToVector(
+            shared_ptr[CBuffer] metadata = string_to_buffer(
+                serialized_object.metadata)
+            unique_ptr[CAddress] c_owner_address = self._convert_python_address(
+                owner_address)
+            c_vector[CObjectID] contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
-        object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_ref,
-            contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object,
-            _is_experimental_channel)
+            size_t total_bytes = serialized_object.total_bytes
+
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                .CreateOwnedAndIncrementLocalRef(
+                    _is_experimental_channel,
+                    metadata,
+                    total_bytes,
+                    contained_object_ids,
+                    &c_object_id,
+                    &data,
+                    c_owner_address,
+                    inline_small_object))
+
+        if (data.get() == NULL):
+            # Object already exists
+            return c_object_id.Binary()
 
         logger.debug(
             f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
 
-        if not object_already_exists:
-            if total_bytes > 0:
-                (<SerializedObject>serialized_object).write_to(
-                    Buffer.make(data))
-            if self.is_local_mode:
-                contained_object_refs = (
-                        CCoreWorkerProcess.GetCoreWorker().
-                        GetObjectRefs(contained_object_ids))
-                if owner_address is not None:
-                    raise Exception(
-                        "cannot put data into memory store directly"
-                        " and assign owner at the same time")
-                check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(data, metadata, contained_object_refs),
-                        contained_object_ids, c_object_id))
-            else:
-                c_owner_address = move(self._convert_python_address(
-                    owner_address))
-                with nogil:
-                    if object_ref is None:
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                        c_object_id,
-                                        pin_object,
-                                        move(c_owner_address)))
-                    else:
-                        # Using custom object refs is not supported because we
-                        # can't track their lifecycle, so we don't pin the
-                        # object in this case.
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                                        c_object_id, pin_object=False,
-                                        generator_id=CObjectID.Nil(),
-                                        owner_address=move(c_owner_address)))
-
+        if total_bytes > 0:
+            (<SerializedObject>serialized_object).write_to(
+                Buffer.make(data))
+        if self.is_local_mode:
+            contained_object_refs = (
+                    CCoreWorkerProcess.GetCoreWorker().
+                    GetObjectRefs(contained_object_ids))
+            if owner_address is not None:
+                raise Exception(
+                    "cannot put data into memory store directly"
+                    " and assign owner at the same time")
+            check_status(CCoreWorkerProcess.GetCoreWorker().Put(
+                    CRayObject(data, metadata, contained_object_refs),
+                    contained_object_ids, c_object_id))
+        else:
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                c_object_id,
+                                pin_object,
+                                move(c_owner_address)))
         return c_object_id.Binary()
 
     def wait(self,
@@ -3817,6 +3779,7 @@ cdef class CoreWorker:
                      c_bool enable_task_events,
                      labels,
                      label_selector,
+                     c_bool allow_out_of_order_execution,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3869,9 +3832,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute_out_of_order for
-                        # async or threaded actors.
-                        is_asyncio or max_concurrency > 1,
+                        allow_out_of_order_execution,
                         max_pending_calls,
                         enable_task_events,
                         c_labels,
@@ -4153,6 +4114,7 @@ cdef class CoreWorker:
             dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         max_task_retries = dereference(c_actor_handle).MaxTaskRetries()
         enable_task_events = dereference(c_actor_handle).EnableTaskEvents()
+        allow_out_of_order_execution = dereference(c_actor_handle).AllowOutOfOrderExecution()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4180,7 +4142,8 @@ cdef class CoreWorker:
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
-                                         weak_ref=weak_ref)
+                                         weak_ref=weak_ref,
+                                         allow_out_of_order_execution=allow_out_of_order_execution)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4198,6 +4161,7 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
                                          weak_ref=weak_ref,
+                                         allow_out_of_order_execution=allow_out_of_order_execution,
                                          )
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
@@ -4457,18 +4421,27 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
 
             if not self.store_task_output(
-                    serialized_object, return_id,
+                    serialized_object,
+                    return_id,
                     c_ref_generator_id,
-                    data_size, metadata, contained_id, caller_address,
-                    &task_output_inlined_bytes, return_ptr):
+                    data_size,
+                    metadata,
+                    contained_id,
+                    caller_address,
+                    &task_output_inlined_bytes,
+                    return_ptr):
                 # If the object already exists, but we fail to pin the copy, it
                 # means the existing copy might've gotten evicted. Try to
                 # create another copy.
                 self.store_task_output(
-                        serialized_object, return_id,
+                        serialized_object,
+                        return_id,
                         c_ref_generator_id,
-                        data_size, metadata,
-                        contained_id, caller_address, &task_output_inlined_bytes,
+                        data_size,
+                        metadata,
+                        contained_id,
+                        caller_address,
+                        &task_output_inlined_bytes,
                         return_ptr)
             num_outputs_stored += 1
 
@@ -4778,19 +4751,6 @@ cdef class CoreWorker:
             self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
-
-    def get_task_submission_stats(self):
-        cdef:
-            int64_t num_tasks_submitted
-            int64_t num_leases_requested
-
-        with nogil:
-            num_tasks_submitted = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
-            num_leases_requested = (
-                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
-
-        return (num_tasks_submitted, num_leases_requested)
 
     def get_local_memory_store_bytes_used(self):
         cdef:

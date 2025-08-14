@@ -38,7 +38,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("GcsActorSchedulerTest");
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
@@ -120,7 +120,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsActor> NewGcsActor(
       const std::unordered_map<std::string, double> &required_placement_resources) {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
+    owner_address.set_node_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("127.0.0.1");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -171,7 +171,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   NodeID local_node_id_;
 };
 
@@ -578,7 +578,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id_1.Binary());
+  address.set_node_id(node_id_1.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
 
@@ -1129,7 +1129,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
   // 1.Actor is already tied to a leased worker.
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id_1.Binary());
+  address.set_node_id(node_id_1.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
 

@@ -16,6 +16,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -36,6 +37,9 @@ from typing import (
     overload,
 )
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    import torch
 
 import colorama
 
@@ -58,6 +62,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.utils import load_class
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -98,9 +103,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    pass
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -793,23 +795,19 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
     ):
-        """Put value in the local object store with object reference `object_ref`.
+        """Put value in the local object store.
 
-        This assumes that the value for `object_ref` has not yet been placed in
-        the local object store. If the plasma store is full, the worker will
-        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
-        retry will delay for an exponentially doubling amount of time,
+        If the plasma store is full, the worker will automatically
+        retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each retry
+        will delay for an exponentially doubling amount of time,
         starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
         will be raised.
 
         Args:
             value: The value to put in the object store.
-            object_ref: The object ref of the value to be
-                put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
@@ -831,11 +829,6 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
-
-        if self.mode == LOCAL_MODE:
-            assert (
-                object_ref is None
-            ), "Local Mode does not support inserting with an ObjectRef"
 
         try:
             serialized_value = self.get_serialization_context().serialize(value)
@@ -862,7 +855,6 @@ class Worker:
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
                 serialized_value,
-                object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
                 _is_experimental_channel=_is_experimental_channel,
@@ -879,13 +871,31 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
+        gpu_objects: Dict[str, List["torch.Tensor"]] = {}
+        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+            # If using a non-object store transport, then tensors will be sent
+            # out-of-band. Get them before deserializing the object store data.
+            if (
+                tensor_transport is None
+                or tensor_transport == TensorTransportEnum.OBJECT_STORE
+            ):
+                continue
+
+            object_id = obj_ref.hex()
+            if object_id not in gpu_objects:
+                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                    object_id
+                )
+
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
         # TODO: We may be better off locking on all imports or injecting a lock
         # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
-            return context.deserialize_objects(serialized_objects, object_refs)
+            return context.deserialize_objects(
+                serialized_objects, object_refs, gpu_objects
+            )
 
     def get_objects(
         self,
@@ -1064,14 +1074,28 @@ class Worker:
             # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_accelerators = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_and_label_spec().num_gpus
                 else:
-                    max_accelerators = self.node.get_resource_spec().resources.get(
-                        resource_name, None
+                    max_accelerators = (
+                        self.node.get_resource_and_label_spec().resources.get(
+                            resource_name, None
+                        )
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
+
+
+_connect_or_shutdown_lock = threading.RLock()
+
+
+def with_connect_or_shutdown_lock(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with _connect_or_shutdown_lock:
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 @PublicAPI
@@ -1435,7 +1459,7 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Debugger instead.
+        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1629,7 +1653,7 @@ def init(
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
-        from ray._private.usage import usage_lib
+        from ray._common.usage import usage_lib
 
         if passed_kwargs.get("allow_multiple") is True:
             with ctx:
@@ -1751,7 +1775,7 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "For debugging consider using Ray debugger. ",
+            " For debugging consider using Ray Distributed Debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1781,7 +1805,7 @@ def init(
         # In this case, we need to start a new cluster.
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
-        from ray._private.usage import usage_lib
+        from ray._common.usage import usage_lib
 
         if usage_lib.is_nightly_wheel():
             usage_lib.show_usage_stats_prompt(cli=False)
@@ -1967,6 +1991,7 @@ _post_init_hooks = []
 
 @PublicAPI
 @client_mode_hook
+@with_connect_or_shutdown_lock
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -2344,6 +2369,7 @@ def is_initialized() -> bool:
 
 
 # TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
+@with_connect_or_shutdown_lock
 def connect(
     node,
     session_name: str,
@@ -2367,7 +2393,7 @@ def connect(
 
     Args:
         node (ray._private.node.Node): The node to connect.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2557,7 +2583,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
@@ -3629,6 +3654,11 @@ def remote(
             the default value is 3, and a value of -1 indicates
             infinite retries.
             See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+        allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+            tasks out of order. If you're using multi-threaded (``max_concurrency > 1``)
+            or async actors, you can't set this to False. Defaults to True if you're
+            using multi-threaded or async actors, and False otherwise. Actor task
+            retries are always executed out of order.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.

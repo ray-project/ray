@@ -146,12 +146,9 @@ ci/docker/doctest.build.wanda.yaml
 
 release/ray_release/
 release/requirements_buildkite.*
-@ tools
-;
-
 release/*.md
 release/*.yaml
-# Do not run on config changes
+@ tools
 ;
 
 release/
@@ -171,6 +168,7 @@ ci/lint/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml
+ci/raydepsets/
 bazel/tests/
 @ tools
 ;

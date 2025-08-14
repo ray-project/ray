@@ -3,13 +3,14 @@ import sys
 import pytest
 
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
-    build_app,
+    build_pd_openai_app,
 )
 from ray.serve.llm import LLMConfig
 
 
 class TestServingArgsParsing:
-    def test_parse_dict(self):
+    @pytest.mark.parametrize("kv_connector", ["NixlConnector", "LMCacheConnectorV1"])
+    def test_parse_dict(self, kv_connector: str):
         prefill_config = LLMConfig(
             model_loading_config=dict(
                 model_id="qwen-0.5b",
@@ -44,7 +45,7 @@ class TestServingArgsParsing:
 
         pd_config = {"prefill_config": prefill_config, "decode_config": decode_config}
 
-        app = build_app(pd_config)
+        app = build_pd_openai_app(pd_config)
         assert app is not None
 
 

@@ -16,7 +16,7 @@ result dict and how to assert, the new metrics has been properly logged.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
+`python [script file name].py --wandb-key [your WandB key]
 --wandb-project [some project name]`
 
 For debugging, use the following additional command line options
@@ -86,7 +86,7 @@ class MyVPGWithExtraMetrics(VPG):
 
 
 parser = add_rllib_example_script_args(default_reward=50.0)
-parser.set_defaults(enable_new_api_stack=True, default_timesteps=50000)
+parser.set_defaults(default_timesteps=50000)
 
 
 if __name__ == "__main__":

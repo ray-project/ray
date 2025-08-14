@@ -39,6 +39,10 @@ as well as multi-GPU training on multi-node (GPU) clusters when using the `Anysc
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`BC (Behavior Cloning) <bc>`                                           | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`CQL (Conservative Q-Learning) <cql>`                                  | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`IQL (Implicit Q-Learning) <iql>`                                      | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`MARWIL (Monotonic Advantage Re-Weighted Imitation Learning) <marwil>` | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **Algorithm Extensions and -Plugins**                                                                                                                                            |
@@ -183,7 +187,7 @@ Asynchronous Proximal Policy Optimization (APPO)
     In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
     samples are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     APPO then passes these episode references to the Learners for asynchronous updates of the model.
-    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    RLlib doesn't always sync back the weights to the EnvRunners right after a new model version is available.
     To account for the EnvRunners being off-policy, APPO uses a procedure called v-trace,
     `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
     APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
@@ -249,7 +253,9 @@ DreamerV3
 ---------
 `[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
+`[RLlib readme] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__
 
+Also see `this README here for more details on how to run experiments <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__ with DreamerV3.
 
 .. figure:: images/algos/dreamerv3-architecture.svg
     :width: 850
@@ -260,17 +266,17 @@ DreamerV3
     is to correctly predict the transition dynamics of the RL environment: next observation, reward,
     and a boolean continuation flag.
     DreamerV3 trains the actor- and critic-networks on synthesized trajectories only,
-    which are "dreamed" by the world model.
-    DreamerV3 scales out on both axes, supporting multiple EnvRunners for sample collection and
-    multiple GPU- or CPU-based Learners for updating the model.
+    which are "dreamed" by the WORLD_MODEL.
+    The algorithm scales out on both axes, supporting multiple :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors for
+    sample collection and multiple GPU- or CPU-based :py:class:`~ray.rllib.core.learner.learner.Learner` actors for updating the model.
     It can also be used in different environment types, including those with image- or vector based
     observations, continuous- or discrete actions, as well as sparse or dense reward functions.
 
 
 **Tuned examples:**
-`Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_100k.py>`__,
-`Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_200M.py>`__,
-`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/dm_control_suite_vision.py>`__
+`Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_100k_dreamerv3.py>`__,
+`Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_200M_dreamerv3.py>`__,
+`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/dm_control_suite_vision_dreamerv3.py>`__
 
 
 **Pong-v5 results (1, 2, and 4 GPUs)**:
@@ -361,6 +367,30 @@ Conservative Q-Learning (CQL)
    :members: training
 
 
+.. _iql:
+
+Implicit Q-Learning (IQL)
+-------------------------
+`[paper] <https://arxiv.org/abs/2110.06169>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/iql/iql.py>`__
+
+    **IQL architecture:** IQL (Implicit Q-Learning) is an offline RL algorithm that never needs to evaluate actions outside of
+    the dataset, but still enables the learned policy to improve substantially over the best behavior in the data through
+    generalization. Instead of standard TD-error minimization, it introduces a value function trained through expectile regression,
+    which yields a conservative estimate of returns. This allows policy improvement through advantage-weighted behavior cloning,
+    ensuring safer generalization without explicit exploration.
+
+    The `IQLLearner` replaces the usual TD-based value loss with an expectile regression loss, and trains the policy to imitate
+    high-advantage actions—enabling substantial performance gains over the behavior policy using only in-dataset actions.
+
+**Tuned examples:**
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/iql/pendulum_iql.py>`__
+
+**IQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+
+.. autoclass:: ray.rllib.algorithms.iql.iql.IQLConfig
+   :members: training
+
 .. _marwil:
 
 Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
@@ -374,7 +404,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
-    imitation learning (see `BC`_). MARWIL uses Ray.Data to tap into its parallel data
+    imitation learning (see `BC`_). MARWIL uses Ray. Data to tap into its parallel data
     processing capabilities. In one training iteration, MARWIL reads episodes in parallel from offline files,
     for example `parquet <https://parquet.apache.org/>`__, by the n DataWorkers. Connector pipelines preprocess these
     episodes into train batches and send these as data iterators directly to the n Learners for updating the model.
