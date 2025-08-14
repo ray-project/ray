@@ -133,7 +133,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
 
 TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   rpc::events::AddEventsRequest request;
-  rpc::AddTaskEventDataRequest task_event_data;
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
   // Create a task profile event
@@ -163,9 +163,11 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   ProfileEventEntry->set_event_name("test_event");
 
   // Convert
-  converter.ConvertToTaskEventDataRequest(std::move(request), task_event_data);
+  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
 
   // Verify conversion
+  EXPECT_EQ(task_event_data_requests.size(), 1);
+  auto task_event_data = task_event_data_requests[0];
   EXPECT_EQ(task_event_data.data().events_by_task_size(), 1);
   const auto &converted_task = task_event_data.data().events_by_task(0);
 

@@ -113,7 +113,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskProfileEvents &&
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  *task_event.mutable_profile_events() = std::move(event.mutable_profile_events());
+  task_event.mutable_profile_events()->Swap(event.mutable_profile_events());
 }
 
 }  // namespace gcs
