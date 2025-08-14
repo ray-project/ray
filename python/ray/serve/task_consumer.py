@@ -34,7 +34,6 @@ def instantiate_adapter_from_config(
     Raises:
         ValueError: If the adapter string path is malformed or cannot be imported.
         TypeError: If the adapter is not a string or callable class.
-        AttributeError: If the imported module doesn't contain the specified class.
 
     Example:
         .. code-block:: python
