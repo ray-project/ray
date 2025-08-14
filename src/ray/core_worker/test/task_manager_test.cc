@@ -154,7 +154,7 @@ class TaskManagerTest : public ::testing::Test {
         store_(std::make_shared<CoreWorkerMemoryStore>(
                    io_context_.GetIoService(),
                    /*should_delete_object_on_put=*/
-                   [reference_counter](const ObjectID &object_id) {
+                   [reference_counter_](const ObjectID &object_id) {
                      return !reference_counter->HasReference(object_id);
                    })),
         manager_(
