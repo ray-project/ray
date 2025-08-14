@@ -3700,8 +3700,10 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG).WithField(subscriber_id) << "Got a long polling request from a node";
-  object_info_publisher_->ConnectToSubscriber(
-      request, reply, std::move(send_reply_callback));
+  object_info_publisher_->ConnectToSubscriber(request,
+                                              reply->mutable_publisher_id(),
+                                              reply->mutable_pub_messages(),
+                                              std::move(send_reply_callback));
 }
 
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,

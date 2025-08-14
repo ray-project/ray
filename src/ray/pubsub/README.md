@@ -83,7 +83,7 @@ it doesn't use Ray's GCS for that.
 
 Subscriber detects the publisher failures from the long polling request. A
 single long polling request is initiated from the subscriber, and it sends them
-again and again whenever replied as long as there are subscribing entreis. If
+again and again whenever replied as long as there are subscribing entries. If
 the publisher fails, the long polling request is also failed, so that the
 subscriber can detect the failures of publishers. All metadata is cleaned up in
 this case.

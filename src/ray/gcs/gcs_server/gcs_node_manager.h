@@ -96,7 +96,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_table_updated_callback The status callback function after
   /// faled node info is updated to gcs node table.
   void OnNodeFailure(const NodeID &node_id,
-                     const StatusCallback &node_table_updated_callback);
+                     const std::function<void()> &node_table_updated_callback);
 
   /// Add an alive node.
   ///
