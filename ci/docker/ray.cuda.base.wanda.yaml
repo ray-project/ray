@@ -1,4 +1,4 @@
-name: "ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
+name: "ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"
 froms: ["nvidia/cuda:$CUDA_VERSION-devel-ubuntu22.04"]
 dockerfile: docker/base-deps/Dockerfile
 srcs:
@@ -7,4 +7,4 @@ build_args:
   - PYTHON_VERSION
   - BASE_IMAGE=nvidia/cuda:$CUDA_VERSION-devel-ubuntu22.04
 tags:
-  - cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
+  - cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX
