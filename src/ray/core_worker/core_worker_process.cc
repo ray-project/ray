@@ -495,12 +495,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     return address_opt;
   };
 
-  auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
-                          ? std::unique_ptr<LeasePolicyInterface>(
-                                std::make_unique<LocalityAwareLeasePolicy>(
-                                    *reference_counter, node_addr_factory, rpc_address))
-                          : std::unique_ptr<LeasePolicyInterface>(
-                                std::make_unique<LocalLeasePolicy>(rpc_address));
+  auto lease_policy =
+      RayConfig::instance().locality_aware_leasing_enabled()
+          ? std::unique_ptr<LeasePolicyInterface>(
+                std::make_unique<LocalityAwareLeasePolicy>(
+                    *reference_counter, node_addr_factory, raylet_address))
+          : std::unique_ptr<LeasePolicyInterface>(
+                std::make_unique<LocalLeasePolicy>(raylet_address));
 
   auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
       rpc_address,

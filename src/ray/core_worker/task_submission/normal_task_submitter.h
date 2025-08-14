@@ -107,6 +107,7 @@ class NormalTaskSubmitter {
         task_manager_(task_manager),
         lease_timeout_ms_(lease_timeout_ms),
         local_node_id_(local_node_id),
+        worker_id_(WorkerID::FromBinary(rpc_address_.worker_id())),
         worker_type_(worker_type),
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
@@ -170,12 +171,6 @@ class NormalTaskSubmitter {
       bool worker_exiting,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Get an existing lease client or connect a new one. If a raylet_address is
-  /// provided, this connects to a remote raylet. Else, this connects to the
-  /// local raylet.
-  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
-      const rpc::Address *raylet_address) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Report worker backlog information to the local raylet
   void ReportWorkerBacklogInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -246,12 +241,8 @@ class NormalTaskSubmitter {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  // Client that can be used to lease and return workers from the local raylet.
+  /// Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<RayletClientInterface> local_raylet_client_;
-
-  /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>
-      remote_raylet_clients_ ABSL_GUARDED_BY(mu_);
 
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
@@ -273,6 +264,9 @@ class NormalTaskSubmitter {
   /// The local node ID. Used to make sure that we use the local lease client
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const NodeID local_node_id_;
+
+  /// The local worker ID.
+  const WorkerID worker_id_;
 
   /// The type of this core worker process.
   const WorkerType worker_type_;
