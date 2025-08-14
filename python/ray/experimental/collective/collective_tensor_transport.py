@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, TYPE_CHECKING
 
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
@@ -7,6 +7,9 @@ from ray.experimental.collective.tensor_transport_manager import (
 )
 
 from ray.util.collective.types import CollectiveTransportMetadata
+
+if TYPE_CHECKING:
+    import torch
 
 
 class CollectiveTensorTransport(TensorTransportManager):
@@ -124,3 +127,25 @@ class CollectiveTensorTransport(TensorTransportManager):
         ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
         for tensor in tensors:
             recv(tensor, metadata.src_rank, group_name)
+
+    @staticmethod
+    def send_multiple_tensors(
+        tensors: List["torch.Tensor"],
+        metadata: CollectiveTransportMetadata,
+        device: "torch.device",
+        group_name: str = "default",
+    ):
+        import ray.util.collective as collective
+
+        for tensor in tensors:
+            if tensor.device.type != device.type:
+                # TODO(swang): Right now there is no way to catch this error
+                # and the receiving Ray task will hang.
+                raise ValueError(
+                    f"tensor device {tensor.device} does not match device {device}"
+                )
+            collective.send(
+                tensor,
+                metadata.dst_rank,
+                group_name=metadata.communicator_name,
+            )

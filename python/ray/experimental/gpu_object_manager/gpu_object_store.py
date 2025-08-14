@@ -60,18 +60,15 @@ def __ray_send__(self, obj_id: str, tensor_transport_meta: TensorTransportMetada
     ).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
-    for tensor in tensors:
-        if tensor.device.type != device.type:
-            # TODO(swang): Right now there is no way to catch this error
-            # and the receiving Ray task will hang.
-            raise ValueError(
-                f"tensor device {tensor.device} does not match device {device}"
-            )
-        collective.send(
-            tensor,
-            tensor_transport_meta.dst_rank,
-            group_name=tensor_transport_meta.communicator_name,
-        )
+    from ray.experimental.collective import get_tensor_transport_manager
+
+    tensor_transport_manager = get_tensor_transport_manager(backend)
+    tensor_transport_manager.send_multiple_tensors(
+        tensors,
+        tensor_transport_meta,
+        device=device,
+        group_name=tensor_transport_meta.communicator_name,
+    )
 
 
 def __ray_recv__(
@@ -81,6 +78,8 @@ def __ray_recv__(
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
+
+    from ray.experimental.collective import get_tensor_transport_manager
 
     backend = collective.get_group_handle(
         tensor_transport_meta.communicator_name
@@ -95,8 +94,6 @@ def __ray_recv__(
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         tensors.append(tensor)
-
-    from ray.experimental.collective import get_tensor_transport_manager
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.recv_multiple_tensors(

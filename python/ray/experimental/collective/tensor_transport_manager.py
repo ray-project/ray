@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING
-from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import TensorTransportMetadata
+from ray._private.custom_types import TensorTransportEnum
+
+import ray
 
 if TYPE_CHECKING:
     import torch
-
-import ray
 
 
 class TensorTransportManager(ABC):
@@ -129,4 +129,22 @@ class TensorTransportManager(ABC):
             metadata: The tensor transport metadata for the GPU object.
             group_name: The name of the collective group.
 
+        """
+
+    @staticmethod
+    @abstractmethod
+    def send_multiple_tensors(
+        tensors: List["torch.Tensor"],
+        metadata: TensorTransportMetadata,
+        device: "torch.device",
+        group_name: str = "default",
+    ):
+        """
+        Send multiple tensors to the destination actor.
+
+        Args:
+            tensors: The tensors to send.
+            metadata: The tensor transport metadata for the GPU object.
+            device: The device to send the tensors to.
+            group_name: The name of the collective group.
         """

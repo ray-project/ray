@@ -11,6 +11,10 @@ from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
 
+# Singleton instances for tensor transport managers
+_nixl_tensor_transport_manager = None
+_collective_tensor_transport_manager = None
+
 
 def get_tensor_transport_manager(
     tensor_transport: Backend,
@@ -24,9 +28,15 @@ def get_tensor_transport_manager(
         TensorTransportManager: The tensor transport manager for the given tensor transport protocol.
     """
     if tensor_transport == Backend.NIXL:
-        return NixlTensorTransport()
+        global _nixl_tensor_transport_manager
+        if _nixl_tensor_transport_manager is None:
+            _nixl_tensor_transport_manager = NixlTensorTransport()
+        return _nixl_tensor_transport_manager
     elif tensor_transport == Backend.TORCH_GLOO or tensor_transport == Backend.NCCL:
-        return CollectiveTensorTransport()
+        global _collective_tensor_transport_manager
+        if _collective_tensor_transport_manager is None:
+            _collective_tensor_transport_manager = CollectiveTensorTransport()
+        return _collective_tensor_transport_manager
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 

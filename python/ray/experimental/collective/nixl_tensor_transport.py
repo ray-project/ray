@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, TYPE_CHECKING
 
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
@@ -6,6 +6,9 @@ from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportEnum,
 )
 from ray.util.collective.types import NIXL_GROUP_NAME, NixlTransportMetadata
+
+if TYPE_CHECKING:
+    import torch
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -102,3 +105,12 @@ class NixlTensorTransport(TensorTransportManager):
                 metadata, types.NixlTransportMetadata
             ), "metadata must be a NixlTransportMetadata object for NIXL transport"
             g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
+
+    @staticmethod
+    def send_multiple_tensors(
+        tensors: List["torch.Tensor"],
+        metadata: NixlTransportMetadata,
+        device: "torch.device",
+        group_name: str = "default",
+    ):
+        pass
