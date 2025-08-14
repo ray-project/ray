@@ -3,7 +3,7 @@ import os
 import pprint
 import sys
 import time
-from subprocess import list2cmdline
+import shlex
 from typing import Any, Dict, Optional, Tuple, Union
 
 import click
@@ -276,7 +276,7 @@ def submit(
         working_dir=working_dir,
     )
     job_id = client.submit_job(
-        entrypoint=list2cmdline(entrypoint),
+        entrypoint=shlex.join(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
         metadata=metadata_json,
