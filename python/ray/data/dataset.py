@@ -5969,7 +5969,7 @@ class Dataset:
     def explain(self) -> str:
         """Returns a string containing logical plan and physical plan.
 
-        Example:
+    Example:
         >>> import ray
         >>> from ray.data import Dataset
         >>> ds: Dataset = ray.data.range(10)
@@ -5979,9 +5979,9 @@ class Dataset:
         Map(<lambda>)
         +- ReadRange
         -------- Physical Plan --------
-        Map(<lambda>)
-        +- ReadRange->SplitBlocks(2)
-            +- Input
+        ReadRange->Map(<lambda>)
+        +- Input
+
         """
         return self._plan.explain()
 
