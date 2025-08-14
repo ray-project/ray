@@ -542,7 +542,7 @@ class TestSubmit:
             # Verify the entrypoint is correctly formatted without losing quotes
             # This should now work correctly with cross-platform command line formatting
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='python3 test.py --config {"key": "value", "nested": {"data": "test"}}',
+                entrypoint='python3 test.py --config \'{"key": "value", "nested": {"data": "test"}}\'',
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
