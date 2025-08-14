@@ -14,10 +14,6 @@
 
 #include "ray/common/cgroup/cgroup_utils.h"
 
-#include <memory>
-#include <string>
-#include <utility>
-
 #ifndef __linux__
 namespace ray {
 Status KillAllProcAndWait(const std::string &cgroup_folder) { return Status::OK(); }

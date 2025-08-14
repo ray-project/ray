@@ -14,6 +14,7 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 
+#include <algorithm>
 #include <string>
 
 #include "ray/common/bundle_spec.h"
