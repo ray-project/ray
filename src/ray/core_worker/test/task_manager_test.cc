@@ -155,7 +155,7 @@ class TaskManagerTest : public ::testing::Test {
             io_context_.GetIoService(),
             /*should_delete_object_on_put=*/
             [reference_counter_](const ObjectID &object_id) {
-              return !reference_counter->HasReference(object_id);
+              return !reference_counter_->HasReference(object_id);
             })),
         manager_(
             *store_,
