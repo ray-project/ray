@@ -113,7 +113,7 @@ void Metric::Record(double value, TagsType tags) {
     return;
   }
 
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  if (::RayConfig::instance().enable_open_telemetry()) {
     // Register the metric if it hasn't been registered yet; otherwise, this is a no-op.
     // We defer metric registration until the first time it's recorded, rather than during
     // construction, to avoid issues with static initialization order. Specifically, our

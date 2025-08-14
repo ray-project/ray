@@ -196,14 +196,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
-            "experimental_enable_open_telemetry_on_agent": os.getenv(
-                "RAY_experimental_enable_open_telemetry_on_agent"
-            )
-            == "1",
-            "experimental_enable_open_telemetry_on_core": os.getenv(
-                "RAY_experimental_enable_open_telemetry_on_core"
-            )
-            == "1",
+            "enable_open_telemetry": os.getenv("RAY_enable_open_telemetry") == "1",
         }
     )
     # Add worker nodes.
@@ -277,8 +270,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 @pytest.mark.skipif(
-    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1"
-    and sys.platform == "darwin",
+    os.environ.get("RAY_enable_open_telemetry") == "1" and sys.platform == "darwin",
     reason="OpenTelemetry is not working on macOS yet.",
 )
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
@@ -319,7 +311,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 "test_driver_counter_total",
                 "test_gauge",
             ]
-            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
+            if os.environ.get("RAY_enable_open_telemetry") != "1"
             else [
                 "test_counter_total",
                 "test_driver_counter_total",
@@ -770,7 +762,7 @@ def test_histogram(_setup_cluster_for_test):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1",
+    os.environ.get("RAY_enable_open_telemetry") == "1",
     reason="OpenTelemetry backend does not support Counter exported as gauge.",
 )
 def test_counter_exported_as_gauge(shutdown_only):
