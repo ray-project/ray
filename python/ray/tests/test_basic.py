@@ -266,7 +266,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {24, 25,, 26}
+    assert ray.get(actor.get_thread_count.remote()) in {24, 25, 26}
 
 
 # https://github.com/ray-project/ray/issues/7287
