@@ -261,6 +261,8 @@ class GPUObjectStore:
             ), f"obj_id={obj_id} not found in GPU object store"
             queue = self._gpu_object_store.get(obj_id)
             gpu_object = queue.popleft()
+            if len(queue) == 0:
+                del self._gpu_object_store[obj_id]
             for tensor in gpu_object.data:
                 self._tensor_to_object_ids[tensor].remove(obj_id)
                 if len(self._tensor_to_object_ids[tensor]) == 0:
