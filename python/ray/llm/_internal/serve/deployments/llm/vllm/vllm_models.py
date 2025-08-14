@@ -193,18 +193,6 @@ class VLLMEngineConfig(BaseModelExtended):
         return "STRICT_PACK"
 
     @property
-    def placement_bundles(self) -> List[Dict[str, float]]:
-        if self.resources_per_bundle:
-            bundle = self.resources_per_bundle
-        else:
-            bundle = {"GPU": 1}
-        if self.accelerator_type:
-            bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_devices)]
-
-        return bundles
-
-    @property
     def use_gpu(self) -> bool:
         """
         Returns True if vLLM is configured to use GPU resources.
@@ -232,12 +220,14 @@ class VLLMEngineConfig(BaseModelExtended):
             GPUType.NVIDIA_A100_80G.value,
         )
 
-    def get_or_create_pg(self) -> PlacementGroup:
+    def get_or_create_pg(self, engine_kwargs: Dict[str, Any]) -> PlacementGroup:
         """Gets or a creates a placement group.
 
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
         """
+        dp_rank = engine_kwargs.get("data_parallel_rank", None)
+        dp_address = engine_kwargs.get("data_parallel_address", None)
         pg = get_current_placement_group()
         if pg:
             logger.debug(
@@ -245,6 +235,9 @@ class VLLMEngineConfig(BaseModelExtended):
                 pg.id,
                 placement_group_table(pg),
             )
+            assert (
+                dp_rank != 0
+            ), "Data parallel is not supported if already in a placement group."
         else:
             if not ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT:
                 raise RuntimeError(
@@ -253,8 +246,30 @@ class VLLMEngineConfig(BaseModelExtended):
                     "if this is not intended."
                 )
             pg = placement_group(
-                self.placement_bundles, strategy=self.placement_strategy
+                self._get_placement_bundles(dp_rank, dp_address),
+                strategy=self.placement_strategy,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
+
+    def _get_placement_bundles(
+        self, dp_rank: Optional[int], dp_address: Optional[str]
+    ) -> List[Dict[str, float]]:
+        if self.resources_per_bundle:
+            bundle = self.resources_per_bundle
+        else:
+            bundle = {"GPU": 1}
+        if self.accelerator_type:
+            bundle[self.ray_accelerator_type()] = 0.001
+        if dp_rank == 0:
+            if dp_address:
+                bundle["node:" + dp_address] = 0.001
+            else:
+                logger.warning(
+                    "Data parallel rank is 0 but data parallel address is not set. "
+                    "This may lead to incorrect placements for multi-node scenarios."
+                )
+        bundles = [bundle for _ in range(self.num_devices)]
+
+        return bundles

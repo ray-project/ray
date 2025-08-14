@@ -48,7 +48,7 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
-def _get_vllm_engine_config(
+def _get_vllm_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
@@ -57,10 +57,10 @@ def _get_vllm_engine_config(
     )
     from vllm.usage.usage_lib import UsageContext
 
-    vllm_engine_config = async_engine_args.create_engine_config(
+    vllm_config = async_engine_args.create_engine_config(
         usage_context=UsageContext.OPENAI_API_SERVER
     )
-    return async_engine_args, vllm_engine_config
+    return async_engine_args, vllm_config
 
 
 def _clear_current_platform_cache():
@@ -154,7 +154,7 @@ class VLLMEngine(LLMEngine):
             vllm_engine_args,
             vllm_frontend_args,
             vllm_engine_config,
-        ) = self._prepare_engine_config(node_initialization)
+        ) = self._prepare_vllm_configs(node_initialization)
 
         # Apply checkpoint info to the llm_config.
         # This is needed for capturing model capabilities
@@ -226,7 +226,7 @@ class VLLMEngine(LLMEngine):
             self._engine_client, "check_health"
         ), "engine_client must have a check_health attribute"
 
-    def _prepare_engine_config(
+    def _prepare_vllm_configs(
         self, node_initialization: InitializeNodeOutput
     ) -> Tuple["AsyncEngineArgs", "FrontendArgs", "VllmConfig"]:
         """Prepare the engine config to start the engine.
@@ -236,9 +236,9 @@ class VLLMEngine(LLMEngine):
 
         Returns:
             A tuple of:
-                engine_args: The vLLM's internal engine arguments that is flattened.
+                vllm_args: The vLLM's internal engine arguments that is flattened.
                 frontend_args: The vLLM's internal frontend arguments that is flattened.
-                engine_config: The vLLM's internal engine config that is nested.
+                vllm_config: The vLLM's internal engine config that is nested.
         """
 
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
@@ -251,7 +251,7 @@ class VLLMEngine(LLMEngine):
                     num_cpus=0,
                     num_gpus=0.001,
                     accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
+                )(_get_vllm_config)
                 .options(
                     runtime_env=node_initialization.runtime_env,
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
@@ -260,14 +260,12 @@ class VLLMEngine(LLMEngine):
                 )
                 .remote(self.llm_config)
             )
-            vllm_engine_args, vllm_engine_config = ray.get(ref)
+            vllm_args, vllm_config = ray.get(ref)
         else:
-            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(
-                self.llm_config
-            )
+            vllm_args, vllm_config = _get_vllm_config(self.llm_config)
 
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
-        return vllm_engine_args, vllm_frontend_args, vllm_engine_config
+        return vllm_args, vllm_frontend_args, vllm_config
 
     def _start_async_llm_engine_v0(
         self,
