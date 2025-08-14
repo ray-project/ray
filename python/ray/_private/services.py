@@ -367,15 +367,14 @@ def find_bootstrap_address(temp_dir: Optional[str]):
     return ray._private.utils.read_ray_address(temp_dir)
 
 
-def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
+def get_ray_address_from_environment(addr: Optional[str], temp_dir: Optional[str]):
     """Attempts to find the address of Ray cluster to use, in this order:
 
-    1. Use RAY_ADDRESS if defined and nonempty.
-    2. If no address is provided or the provided address is "auto", use the
-    address in /tmp/ray/ray_current_cluster if available. This will error if
-    the specified address is None and there is no address found. For "auto",
-    we will fallback to connecting to any detected Ray cluster (legacy).
-    3. Otherwise, use the provided address.
+    1. Use RAY_ADDRESS_ENVIRONMENT_VARIABLE if defined and nonempty.
+    2. Use the addr provided if it was not None or "auto".
+    3. Use the address in /tmp/ray/ray_current_cluster.
+    4. Use any detected Ray cluster (by finding local gcs processes).
+    5. Return None if addr was None, raise a ConnectionError if addr was "auto".
 
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
@@ -386,27 +385,34 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
 
     if addr is not None and addr != "auto":
         return addr
-    # We should try to automatically find an active local instance.
+
     gcs_addrs = find_gcs_addresses()
     bootstrap_addr = find_bootstrap_address(temp_dir)
 
     if len(gcs_addrs) > 1 and bootstrap_addr is not None:
         logger.warning(
             f"Found multiple active Ray instances: {gcs_addrs}. "
-            f"Connecting to latest cluster at {bootstrap_addr}. "
+            f"Connecting to the latest cluster at {bootstrap_addr}. "
             "You can override this by setting the `--address` flag "
             "or `RAY_ADDRESS` environment variable."
         )
-    elif len(gcs_addrs) > 0 and addr == "auto":
-        # Preserve legacy "auto" behavior of connecting to any cluster, even if not
-        # started with ray start. However if addr is None, we will raise an error.
+
+    if len(gcs_addrs) > 0 and bootstrap_addr is None:
         bootstrap_addr = list(gcs_addrs).pop()
+        if len(gcs_addrs) > 1:
+            logger.warning(
+                f"Found multiple active Ray instances: {gcs_addrs}. "
+                f"Connecting to the cluster at {bootstrap_addr}. "
+                "You can override this by setting the `--address` flag "
+                "or `RAY_ADDRESS` environment variable."
+            )
 
     if bootstrap_addr is None:
         if addr is None:
             # Caller should start a new instance.
             return None
         else:
+            # addr was "auto"
             raise ConnectionError(
                 "Could not find any running Ray instance. "
                 "Please specify the one to connect to by setting `--address` flag "
