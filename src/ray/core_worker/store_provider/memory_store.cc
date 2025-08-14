@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/ipc/raylet_ipc_client.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -126,20 +125,17 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
+    ipc::RayletIpcClient &raylet_ipc_client,
     std::function<bool(const ObjectID)> should_delete_object_on_put,
-    std::function<void()> release_resources,
-    std::function<void()> reacquire_resources,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
+      raylet_ipc_client_(raylet_ipc_client),
       should_delete_object_on_put_(should_delete_object_on_put != nullptr
                                        ? should_delete_object_on_put
                                        : [](const ObjectID &object_id) { return false; }),
-      release_resources_(release_resources != nullptr ? release_resources : []() {}),
-      reacquire_resources_(reacquire_resources != nullptr ? reacquire_resources
-                                                          : []() {}),
       check_signals_(check_signals != nullptr ? check_signals
                                               : []() { return Status::OK(); }),
       unhandled_exception_handler_(unhandled_exception_handler != nullptr
@@ -303,7 +299,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   bool should_release_resources = ctx.ShouldReleaseResourcesOnBlockingCalls();
   if (should_release_resources) {
-    release_resources_();
+    RAY_CHECK_OK(raylet_ipc_client_.NotifyDirectCallTaskBlocked());
   }
 
   bool done = false;
@@ -332,7 +328,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_release_resources) {
-    reacquire_resources_();
+    RAY_CHECK_OK(raylet_ipc_client_.NotifyDirectCallTaskUnblocked());
   }
 
   {

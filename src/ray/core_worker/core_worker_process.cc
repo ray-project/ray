@@ -366,19 +366,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
+      *raylet_ipc_client,
       // The memory store will delete objects immediately when they're put into the
       // store if they have gone out of scope in the reference counter.
       /*should_delete_object_on_put=*/
       [reference_counter](const ObjectID &object_id) {
         return !reference_counter->HasReference(object_id);
-      },
-      /*release_resources=*/
-      [raylet_ipc_client]() {
-        RAY_CHECK_OK(raylet_ipc_client->NotifyDirectCallTaskBlocked());
-      },
-      /*reacquire_resources=*/
-      [raylet_ipc_client]() {
-        RAY_CHECK_OK(raylet_ipc_client->NotifyDirectCallTaskUnblocked());
       },
       options.check_signals,
       [this](const RayObject &obj) {

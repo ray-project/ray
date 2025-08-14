@@ -26,6 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
+#include "ray/ipc/raylet_ipc_client.h"
 
 namespace ray {
 namespace core {
@@ -46,18 +47,19 @@ class CoreWorkerMemoryStore {
   /// Create a memory store.
   ///
   /// \param io_context Posts async callbacks to this context.
+  /// \param raylet_ipc_client IPC client to the local Raylet. Used to release &
+  ///        reacquire resources during & after blocking calls.
   /// \param should_delete_object_on_put Callback to check if an object should be
   ///        immediately deleted when it is put into the store.
-  /// \param release_resources Called to release logical resources during blocking
-  /// operations. \param reacquire_resources Called to reacquire logical resources after
-  /// blocking operations. \param check_signals Called periodically during long-running
-  /// operations. \param unhandled_exception_handler Called on objects that have unhandled
-  /// exceptions. \param object_allocator Used to override the object allocator.
+  /// \param check_signals Called periodically during long-running
+  /// operations.
+  /// \param unhandled_exception_handler Called on objects that have unhandled
+  /// exceptions.
+  /// \param object_allocator Used to override the object allocator.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
+      ipc::RayletIpcClient &raylet_ipc_client,
       std::function<bool(const ObjectID)> should_delete_object_on_put = nullptr,
-      std::function<void()> release_resources = nullptr,
-      std::function<void()> reacquire_resources = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
@@ -196,15 +198,12 @@ class CoreWorkerMemoryStore {
 
   instrumented_io_context &io_context_;
 
+  /// Used to release & reacquire resources during & after blocking calls.
+  ipc::RayletIpcClient &raylet_ipc_client_;
+
   /// Called to check if a given object should be deleted immediately when it's put
   /// into the store.
   std::function<bool(const ObjectID)> should_delete_object_on_put_;
-
-  // Will be called when a blocking operation starts.
-  std::function<void()> release_resources_;
-
-  // Will be called when a blocking operation ends.
-  std::function<void()> reacquire_resources_;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
