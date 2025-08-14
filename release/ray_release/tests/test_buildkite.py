@@ -411,7 +411,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 {
                     "name": "other_2",
                     "frequency": "nightly",
-                    "smoke_test": {"frequency": "multi"},
+                    "smoke_test": {"frequency": "manual"},
                     "team": "team_2",
                     "run": {"type": "job"},
                 }
@@ -586,7 +586,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "name": "test",
                 "frequency": "nightly",
                 "run": {"script": "test_script.py"},
-                "smoke_test": {"frequency": "multi"},
+                "smoke_test": {"frequency": "nightly"},
             }
         )
 
