@@ -25,6 +25,7 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
+from ray._private.ray_constants import env_integer
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -67,6 +68,11 @@ BlockTransformer = Callable[[Block], Block]
 StatefulShuffleAggregationFactory = Callable[
     [int, List[int]], "StatefulShuffleAggregation"
 ]
+
+
+DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
+    "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY", 8
+)
 
 
 class StatefulShuffleAggregation(abc.ABC):
@@ -1313,6 +1319,16 @@ class AggregatorPool:
             [len(ps) for ps in aggregator_partition_map.values()]
         )
 
+        # Cap shuffle aggregator concurrency at the smaller of
+        #   - Max number of partitions per aggregator
+        #   - Threshold (8 by default)
+        max_concurrency = min(
+            max_partitions_per_aggregator,
+            DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY,
+        )
+
+        assert max_concurrency >= 1, f"{max_partitions_per_aggregator=}, {DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS}"
+
         # NOTE: ShuffleAggregator is configured as threaded actor to allow for
         #       multiple requests to be handled "concurrently" (par GIL) --
         #       while it's not a real concurrency in its fullest of senses, having
@@ -1321,13 +1337,7 @@ class AggregatorPool:
         #       handling tasks are only blocked on GIL and are ready to execute as
         #       soon as it's released.
         finalized_remote_args = {
-            # Max concurrency is configured as a max of
-            #   - Max number of partitions allocated per aggregator
-            #   - Minimum concurrency configured
-            "max_concurrency": max(
-                max_partitions_per_aggregator,
-                HashShuffleAggregator._DEFAULT_ACTOR_MAX_CONCURRENCY,
-            ),
+            "max_concurrency": max_concurrency,
             **aggregator_ray_remote_args,
         }
 
