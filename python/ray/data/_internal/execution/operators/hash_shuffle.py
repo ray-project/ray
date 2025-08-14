@@ -1028,7 +1028,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         return remote_args
 
     @abc.abstractmethod
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
+    def _get_operator_num_cpus_override(self) -> int:
         pass
 
     def _get_aggregator_num_cpus(
@@ -1037,8 +1037,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         num_aggregators: int
     ) -> float:
         # First, check whether there is an override
-        if self._get_operator_num_cpus_per_partition_override() is not None:
-            return self._get_operator_num_cpus_per_partition_override()
+        if self._get_operator_num_cpus_override() is not None:
+            return self._get_operator_num_cpus_override()
 
         # Note that
         #
@@ -1096,25 +1096,8 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             shuffle_progress_bar_name="Shufle",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
-        """
-        CPU allocation for aggregating actors of Shuffle operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 64
-        - Total operator's CPU budget with default settings: 4 cores
-        - Number of CPUs per partition: 4 / 64 = 0.0625
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-        """
-        return 0.0625
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
-        return (
-            self.data_context.hash_shuffle_operator_actor_num_cpus_per_partition_override
-        )
+    def _get_operator_num_cpus_override(self) -> float:
+        return self.data_context.hash_shuffle_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
