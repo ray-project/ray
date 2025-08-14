@@ -56,6 +56,5 @@ The LLMConfig class specifies model details such as:
 
 Quickstart <quick-start>
 Prefill/Decode Disaggregation <pd-dissagregation>
+Cache-aware request routing <prefix-aware-request-router>
 ```
-
-
