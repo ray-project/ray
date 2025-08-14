@@ -147,24 +147,9 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Aggregation",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
-        """
-        CPU allocation for aggregating actors of Aggregate operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 200
-        - Total operator's CPU budget with default settings: 2 cores
-        - Number of CPUs per partition: 2 / 200 = 0.01
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-        """
-        return 0.01
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
+    def _get_operator_num_cpus_override(self) -> float:
         return (
-            self.data_context.hash_aggregate_operator_actor_num_cpus_per_partition_override
+            self.data_context.hash_aggregate_operator_actor_num_cpus_override
         )
 
     @classmethod
