@@ -34,13 +34,14 @@
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 
@@ -168,7 +169,6 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
-  /// \return Void.
   virtual void PopWorker(const TaskSpecification &task_spec,
                          const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
@@ -343,13 +343,12 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param job_id ID of the started job.
   /// \param job_config The config of the started job.
-  /// \return Void
+
   void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override;
 
   /// Handles the event that a job is finished.
   ///
   /// \param job_id ID of the finished job.
-  /// \return Void.
   void HandleJobFinished(const JobID &job_id) override;
 
   /// \brief Get the job config by job id.
@@ -381,7 +380,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
-  /// \return void
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Register a new driver.
@@ -918,6 +916,34 @@ class WorkerPool : public WorkerPoolInterface {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup after it is created.
   bool enable_resource_isolation_ = false;
+
+  /// Ray metrics
+  ray::stats::Sum ray_metric_num_workers_started_{
+      /*name=*/"internal_num_processes_started",
+      /*description=*/"The total number of worker processes the worker pool has created.",
+      /*unit=*/"processes"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_job_mismatch_{
+      /*name=*/"internal_num_processes_skipped_job_mismatch",
+      /*description=*/"The total number of cached workers skipped due to job mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_{
+      /*name=*/"internal_num_processes_skipped_runtime_environment_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to runtime environment mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_{
+      /*name=*/"internal_num_processes_skipped_dynamic_options_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to dynamic options mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_workers_started_from_cache_{
+      /*name=*/"internal_num_processes_started_from_cache",
+      /*description=*/"The total number of workers started from a cached worker process.",
+      /*unit=*/"workers"};
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

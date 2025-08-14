@@ -77,11 +77,11 @@ CPU_UTILIZATION_PANEL = Panel(
     unit="cores",
     targets=[
         Target(
-            expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance", {global_filters}}} / 100) by (instance)',
-            legend="CPU Usage: {{instance}}",
+            expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType)',
+            legend="CPU Usage: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_cpu_count{{instance=~"$Instance", {global_filters}}})',
+            expr='sum(ray_node_cpu_count{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
             legend="MAX",
         ),
     ],
@@ -94,11 +94,11 @@ MEMORY_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_mem_used{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Memory Used: {{instance}}",
+            expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Memory Used: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_mem_total{{instance=~"$Instance", {global_filters}}})',
+            expr='sum(ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
             legend="MAX",
         ),
     ],
@@ -111,12 +111,12 @@ MEMORY_DETAILED_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_mem_available{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Available Memory: {{instance}}",
+            expr='sum(ray_node_mem_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Available Memory: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Shared Memory: {{instance}}",
+            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Shared Memory: {{instance}} ({{RayNodeType}})",
         ),
     ],
 )
@@ -130,11 +130,11 @@ GPU_UTILIZATION_PANEL = Panel(
     unit="GPUs",
     targets=[
         Target(
-            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}} / 100) by (instance, GpuIndex, GpuDeviceName)',
-            legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+            legend="GPU Usage: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
         ),
         Target(
-            expr='sum(ray_node_gpus_available{{instance=~"$Instance", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}})',
+            expr='sum(ray_node_gpus_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}})',
             legend="MAX",
         ),
     ],
@@ -147,11 +147,11 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_gram_used{{instance=~"$Instance", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
-            legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}} * 1024 * 1024) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+            legend="Used GRAM: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
         ),
         Target(
-            expr='(sum(ray_node_gram_available{{instance=~"$Instance", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}})) * 1024 * 1024',
+            expr='(sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName", {global_filters}}})) * 1024 * 1024',
             legend="MAX",
         ),
     ],
@@ -165,11 +165,11 @@ DISK_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_disk_usage{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Disk Used: {{instance}}",
+            expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Disk Used: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_disk_free{{instance=~"$Instance", {global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance", {global_filters}}})',
+            expr='sum(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
             legend="MAX",
         ),
     ],
@@ -182,12 +182,12 @@ DISK_THROUGHPUT_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Read Speed: {{instance}}",
+            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Read Speed: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Write Speed: {{instance}}",
+            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Write Speed: {{instance}} ({{RayNodeType}})",
         ),
     ],
 )
@@ -199,12 +199,12 @@ DISK_OPERATIONS_PANEL = Panel(
     unit="ops/s",
     targets=[
         Target(
-            expr='sum(ray_node_disk_read_iops{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Read IOPS: {{instance}}",
+            expr='sum(ray_node_disk_read_iops{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Read IOPS: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_disk_write_iops{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Write IOPS: {{instance}}",
+            expr='sum(ray_node_disk_write_iops{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Write IOPS: {{instance}} ({{RayNodeType}})",
         ),
     ],
 )
@@ -217,12 +217,12 @@ NETWORK_THROUGHPUT_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Receive Speed: {{instance}}",
+            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Receive Speed: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_network_send_speed{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Send Speed: {{instance}}",
+            expr='sum(ray_node_network_send_speed{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Send Speed: {{instance}} ({{RayNodeType}})",
         ),
     ],
 )
@@ -234,12 +234,12 @@ NETWORK_TOTAL_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_network_sent{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Total Sent: {{instance}}",
+            expr='sum(ray_node_network_sent{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Total Sent: {{instance}} ({{RayNodeType}})",
         ),
         Target(
-            expr='sum(ray_node_network_received{{instance=~"$Instance", {global_filters}}}) by (instance)',
-            legend="Total Received: {{instance}}",
+            expr='sum(ray_node_network_received{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+            legend="Total Received: {{instance}} ({{RayNodeType}})",
         ),
     ],
 )

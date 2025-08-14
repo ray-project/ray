@@ -22,6 +22,7 @@ from ray.autoscaler.tags import (
     STATUS_UPDATE_FAILED,
     TAG_RAY_USER_NODE_TYPE,
 )
+from ray._common.network_utils import build_address
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
 KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
@@ -51,7 +52,7 @@ KUBERNETES_SERVICE_HOST = os.getenv(
     "KUBERNETES_SERVICE_HOST", "https://kubernetes.default"
 )
 KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
-KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
+KUBERNETES_HOST = build_address(KUBERNETES_SERVICE_HOST, KUBERNETES_SERVICE_PORT)
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
 
