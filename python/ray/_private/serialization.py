@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 if TYPE_CHECKING:
     import torch
 
+    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObject
+
 import google.protobuf.message
 
 import ray._private.utils
@@ -504,7 +506,7 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        out_of_band_tensors: Dict[str, List["torch.Tensor"]],
+        gpu_objects: Dict[str, "GPUObject"],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
@@ -520,7 +522,13 @@ class SerializationContext:
                 self._thread_local.object_ref_stack.append(object_ref)
                 object_tensors = None
                 if object_ref is not None:
-                    object_tensors = out_of_band_tensors.pop(object_ref.hex(), None)
+                    object_id = object_ref.hex()
+                    if object_id in gpu_objects:
+                        gpu_object = gpu_objects[object_id]
+                        object_tensors = gpu_object.data
+                        gpu_object.num_readers -= 1
+                        if gpu_object.num_readers == 0:
+                            gpu_objects.pop(object_id)
                 obj = self._deserialize_object(
                     data,
                     metadata,
@@ -640,13 +648,13 @@ class SerializationContext:
             self._torch_custom_serializer_registered = True
 
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
-        if tensors:
-            obj_id = obj_id.decode("ascii")
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_object(
-                obj_id, tensors, is_primary=True
-            )
+        # Regardless of whether `tensors` is empty, we always store the GPU object
+        # in the GPU object store. This ensures that `_get_tensor_meta` is not
+        # blocked indefinitely.
+        obj_id = obj_id.decode("ascii")
+        worker = ray._private.worker.global_worker
+        gpu_object_manager = worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
 
         return serialized_val
 

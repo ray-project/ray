@@ -120,6 +120,7 @@ ray_cc_library(
     name = "ray_fakes",
     hdrs = glob(["src/fakes/**/*.h"]),
     deps = [
+        "//src/ray/common:asio",
         "//src/ray/raylet_client:raylet_client_lib",
     ],
 )
@@ -151,7 +152,6 @@ ray_cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        "//src/ray/core_worker:core_worker_common",
         "//src/ray/core_worker:core_worker_lib",
     ],
     alwayslink = 1,

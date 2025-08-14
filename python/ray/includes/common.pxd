@@ -145,6 +145,11 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
+cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
+    cdef cppclass CStatusOr "ray::StatusOr"[T]:
+        c_bool ok()
+        const CRayStatus &status() const
+        T &value()
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
@@ -446,9 +451,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_vector[c_string] &drained_node_ids)
 
-        CRayStatus GetAllNoCache(
+        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
-            c_vector[CGcsNodeInfo] &result)
+            optional[CGcsNodeState] state_filter,
+            optional[CNodeSelector] node_selector)
 
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
@@ -662,7 +668,7 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
-    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+    c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
@@ -700,6 +706,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
+
+    cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
+        pass
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const

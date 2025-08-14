@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/util.h"
 
@@ -159,7 +160,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
     while (true) {
       auto channel =
-          grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+          grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
@@ -370,13 +371,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resources;
   }
 
-  bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
-    std::promise<bool> promise;
-    gcs_client_->Errors().AsyncReportJobError(
-        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool SubscribeToWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
@@ -435,7 +429,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
@@ -651,13 +645,6 @@ TEST_P(GcsClientTest, TestWorkerInfo) {
   // Report a worker failure to GCS when this worker is actually exist.
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitForExpectedCount(worker_failure_count, 2);
-}
-
-TEST_P(GcsClientTest, TestErrorInfo) {
-  // Report a job error to GCS.
-  JobID job_id = JobID::FromInt(1);
-  auto error_table_data = Mocker::GenErrorTableData(job_id);
-  ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
@@ -932,7 +919,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
-  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   grpc::ClientContext context;

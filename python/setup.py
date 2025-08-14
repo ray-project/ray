@@ -299,6 +299,17 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
+            ]
+        )
+    )
+
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
@@ -383,7 +394,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
@@ -630,7 +641,6 @@ def build(build_python, build_java, build_cpp):
         # And we put it here so that does not change behavior of
         # conda-forge build.
         bazel_flags.append("--incompatible_strict_action_env")
-        bazel_flags.append("--remote_download_minimal")
 
     bazel_targets = []
     bazel_targets += ["//:gen_ray_pkg"] if build_python else []

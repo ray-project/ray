@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric.h"
 
@@ -47,7 +48,7 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   if (!export_event_write_enabled_) {
     return;
   }
-  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
+  if (absl::StartsWith(job_data.config().ray_namespace(), kRayInternalNamespacePrefix)) {
     // Namespace of this job starts with _ray_internal_ so
     // don't write export event.
     return;
@@ -94,50 +95,47 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   mutable_job_table_data.set_start_time(time);
   mutable_job_table_data.set_timestamp(time);
   const JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
-  RAY_LOG(INFO) << "Adding job, job id = " << job_id
-                << ", driver pid = " << mutable_job_table_data.driver_pid();
-
+  RAY_LOG(INFO).WithField(job_id).WithField("driver_pid",
+                                            mutable_job_table_data.driver_pid())
+      << "Registering job.";
   auto on_done = [this,
                   job_id,
                   job_table_data = mutable_job_table_data,
                   reply,
                   send_reply_callback =
-                      std::move(send_reply_callback)](const Status &status) {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-
+                      std::move(send_reply_callback)](const Status &status) mutable {
+    WriteDriverJobExportEvent(job_table_data);
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
-                     << ", driver pid = " << job_table_data.driver_pid();
+      RAY_LOG(ERROR).WithField(job_id).WithField("driver_pid",
+                                                 job_table_data.driver_pid())
+          << "Failed to register job.";
     } else {
-      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, /*done=*/nullptr));
       if (job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(job_id.Hex(),
                                              job_table_data.config().runtime_env_info());
       }
       function_manager_.AddJobReference(job_id);
-      RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
-                    << ", driver pid = " << job_table_data.driver_pid();
+      RAY_LOG(DEBUG).WithField(job_id) << "Registered job successfully.";
       cached_job_configs_[job_id] =
           std::make_shared<rpc::JobConfig>(job_table_data.config());
 
       // Intentionally not checking return value, since the function could be invoked for
       // multiple times and requires idempotency (i.e. due to retry).
       running_job_start_times_.insert({job_id, job_table_data.start_time()});
+      gcs_publisher_.PublishJob(job_id, std::move(job_table_data));
     }
-    WriteDriverJobExportEvent(job_table_data);
+
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Put(
-      job_id, mutable_job_table_data, {on_done, io_context_});
-  if (!status.ok()) {
-    on_done(status);
-  }
+  RAY_UNUSED(gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {std::move(on_done), io_context_}));
 }
 
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
                                       std::function<void(Status)> done_callback) {
   const JobID job_id = JobID::FromBinary(job_table_data.job_id());
+  RAY_LOG(INFO).WithField(job_id) << "Marking job as finished.";
 
   auto time = current_sys_time_ms();
   job_table_data.set_timestamp(time);
@@ -148,12 +146,12 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     RAY_CHECK(thread_checker_.IsOnSameThread());
 
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
+      RAY_LOG(ERROR).WithField(job_id) << "Failed to mark job as finished.";
     } else {
-      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, nullptr));
+      gcs_publisher_.PublishJob(job_id, job_table_data);
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
-      RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
+      RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data);
@@ -202,11 +200,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          }
 
          if (!result.has_value()) {
-           RAY_LOG(ERROR) << "Tried to mark job " << job_id
-                          << " as finished, but there was no record of it starting!";
+           RAY_LOG(ERROR).WithField(job_id)
+               << "Tried to mark job as finished, but no job table entry was found.";
          } else if (!status.ok()) {
-           RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
-                          << status;
+           RAY_LOG(ERROR).WithField(job_id)
+               << "Failed to mark job as finished: " << status;
          }
          send_reply(status);
        },
@@ -455,7 +453,7 @@ void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
-  RAY_CHECK_OK(gcs_publisher_.PublishError(job_id.Hex(), request.job_error(), nullptr));
+  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -478,17 +476,18 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
 
 void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO).WithField(node_id)
-      << "Node is dead, mark all jobs from this node as finished";
+      << "Node is dead, marking all jobs with drivers on this node as finished.";
 
   auto on_done = [this,
                   node_id](const absl::flat_hash_map<JobID, rpc::JobTableData> &result) {
     RAY_CHECK(thread_checker_.IsOnSameThread());
 
-    // If job is not dead and from driver in current node, then mark it as finished
+    // Mark jobs finished that:
+    // - (1) are not already dead.
+    // - (2) have their driver running on the dead node.
     for (auto &data : result) {
-      if (!data.second.is_dead() &&
-          NodeID::FromBinary(data.second.driver_address().raylet_id()) == node_id) {
-        RAY_LOG(DEBUG).WithField(data.first) << "Marking job as finished";
+      auto driver_node_id = NodeID::FromBinary(data.second.driver_address().node_id());
+      if (!data.second.is_dead() && driver_node_id == node_id) {
         MarkJobAsFinished(data.second, [data](Status status) {
           if (!status.ok()) {
             RAY_LOG(WARNING) << "Failed to mark job as finished. Status: " << status;
@@ -498,7 +497,6 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  // make all jobs in current node to finished
   RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
 }
 
