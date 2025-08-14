@@ -31,9 +31,9 @@ def test_default_shuffle_aggregator_args(ray_start_regular):
     )
 
     assert {
-       "num_cpus": 0.025,    # 4 cores * 10% / 16
-       "memory": 939524096,
-       "scheduling_strategy": "SPREAD",
+        "num_cpus": 0.025,  # 4 cores * 10% / 16
+        "memory": 939524096,
+        "scheduling_strategy": "SPREAD",
     } == args
 
     # - 4 partitions per aggregator
@@ -46,9 +46,9 @@ def test_default_shuffle_aggregator_args(ray_start_regular):
     )
 
     assert {
-       "num_cpus": 0.05,    # 8 cores * 10% / 16
-       "memory": 1744830464,
-       "scheduling_strategy": "SPREAD",
+        "num_cpus": 0.05,  # 8 cores * 10% / 16
+        "memory": 1744830464,
+        "scheduling_strategy": "SPREAD",
     } == args
 
     # - 4 partitions per aggregator
@@ -61,7 +61,7 @@ def test_default_shuffle_aggregator_args(ray_start_regular):
     )
 
     assert {
-       "num_cpus": 0.00625,    # 1 cores * 10% / 16
-       "memory": 13958643712,
-       "scheduling_strategy": "SPREAD",
+        "num_cpus": 0.00625,  # 1 cores * 10% / 16
+        "memory": 13958643712,
+        "scheduling_strategy": "SPREAD",
     } == args
