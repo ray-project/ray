@@ -106,6 +106,7 @@ class IQLConfig(MARWILConfig):
                 Must be >> 0.0. The higher this parameter the less greedy
                 (exploitative) the policy becomes. It also means that the policy
                 is fitting less to the best actions in the dataset.
+            twin_q: If a twin-Q architecture should be used (advisable).
             expectile: The expectile to use in expectile regression for the value
                 function. For high expectiles the value function tries to match
                 the upper tail of the Q-value distribution.
