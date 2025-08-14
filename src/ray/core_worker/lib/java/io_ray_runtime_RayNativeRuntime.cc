@@ -140,11 +140,13 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_reattempt,
          bool is_streaming_generator,
          bool should_retry_exceptions,
-         int64_t generator_backpressure_num_objects) {
-        // These 2 parameters are used for Python only, and Java worker
+         int64_t generator_backpressure_num_objects,
+         const rpc::TensorTransport &tensor_transport) {
+        // These 3 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
         RAY_UNUSED(name_of_concurrency_group_to_execute);
+        RAY_UNUSED(tensor_transport);
         // TODO(jjyao): Support retrying application-level errors for Java
         // TODO(Clark): Support exception allowlist for retrying application-level
         // errors for Java.
@@ -297,10 +299,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.install_failure_signal_handler = false;
   options.node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.node_manager_port = static_cast<int>(nodeManagerPort);
-  options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.driver_name = JavaStringToNativeString(env, driverName);
   options.task_execution_callback = task_execution_callback;
-  options.on_worker_shutdown = [](const WorkerID &) {};
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;

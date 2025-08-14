@@ -1,7 +1,33 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Optional
 
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
+
+
+@dataclass(frozen=True)
+class ActorPoolScalingRequest:
+
+    delta: int
+    force: bool = field(default=False)
+    reason: Optional[str] = field(default=None)
+
+    @classmethod
+    def no_op(cls, *, reason: Optional[str] = None) -> "ActorPoolScalingRequest":
+        return ActorPoolScalingRequest(delta=0, reason=reason)
+
+    @classmethod
+    def upscale(cls, *, delta: int, reason: Optional[str] = None):
+        assert delta > 0
+        return ActorPoolScalingRequest(delta=delta, reason=reason)
+
+    @classmethod
+    def downscale(
+        cls, *, delta: int, force: bool = False, reason: Optional[str] = None
+    ):
+        assert delta < 0, "For scale down delta is expected to be negative!"
+        return ActorPoolScalingRequest(delta=delta, force=force, reason=reason)
 
 
 @DeveloperAPI
@@ -49,46 +75,37 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def current_in_flight_tasks(self) -> int:
-        """Number of current in-flight tasks."""
+    def max_actor_concurrency(self) -> int:
+        """Returns max number of tasks single actor could run concurrently."""
         ...
 
-    def num_total_task_slots(self) -> int:
-        """Total number of task slots."""
-        return self.max_tasks_in_flight_per_actor() * self.current_size()
+    @abstractmethod
+    def num_tasks_in_flight(self) -> int:
+        """Number of current in-flight tasks (ie total nubmer of tasks that have been
+        submitted to the actor pool)."""
+        ...
 
     def num_free_task_slots(self) -> int:
-        """Number of free slots to run tasks."""
+        """Number of free slots to run tasks.
+
+        This doesn't include task slots for pending actors.
+        """
         return (
-            self.max_tasks_in_flight_per_actor() * self.current_size()
-            - self.current_in_flight_tasks()
+            self.max_tasks_in_flight_per_actor() * self.num_running_actors()
+            - self.num_tasks_in_flight()
         )
 
     @abstractmethod
-    def scale_up(self, num_actors: int) -> int:
-        """Request the actor pool to scale up by the given number of actors.
-
-        The number of actually added actors may be less than the requested
-        number.
-
-        Returns:
-            The number of actors actually added.
-        """
-        ...
-
-    @abstractmethod
-    def scale_down(self, num_actors: int) -> int:
-        """Request actor pool to scale down by the given number of actors.
-
-        The number of actually removed actors may be less than the requested
-        number.
-
-        Returns:
-            The number of actors actually removed.
-        """
+    def scale(self, req: ActorPoolScalingRequest):
+        """Applies autoscaling action"""
         ...
 
     @abstractmethod
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
+        ...
+
+    @abstractmethod
+    def get_pool_util(self) -> float:
+        """Calculate the utilization of the given actor pool."""
         ...

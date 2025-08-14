@@ -1,6 +1,6 @@
 # ML tracking integrations
 comet-ml==3.44.1
-mlflow==2.9.2
+mlflow>=2.22.0
 wandb==0.17.0
 
 # ML training frameworks

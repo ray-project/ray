@@ -1,24 +1,25 @@
 """Prepare Image Stage"""
-import requests
-import aiohttp
 import asyncio
 import base64
-import logging
 import importlib
-from urllib.parse import urlparse
-from pathlib import Path
+import logging
 from io import BytesIO
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
     AsyncIterator,
+    Dict,
     List,
-    Union,
-    Optional,
-    MutableMapping,
     Mapping,
+    MutableMapping,
+    Optional,
+    Union,
 )
+from urllib.parse import urlparse
+
+import aiohttp
+import requests
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,

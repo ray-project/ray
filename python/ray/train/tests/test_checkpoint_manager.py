@@ -6,6 +6,7 @@ import pytest
 
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager, _TrainingResult
+from ray.train.constants import TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
 
 
 @pytest.fixture
@@ -179,6 +180,57 @@ def test_nested_get_checkpoint_score(metrics):
 
     tracked_checkpoint = _TrainingResult(checkpoint=None, metrics=metrics)
     assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0)
+
+
+@pytest.mark.parametrize("has_score_attr", [True, False])
+def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
+    monkeypatch.setenv(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, "1")
+
+    # Set up CheckpointManager.
+    if has_score_attr:
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=None,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order="max",
+        )
+    else:
+        checkpoint_config = CheckpointConfig(num_to_keep=None)
+    manager = _CheckpointManager(checkpoint_config=checkpoint_config)
+
+    # Ensure we insert TrainingResults with score in the right order.
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
+            metrics={"score": 3.0},
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
+            metrics={"score": 1.0, "another_unsaved_metric": 6.0},
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
+            metrics={"another_unsaved_metric": 1.0},
+        )
+    )
+    assert len(manager.best_checkpoint_results) == 3
+    if has_score_attr:
+        assert manager.best_checkpoint_results[0].metrics == {"score": 1.0}
+        assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[1]
+        assert manager.best_checkpoint_results[1].metrics == {"score": 3.0}
+        assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[0]
+        assert manager.best_checkpoint_results[2].metrics == {}
+        assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
+    else:
+        assert manager.best_checkpoint_results[0].metrics == {}
+        assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[0]
+        assert manager.best_checkpoint_results[1].metrics == {}
+        assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[1]
+        assert manager.best_checkpoint_results[2].metrics == {}
+        assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
 
 
 if __name__ == "__main__":

@@ -3,35 +3,64 @@ import datetime
 import json
 import logging
 import os
+import requests
 import socket
 import sys
 import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Tuple, TypedDict, Union
+from typing import List, Optional, Tuple
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
+from prometheus_client.parser import text_string_to_metric_families
+from opentelemetry.proto.collector.metrics.v1 import (
+    metrics_service_pb2,
+    metrics_service_pb2_grpc,
+)
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
+from grpc.aio import ServicerContext
+
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
-import ray._private.services
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import (
+    get_or_create_event_loop,
+    get_user_temp_dir,
+)
+from ray._common.network_utils import parse_address
+from ray._private.utils import get_system_memory
+from ray.dashboard.modules.reporter.gpu_providers import (
+    GpuMetricProvider,
+    GpuUtilizationInfo,
+    TpuUtilizationInfo,
+)
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
-from ray._raylet import WorkerID
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    env_integer,
+)
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
+from ray._raylet import GCS_PID_KEY, WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
+    COMPONENT_GPU_TAG_KEYS,
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
+    TPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
+from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -41,7 +70,7 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
-enable_gpu_usage_check = True
+enable_tpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -60,6 +89,9 @@ IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS", 1
 )
+
+# TPU device plugin metric address should be in the format "{HOST_IP}:2112"
+TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
 
 
 def recursive_asdict(o):
@@ -147,6 +179,37 @@ METRICS_GAUGES = {
         "Total GPU RAM available on a ray node",
         "bytes",
         GPU_TAG_KEYS,
+    ),
+    # TPU metrics
+    "tpu_tensorcore_utilization": Gauge(
+        "tpu_tensorcore_utilization",
+        "Percentage TPU tensorcore utilization on a ray node, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_bandwidth_utilization": Gauge(
+        "tpu_memory_bandwidth_utilization",
+        "Percentage TPU memory bandwidth utilization on a ray node, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_duty_cycle": Gauge(
+        "tpu_duty_cycle",
+        "Percentage of time during which the TPU was actively processing, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_used": Gauge(
+        "tpu_memory_used",
+        "Total memory used by the accelerator in bytes",
+        "bytes",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_total": Gauge(
+        "tpu_memory_total",
+        "Total memory allocatable by the accelerator in bytes",
+        "bytes",
+        TPU_TAG_KEYS,
     ),
     # Disk I/O metrics
     "node_disk_io_read": Gauge(
@@ -292,6 +355,18 @@ METRICS_GAUGES = {
         "count",
         CLUSTER_TAG_KEYS,
     ),
+    "component_gpu_percentage": Gauge(
+        "component_gpu_percentage",
+        "GPU usage of all components on the node.",
+        "percentage",
+        COMPONENT_GPU_TAG_KEYS,
+    ),
+    "component_gpu_memory_mb": Gauge(
+        "component_gpu_memory_mb",
+        "GPU memory usage of all components on the node.",
+        "MB",
+        COMPONENT_GPU_TAG_KEYS,
+    ),
 }
 
 PSUTIL_PROCESS_ATTRS = (
@@ -309,32 +384,11 @@ PSUTIL_PROCESS_ATTRS = (
     else []
 )
 
-MB = 1024 * 1024
-
-# Types
-Percentage = int
-Megabytes = int
-
-
-# gpu utilization for nvidia gpu from a single process
-class ProcessGPUInfo(TypedDict):
-    pid: int
-    gpu_memory_usage: Megabytes
-
-
-# gpu utilization for nvidia gpu
-class GpuUtilizationInfo(TypedDict):
-    index: int
-    name: str
-    uuid: str
-    utilization_gpu: Optional[Percentage]
-    memory_used: Megabytes
-    memory_total: Megabytes
-    processes_pids: Optional[List[ProcessGPUInfo]]
-
 
 class ReporterAgent(
-    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
+    dashboard_utils.DashboardAgentModule,
+    reporter_pb2_grpc.ReporterServiceServicer,
+    metrics_service_pb2_grpc.MetricsServiceServicer,
 ):
     """A monitor process for monitoring Ray nodes.
 
@@ -364,7 +418,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -374,12 +428,14 @@ class ReporterAgent(
         self._agent_proc = None
         # The last reported worker proc names (e.g., ray::*).
         self._latest_worker_proc_names = set()
+        self._latest_gpu_worker_proc_names = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
@@ -405,6 +461,7 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -417,6 +474,15 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        self._gcs_pid = None
+
+        self._gpu_profiling_manager = GpuProfilingManager(
+            profile_dir_path=self._log_dir, ip_address=self._ip
+        )
+        self._gpu_profiling_manager.start_monitoring_daemon()
+
+        # Create GPU metric provider instance
+        self._gpu_metric_provider = GpuMetricProvider()
 
     async def GetTraceback(self, request, context):
         pid = request.pid
@@ -435,6 +501,14 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def GpuProfiling(self, request, context):
+        pid = request.pid
+        num_iterations = request.num_iterations
+        success, output = await self._gpu_profiling_manager.gpu_profile(
+            pid=pid, num_iterations=num_iterations
+        )
+        return reporter_pb2.GpuProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
@@ -476,6 +550,114 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
+    def _export_histogram_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        """
+        TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
+        document and communicate that the histogram metric is an approximation to users.
+        The approximation is good enough for the dashboard to display the histogram
+        distribution. Only the sum of all data points will be the approximation. See
+        https://github.com/ray-project/ray/issues/54538 for the complete backlog of Ray
+        metric infra improvements.
+
+        Export histogram data points to OpenTelemetry Metric Recorder. A histogram
+        metric is aggregated into several internal representations in C++ side:
+        - sum of all buckets
+        - count of all buckets
+        - count per bucket
+
+        We reconstruct the histogram data points from these internal representations
+        and export them to OpenTelemetry Metric Recorder. The reconstruction is an
+        approximation, but it is good enough for the dashboard to display the histogram
+        data points.
+        """
+        data_points = metric.histogram.data_points
+        if not data_points:
+            return
+        self._open_telemetry_metric_recorder.register_histogram_metric(
+            metric.name,
+            metric.description,
+            data_points[0].explicit_bounds,
+        )
+        for data_point in data_points:
+            if data_point.count == 0:
+                continue
+
+            bucket_midpoints = (
+                self._open_telemetry_metric_recorder.get_histogram_bucket_midpoints(
+                    metric.name
+                )
+            )
+            assert len(bucket_midpoints) == len(data_point.bucket_counts)
+            tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
+            for i, bucket_count in enumerate(data_point.bucket_counts):
+                if bucket_count == 0:
+                    continue
+                bucket_midpoint = bucket_midpoints[i]
+                for _ in range(bucket_count):
+                    self._open_telemetry_metric_recorder.set_metric_value(
+                        metric.name,
+                        tags,
+                        bucket_midpoint,
+                    )
+
+    def _export_number_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        data_points = []
+        if metric.WhichOneof("data") == "gauge":
+            self._open_telemetry_metric_recorder.register_gauge_metric(
+                metric.name,
+                metric.description,
+            )
+            data_points = metric.gauge.data_points
+        if metric.WhichOneof("data") == "sum":
+            if metric.sum.is_monotonic:
+                self._open_telemetry_metric_recorder.register_counter_metric(
+                    metric.name,
+                    metric.description,
+                )
+            else:
+                self._open_telemetry_metric_recorder.register_sum_metric(
+                    metric.name,
+                    metric.description,
+                )
+            data_points = metric.sum.data_points
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                # Note that all data points received from other Ray components are
+                # always double values. This is because the c++ apis
+                # (open_telemetry_metric_recorder.cc) only create metrics with double
+                # values.
+                data_point.as_double,
+            )
+
+    async def Export(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+        context: ServicerContext,
+    ) -> metrics_service_pb2.ExportMetricsServiceResponse:
+        """
+        GRPC method that receives the open telemetry metrics exported from other Ray
+        components running in the same node (e.g., raylet, worker, etc.). This method
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
+        which is the default open-telemetry metrics service interface.
+        """
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    if metric.WhichOneof("data") == "histogram":
+                        self._export_histogram_data(metric)
+                    else:
+                        self._export_number_data(metric)
+
+        return metrics_service_pb2.ExportMetricsServiceResponse()
+
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
         if in_k8s:
@@ -483,80 +665,157 @@ class ReporterAgent(
         else:
             return psutil.cpu_percent()
 
+    def _get_gpu_usage(self):
+        """Get GPU usage information using the GPU metric provider."""
+        return self._gpu_metric_provider.get_gpu_usage()
+
     @staticmethod
-    def _get_gpu_usage():
-        import ray._private.thirdparty.pynvml as pynvml
+    def _get_tpu_usage() -> List[TpuUtilizationInfo]:
 
-        global enable_gpu_usage_check
-        if not enable_gpu_usage_check:
+        global enable_tpu_usage_check
+        if not enable_tpu_usage_check:
             return []
-        gpu_utilizations = []
 
-        def decode(b: Union[str, bytes]) -> str:
-            if isinstance(b, bytes):
-                return b.decode("utf-8")  # for python3, to unicode
-            return b
+        if not TPU_DEVICE_PLUGIN_ADDR:
+            enable_tpu_usage_check = False
+            return []
 
+        endpoint = f"http://{TPU_DEVICE_PLUGIN_ADDR}/metrics"
         try:
-            pynvml.nvmlInit()
+            metrics = requests.get(endpoint).content
+            metrics = metrics.decode("utf-8")
         except Exception as e:
-            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
-
-            # On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
-            # spew to stderr. Then with log_to_driver=True, we get log spew from every
-            # single raylet. To avoid this, disable the GPU usage check on
-            # certain errors.
-            # https://github.com/ray-project/ray/issues/14305
-            # https://github.com/ray-project/ray/pull/21686
-            if type(e).__name__ == "NVMLError_DriverNotLoaded":
-                enable_gpu_usage_check = False
-            return gpu_utilizations
-
-        num_gpus = pynvml.nvmlDeviceGetCount()
-        for i in range(num_gpus):
-            gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            memory_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
-            utilization = None
-            try:
-                utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
-                utilization = int(utilization_info.gpu)
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
-
-            # processes pids
-            processes_pids = None
-            try:
-                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
-                    gpu_handle
-                )
-                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
-                    gpu_handle
-                )
-                processes_pids = [
-                    ProcessGPUInfo(
-                        pid=int(nv_process.pid),
-                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
-                        if nv_process.usedGpuMemory
-                        else 0,
-                    )
-                    for nv_process in (nv_comp_processes + nv_graphics_processes)
-                ]
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
-
-            info = GpuUtilizationInfo(
-                index=i,
-                name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
-                utilization_gpu=utilization,
-                memory_used=int(memory_info.used) // MB,
-                memory_total=int(memory_info.total) // MB,
-                processes_pids=processes_pids,
+            logger.debug(
+                f"Failed to retrieve TPU information from device plugin: {endpoint} {e}"
             )
-            gpu_utilizations.append(info)
-        pynvml.nvmlShutdown()
+            enable_tpu_usage_check = False
+            return []
 
-        return gpu_utilizations
+        tpu_utilizations = []
+        # Sample should look like:
+        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
+        # See https://cloud.google.com/monitoring/api/metrics_gcp#gcp-tpu for
+        # schema.
+        try:
+            for family in text_string_to_metric_families(metrics):
+                for sample in family.samples:
+                    # Skip irrelevant metrics
+                    if not hasattr(sample, "labels"):
+                        continue
+                    if "accelerator_id" not in sample.labels:
+                        continue
+                    labels = sample.labels
+                    accelerator_id = labels["accelerator_id"]
+                    index = accelerator_id.split("-")[1]
+
+                    if sample.name == "memory_bandwidth_utilization":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=sample.value,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "tensorcore_utilization":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=sample.value,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "duty_cycle":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=sample.value,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "memory_used":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=sample.value,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "memory_total":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=sample.value,
+                        )
+                        tpu_utilizations.append(info)
+        except Exception as e:
+            logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
+            return []
+
+        # Each collected sample records only one metric (e.g. duty cycle) during
+        # the metric interval for one TPU. So here we need to aggregate the
+        # sample records together. The aggregated list should be indexed by the
+        # TPU accelerator index.
+        merged_tpu_utilizations = {}
+
+        for info in tpu_utilizations:
+            index = int(info.get("index"))
+            if index in merged_tpu_utilizations:
+                merged_info = merged_tpu_utilizations[index]
+                merged_info["tensorcore_utilization"] += info.get(
+                    "tensorcore_utilization"
+                )
+                merged_info["hbm_utilization"] += info.get("hbm_utilization")
+                merged_info["duty_cycle"] += info.get("duty_cycle")
+                merged_info["memory_used"] += info.get("memory_used")
+                merged_info["memory_total"] += info.get("memory_total")
+            else:
+                merged_info = TpuUtilizationInfo(
+                    index=info.get("index"),
+                    name=info.get("name"),
+                    tpu_type=info.get("tpu_type"),
+                    tpu_topology=info.get("tpu_topology"),
+                    tensorcore_utilization=info.get("tensorcore_utilization"),
+                    hbm_utilization=info.get("hbm_utilization"),
+                    duty_cycle=info.get("duty_cycle"),
+                    memory_used=info.get("memory_used"),
+                    memory_total=info.get("memory_total"),
+                )
+                merged_tpu_utilizations[index] = merged_info
+
+        sorted_tpu_utilizations = [
+            value for _, value in sorted(merged_tpu_utilizations.items())
+        ]
+        return sorted_tpu_utilizations
 
     @staticmethod
     def _get_boot_time():
@@ -578,7 +837,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = utils.get_system_memory()
+        total = get_system_memory()
         used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
@@ -595,7 +854,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = utils.get_user_temp_dir()
+        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
@@ -624,9 +883,8 @@ class ReporterAgent(
     def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
-    def _get_workers(self):
+    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
         raylet_proc = self._get_raylet_proc()
-
         if raylet_proc is None:
             return []
         else:
@@ -662,13 +920,41 @@ class ReporterAgent(
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
+            # Build process ID -> GPU info mapping for faster lookups
+            gpu_pid_mapping = defaultdict(list)
+            if gpus is not None:
+                for gpu in gpus:
+                    processes = gpu.get("processes_pids")
+                    if processes:
+                        for proc in processes.values():
+                            gpu_pid_mapping[proc.pid].append(proc)
 
             result = []
             for w in self._workers.values():
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
-                    result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
+
+                    # Get basic process info
+                    worker_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+
+                    # Add GPU information if available
+                    worker_pid = worker_info["pid"]
+                    gpu_memory_usage = 0
+                    gpu_utilization = 0
+
+                    if worker_pid in gpu_pid_mapping:
+                        # Aggregate GPU memory and utilization across all GPUs for this process
+                        for gpu_proc in gpu_pid_mapping[worker_pid]:
+                            gpu_memory_usage += gpu_proc["gpu_memory_usage"]
+                            utilization = gpu_proc["gpu_utilization"] or 0
+                            gpu_utilization += utilization
+
+                    # Add GPU information to worker info
+                    worker_info["gpu_memory_usage"] = gpu_memory_usage  # in MB
+                    worker_info["gpu_utilization"] = gpu_utilization  # percentage
+
+                    result.append(worker_info)
                 except psutil.NoSuchProcess:
                     # the process may have terminated due to race condition.
                     continue
@@ -699,6 +985,15 @@ class ReporterAgent(
         except (psutil.AccessDenied, ProcessLookupError):
             pass
         return None
+
+    def _get_gcs(self):
+        if self._gcs_pid:
+            gcs_proc = psutil.Process(self._gcs_pid)
+            if gcs_proc:
+                dictionary = gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary["cpu_percent"] = gcs_proc.cpu_percent(interval=1)
+                return dictionary
+        return {}
 
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
@@ -754,7 +1049,8 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        return {
+        gpus = self._get_gpu_usage()
+        stats = {
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
@@ -763,7 +1059,7 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "workers": self._get_workers(),
+            "workers": self._get_workers(gpus),
             "raylet": self._get_raylet(),
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
@@ -771,12 +1067,16 @@ class ReporterAgent(
             "disk": self._get_disk_usage(),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
-            "gpus": self._get_gpu_usage(),
+            "gpus": gpus,
+            "tpus": self._get_tpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
+        if self._is_head_node:
+            stats["gcs"] = self._get_gcs()
+        return stats
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
@@ -826,6 +1126,7 @@ class ReporterAgent(
                 tags=tags,
             )
         )
+
         return records
 
     def _generate_system_stats_record(
@@ -844,13 +1145,19 @@ class ReporterAgent(
             a list of Record class that will be exposed to Prometheus.
         """
         total_cpu_percentage = 0.0
+        total_gpu_percentage = 0.0
+        total_gpu_memory = 0.0
         total_rss = 0.0
         total_uss = 0.0
         total_shm = 0.0
         total_num_fds = 0
-
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
+
+            # Aggregate GPU stats if available
+            total_gpu_percentage += float(stat.get("gpu_utilization", 0.0))
+            total_gpu_memory += float(stat.get("gpu_memory_usage", 0.0))
+
             memory_info = stat.get("memory_info")
             if memory_info:
                 mem = stat["memory_info"]
@@ -904,32 +1211,92 @@ class ReporterAgent(
             )
         )
 
+        # Add GPU records if there's GPU usage
+        if total_gpu_memory > 0.0:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_gpu_memory_mb"],
+                    value=total_gpu_memory,
+                    tags=tags,
+                )
+            )
+
+        if total_gpu_percentage > 0.0:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_gpu_percentage"],
+                    value=total_gpu_percentage,
+                    tags=tags,
+                )
+            )
+
+        return records
+
+    def _generate_reseted_gpu_stats_record(self, component_name: str) -> List[Record]:
+        """Return a list of Record that will reset
+        the GPU metrics of a given component name.
+
+        Args:
+            component_name: a component name for a given stats.
+
+        Returns:
+            a list of Record instances of GPU metrics with all values 0.
+        """
+        tags = {"ip": self._ip, "Component": component_name}
+
+        records = []
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_gpu_memory_mb"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_gpu_percentage"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+
         return records
 
     def generate_worker_stats_record(self, worker_stats: List[dict]) -> List[Record]:
-        """Generate a list of Record class for worker proceses.
+        """Generate a list of Record class for worker processes.
 
         This API automatically sets the component_name of record as
         the name of worker processes. I.e., ray::* so that we can report
         per task/actor (grouped by a func/class name) resource usages.
 
         Args:
-            stats: a list of stats dict generated by `psutil.as_dict`
-                for worker processes.
+            worker_stats: a list of stats dict generated by `psutil.as_dict`
+                for worker processes. Now with gpu usage information.
         """
-        # worekr cmd name (ray::*) -> stats dict.
+        # worker cmd name (ray::*) -> stats dict.
         proc_name_to_stats = defaultdict(list)
+        gpu_worker_proc_names = set()  # Track processes with GPU usage
+
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
             # All ray processes start with ray::
             if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
                 proc_name = cmdline[0]
                 proc_name_to_stats[proc_name].append(stat)
+
+                # Track if this process has GPU usage
+                if (
+                    stat.get("gpu_memory_usage", 0) > 0
+                    or stat.get("gpu_utilization", 0) > 0
+                ):
+                    gpu_worker_proc_names.add(proc_name)
             # We will lose worker stats that don't follow the ray worker proc
             # naming convention. Theoretically, there should be no data loss here
             # because all worker processes are renamed to ray::.
 
         records = []
+
+        # Generate system stats records (now includes GPU stats)
         for proc_name, stats in proc_name_to_stats.items():
             records.extend(self._generate_system_stats_record(stats, proc_name))
 
@@ -941,15 +1308,26 @@ class ReporterAgent(
         for stale_proc_name in stale_procs:
             records.extend(self._generate_reseted_stats_record(stale_proc_name))
 
+        # Reset GPU metrics for processes that no longer use GPU
+        stale_gpu_worker_proc_names = (
+            self._latest_gpu_worker_proc_names - gpu_worker_proc_names
+        )
+        self._latest_gpu_worker_proc_names = gpu_worker_proc_names
+
+        for stale_gpu_proc in stale_gpu_worker_proc_names:
+            records.extend(self._generate_reseted_gpu_stats_record(stale_gpu_proc))
+
         return records
 
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
-        is_head_node = str(self._is_head_node).lower()
+        ray_node_type = "head" if self._is_head_node else "worker"
+        is_head_node = "true" if self._is_head_node else "false"
 
         # Common tags for node-level metrics
-        node_tags = {"ip": ip, "IsHeadNode": is_head_node}
+        # We use RayNodeType to mark head/worker node, IsHeadNode is retained for backward compatibility
+        node_tags = {"ip": ip, "RayNodeType": ray_node_type, "IsHeadNode": is_head_node}
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node
@@ -1095,6 +1473,62 @@ class ReporterAgent(
                         ]
                     )
 
+        # -- TPU per node --
+        tpus = stats["tpus"]
+
+        for tpu in tpus:
+            tpu_index = tpu.get("index")
+            tpu_name = tpu.get("name")
+            tpu_type = tpu.get("tpu_type")
+            tpu_topology = tpu.get("tpu_topology")
+            tensorcore_utilization = tpu.get("tensorcore_utilization")
+            hbm_utilization = tpu.get("hbm_utilization")
+            duty_cycle = tpu.get("duty_cycle")
+            memory_used = tpu.get("memory_used")
+            memory_total = tpu.get("memory_total")
+
+            tpu_tags = {
+                **node_tags,
+                "TpuIndex": str(tpu_index),
+                "TpuDeviceName": tpu_name,
+                "TpuType": tpu_type,
+                "TpuTopology": tpu_topology,
+            }
+            tensorcore_utilization_record = Record(
+                gauge=METRICS_GAUGES["tpu_tensorcore_utilization"],
+                value=tensorcore_utilization,
+                tags=tpu_tags,
+            )
+            hbm_utilization_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_bandwidth_utilization"],
+                value=hbm_utilization,
+                tags=tpu_tags,
+            )
+            duty_cycle_record = Record(
+                gauge=METRICS_GAUGES["tpu_duty_cycle"],
+                value=duty_cycle,
+                tags=tpu_tags,
+            )
+            memory_used_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_used"],
+                value=memory_used,
+                tags=tpu_tags,
+            )
+            memory_total_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_total"],
+                value=memory_total,
+                tags=tpu_tags,
+            )
+            records_reported.extend(
+                [
+                    tensorcore_utilization_record,
+                    hbm_utilization_record,
+                    duty_cycle_record,
+                    memory_used_record,
+                    memory_total_record,
+                ]
+            )
+
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]
         disk_read_record = Record(
@@ -1183,6 +1617,15 @@ class ReporterAgent(
         Record system stats.
         """
 
+        if self._is_head_node:
+            gcs_stats = stats["gcs"]
+            if gcs_stats:
+                records_reported.extend(
+                    self._generate_system_stats_record(
+                        [gcs_stats], "gcs", pid=str(gcs_stats["pid"])
+                    )
+                )
+
         # Record component metrics.
         raylet_stats = stats["raylet"]
         if raylet_stats:
@@ -1203,7 +1646,6 @@ class ReporterAgent(
                 )
             )
 
-        # TODO(sang): Record GCS metrics.
         # NOTE: Dashboard metrics is recorded within the dashboard because
         # it can be deployed as a standalone instance. It shouldn't
         # depend on the agent.
@@ -1251,6 +1693,14 @@ class ReporterAgent(
                             timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                     )
+                    self._gcs_pid = await self._gcs_client.async_internal_kv_get(
+                        GCS_PID_KEY.encode(),
+                        None,
+                        timeout=GCS_RPC_TIMEOUT_SECONDS,
+                    )
+                    self._gcs_pid = (
+                        int(self._gcs_pid.decode()) if self._gcs_pid else None
+                    )
 
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Agent's event-loop
@@ -1284,13 +1734,22 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            self._metrics_agent.record_and_export(
-                records,
-                global_tags={
-                    "Version": ray.__version__,
-                    "SessionName": self._session_name,
-                },
-            )
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT:
+                self._open_telemetry_metric_recorder.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
+            else:
+                self._metrics_agent.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
@@ -1299,6 +1758,13 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
+                metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
+                    self, server
+                )
+
+        # Initialize GPU metric provider when the agent starts
+        self._gpu_metric_provider.initialize()
 
         await self._run_loop()
 

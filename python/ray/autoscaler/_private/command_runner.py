@@ -265,9 +265,9 @@ class SSHCommandRunner(CommandRunnerInterface):
             silent: If true, the command output will be silenced.
 
         Raises:
-            ProcessRunnerError if using new log style and disabled
+            ProcessRunnerError: If using new log style and disabled
                 login shells.
-            click.ClickException if using login shells.
+            click.ClickException: If using login shells.
         """
         try:
             # For now, if the output is needed we just skip the new logic.
@@ -877,7 +877,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 return run_options + ["--runtime=nvidia"]
             except Exception as e:
                 logger.warning(
-                    "Nvidia Container Runtime is present, but no GPUs found."
+                    "NVIDIA Container Runtime is present, but no GPUs found."
                 )
                 logger.debug(f"nvidia-smi error: {e}")
                 return run_options

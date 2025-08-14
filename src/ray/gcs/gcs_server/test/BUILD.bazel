@@ -80,6 +80,7 @@ ray_cc_library(
         "gcs_server_test_util.h",
     ],
     deps = [
+        "//:ray_fakes",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
     ],
 )
@@ -96,6 +97,8 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/util:network_util",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -225,7 +228,6 @@ ray_cc_test(
         "gcs_actor_manager_test.cc",
     ],
     tags = [
-        "no_tsan",
         "team:core",
     ],
     deps = [

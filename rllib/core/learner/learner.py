@@ -4,6 +4,7 @@ import copy
 import logging
 import numpy
 import platform
+import tree
 from typing import (
     Any,
     Callable,
@@ -37,7 +38,6 @@ from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.utils import unflatten_dict
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -48,7 +48,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DATASET_NUM_ITERS_TRAINED,
@@ -88,7 +88,6 @@ if TYPE_CHECKING:
 
 
 torch, _ = try_import_torch()
-tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -112,11 +111,11 @@ class Learner(Checkpointable):
     way to add/remove modules to/from RLModules in a multi-agent scenario, in the
     middle of training (This is useful for league based training).
 
-    TF and Torch specific implementation of this class fills in the framework-specific
-    implementation details for distributed training, and for computing and applying
-    gradients. User should not need to sub-class this class, but instead inherit from
-    the TF or Torch specific sub-classes to implement their algorithm-specific update
-    logic.
+    Deep learning framework-specific implementations of this class fill in the
+    details for distributed training, and for computing and applying
+    gradients. User should not need to subclass this class, but instead inherit from
+    the deep learning framework (for example torch) specific subclasses to implement
+    their algorithm-specific update logic.
 
     Args:
         config: The AlgorithmConfig object from which to derive most of the settings
@@ -239,6 +238,11 @@ class Learner(Checkpointable):
 
         # Whether self.build has already been called.
         self._is_built = False
+
+        # Attributes to be set separately (not by user's custom `build()` code)
+        # by a LearnerGroup.
+        self._learner_index = 0
+        self._placement_group = None
 
         # These are the attributes that are set during build.
 
@@ -508,9 +512,12 @@ class Learner(Checkpointable):
             # `self.postprocess_gradients_for_module()` method.
             module_grads_dict = {}
             for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
-                module_grads_dict.update(
-                    self.filter_param_dict_for_optimizer(gradients_dict, optimizer)
+                optim_grads = self.filter_param_dict_for_optimizer(
+                    gradients_dict, optimizer
                 )
+                for ref, grad in optim_grads.items():
+                    assert ref not in module_grads_dict
+                    module_grads_dict[ref] = grad
 
             module_grads_dict = self.postprocess_gradients_for_module(
                 module_id=module_id,
@@ -1130,30 +1137,11 @@ class Learner(Checkpointable):
                     "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
                 )
 
-            def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-                _batch = unflatten_dict(_batch)
-                _batch = MultiAgentBatch(
-                    {
-                        module_id: SampleBatch(module_data)
-                        for module_id, module_data in _batch.items()
-                    },
-                    env_steps=sum(
-                        len(next(iter(module_data.values())))
-                        for module_data in _batch.values()
-                    ),
-                )
-                _batch = self._convert_batch_type(_batch, to_device=False)
-                return self._set_slicing_by_batch_id(_batch, value=True)
-
-            def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-                return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
             if not self.iterator:
                 # This iterator holds a `ray.data.DataIterator` and manages it state.
                 self.iterator = MiniBatchRayDataIterator(
                     iterator=training_data.data_iterators[0],
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
+                    device=self.device,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     **kwargs,
@@ -1353,9 +1341,20 @@ class Learner(Checkpointable):
         elif (
             isinstance(training_data.batch, MultiAgentBatch)
             and training_data.batch.policy_batches
-            and isinstance(
-                next(iter(training_data.batch.policy_batches.values()))["obs"],
-                numpy.ndarray,
+            and (
+                any(
+                    tree.map_structure(
+                        lambda a: isinstance(a, numpy.ndarray),
+                        tree.flatten(training_data.batch.policy_batches),
+                    )
+                )
+                or any(
+                    tree.map_structure(
+                        lambda a: isinstance(a, torch.Tensor)
+                        and a.device != self._device,
+                        tree.flatten(training_data.batch.policy_batches),
+                    )
+                )
             )
         ):
             batch = self._convert_batch_type(training_data.batch)
@@ -1645,6 +1644,7 @@ class Learner(Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
                 reduce="sum",
+                with_throughput=True,
             )
             # Log module steps (sum of all modules).
             self.metrics.log_value(
@@ -1652,11 +1652,13 @@ class Learner(Checkpointable):
                 value=module_batch_size,
                 reduce="sum",
                 clear_on_reduce=True,
+                with_throughput=True,
             )
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
                 reduce="sum",
+                with_throughput=True,
             )
         # Log env steps (all modules).
         self.metrics.log_value(
@@ -1671,6 +1673,10 @@ class Learner(Checkpointable):
             reduce="sum",
             with_throughput=True,
         )
+
+    def _set_learner_index_and_placement_group(self, *, learner_index, placement_group):
+        self._learner_index = learner_index
+        self._placement_group = placement_group
 
     @Deprecated(new="Learner.update(batch=.., ..)", error=False)
     def update_from_batch(self, batch, **kwargs):

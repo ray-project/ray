@@ -1,3 +1,5 @@
+.. _forking-ray-processes-antipattern:
+
 Anti-pattern: Forking new processes in application code
 ========================================================
 

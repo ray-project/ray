@@ -7,9 +7,9 @@ import gc
 
 import ray
 from ray.experimental.state.api import list_actors
-from ray._private.test_utils import (
+from ray._common.test_utils import SignalActor
+from ray._common.test_utils import (
     wait_for_condition,
-    SignalActor,
 )
 
 RECONSTRUCTION_CONFIG = {
@@ -48,29 +48,24 @@ def assert_no_leak(filter_refs=None):
     wait_for_condition(check)
 
 
-@pytest.mark.parametrize("delay", [True])
-def test_reconstruction(monkeypatch, ray_start_cluster, delay):
-    with monkeypatch.context() as m:
-        if delay:
-            m.setenv(
-                "RAY_testing_asio_delay_us",
-                "CoreWorkerService.grpc_server."
-                "ReportGeneratorItemReturns=10000:1000000",
-            )
-        cluster = ray_start_cluster
-        # Head node with no resources.
-        cluster.add_node(
-            num_cpus=0,
-            _system_config=RECONSTRUCTION_CONFIG,
-            enable_object_reconstruction=True,
-        )
-        ray.init(address=cluster.address)
-        # Node to place the initial object.
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-        cluster.wait_for_nodes()
+@pytest.mark.skip(
+    reason="This test is flaky on darwin as of https://github.com/ray-project/ray/pull/53999."
+    "See https://github.com/ray-project/ray/pull/54320 for context on when to stop skipping."
+)
+def test_reconstruction(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=RECONSTRUCTION_CONFIG,
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
 
     @ray.remote(max_retries=2)
-    def dynamic_generator(num_returns):
+    def generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
 
@@ -79,7 +74,7 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         return x[0]
 
     # Test recovery of all dynamic objects through re-execution.
-    gen = dynamic_generator.remote(10)
+    gen = generator.remote(10)
     refs = []
 
     for i in range(5):
@@ -537,9 +532,5 @@ def test_reconstruction_generator_out_of_scope(
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -124,7 +124,7 @@ message SchedulingStrategy {
 
 // Address of a worker or node manager.
 message Address {
-  bytes raylet_id = 1;
+  bytes node_id = 1;
   string ip_address = 2;
   int32 port = 3;
   // Optional unique id for the worker.
@@ -256,6 +256,9 @@ enum ErrorType {
   // ACTOR_DIED is that the actor may still be alive and may become available again
   // after some retries.
   ACTOR_UNAVAILABLE = 25;
+  // An executing generator needed to be resubmitted because an object that dependended on
+  // an intermediate value needed to be recovered.
+  GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION = 26;
 }
 
 // The user error information.
@@ -497,10 +500,6 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 16;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 17;
-  // Whether or not to skip the execution of this task. When it's true,
-  // the receiver will not execute the task. This field is used by async actors
-  // to guarantee task submission order after restart.
-  bool skip_execution = 21;
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
@@ -572,6 +571,10 @@ message TaskSpec {
   // format depends on the language. Only populated if environment variable
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 42;
+  // The key-value label constraints of the node to schedule this task or actor on.
+  map<string, string> label_selector = 43;
+  // The tensor transport type for this task.
+  TensorTransport tensor_transport = 44;
 }
 
 message TaskInfoEntry {
@@ -608,6 +611,15 @@ message TaskInfoEntry {
   // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if the flag is enabled.
   optional string call_site = 27;
+  // The key-value label constraints of the node to schedule this task or actor on.
+  map<string, string> label_selector = 28;
+}
+
+message TaskAttempt {
+  // The task id of the task attempt.
+  bytes task_id = 1;
+  // The attempt number of the task attempt.
+  int32 attempt_number = 2;
 }
 
 message Bundle {
@@ -619,6 +631,9 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Label selector associated with this bundle.
+  // Populated from bundle_label_selector if provided.
+  map<string, string> label_selector = 4;
 }
 
 message PlacementGroupSpec {
@@ -685,6 +700,15 @@ message ObjectReferenceCount {
   repeated bytes contains = 6;
 }
 
+enum TensorTransport {
+  // Use the default object store for tensor transport.
+  OBJECT_STORE = 0;
+  // Use NCCL for tensor transport.
+  NCCL = 1;
+  // Use GLOO for tensor transport.
+  GLOO = 2;
+}
+
 // Argument in the task.
 message TaskArg {
   // A pass-by-ref argument.
@@ -695,6 +719,12 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
+  // `is_inlined` is true if the argument is an ObjectRef, but it is small enough
+  // to be inlined in the task spec instead of being pushed to the object store.
+  bool is_inlined = 5;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 6;
 }
 
 message ReturnObject {
@@ -748,7 +778,7 @@ message ActorCreationTaskSpec {
   // The concurrency groups of this actor.
   repeated ConcurrencyGroup concurrency_groups = 13;
   // Whether to enable out of order execution.
-  bool execute_out_of_order = 14;
+  bool allow_out_of_order_execution = 14;
   // The max number of pending actor calls.
   int32 max_pending_calls = 15;
 }
@@ -760,7 +790,7 @@ message ActorTaskSpec {
   // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
-  uint64 actor_counter = 5;
+  uint64 sequence_number = 5;
 }
 
 // Represents a task, including task spec.
@@ -995,6 +1025,33 @@ enum PlacementStrategy {
   // The group is not allowed to deploy more than one bundle on a node.
   STRICT_SPREAD = 3;
 }
+
+// The type of operator to use for the label constraint.
+enum LabelSelectorOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0;
+  // This is to support equality or in semantics.
+  LABEL_OPERATOR_IN = 1;
+  // This is to support not equal or not in semantics.
+  LABEL_OPERATOR_NOT_IN = 2;
+}
+
+// A node label constraint with a key, one or a list of values and an operator.
+message LabelSelectorConstraint {
+  // The key of the label
+  string label_key = 1;
+  // The operator to use for the label constraint.
+  LabelSelectorOperator operator = 2;
+  // The values to check against.
+  repeated string label_values = 3;
+}
+
+// A list of node label constraints to specify the label requirements in a
+// resource request.
+message LabelSelector {
+  // The list of node label constraints with AND semantics.
+  repeated LabelSelectorConstraint label_constraints = 1;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 // Info about a named actor.

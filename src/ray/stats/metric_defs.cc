@@ -47,7 +47,8 @@ DEFINE_stats(
     tasks,
     "Current number of tasks currently in a particular state.",
     // State: the task state, as described by rpc::TaskState proto in common.proto.
-    // Name: the name of the function called.
+    // Name: the name of the function called (Keep in sync with the
+    // TASK_OR_ACTOR_NAME_TAG_KEY in python/ray/_private/telemetry/metric_cardinality.py)
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
     // IsRetry: whether this task is a retry.
     ("State", "Name", "Source", "IsRetry", "JobId"),
@@ -58,16 +59,18 @@ DEFINE_stats(
 ///
 /// To avoid metric collection conflicts between components reporting on the same task,
 /// we use the "Source" required label.
-DEFINE_stats(actors,
-             "Current number of actors currently in a particular state.",
-             // State: the actor state, which is from rpc::ActorTableData::ActorState,
-             // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
-             // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
-             // Name: the name of actor class.
-             // Source: component reporting, e.g., "gcs" or "executor".
-             ("State", "Name", "Source", "JobId"),
-             (),
-             ray::stats::GAUGE);
+DEFINE_stats(
+    actors,
+    "Current number of actors currently in a particular state.",
+    // State: the actor state, which is from rpc::ActorTableData::ActorState,
+    // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
+    // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+    // Name: the name of actor class (Keep in sync with the TASK_OR_ACTOR_NAME_TAG_KEY in
+    // python/ray/_private/telemetry/metric_cardinality.py) Source: component reporting,
+    // e.g., "gcs" or "executor".
+    ("State", "Name", "Source", "JobId"),
+    (),
+    ray::stats::GAUGE);
 
 /// Job related stats.
 DEFINE_stats(running_jobs,
@@ -199,6 +202,14 @@ DEFINE_stats(grpc_server_req_failed,
              (),
              ray::stats::COUNT);
 
+/// Number of failures observed from gRPC client(s).
+/// A failure is an RPC whose response status was not `OK`.
+DEFINE_stats(grpc_client_req_failed,
+             "Number of gRPC client failures (non-OK response statuses).",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,
              "Number of bytes pushed or received by type {PushedFromLocalPlasma, "
@@ -254,8 +265,8 @@ DEFINE_stats(pull_manager_object_request_time_ms,
              ray::stats::HISTOGRAM);
 
 /// Push Manager
-DEFINE_stats(push_manager_in_flight_pushes,
-             "Number of in flight object push requests.",
+DEFINE_stats(push_manager_num_pushes_remaining,
+             "Number of pushes not completed.",
              (),
              (),
              ray::stats::GAUGE);

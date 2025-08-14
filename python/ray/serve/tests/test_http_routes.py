@@ -1,7 +1,7 @@
 import time
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI, Request
 from starlette.responses import RedirectResponse
 
@@ -30,7 +30,7 @@ def test_path_validation(serve_instance):
 
 def test_routes_healthz(serve_instance):
     # Should return 503 until there are any routes populated.
-    resp = requests.get("http://localhost:8000/-/healthz")
+    resp = httpx.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 503
     assert resp.text == "Route table is not populated yet."
 
@@ -41,13 +41,13 @@ def test_routes_healthz(serve_instance):
 
     # D1 not exposed over HTTP so should still return 503.
     serve.run(D1.bind(), route_prefix=None)
-    resp = requests.get("http://localhost:8000/-/healthz")
+    resp = httpx.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 503
     assert resp.text == "Route table is not populated yet."
 
     # D1 exposed over HTTP, should return 200 OK.
     serve.run(D1.bind(), route_prefix="/")
-    resp = requests.get("http://localhost:8000/-/healthz")
+    resp = httpx.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 200
     assert resp.text == "success"
 
@@ -66,16 +66,16 @@ def test_routes_endpoint(serve_instance):
     serve.run(D1.bind(), name="app1", route_prefix="/D1")
     serve.run(D2.bind(), name="app2", route_prefix="/hello/world")
 
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    routes = httpx.get("http://localhost:8000/-/routes").json()
 
     assert len(routes) == 2, routes
 
-    assert requests.get("http://localhost:8000/D1").text == "D1"
-    assert requests.get("http://localhost:8000/D1").status_code == 200
-    assert requests.get("http://localhost:8000/hello/world").text == "D2"
-    assert requests.get("http://localhost:8000/hello/world").status_code == 200
-    assert requests.get("http://localhost:8000/not_exist").status_code == 404
-    assert requests.get("http://localhost:8000/").status_code == 404
+    assert httpx.get("http://localhost:8000/D1").text == "D1"
+    assert httpx.get("http://localhost:8000/D1").status_code == 200
+    assert httpx.get("http://localhost:8000/hello/world").text == "D2"
+    assert httpx.get("http://localhost:8000/hello/world").status_code == 200
+    assert httpx.get("http://localhost:8000/not_exist").status_code == 404
+    assert httpx.get("http://localhost:8000/").status_code == 404
 
 
 def test_deployment_without_route(serve_instance):
@@ -85,11 +85,11 @@ def test_deployment_without_route(serve_instance):
             return "1"
 
     serve.run(D.bind(), route_prefix=None)
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    routes = httpx.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 0
 
     # make sure the deployment is not exposed under the default route
-    r = requests.get("http://localhost:8000/")
+    r = httpx.get("http://localhost:8000/")
     assert r.status_code == 404
 
 
@@ -100,7 +100,7 @@ def test_deployment_options_default_route(serve_instance):
 
     serve.run(D1.bind())
 
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    routes = httpx.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
     assert "/" in routes, routes
     assert routes["/"] == SERVE_DEFAULT_APP_NAME
@@ -108,7 +108,7 @@ def test_deployment_options_default_route(serve_instance):
 
 def test_path_prefixing_1(serve_instance):
     def check_req(subpath, text=None, status=None):
-        r = requests.get(f"http://localhost:8000{subpath}")
+        r = httpx.get(f"http://localhost:8000{subpath}")
         if text is not None:
             assert r.text == text, f"{r.text} != {text}"
         if status is not None:
@@ -201,12 +201,14 @@ def test_redirect(serve_instance, base_path):
     if route_prefix != "/":
         route_prefix += "/"
 
-    r = requests.get(f"http://localhost:8000{route_prefix}redirect")
+    r = httpx.get(f"http://localhost:8000{route_prefix}redirect", follow_redirects=True)
     assert r.status_code == 200
     assert len(r.history) == 1
     assert r.json() == "hello from /"
 
-    r = requests.get(f"http://localhost:8000{route_prefix}redirect2")
+    r = httpx.get(
+        f"http://localhost:8000{route_prefix}redirect2", follow_redirects=True
+    )
     assert r.status_code == 200
     assert len(r.history) == 2
     assert r.json() == "hello from /"
@@ -218,7 +220,7 @@ def test_default_error_handling(serve_instance):
         _ = 1 / 0
 
     serve.run(f.bind())
-    r = requests.get("http://localhost:8000/f")
+    r = httpx.get("http://localhost:8000/f")
     assert r.status_code == 500
     assert r.text == "Internal Server Error"
 
@@ -232,7 +234,7 @@ def test_default_error_handling(serve_instance):
         time.sleep(100)  # Don't return here to leave time for actor exit.
 
     serve.run(h.bind())
-    r = requests.get("http://localhost:8000/h")
+    r = httpx.get("http://localhost:8000/h")
     assert r.status_code == 500
 
 

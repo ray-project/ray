@@ -388,10 +388,16 @@ table.autosummary tr > td:first-child > p > a > code > span {
   text-decoration: underline;
 }
 
-/* Prevent the the PyData theme Version Switcher from getting too large */
+/* Prevent the PyData theme Version Switcher from getting too large */
 .version-switcher__menu {
   max-height: 40rem;
   overflow-y: scroll;
+}
+
+/* Right align the version switcher dropdown menu to prevent it from going off screen */
+.version-switcher__menu[data-bs-popper] {
+  right: 0;
+  left: unset;
 }
 
 /* Hide the RTD version switcher since we are using PyData theme one */

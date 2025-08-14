@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import time
 from typing import Dict
@@ -6,9 +7,10 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray._common.test_utils import wait_for_condition
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._common.usage.usage_lib import get_extra_usage_tags_to_report
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
@@ -323,6 +325,91 @@ def test_placement_group_removal_idle_node(autoscaler_v2):
         cluster.shutdown()
 
 
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_placement_group_reschedule_node_dead(autoscaler_v2):
+    # Test autoscaler reschedules placement group when node dies.
+    # Note that it should only provision nodes for the bundles that haven't been placed.
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-1": {
+                "resources": {"R1": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "type-2": {
+                "resources": {"R2": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "type-3": {
+                "resources": {"R3": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        },
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        pg = placement_group([{"R1": 1}, {"R2": 1}, {"R3": 1}])
+
+        ray.get(pg.ready())
+
+        def verify_nodes(active, idle):
+            cluster_state = get_cluster_status(gcs_address)
+            assert len(cluster_state.active_nodes) == active
+            assert len(cluster_state.idle_nodes) == idle
+            return True
+
+        # 3 worker nodes, 1 head node (idle)
+        wait_for_condition(lambda: verify_nodes(3, 1))
+
+        def kill_node(node_id):
+            cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
+            pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+            print(f"Killing pid {pid}")
+            # kill the pid
+            cmd = f"kill -9 {pid}"
+            subprocess.check_output(cmd, shell=True)
+
+        # Kill a worker node with 'R1' in resources
+        for n in ray.nodes():
+            if "R1" in n["Resources"]:
+                node = n
+                break
+
+        # TODO(mimi): kill_raylet won't trigger reschedule in autoscaler v1
+        kill_node(node["NodeID"])
+
+        # Wait for the node to be removed
+        wait_for_condition(lambda: verify_nodes(2, 1), 20)
+
+        # Only provision nodes for unplaced bundles;
+        # avoid rescheduling the whole placement group.
+        wait_for_condition(lambda: verify_nodes(3, 1))
+
+        # Verify that the R1 node is recreated and has a different NodeID.
+        assert any(
+            [
+                "R1" in n["Resources"] and node["NodeID"] != n["NodeID"]
+                for n in ray.nodes()
+            ]
+        ), "R1 node is not recreated."
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 def test_object_store_memory_idle_node(shutdown_only):
 
     ray.init()
@@ -433,6 +520,107 @@ while True:
                 len(cluster_state.idle_nodes) + len(cluster_state.active_nodes)
             ) == num_worker_nodes + 1
             assert cluster_state.total_resources()["CPU"] == 2 * (num_worker_nodes + 1)
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize("autoscaler_v2", [True])
+def test_task_scheduled_on_node_with_label_selector(autoscaler_v2):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "node1": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "A100", "market-type": "spot"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "node2": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {
+                    "region": "us-east1",
+                    "accelerator-type": "TPU",
+                    "market-type": "spot",
+                },
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "node3": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "B200", "market-type": "spot"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "node4": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {"market-type": "on-demand", "accelerator-type": "TPU"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        idle_timeout_minutes=999,
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    driver_script = """
+import ray
+import time
+
+@ray.remote(num_cpus=1, label_selector={"accelerator-type": "A100"})
+def task1():
+    print("Running task1")
+    time.sleep(60)
+    return True
+
+@ray.remote(num_cpus=1, label_selector={"region": "in(us-east1,me-central1)"})
+def task2():
+    print("Running task2")
+    time.sleep(60)
+    return True
+
+@ray.remote(num_cpus=1, label_selector={"accelerator-type": "!in(A100,TPU)"})
+def task3():
+    print("Running task3")
+    time.sleep(60)
+    return True
+
+@ray.remote(num_cpus=1, label_selector={"market-type": "!in(spot)"})
+def task4():
+    print("Running task4")
+    time.sleep(60)
+    return True
+
+ray.init("auto")
+assert(ray.get([task1.remote(), task2.remote(), task3.remote(), task4.remote()]))
+"""
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+        expected_nodes = 4
+
+        def tasks_run():
+            tasks = list_tasks()
+            assert len(tasks) > 0
+            return True
+
+        run_string_as_driver_nonblocking(driver_script)
+        wait_for_condition(tasks_run)
+
+        def all_tasks_scheduled():
+            status = get_cluster_status(gcs_address)
+            return len(status.active_nodes) == expected_nodes
+
+        # All tasks with label selectors should be scheduled, scaling
+        # 4 nodes with the required labels.
+        wait_for_condition(all_tasks_scheduled, timeout=60)
 
     finally:
         ray.shutdown()

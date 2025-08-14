@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -6,6 +7,7 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
+from ray.data.expressions import Expr
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
@@ -133,6 +135,9 @@ class AbstractUDFMap(AbstractMap):
             elif inspect.isfunction(fn):
                 # normal function or lambda function.
                 return f"{op_name}({fn.__name__})"
+            elif isinstance(fn, functools.partial):
+                # functools.partial
+                return f"{op_name}({fn.func.__name__})"
             else:
                 # callable object.
                 return f"{op_name}({fn.__class__.__name__})"
@@ -259,6 +264,9 @@ class Project(AbstractMap):
         input_op: LogicalOperator,
         cols: Optional[List[str]] = None,
         cols_rename: Optional[Dict[str, str]] = None,
+        exprs: Optional[
+            Dict[str, "Expr"]
+        ] = None,  # TODO Remove cols and cols_rename and replace them with corresponding exprs
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -271,8 +279,17 @@ class Project(AbstractMap):
         self._batch_size = None
         self._cols = cols
         self._cols_rename = cols_rename
+        self._exprs = exprs
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
+
+        if exprs is not None:
+            # Validate that all values are expressions
+            for name, expr in exprs.items():
+                if not isinstance(expr, Expr):
+                    raise TypeError(
+                        f"Expected Expr for column '{name}', got {type(expr)}"
+                    )
 
     @property
     def cols(self) -> Optional[List[str]]:
@@ -281,6 +298,10 @@ class Project(AbstractMap):
     @property
     def cols_rename(self) -> Optional[Dict[str, str]]:
         return self._cols_rename
+
+    @property
+    def exprs(self) -> Optional[Dict[str, "Expr"]]:
+        return self._exprs
 
     def can_modify_num_rows(self) -> bool:
         return False
@@ -321,8 +342,8 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
-        target_num_rows_per_block: The targetr number of rows per block granularity for
-        streaming repartition.
+        target_num_rows_per_block: The target number of rows per block granularity for
+           streaming repartition.
     """
 
     def __init__(

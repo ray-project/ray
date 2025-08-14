@@ -5,39 +5,43 @@ import re
 import threading
 import time
 import traceback
-from collections import namedtuple
-from typing import List, Tuple, Any, Dict, Set
+from collections import defaultdict, namedtuple
+from typing import Any, Dict, List, Set, Tuple, Union
 
-from prometheus_client.core import (
-    CounterMetricFamily,
-    GaugeMetricFamily,
-    HistogramMetricFamily,
-)
-from opencensus.metrics.export.value import ValueDouble
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
-from opencensus.stats import aggregation
-from opencensus.stats import measure as measure_module
-from opencensus.stats.view_manager import ViewManager
-from opencensus.stats.stats_recorder import StatsRecorder
-from opencensus.stats.base_exporter import StatsExporter
-from prometheus_client.core import Metric as PrometheusMetric
+from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats import aggregation, measure as measure_module
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
     SumAggregationData,
 )
+from opencensus.stats.base_exporter import StatsExporter
+from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats.view import View
-from opencensus.tags import tag_key as tag_key_module
-from opencensus.tags import tag_map as tag_map_module
-from opencensus.tags import tag_value as tag_value_module
+from opencensus.stats.view_manager import ViewManager
+from opencensus.tags import (
+    tag_key as tag_key_module,
+    tag_map as tag_map_module,
+    tag_value as tag_value_module,
+)
+from prometheus_client.core import (
+    CounterMetricFamily,
+    GaugeMetricFamily,
+    HistogramMetricFamily,
+    Metric as PrometheusMetric,
+)
 
 import ray
-from ray._raylet import GcsClient
-
-from ray.core.generated.metrics_pb2 import Metric
+from ray._common.network_utils import build_address
 from ray._private.ray_constants import env_bool
-
+from ray._private.telemetry.metric_cardinality import (
+    WORKER_ID_TAG_KEY,
+    MetricCardinality,
+)
+from ray._raylet import GcsClient
+from ray.core.generated.metrics_pb2 import Metric
 from ray.util.metrics import _is_invalid_metric_name
 
 logger = logging.getLogger(__name__)
@@ -66,6 +70,7 @@ class Gauge(View):
                 "Metric names cannot start with numbers."
             )
         self._measure = measure_module.MeasureInt(name, description, unit)
+        self._description = description
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
             name, description, tags, self.measure, aggregation.LastValueAggregation()
@@ -82,6 +87,10 @@ class Gauge(View):
     @property
     def name(self):
         return self.measure.name
+
+    @property
+    def description(self):
+        return self._description
 
 
 Record = namedtuple("Record", ["gauge", "value", "tags"])
@@ -156,6 +165,21 @@ class OpencensusProxyMetric:
     @property
     def data(self):
         return self._data
+
+    def is_distribution_aggregation_data(self):
+        """Check if the metric is a distribution aggreation metric."""
+        return len(self._data) > 0 and isinstance(
+            next(iter(self._data.values())), DistributionAggregationData
+        )
+
+    def add_data(self, label_values: Tuple, data: Any):
+        """Add the data to the metric.
+
+        Args:
+            label_values: The label values of the metric.
+            data: The data to be added.
+        """
+        self._data[label_values] = data
 
     def record(self, metric: Metric):
         """Parse the Opencensus Protobuf and store the data.
@@ -319,7 +343,7 @@ class OpenCensusProxyCollector:
             return stale_components
 
     # TODO(sang): add start and end timestamp
-    def to_metrics(
+    def to_prometheus_metrics(
         self,
         metric_name: str,
         metric_description: str,
@@ -328,7 +352,7 @@ class OpenCensusProxyCollector:
         label_values: Tuple[tag_value_module.TagValue],
         agg_data: Any,
         metrics_map: Dict[str, List[PrometheusMetric]],
-    ):
+    ) -> None:
         """to_metric translate the data that OpenCensus create
         to Prometheus format, using Prometheus Metric object.
 
@@ -461,6 +485,87 @@ class OpenCensusProxyCollector:
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
 
+    def _aggregate_metric_data(
+        self,
+        datas: List[
+            Union[LastValueAggregationData, CountAggregationData, SumAggregationData]
+        ],
+    ) -> Union[LastValueAggregationData, CountAggregationData, SumAggregationData]:
+        assert len(datas) > 0
+        sample = datas[0]
+        if isinstance(sample, LastValueAggregationData):
+            return LastValueAggregationData(
+                ValueDouble, sum([data.value for data in datas])
+            )
+        if isinstance(sample, CountAggregationData):
+            return CountAggregationData(sum([data.count_data for data in datas]))
+        if isinstance(sample, SumAggregationData):
+            return SumAggregationData(
+                ValueDouble, sum([data.sum_data for data in datas])
+            )
+
+        raise ValueError(
+            f"Unsupported aggregation type {type(sample)}. "
+            "Supported types are "
+            f"{CountAggregationData}, {LastValueAggregationData}, {SumAggregationData}."
+            f"Got {datas}."
+        )
+
+    def _aggregate_with_recommended_cardinality(
+        self,
+        per_worker_metrics: List[OpencensusProxyMetric],
+    ) -> List[OpencensusProxyMetric]:
+        """Collect per-worker metrics, aggregate them into per-node metrics and convert
+        them to Prometheus format.
+
+        Args:
+            per_worker_metrics: A list of per-worker metrics for the same metric name.
+        Returns:
+            A list of per-node metrics for the same metric name, with the high
+            cardinality labels removed and the values aggregated.
+        """
+        metric = next(iter(per_worker_metrics), None)
+        if not metric or WORKER_ID_TAG_KEY not in metric.label_keys:
+            # No high cardinality labels, return the original metrics.
+            return per_worker_metrics
+
+        worker_id_label_index = metric.label_keys.index(WORKER_ID_TAG_KEY)
+        # map from the tuple of label values without worker_id to the list of per worker
+        # task metrics
+        label_value_to_data: Dict[
+            Tuple,
+            List[
+                Union[
+                    LastValueAggregationData,
+                    CountAggregationData,
+                    SumAggregationData,
+                ]
+            ],
+        ] = defaultdict(list)
+        for metric in per_worker_metrics:
+            for label_values, data in metric.data.items():
+                # remove the worker_id from the label values
+                label_value_to_data[
+                    label_values[:worker_id_label_index]
+                    + label_values[worker_id_label_index + 1 :]
+                ].append(data)
+
+        aggregated_metric = OpencensusProxyMetric(
+            name=metric.name,
+            desc=metric.desc,
+            unit=metric.unit,
+            # remove the worker_id from the label keys
+            label_keys=metric.label_keys[:worker_id_label_index]
+            + metric.label_keys[worker_id_label_index + 1 :],
+        )
+        for label_values, datas in label_value_to_data.items():
+            aggregated_metric.add_data(
+                label_values,
+                self._aggregate_metric_data(datas),
+            )
+
+        return [aggregated_metric]
+
     def collect(self):  # pragma: NO COVER
         """Collect fetches the statistics from OpenCensus
         and delivers them as Prometheus Metrics.
@@ -470,21 +575,52 @@ class OpenCensusProxyCollector:
         This method is required as a Prometheus Collector.
         """
         with self._components_lock:
-            metrics_map = {}
+            # First construct the list of opencensus metrics to be converted to
+            # prometheus metrics.  For LEGACY cardinality level, this comprises all
+            # metrics from all components.  For RECOMMENDED cardinality level, we need
+            # to remove the high cardinality labels and aggreate the component metrics.
+            open_cencus_metrics: List[OpencensusProxyMetric] = []
+            # The metrics that need to be aggregated with recommended cardinality. Key
+            # is the metric name and value is the list of per-worker metrics.
+            to_lower_cardinality: Dict[str, List[OpencensusProxyMetric]] = defaultdict(
+                list
+            )
+            cardinality_level = MetricCardinality.get_cardinality_level()
             for component in self._components.values():
                 for metric in component.metrics.values():
-                    for label_values, data in metric.data.items():
-                        self.to_metrics(
-                            metric.name,
-                            metric.desc,
-                            metric.label_keys,
-                            metric.unit,
-                            label_values,
-                            data,
-                            metrics_map,
-                        )
+                    if (
+                        cardinality_level == MetricCardinality.RECOMMENDED
+                        and not metric.is_distribution_aggregation_data()
+                    ):
+                        # We reduce the cardinality for all metrics except for histogram
+                        # metrics. The aggregation of histogram metrics from worker
+                        # level to node level is not well defined. In addition, we
+                        # currently have very few histogram metrics in Ray
+                        # (metric_defs.cc) so the impact of them is negligible.
+                        to_lower_cardinality[metric.name].append(metric)
+                    else:
+                        open_cencus_metrics.append(metric)
+            for per_worker_metrics in to_lower_cardinality.values():
+                open_cencus_metrics.extend(
+                    self._aggregate_with_recommended_cardinality(
+                        per_worker_metrics,
+                    )
+                )
 
-        for metrics in metrics_map.values():
+            prometheus_metrics_map = {}
+            for metric in open_cencus_metrics:
+                for label_values, data in metric.data.items():
+                    self.to_prometheus_metrics(
+                        metric.name,
+                        metric.desc,
+                        metric.label_keys,
+                        metric.unit,
+                        label_values,
+                        data,
+                        prometheus_metrics_map,
+                    )
+
+        for metrics in prometheus_metrics_map.values():
             for metric in metrics:
                 yield metric
 
@@ -645,7 +781,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
+            build_address(node["NodeManagerAddress"], node["MetricsExportPort"])
             for node in nodes
             if node["alive"] is True
         ]

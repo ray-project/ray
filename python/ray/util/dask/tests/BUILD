@@ -41,6 +41,18 @@ py_test(
 )
 
 py_test(
+    name = "test_dask_multi_node",
+    size = "medium",
+    srcs = ["test_dask_multi_node.py"],
+    main = "test_dask_multi_node.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = ["//python/ray/util/dask:dask_lib"],
+)
+
+py_test(
     name = "test_dask_optimization_client_mode",
     size = "small",
     srcs = ["test_dask_optimization.py"],

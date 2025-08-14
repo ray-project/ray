@@ -27,7 +27,6 @@ TEAM = [
     "ml",
     "rllib",
     "serve",
-    "serverless",
 ]
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
 

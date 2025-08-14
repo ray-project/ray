@@ -24,6 +24,17 @@ steps:
       - test_coverage
       - documentation_style
 
+  - label: ":lint-roller: pre-commit pydoclint"
+    key: pydoclint-small
+    tags:
+      - oss
+      - lint
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh pre_commit_pydoclint
+
   - label: ":lint-roller: lint: {{matrix}}"
     tags:
       - oss

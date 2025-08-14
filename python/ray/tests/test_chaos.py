@@ -1,11 +1,11 @@
 import sys
+import time
 import random
 
-import ray
-
 import pytest
-import time
 
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.util.placement_group import placement_group
@@ -14,7 +14,6 @@ from ray._private.test_utils import (
     get_log_message,
     get_and_run_resource_killer,
     WorkerKillerActor,
-    wait_for_condition,
 )
 from ray.exceptions import RayTaskError, ObjectLostError
 from ray.util.state.common import ListApiOptions, StateResource
@@ -317,10 +316,4 @@ def test_node_killer_filter(autoscaler_v2):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

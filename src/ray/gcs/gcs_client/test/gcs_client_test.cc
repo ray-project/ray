@@ -25,7 +25,9 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/util/network_util.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/util.h"
 
 using namespace std::chrono_literals;  // NOLINT
@@ -158,7 +160,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
     while (true) {
       auto channel =
-          grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+          grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
@@ -189,8 +191,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -202,15 +204,15 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool MarkJobFinished(const JobID &job_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
-        job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncMarkFinished(
+        job_id, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   JobID GetNextJobID() {
     std::promise<JobID> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
-        [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+    gcs_client_->Jobs().AsyncGetNextJobID(
+        [&promise](const JobID &job_id) { promise.set_value(job_id); });
     return promise.get_future().get();
   }
 
@@ -256,41 +258,36 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // the scenario of registration failure, we set the address to an illegal value.
     if (!is_detached) {
       rpc::Address address;
+      address.set_worker_id(WorkerID::FromRandom().Binary());
       address.set_ip_address("");
       message.mutable_caller_address()->CopyFrom(address);
     }
     TaskSpecification task_spec(message);
 
     if (skip_wait) {
-      return gcs_client_->Actors()
-          .AsyncRegisterActor(task_spec, [](Status status) {})
-          .ok();
+      gcs_client_->Actors().AsyncRegisterActor(task_spec, [](Status status) {});
+      return true;
     }
 
     // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
     // client will register the actor again and promise may be set twice.
     auto promise = std::make_shared<std::promise<bool>>();
-    RAY_CHECK_OK(
-        gcs_client_->Actors().AsyncRegisterActor(task_spec, [promise](Status status) {
-          try {
-            promise->set_value(status.ok());
-          } catch (...) {
-          }
-        }));
+    gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [promise](Status status) { promise->set_value(status.ok()); });
     return WaitReady(promise->get_future(), timeout_ms_);
   }
 
   rpc::ActorTableData GetActor(const ActorID &actor_id) {
     std::promise<bool> promise;
     rpc::ActorTableData actor_table_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
+    gcs_client_->Actors().AsyncGet(
         actor_id,
         [&actor_table_data, &promise](Status status,
                                       const std::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
-        }));
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
   }
@@ -298,7 +295,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::ActorTableData> GetAllActors(bool filter_non_dead_actor = false) {
     std::promise<bool> promise;
     std::vector<rpc::ActorTableData> actors;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllByFilter(
+    gcs_client_->Actors().AsyncGetAllByFilter(
         std::nullopt,
         std::nullopt,
         std::nullopt,
@@ -316,16 +313,16 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
             }
           }
           promise.set_value(true);
-        }));
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actors;
   }
 
   bool SubscribeToNodeChange(
-      const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -336,8 +333,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        node_info, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Nodes().AsyncRegister(
+        node_info, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -349,13 +346,13 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+    gcs_client_->Nodes().AsyncGetAll(
         [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
           assert(!result.empty());
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::GetGcsTimeoutMs()));
+        gcs::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
@@ -363,21 +360,21 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
+    gcs_client_->NodeResources().AsyncGetAllAvailableResources(
         [&resources, &promise](Status status,
                                const std::vector<rpc::AvailableResources> &result) {
           EXPECT_TRUE(!result.empty());
           resources.assign(result.begin(), result.end());
           promise.set_value(status.ok());
-        }));
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return resources;
   }
 
   bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
-        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Errors().AsyncReportJobError(
+        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -392,16 +389,16 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool ReportWorkerFailure(
       const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
+    gcs_client_->Workers().AsyncReportWorkerFailure(
         worker_failure_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool AddWorker(const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(
-        worker_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Workers().AsyncAdd(
+        worker_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -439,12 +436,12 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
-  *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
-  *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
+  request.add_node_ids(node_info1->node_id());
+  request.add_node_ids(node_info2->node_id());
   {
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);
@@ -476,11 +473,12 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  std::vector<std::string> raylet_addresses = {"172.1.2.3:31292", "172.1.2.4:31293"};
+  std::vector<NodeID> node_ids = {NodeID::FromBinary(node_info1->node_id()),
+                                  NodeID::FromBinary(node_info2->node_id())};
   {
     std::vector<bool> nodes_alive;
-    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
-        raylet_addresses, /*timeout_ms=*/1000, nodes_alive));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().CheckAlive(node_ids, /*timeout_ms=*/1000, nodes_alive));
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_FALSE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
@@ -489,8 +487,8 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     std::vector<bool> nodes_alive;
-    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
-        raylet_addresses, /*timeout_ms=*/1000, nodes_alive));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().CheckAlive(node_ids, /*timeout_ms=*/1000, nodes_alive));
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_TRUE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
@@ -935,7 +933,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
-  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   grpc::ClientContext context;
@@ -1036,8 +1034,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       /*app_name=*/argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

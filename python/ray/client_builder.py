@@ -14,7 +14,7 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
-from ray._private.utils import check_ray_client_dependencies_installed, split_address
+from ray._private.utils import get_ray_client_dependency_error, split_address
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
@@ -34,7 +34,6 @@ class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
 
-    `protocol_version` is no longer used.
     """
 
     dashboard_url: Optional[str]
@@ -43,7 +42,6 @@ class ClientContext(BaseContext):
     ray_commit: str
     _num_clients: int
     _context_to_restore: Optional[ray.util.client.RayAPIStub]
-    protocol_version: Optional[str] = None  # Deprecated
 
     def __enter__(self) -> "ClientContext":
         self._swap_context()
@@ -97,7 +95,7 @@ class ClientBuilder:
     """
 
     def __init__(self, address: Optional[str]) -> None:
-        if not check_ray_client_dependencies_installed():
+        if get_ray_client_dependency_error() is not None:
             raise ValueError(
                 "Ray Client requires pip package `ray[client]`. "
                 "If you installed the minimal Ray (e.g. `pip install ray`), "
@@ -120,8 +118,8 @@ class ClientBuilder:
         Set an environment for the session.
         Args:
             env (Dict[st, Any]): A runtime environment to use for this
-            connection. See :ref:`runtime-environments` for what values are
-            accepted in this dict.
+                connection. See :ref:`runtime-environments` for what values are
+                accepted in this dict.
         """
         self._job_config.set_runtime_env(env)
         return self

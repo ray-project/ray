@@ -57,7 +57,7 @@ Learn more about how to configure KubeRay clusters [here](kuberay-config).
 :::
 
 ```console
-$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml
+$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
 To deploy the example, we simply `kubectl apply` the CR.
@@ -67,21 +67,19 @@ This creates the underlying Ray cluster, consisting of a head and worker node po
 $ kubectl apply -f ray-service.text-ml.yaml
 
 $ kubectl get rayservices
-NAME                AGE
-rayservice-sample   7s
+NAME                SERVICE STATUS   NUM SERVE ENDPOINTS
+rayservice-sample   Running          1
 
 $ kubectl get pods
-NAME                                                      READY   STATUS    RESTARTS   AGE
-service-sample-raycluster-454c4-worker-small-group-b6mmg  1/1     Running   0          XXs
-kuberay-operator-7fbdbf8c89-4lrnr                         1/1     Running   0          XXs
-rayservice-sample-raycluster-454c4-head-krk9d             1/1     Running   0          XXs
+NAME                                                          READY   STATUS    RESTARTS   AGE
+rayservice-sample-raycluster-7wlx2-head-hr8mg                 1/1     Running   0          XXs
+rayservice-sample-raycluster-7wlx2-small-group-worker-tb8nn   1/1     Running   0          XXs
 
 $ kubectl get services
-
-rayservice-sample-head-svc                         ClusterIP   ...        8080/TCP,6379/TCP,8265/TCP,10001/TCP,8000/TCP,52365/TCP   XXs
-rayservice-sample-raycluster-454c4-dashboard-svc   ClusterIP   ...        52365/TCP                                                 XXs
-rayservice-sample-raycluster-454c4-head-svc        ClusterIP   ...        8000/TCP,52365/TCP,8080/TCP,6379/TCP,8265/TCP,10001/TCP   XXs
-rayservice-sample-serve-svc                        ClusterIP   ...        8000/TCP                                                  XXs
+NAME                                          TYPE        CLUSTER-IP        EXTERNAL-IP   PORT(S)                                         AGE
+rayservice-sample-head-svc                    ClusterIP   None              <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   XXs
+rayservice-sample-raycluster-7wlx2-head-svc   ClusterIP   None              <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   XXs
+rayservice-sample-serve-svc                   ClusterIP   192.168.145.219   <none>        8000/TCP                                        XXs
 ```
 
 Note that the `rayservice-sample-serve-svc` above is the one that can be used to send queries to the Serve application -- this will be used in the next section.
@@ -113,31 +111,47 @@ $ kubectl describe rayservice rayservice-sample
 ...
 Status:
   Active Service Status:
+    Ray Cluster Status:
+      Available Worker Replicas:  1
+      Desired CPU:                2500m
+      Desired GPU:                0
+      Desired Memory:             4Gi
+      Desired TPU:                0
+      Desired Worker Replicas:    1
+      Endpoints:
+        Client:     10001
+        Dashboard:  8265
+        Metrics:    8080
+        Redis:      6379
+        Serve:      8000
+      Head:
+        Pod IP:             10.48.99.153
+        Pod Name:           rayservice-sample-raycluster-7wlx2-head-dqv7t
+        Service IP:         10.48.99.153
+        Service Name:       rayservice-sample-raycluster-7wlx2-head-svc
+      Last Update Time:     2025-04-28T06:32:13Z
+      Max Worker Replicas:  5
+      Min Worker Replicas:  1
+      Observed Generation:  1
+  Observed Generation:      1
+  Pending Service Status:
     Application Statuses:
       text_ml_app:
-        Health Last Update Time:  2023-09-07T01:21:30Z
-        Last Update Time:         2023-09-07T01:21:30Z
+        Health Last Update Time:  2025-04-28T06:39:02Z
         Serve Deployment Statuses:
-          text_ml_app_Summarizer:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
+          Summarizer:
+            Health Last Update Time:  2025-04-28T06:39:02Z
             Status:                   HEALTHY
-          text_ml_app_Translator:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
+          Translator:
+            Health Last Update Time:  2025-04-28T06:39:02Z
             Status:                   HEALTHY
         Status:                       RUNNING
-    Dashboard Status:
-      Health Last Update Time:  2023-09-07T01:21:30Z
-      Is Healthy:               true
-      Last Update Time:         2023-09-07T01:21:30Z
-    Ray Cluster Name:           rayservice-sample-raycluster-kkd2p
+    Ray Cluster Name:                 rayservice-sample-raycluster-7wlx2
     Ray Cluster Status:
-      Head:
-  Observed Generation:  1
-  Pending Service Status:
-    Dashboard Status:
-    Ray Cluster Status:
+      Desired CPU:     0
+      Desired GPU:     0
+      Desired Memory:  0
+      Desired TPU:     0
       Head:
   Service Status:  Running
 Events:

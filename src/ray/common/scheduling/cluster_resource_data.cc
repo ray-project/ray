@@ -14,11 +14,13 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 
+#include <algorithm>
+#include <string>
+
 #include "ray/common/bundle_spec.h"
 #include "ray/common/scheduling/resource_set.h"
 
 namespace ray {
-using namespace ::ray::scheduling;
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
@@ -91,6 +93,11 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
+  const auto &label_selector = resource_request.GetLabelSelector();
+  if (!HasRequiredLabels(label_selector)) {
+    return false;
+  }
+
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
@@ -100,7 +107,47 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
+  const auto &label_selector = resource_request.GetLabelSelector();
+  if (!HasRequiredLabels(label_selector)) {
+    return false;
+  }
   return this->total >= resource_request.GetResourceSet();
+}
+
+bool NodeResources::HasRequiredLabels(const LabelSelector &label_selector) const {
+  // Check if node labels satisfy all label constraints
+  const auto constraints = label_selector.GetConstraints();
+  for (const auto &constraint : constraints) {
+    if (!NodeLabelMatchesConstraint(constraint)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool NodeResources::NodeLabelMatchesConstraint(const LabelConstraint &constraint) const {
+  const auto &key = constraint.GetLabelKey();
+  const auto &match_operator = constraint.GetOperator();
+  const auto &values = constraint.GetLabelValues();
+
+  const auto &node_labels = this->labels;
+  if (match_operator == LabelSelectorOperator::LABEL_IN) {
+    // Check for equals or in() labels
+    if (node_labels.contains(key) && values.contains(node_labels.at(key))) {
+      return true;
+    }
+  } else if (match_operator == LabelSelectorOperator::LABEL_NOT_IN) {
+    // Check for not equals (!) or not in (!in()) labels
+    if (!(node_labels.contains(key) && values.contains(node_labels.at(key)))) {
+      return true;
+    }
+  } else {
+    RAY_CHECK(false)
+        << "Node label constraint operator type must be one of equals, not equals (!),"
+           "in、or not in (!in)";
+  }
+  return false;
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {

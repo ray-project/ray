@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import os
 import random
@@ -101,7 +102,12 @@ class LongPollClient:
         }
         self.is_running = True
 
-        self._poll_next()
+        # NOTE(edoakes): we schedule the initial _poll_next call with an empty context
+        # so that Ray will not recursively cancel the underlying `listen_for_change`
+        # task. See: https://github.com/ray-project/ray/issues/52476.
+        self.event_loop.call_soon_threadsafe(
+            self._poll_next, context=contextvars.Context()
+        )
 
     def stop(self) -> None:
         """Stop the long poll client after the next RPC returns."""
@@ -117,6 +123,20 @@ class LongPollClient:
         If a key is already in the client, the new listener will replace the old one,
         but the snapshot ID will be preserved, so the new listener will only be called
         on the *next* update to that key.
+        """
+        # We need to run the underlying method in the same event loop that runs
+        # the long poll loop, because we need to mutate the mapping of snapshot IDs,
+        # which also needs to be serialized by the long poll's RPC to the
+        # Serve Controller. If those happened concurrently in different threads,
+        # we could get a `RuntimeError: dictionary changed size during iteration`.
+        # See https://github.com/ray-project/ray/pull/52793 for more details.
+        self.event_loop.call_soon_threadsafe(self._add_key_listeners, key_listeners)
+
+    def _add_key_listeners(
+        self, key_listeners: Dict[KeyType, UpdateStateCallable]
+    ) -> None:
+        """Inner method that actually adds the key listeners, to be called
+        via call_soon_threadsafe for thread safety.
         """
         # Only initialize snapshot ids for *new* keys.
         self.snapshot_ids.update(

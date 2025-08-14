@@ -93,27 +93,27 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Scheduler Task State",
-        pathParams: "orgId=1&theme=light&panelId=26",
+        pathParams: "theme=light&panelId=26",
       },
       {
         title: "Requested Live Tasks by Name",
-        pathParams: "orgId=1&theme=light&panelId=35",
+        pathParams: "theme=light&panelId=35",
       },
       {
         title: "Running Tasks by Name",
-        pathParams: "orgId=1&theme=light&panelId=38",
+        pathParams: "theme=light&panelId=38",
       },
       {
         title: "Scheduler Actor State",
-        pathParams: "orgId=1&theme=light&panelId=33",
+        pathParams: "theme=light&panelId=33",
       },
       {
         title: "Requested Live Actors by Name",
-        pathParams: "orgId=1&theme=light&panelId=36",
+        pathParams: "theme=light&panelId=36",
       },
       {
         title: "Out of Memory Failures by Name",
-        pathParams: "orgId=1&theme=light&panelId=44",
+        pathParams: "theme=light&panelId=44",
       },
     ],
   },
@@ -122,19 +122,19 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Scheduler CPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=27",
+        pathParams: "theme=light&panelId=27",
       },
       {
         title: "Scheduler GPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=28",
+        pathParams: "theme=light&panelId=28",
       },
       {
         title: "Object Store Memory",
-        pathParams: "orgId=1&theme=light&panelId=29",
+        pathParams: "theme=light&panelId=29",
       },
       {
         title: "Placement Groups",
-        pathParams: "orgId=1&theme=light&panelId=40",
+        pathParams: "theme=light&panelId=40",
       },
     ],
   },
@@ -143,47 +143,71 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Node Count",
-        pathParams: "orgId=1&theme=light&panelId=24",
+        pathParams: "theme=light&panelId=24",
       },
       {
         title: "Node CPU (hardware utilization)",
-        pathParams: "orgId=1&theme=light&panelId=2",
+        pathParams: "theme=light&panelId=2",
       },
       {
         title: "Node Memory (heap + object store)",
-        pathParams: "orgId=1&theme=light&panelId=4",
+        pathParams: "theme=light&panelId=4",
       },
       {
         title: "Node Memory Percentage (heap + object store)",
-        pathParams: "orgId=1&theme=light&panelId=48",
+        pathParams: "theme=light&panelId=48",
       },
       {
         title: "Node GPU (hardware utilization)",
-        pathParams: "orgId=1&theme=light&panelId=8",
+        pathParams: "theme=light&panelId=8",
       },
       {
         title: "Node GPU Memory (GRAM)",
-        pathParams: "orgId=1&theme=light&panelId=18",
+        pathParams: "theme=light&panelId=18",
+      },
+      {
+        title: "Node TPU (tensorcore utilization)",
+        pathParams: "theme=light&panelId=50",
+      },
+      {
+        title: "Node TPU (high bandwidth memory utilization)",
+        pathParams: "theme=light&panelId=51",
+      },
+      {
+        title: "Node TPU (duty cycle)",
+        pathParams: "theme=light&panelId=52",
+      },
+      {
+        title: "Node TPU (memory used)",
+        pathParams: "theme=light&panelId=53",
       },
       {
         title: "Node Disk",
-        pathParams: "orgId=1&theme=light&panelId=6",
+        pathParams: "theme=light&panelId=6",
       },
       {
         title: "Node Disk IO Speed",
-        pathParams: "orgId=1&theme=light&panelId=32",
+        pathParams: "theme=light&panelId=32",
       },
       {
         title: "Node Network",
-        pathParams: "orgId=1&theme=light&panelId=20",
+        pathParams: "theme=light&panelId=20",
       },
       {
         title: "Node CPU by Component",
-        pathParams: "orgId=1&theme=light&panelId=37",
+        pathParams: "theme=light&panelId=37",
       },
       {
         title: "Node Memory by Component",
-        pathParams: "orgId=1&theme=light&panelId=34",
+        pathParams: "theme=light&panelId=34",
+      },
+      {
+        title: "Node GPU by Component",
+        pathParams: "orgId=1&theme=light&panelId=45",
+      },
+      {
+        title: "Node GPU Memory by Component",
+        pathParams: "orgId=1&theme=light&panelId=46",
       },
     ],
   },
@@ -195,35 +219,31 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Bytes Spilled",
-        pathParams: "orgId=1&theme=light&panelId=1",
-      },
-      {
-        title: "Bytes Allocated",
-        pathParams: "orgId=1&theme=light&panelId=2",
+        pathParams: "theme=light&panelId=1",
       },
       {
         title: "Bytes Freed",
-        pathParams: "orgId=1&theme=light&panelId=3",
+        pathParams: "theme=light&panelId=3",
       },
       {
         title: "Object Store Memory",
-        pathParams: "orgId=1&theme=light&panelId=4",
+        pathParams: "theme=light&panelId=4",
       },
       {
         title: "CPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=5",
+        pathParams: "theme=light&panelId=5",
       },
       {
         title: "GPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=6",
+        pathParams: "theme=light&panelId=6",
       },
       {
         title: "Bytes Outputted",
-        pathParams: "orgId=1&theme=light&panelId=7",
+        pathParams: "theme=light&panelId=7",
       },
       {
         title: "Rows Outputted",
-        pathParams: "orgId=1&theme=light&panelId=11",
+        pathParams: "theme=light&panelId=11",
       },
     ],
   },
@@ -232,19 +252,19 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Input Blocks Received by Operator",
-        pathParams: "orgId=1&theme=light&panelId=17",
+        pathParams: "theme=light&panelId=17",
       },
       {
         title: "Input Blocks Processed by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=19",
+        pathParams: "theme=light&panelId=19",
       },
       {
         title: "Input Bytes Processed by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=20",
+        pathParams: "theme=light&panelId=20",
       },
       {
         title: "Input Bytes Submitted to Tasks",
-        pathParams: "orgId=1&theme=light&panelId=21",
+        pathParams: "theme=light&panelId=21",
       },
     ],
   },
@@ -253,23 +273,23 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Blocks Generated by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=22",
+        pathParams: "theme=light&panelId=22",
       },
       {
         title: "Bytes Generated by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=23",
+        pathParams: "theme=light&panelId=23",
       },
       {
         title: "Rows Generated by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=24",
+        pathParams: "theme=light&panelId=24",
       },
       {
         title: "Output Blocks Taken by Downstream Operators",
-        pathParams: "orgId=1&theme=light&panelId=25",
+        pathParams: "theme=light&panelId=25",
       },
       {
         title: "Output Bytes Taken by Downstream Operators",
-        pathParams: "orgId=1&theme=light&panelId=26",
+        pathParams: "theme=light&panelId=26",
       },
     ],
   },
@@ -278,31 +298,35 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Submitted Tasks",
-        pathParams: "orgId=1&theme=light&panelId=29",
+        pathParams: "theme=light&panelId=29",
       },
       {
         title: "Running Tasks",
-        pathParams: "orgId=1&theme=light&panelId=30",
+        pathParams: "theme=light&panelId=30",
       },
       {
         title: "Tasks with output blocks",
-        pathParams: "orgId=1&theme=light&panelId=31",
+        pathParams: "theme=light&panelId=31",
       },
       {
         title: "Finished Tasks",
-        pathParams: "orgId=1&theme=light&panelId=32",
+        pathParams: "theme=light&panelId=32",
       },
       {
         title: "Failed Tasks",
-        pathParams: "orgId=1&theme=light&panelId=33",
+        pathParams: "theme=light&panelId=33",
       },
       {
         title: "Block Generation Time",
-        pathParams: "orgId=1&theme=light&panelId=8",
+        pathParams: "theme=light&panelId=8",
       },
       {
         title: "Task Submission Backpressure Time",
-        pathParams: "orgId=1&theme=light&panelId=37",
+        pathParams: "theme=light&panelId=37",
+      },
+      {
+        title: "Task Completion Time",
+        pathParams: "theme=light&panelId=38",
       },
     ],
   },
@@ -311,31 +335,31 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Operator Internal Inqueue Size (Blocks)",
-        pathParams: "orgId=1&theme=light&panelId=13",
+        pathParams: "theme=light&panelId=13",
       },
       {
         title: "Operator Internal Inqueue Size (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=14",
+        pathParams: "theme=light&panelId=14",
       },
       {
         title: "Operator Internal Outqueue Size (Blocks)",
-        pathParams: "orgId=1&theme=light&panelId=15",
+        pathParams: "theme=light&panelId=15",
       },
       {
         title: "Operator Internal Outqueue Size (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=16",
+        pathParams: "theme=light&panelId=16",
       },
       {
         title: "Size of Blocks used in Pending Tasks (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=34",
+        pathParams: "theme=light&panelId=34",
       },
       {
         title: "Freed Memory in Object Store (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=35",
+        pathParams: "theme=light&panelId=35",
       },
       {
         title: "Spilled Memory in Object Store (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=36",
+        pathParams: "theme=light&panelId=36",
       },
     ],
   },
@@ -344,15 +368,15 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Iteration Initialization Time",
-        pathParams: "orgId=1&theme=light&panelId=12",
+        pathParams: "theme=light&panelId=12",
       },
       {
         title: "Iteration Blocked Time",
-        pathParams: "orgId=1&theme=light&panelId=9",
+        pathParams: "theme=light&panelId=9",
       },
       {
         title: "Iteration User Time",
-        pathParams: "orgId=1&theme=light&panelId=10",
+        pathParams: "theme=light&panelId=10",
       },
     ],
   },
@@ -364,12 +388,18 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
 ];
 
 export const Metrics = () => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    grafanaOrgId,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+  } = useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
 
+  const grafanaOrgIdParam = grafanaOrgId ?? "1";
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
@@ -453,7 +483,7 @@ export const Metrics = () => {
               >
                 <MenuItem
                   component="a"
-                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?var-datasource=${grafanaDefaultDatasource}`}
+                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -463,7 +493,7 @@ export const Metrics = () => {
                   <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
                     <MenuItem
                       component="a"
-                      href={`${grafanaHost}/d/${dashboardUids["data"]}/?var-datasource=${grafanaDefaultDatasource}`}
+                      href={`${grafanaHost}/d/${dashboardUids["data"]}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -534,6 +564,7 @@ export const Metrics = () => {
                 metricConfig={config}
                 refreshParams={refreshParams}
                 timeRangeParams={timeRangeParams}
+                grafanaOrgId={grafanaOrgIdParam}
                 dashboardUid={grafanaDefaultDashboardUid}
                 dashboardDatasource={grafanaDefaultDatasource}
               />
@@ -545,6 +576,7 @@ export const Metrics = () => {
                   metricConfig={config}
                   refreshParams={refreshParams}
                   timeRangeParams={timeRangeParams}
+                  grafanaOrgId={grafanaOrgIdParam}
                   dashboardUid={dashboardUids["data"]}
                   dashboardDatasource={grafanaDefaultDatasource}
                 />
@@ -560,6 +592,7 @@ type MetricsSectionProps = {
   metricConfig: MetricsSectionConfig;
   refreshParams: string;
   timeRangeParams: string;
+  grafanaOrgId: string;
   dashboardUid: string;
   dashboardDatasource: string;
 };
@@ -568,6 +601,7 @@ const MetricsSection = ({
   metricConfig: { title, contents },
   refreshParams,
   timeRangeParams,
+  grafanaOrgId,
   dashboardUid,
   dashboardDatasource,
 }: MetricsSectionProps) => {
@@ -592,7 +626,7 @@ const MetricsSection = ({
       >
         {contents.map(({ title, pathParams }) => {
           const path =
-            `/d-solo/${dashboardUid}?${pathParams}` +
+            `/d-solo/${dashboardUid}?${pathParams}&orgId=${grafanaOrgId}` +
             `&${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
           return (
             <Paper

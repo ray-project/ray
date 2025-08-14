@@ -4,13 +4,13 @@ import sys
 import tempfile
 from typing import List, Set
 
-import runfiles
 import pytest
+import runfiles
 import yaml
 
 from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
@@ -24,6 +24,7 @@ python/ray/llm/llm.py: lint llm
 python/ray/workflow/workflow.py: lint workflow
 python/ray/tune/tune.py: lint ml train tune linux_wheels
 python/ray/train/train.py: lint ml train linux_wheels
+python/ray/util/dask/dask.py: lint python dask
 .buildkite/ml.rayci.yml: lint ml train tune
 rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
@@ -42,10 +43,9 @@ python/_raylet.pyx:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint python accelerated_dag
+    - lint python compiled_graphs
 
 .buildkite/core.rayci.yml: lint python core_cpp
-.buildkite/serverless.rayci.yml: lint python
 java/ray.java: lint java
 .buildkite/others.rayci.yml: lint java
 cpp/ray.cc: lint cpp
@@ -55,10 +55,13 @@ docker/Dockerfile.ray: lint docker linux_wheels
 doc/code.py: lint doc
 doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
-doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
-ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
+.vale.ini: lint doc
+.vale/styles/config/vocabularies/Core/accept.txt: lint doc
+
 ci/docker/doctest.build.Dockerfile: lint
-release/requirements_buildkite.txt: lint release_tests
+release/requirements.txt: lint release_tests
+release/requirements_buildkite.txt: lint tools
+release/release_tests.yaml: lint tools
 ci/lint/lint.sh: lint tools
 .buildkite/lint.rayci.yml: lint tools
 .buildkite/macos.rayci.yml: lint macos_wheels
@@ -68,7 +71,7 @@ ci/ci.sh: lint tools
 
 src/ray.cpp:
     - lint core_cpp cpp java python
-    - linux_wheels macos_wheels dashboard release_tests accelerated_dag
+    - linux_wheels macos_wheels dashboard release_tests
 
 .github/CODEOWNERS: lint
 README.rst: lint

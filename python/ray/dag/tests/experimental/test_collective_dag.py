@@ -2,22 +2,98 @@
 import logging
 import os
 import sys
-import ray.experimental.collective as collective
-
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
 import pytest
+
+import ray
+import ray.experimental.collective as collective
 from ray.dag import InputNode, MultiOutputNode
+from ray.experimental.channel import CPUCommunicator
 from ray.experimental.collective.conftest import (
     AbstractNcclGroup,
     CPUTorchTensorWorker,
     check_nccl_group_init,
     check_nccl_group_teardown,
 )
+from ray.experimental.util.types import ReduceOp
 from ray.tests.conftest import *  # noqa
+
+if TYPE_CHECKING:
+    import cupy as cp
+    import torch
+
 
 logger = logging.getLogger(__name__)
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
+
+
+class MockCommunicator(CPUCommunicator):
+    """
+    Use a mock communicator to test the actor schedules.
+    """
+
+    def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
+        self._world_size = world_size
+        self._actor_handles = actor_handles
+
+    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+        raise NotImplementedError
+
+    def recv(
+        self,
+        shape: Tuple[int],
+        dtype: "torch.dtype",
+        peer_rank: int,
+        allocator: Optional[
+            Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
+        ] = None,
+    ) -> "torch.Tensor":
+        raise NotImplementedError
+
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        raise NotImplementedError
+
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        raise NotImplementedError
+
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        raise NotImplementedError
+
+    @property
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        raise NotImplementedError
+
+    @property
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        raise NotImplementedError
+
+    def destroy(self) -> None:
+        raise NotImplementedError
+
+
+@ray.remote
+class DDPWorker:
+    def __init__(self):
+        return
+
+    def backward(self, _):
+        return 0
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -33,16 +109,7 @@ def test_all_reduce_duplicate_actors(ray_start_regular):
         computes = [worker.return_tensor.bind(inp) for _ in range(2)]
         with pytest.raises(
             ValueError,
-            match="Expected unique actor handles for a collective operation",
-        ):
-            collective.allreduce.bind(computes)
-
-    with InputNode() as inp:
-        compute = worker.return_tensor.bind(inp)
-        computes = [compute for _ in range(2)]
-        with pytest.raises(
-            ValueError,
-            match="Expected unique input nodes for a collective operation",
+            match="Expected unique actor handles, but found duplicate actor handles from input nodes",
         ):
             collective.allreduce.bind(computes)
 
@@ -63,9 +130,109 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
         computes = [worker.return_tensor.bind(inp) for worker in workers]
         with pytest.raises(
             ValueError,
-            match="Expected actor handles to match the custom NCCL group",
+            match="Expected actor handles to match the custom communicator group",
         ):
             collective.allreduce.bind(computes, transport=nccl_group)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_duplicate_nodes(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to lists of nodes
+    that are duplicated.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    nccl_group = AbstractNcclGroup([workers[0]])
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp) for worker in workers]
+        computes_1 = [workers[0].return_tensor.bind(inp) for _ in range(2)]
+        with pytest.raises(
+            ValueError,
+            match="Expected unique actor handles at list at index",
+        ):
+            collective.allreduce.bind([computes_0, computes_1], transport=nccl_group)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_unequal_number_of_nodes(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to lists of nodes
+    of different number of nodes across actors.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    nccl_group = AbstractNcclGroup([workers[0]])
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp) for worker in workers]
+        computes_1 = [worker.return_tensor.bind(inp) for worker in workers[1:]]
+        with pytest.raises(
+            ValueError,
+            match="Expected all input lists to have the same number of nodes",
+        ):
+            collective.allreduce.bind([computes_0, computes_1], transport=nccl_group)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_different_actors(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to a list of nodes
+    from different set of actors.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 3
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    nccl_group = AbstractNcclGroup([workers[0]])
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp) for worker in workers[:2]]
+        computes_1 = [worker.return_tensor.bind(inp) for worker in workers[1:]]
+        with pytest.raises(
+            ValueError,
+            match="Expected all input lists to have the same set of actor handles",
+        ):
+            collective.allreduce.bind([computes_0, computes_1], transport=nccl_group)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_different_dtypes(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to a list of nodes
+    that execute with tensors of different dtypes.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 3
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    comm = MockCommunicator(num_workers, workers)
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp[0], inp[1]) for worker in workers]
+        computes_1 = [worker.return_tensor.bind(inp[0], inp[2]) for worker in workers]
+        collectives = collective.allreduce.bind(
+            [computes_0, computes_1], transport=comm
+        )
+        recvs = [
+            worker.recv_tensors.bind(*collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+    with pytest.raises(
+        ValueError,
+        match="Expected all input tensors to have the same dtype",
+    ):
+        import torch
+
+        ray.get(compiled_dag.execute(1, torch.float16, torch.float32))
 
 
 @pytest.mark.parametrize(
@@ -290,6 +457,36 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize("num_workers", [2, 4])
+def test_exec_schedules_ddp(ray_start_regular, num_workers):
+    """
+    Test the execution schedules for the DDP strategy. Each worker should have
+    identical schedules.
+    """
+    actor_cls = DDPWorker.options(num_cpus=1)
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+    comm = MockCommunicator(num_workers, workers)
+
+    outputs = []
+    with InputNode() as inp:
+        grads = [worker.backward.bind(inp) for worker in workers]
+        grads_reduced = collective.allreduce.bind(grads, transport=comm)
+        outputs.extend(grads_reduced)
+        grads = [worker.backward.bind(grad) for worker, grad in zip(workers, grads)]
+        grads_reduced = collective.allreduce.bind(grads, transport=comm)
+        outputs.extend(grads_reduced)
+        dag = MultiOutputNode(outputs)
+
+    compiled_dag = dag.experimental_compile(_default_communicator=comm)
+    actor_to_execution_schedule = list(
+        compiled_dag.actor_to_execution_schedule.values()
+    )
+    expected_schedule = actor_to_execution_schedule[0]
+    for schedule in actor_to_execution_schedule[1:]:
+        assert schedule == expected_schedule
 
 
 if __name__ == "__main__":

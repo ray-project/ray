@@ -1,8 +1,8 @@
 import logging
 from typing import Optional
 
+import ray._common.utils
 import ray._private.ray_constants as ray_constants
-
 import ray._private.utils as utils
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class ResourceIsolationConfig:
     Also, converts system_reserved_cpu into cpu.weights for cgroupv2.
 
     Raises:
-        ValueError on invalid inputs.
+        ValueError: On invalid inputs.
 
     Attributes:
         enable_resource_isolation: True if cgroupv2 based isolation of ray
@@ -105,7 +105,7 @@ class ResourceIsolationConfig:
             "multiple times."
         )
         self.system_reserved_memory += object_store_memory
-        available_system_memory = utils.get_system_memory()
+        available_system_memory = ray._common.utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
             raise ValueError(
                 f"The total requested system_reserved_memory={self.system_reserved_memory}, calculated by "
@@ -120,12 +120,15 @@ class ResourceIsolationConfig:
         """Returns the ray_constants.DEFAULT_CGROUP_PATH if cgroup_path is not
         specified. Checks the type of cgroup_path.
 
-        Raises:
-            ValueError if cgroup_path is not a string.
-
-        Attributes:
+        Args:
             cgroup_path: The path for the cgroup the raylet should use to enforce
                 resource isolation.
+
+        Returns:
+            str: The validated cgroup path.
+
+        Raises:
+            ValueError: If cgroup_path is not a string.
         """
         if not cgroup_path:
             cgroup_path = ray_constants.DEFAULT_CGROUP_PATH
@@ -147,13 +150,13 @@ class ResourceIsolationConfig:
         checks the type, makes sure that the value is in range, and converts it into cpu.weights
         for cgroupv2. See https://docs.kernel.org/admin-guide/cgroup-v2.html#weights for more information.
 
-        Raises:
-            ValueError if system_reserved_cpu is specified, but invalid.
-
-        Attributes:
+        Args:
             system_reserved_cpu: The amount of cores reserved for ray system
                 processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES
                 and < the total number of cores available.
+
+        Raises:
+            ValueError: If system_reserved_cpu is specified, but invalid.
         """
         available_system_cpus = utils.get_num_cpus()
 
@@ -207,15 +210,18 @@ class ResourceIsolationConfig:
         """If system_reserved_memory is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range.
 
-        Raises:
-            ValueError if system_reserved_memory is specified, but invalid.
-
-        Attributes:
+        Args:
             system_reserved_memory: The amount of memory in bytes reserved
                 for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
                 and < the total memory available.
+
+        Returns:
+            int: The validated system reserved memory in bytes.
+
+        Raises:
+            ValueError: If system_reserved_memory is specified, but invalid.
         """
-        available_system_memory = utils.get_system_memory()
+        available_system_memory = ray._common.utils.get_system_memory()
 
         if not system_reserved_memory:
             system_reserved_memory = int(

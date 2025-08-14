@@ -7,7 +7,9 @@ from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import ControllerError
 
 
 def block_import(import_name):
@@ -32,7 +34,7 @@ def test_captured_imports(ray_start_4_cpus):
         torch.ones(1)
 
     class AssertImportsCallback(ControllerCallback):
-        def after_controller_start(self):
+        def after_controller_start(self, train_run_context: TrainRunContext):
             # Check that torch is not imported in the controller process.
             # The train_fn should be deserialized directly on the workers.
             assert "torch" not in sys.modules
@@ -49,7 +51,7 @@ def test_deserialization_error(ray_start_4_cpus):
     """Test that train_fn deserialization errors are propagated properly.
 
     This test showcases a common deserialization error example, where
-    the the driver script successfully imports torch, but torch is not
+    the driver script successfully imports torch, but torch is not
     installed on the worker nodes.
     """
     import torch
@@ -68,7 +70,7 @@ def test_deserialization_error(ray_start_4_cpus):
         run_config=ray.train.RunConfig(callbacks=[BlockTorchImportCallback()]),
         scaling_config=ray.train.ScalingConfig(num_workers=2),
     )
-    with pytest.raises(ray.exceptions.RayTaskError, match="torch not installed"):
+    with pytest.raises(ControllerError, match="torch not installed on this node"):
         trainer.fit()
 
 

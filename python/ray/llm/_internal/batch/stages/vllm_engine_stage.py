@@ -8,10 +8,10 @@ import time
 import uuid
 from enum import Enum
 from functools import partial
-from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+from pydantic import BaseModel, Field, root_validator
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -21,15 +21,11 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
-    download_lora_adapter,
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
-from ray.llm._internal.utils import try_import
+from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-vllm = try_import("vllm")
-
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +97,8 @@ class vLLMOutputData(BaseModel):
             num_input_tokens=len(prompt_token_ids),
         )
 
+        import vllm
+
         if isinstance(output, vllm.outputs.RequestOutput):
             metrics = {}
             if output.metrics is not None:
@@ -157,11 +155,13 @@ class vLLMEngineWrapper:
         # Convert the task type back to a string to pass to the engine.
         kwargs["task"] = self.task_type.value
 
-        if vllm is None:
+        try:
+            import vllm
+        except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
-            )
+            ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
         if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
@@ -208,10 +208,10 @@ class vLLMEngineWrapper:
             or None if there is no LoRA. We use Any in type hint to
             pass doc build in the environment without vLLM.
         """
+        import vllm
+
         lora_request = None
         if "model" in row and row["model"] != self.model:
-            if self.vllm_use_v1:
-                raise ValueError("LoRA is only supported with vLLM v0")
 
             lora_name = row["model"]
             if lora_name not in self.lora_name_to_request:
@@ -267,12 +267,11 @@ class vLLMEngineWrapper:
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
+        import vllm
+
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                if self.vllm_use_v1:
-                    raise ValueError("Guided decoding is only supported with vLLM v0")
-
                 guided_decoding = vllm.sampling_params.GuidedDecodingParams(
                     **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
@@ -285,7 +284,7 @@ class vLLMEngineWrapper:
                 guided_decoding=guided_decoding,
             )
         elif self.task_type == vLLMTaskType.EMBED:
-            params = vllm.PoolingParams()
+            params = vllm.PoolingParams(task=self.task_type.value)
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
@@ -329,6 +328,8 @@ class vLLMEngineWrapper:
         Returns:
             The output of the request.
         """
+
+        import vllm
 
         if request.images:
             # FIXME: The latest vLLM does not support multi-modal inputs
@@ -380,6 +381,8 @@ class vLLMEngineWrapper:
         # in a separate process, the benefit of decoupling them in the Processor
         # may be limited.
         assert request.prompt
+        import vllm
+
         multi_modal_data = {"image": request.images} if request.images else None
         llm_prompt = vllm.inputs.data.TextPrompt(
             prompt=request.prompt, multi_modal_data=multi_modal_data
@@ -472,7 +475,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model=self.model,
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_stats=False,
             disable_log_requests=True,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
@@ -563,6 +565,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             len(batch),
             time_taken,
         )
+
+        # Log engine stats after each batch is done conditioned on the flag
+        # passed to the engine.
+        if not self.engine_kwargs.get("disable_log_stats", False):
+            await self.llm.engine.do_log_stats()
 
     def __del__(self):
         if hasattr(self, "llm"):

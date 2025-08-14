@@ -1,0 +1,7 @@
+ipykernel>=6.29.5
+ipywidgets>=8.1.6
+matplotlib==3.10.0
+mlflow==2.19.0
+# ray[data,serve,train]>=2.44.1  # Provided by Anyscale's base image.
+scikit-learn==1.6.0
+xgboost>=3.0.0

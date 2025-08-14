@@ -15,7 +15,32 @@ from ray.rllib.utils.test_utils import (
 )
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(enable_new_api_stack=True)
+
+parser.add_argument(
+    "--offline-evaluation-interval",
+    type=int,
+    default=1,
+    help=(
+        "The interval in which offline evaluation should run in relation "
+        "to training iterations, e.g. if 1 offline evaluation runs in each "
+        "iteration, if 3 it runs each 3rd training iteration."
+    ),
+)
+parser.add_argument(
+    "--num-offline-eval-runners",
+    type=int,
+    default=2,
+    help=("The number of offline evaluation runners to be used in offline evaluation."),
+)
+parser.add_argument(
+    "--num-gpus-per-offline-eval-runner",
+    type=float,
+    default=0.0,
+    help=(
+        "The number of GPUs to be used in offline evaluation per offline "
+        "evaluation runner. Can be fractional."
+    ),
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -54,7 +79,7 @@ config = (
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration. For single-learner mode, 1 is the only option.
+        # iteration.
         dataset_num_iters_per_learner=5,
     )
     .training(
@@ -72,7 +97,9 @@ config = (
         evaluation_interval=1,
         evaluation_parallel_to_training=False,
         offline_evaluation_interval=1,
-        num_offline_eval_runners=2,
+        offline_evaluation_type="eval_loss",
+        num_offline_eval_runners=args.num_offline_eval_runners,
+        num_gpus_per_offline_eval_runner=args.num_gpus_per_offline_eval_runner,
         offline_eval_batch_size_per_runner=128,
     )
 )

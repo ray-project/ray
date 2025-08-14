@@ -1,19 +1,20 @@
+from enum import Enum
+from typing import Literal
+
 from ray.core.generated.common_pb2 import (
-    TaskStatus,
-    TaskType,
-    WorkerExitType,
-    WorkerType,
     ErrorType,
     Language,
+    TaskStatus,
+    TaskType,
+    TensorTransport,
+    WorkerExitType,
+    WorkerType,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-
-from typing import Literal
-
 
 ACTOR_STATUS = [
     "DEPENDENCIES_UNREADY",
@@ -113,15 +114,31 @@ ERROR_TYPE = [
     "NODE_DIED",
     "END_OF_STREAMING_GENERATOR",
     "ACTOR_UNAVAILABLE",
+    "GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
+# See `common.proto` for more details.
+class TensorTransportEnum(Enum):
+    OBJECT_STORE = TensorTransport.Value("OBJECT_STORE")
+    NCCL = TensorTransport.Value("NCCL")
+    GLOO = TensorTransport.Value("GLOO")
+
+    @classmethod
+    def from_str(cls, name: str) -> "TensorTransportEnum":
+        name = name.upper()
+        if name not in cls.__members__:
+            raise ValueError(
+                f"Invalid tensor transport {name}, must be one of {list(cls.__members__.keys())}."
+            )
+        return cls[name]
+
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
-    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name)
+    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name.keys())
     # Sometimes, the grpc enum is mocked, and it
     # doesn't include any values in that case.
     if len(enum_vals) > 0:
@@ -145,3 +162,4 @@ validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
 validate_protobuf_enum(Language, LANGUAGE)
+validate_protobuf_enum(TensorTransport, list(TensorTransportEnum.__members__.keys()))

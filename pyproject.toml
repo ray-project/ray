@@ -45,3 +45,38 @@ avoid-escape = false
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder", "afterray"]
+known-local-folder = ["ray"]
+known-third-party = ["grpc"]
+
+[tool.ruff.lint.isort.sections]
+afterray = ["psutil", "setproctitle"]
+
+# Some of the directories need to be kept in the blacklist for isort ("I" rule):
+# python/ray/cloudpickle/*
+# doc/*
+# python/ray/__init__.py
+# python/ray/setup-dev.py
+# For the rest we will gradually remove them from the blacklist as we
+# reformat the code to follow the style guide.
+[tool.ruff.lint.per-file-ignores]
+"doc/*" = ["I"]
+"python/ray/__init__.py" = ["I"]
+"python/ray/setup-dev.py" = ["I"]
+"python/ray/cloudpickle/*" = ["I"]
+"python/ray/dag/*.py" = ["I"]
+"python/ray/includes/*" = ["I"]
+"python/ray/internal/*" = ["I"]
+"python/ray/ray_operator/*" = ["I"]
+"python/ray/scripts/*" = ["I"]
+"python/ray/serve/generated/serve_pb2.py" = ["I"]
+"python/ray/streaming/*" = ["I"]
+"python/ray/tests/*" = ["I"]
+"python/ray/util/*" = ["I"]
+"python/ray/workers/*" = ["I"]
+"python/ray/workflow/*" = ["I"]
+"rllib/*" = ["I"]
+"release/*" = ["I"]
+
+# TODO(matthewdeng): Remove this line
+"python/ray/tune/__init__.py" = ["I"]

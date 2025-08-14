@@ -12,6 +12,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
+from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -66,7 +67,13 @@ def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
         ),
     ],
 )
-def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_csv_read(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    target_max_block_size_infinite_or_default,
+):
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -102,7 +109,10 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     path3 = os.path.join(data_path, "test3.csv")
     df3.to_csv(path3, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(
-        [path1, path2, path3], override_num_blocks=2, filesystem=fs, partitioning=None
+        [path1, path2, path3],
+        override_num_blocks=2,
+        filesystem=fs,
+        partitioning=None,
     )
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
@@ -212,29 +222,6 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
-
-
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_csv_ignore_missing_paths(
-    ray_start_regular_shared, local_path, ignore_missing_paths
-):
-    # Single file.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(local_path, "test1.csv")
-    df1.to_csv(path1, index=False)
-
-    paths = [
-        path1,
-        "missing.csv",
-    ]
-
-    if ignore_missing_paths:
-        ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.input_files() == [path1]
-    else:
-        with pytest.raises(FileNotFoundError):
-            ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.materialize()
 
 
 @pytest.mark.parametrize(
@@ -650,76 +637,40 @@ def test_csv_read_partitioned_with_filter_multikey(
     assert_base_partitioned_ds(ds, num_input_files=6)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    # Single block.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_blocks([df1])
-    ds._set_uuid("data")
-    ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000_000000.csv")
-    assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
+def test_csv_write(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    input_df = pd.DataFrame({"id": [0]})
+    ds = ray.data.from_blocks([input_df])
 
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_blocks([df1, df2])
-    ds._set_uuid("data")
-    ds.write_csv(data_path, filesystem=fs)
-    file_path2 = os.path.join(data_path, "data_000001_000000.csv")
-    df = pd.concat([df1, df2])
-    ds_df = pd.concat(
+    ds.write_csv(tmp_path)
+
+    output_df = pd.concat(
         [
-            pd.read_csv(file_path, storage_options=storage_options),
-            pd.read_csv(file_path2, storage_options=storage_options),
+            pd.read_csv(os.path.join(tmp_path, filename))
+            for filename in os.listdir(tmp_path)
         ]
     )
-    assert df.equals(ds_df)
+    assert rows_same(input_df, output_df)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-    ],
-)
-def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
-    # Single block.
+@pytest.mark.parametrize("override_num_blocks", [None, 2])
+def test_csv_roundtrip(
+    ray_start_regular_shared,
+    tmp_path,
+    override_num_blocks,
+    target_max_block_size_infinite_or_default,
+):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df])
-    ds._set_uuid("data")
-    ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000_000000.csv")
-    ds2 = ray.data.read_csv([file_path], filesystem=fs)
-    ds2df = ds2.to_pandas()
-    assert ds2df.equals(df)
-    # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df, df2])
-    ds._set_uuid("data")
-    ds.write_csv(data_path, filesystem=fs)
-    ds2 = ray.data.read_csv(data_path, override_num_blocks=2, filesystem=fs)
+    ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)
+    ds.write_csv(tmp_path)
+
+    ds2 = ray.data.read_csv(tmp_path)
     ds2df = ds2.to_pandas()
-    assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
-    # Test metadata ops.
+    assert rows_same(ds2df, df)
     for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
 def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
@@ -809,7 +760,9 @@ def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path)
     Version(pa.__version__) < Version("7.0.0"),
     reason="invalid_row_handler was added in pyarrow 7.0.0",
 )
-def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
+def test_csv_invalid_file_handler(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
     from pyarrow import csv
 
     invalid_txt = "f1,f2\n2,3\nx\n4,5"
@@ -826,7 +779,12 @@ def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(
+    tmp_path,
+    ray_start_regular_shared,
+    min_rows_per_file,
+    target_max_block_size_infinite_or_default,
+):
     ray.data.range(100, override_num_blocks=20).write_csv(
         tmp_path, min_rows_per_file=min_rows_per_file
     )

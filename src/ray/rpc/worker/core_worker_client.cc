@@ -22,26 +22,24 @@ namespace ray {
 namespace rpc {
 
 CoreWorkerClient::CoreWorkerClient(
-    const rpc::Address &address,
+    rpc::Address address,
     ClientCallManager &client_call_manager,
     std::function<void()> core_worker_unavailable_timeout_callback)
-    : addr_(address) {
-  grpc_client_ = std::make_shared<GrpcClient<CoreWorkerService>>(
-      addr_.ip_address(), addr_.port(), client_call_manager);
-
-  retryable_grpc_client_ = RetryableGrpcClient::Create(
-      grpc_client_->Channel(),
-      client_call_manager.GetMainService(),
-      /*max_pending_requests_bytes=*/
-      std::numeric_limits<uint64_t>::max(),
-      /*check_channel_status_interval_milliseconds=*/
-      ::RayConfig::instance().grpc_client_check_connection_status_interval_milliseconds(),
-      /*server_unavailable_timeout_seconds=*/
-      ::RayConfig::instance().core_worker_rpc_server_reconnect_timeout_s(),
-      /*server_unavailable_timeout_callback=*/
-      core_worker_unavailable_timeout_callback,
-      /*server_name=*/"Core worker " + addr_.ip_address());
-}
+    : addr_(std::move(address)),
+      grpc_client_(std::make_shared<GrpcClient<CoreWorkerService>>(
+          addr_.ip_address(), addr_.port(), client_call_manager)),
+      retryable_grpc_client_(RetryableGrpcClient::Create(
+          grpc_client_->Channel(),
+          client_call_manager.GetMainService(),
+          /*max_pending_requests_bytes=*/std::numeric_limits<uint64_t>::max(),
+          /*check_channel_status_interval_milliseconds=*/
+          ::RayConfig::instance()
+              .grpc_client_check_connection_status_interval_milliseconds(),
+          /*server_unavailable_timeout_seconds=*/
+          ::RayConfig::instance().core_worker_rpc_server_reconnect_timeout_s(),
+          /*server_unavailable_timeout_callback=*/
+          std::move(core_worker_unavailable_timeout_callback),
+          /*server_name=*/"Core worker " + addr_.ip_address())) {}
 
 void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
                                      bool skip_queue,

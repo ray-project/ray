@@ -34,7 +34,6 @@ namespace gcs {
 
 GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
     : io_service_(io_service),
-      stats_counter_(),
       task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
@@ -381,6 +380,8 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 }
 
+namespace {
+
 template <typename T>
 bool apply_predicate(const T &lhs, rpc::FilterPredicate predicate, const T &rhs) {
   switch (predicate) {
@@ -411,6 +412,8 @@ bool apply_predicate_ignore_case(std::string_view lhs,
                                 rpc::FilterPredicate_Name(predicate));
   }
 }
+
+}  // namespace
 
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
@@ -607,7 +610,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  return;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
@@ -639,7 +641,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  auto data = std::move(request.data());
+  auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
@@ -648,6 +650,13 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   }
 
   // Processed all the task events
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
+                                     rpc::events::AddEventsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  // TODO(can-anyscale): Implement this.
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -683,7 +692,7 @@ void GcsTaskManager::RecordMetrics() {
 
   {
     absl::MutexLock lock(&mutex_);
-    if (usage_stats_client_) {
+    if (usage_stats_client_ != nullptr) {
       usage_stats_client_->RecordExtraUsageCounter(
           usage::TagKey::NUM_ACTOR_CREATION_TASKS, counters[kTotalNumActorCreationTask]);
       usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_ACTOR_TASKS,

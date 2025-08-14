@@ -43,6 +43,16 @@ message CpuProfilingReply {
   string output = 2;
 }
 
+message GpuProfilingRequest {
+  uint32 pid = 1;
+  optional uint32 num_iterations = 2;
+}
+
+message GpuProfilingReply {
+  bool success = 1;
+  string output = 2;
+}
+
 // Memory profiler request config
 message MemoryProfilingRequest {
   // process pid
@@ -79,6 +89,7 @@ service ReporterService {
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
   rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);
   rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
+  rpc GpuProfiling(GpuProfilingRequest) returns (GpuProfilingReply);
   rpc MemoryProfiling(MemoryProfilingRequest) returns (MemoryProfilingReply);
 }
 

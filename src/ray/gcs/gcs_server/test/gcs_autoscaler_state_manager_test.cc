@@ -32,6 +32,8 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
+#include "mock/ray/pubsub/subscriber.h"
+#include "mock/ray/rpc/worker/core_worker_client.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 // clang-format on
@@ -54,20 +56,21 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
   instrumented_io_context io_service_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::shared_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
-  std::unique_ptr<GcsFunctionManager> function_manager_;
+  std::unique_ptr<GCSFunctionManager> function_manager_;
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
@@ -76,11 +79,15 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         kRayletConfig,
         io_service_);
     function_manager_ =
-        std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
+        std::make_unique<GCSFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
-    gcs_actor_manager_ =
-        std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
+    worker_client_pool_ =
+        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
+          return std::make_shared<rpc::MockCoreWorkerClientInterface>();
+        });
+    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(
+        *runtime_env_manager_, *function_manager_, *worker_client_pool_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
@@ -134,6 +141,15 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   void CheckNodeLabels(const rpc::autoscaler::NodeState &node_state,
                        const std::unordered_map<std::string, std::string> &labels) {
+    ASSERT_EQ(node_state.labels_size(), labels.size());
+    for (const auto &label : labels) {
+      ASSERT_EQ(node_state.labels().at(label.first), label.second);
+    }
+  }
+
+  void CheckNodeDynamicLabels(
+      const rpc::autoscaler::NodeState &node_state,
+      const std::unordered_map<std::string, std::string> &labels) {
     ASSERT_EQ(node_state.dynamic_labels_size(), labels.size());
     for (const auto &label : labels) {
       ASSERT_EQ(node_state.dynamic_labels().at(label.first), label.second);
@@ -462,9 +478,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
 
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states_size(), 1);
-    CheckNodeLabels(state.node_states(0),
-                    {{FormatPlacementGroupLabelName(pg1.Hex()), ""},
-                     {FormatPlacementGroupLabelName(pg2.Hex()), ""}});
+    CheckNodeDynamicLabels(state.node_states(0),
+                           {{FormatPlacementGroupLabelName(pg1.Hex()), ""},
+                            {FormatPlacementGroupLabelName(pg2.Hex()), ""}});
   }
 }
 
@@ -488,11 +504,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
                         {Mocker::GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0),
+                                                   /* num_backlog */ 0,
+                                                   /* label_selectors */ {}),
                          Mocker::GenResourceDemand({{"CPU", 4}, {"GPU", 2}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
 
     const auto &state = GetClusterResourceStateSync();
     // Expect each pending resources shape to be num_infeasible + num_backlog.
@@ -880,20 +898,24 @@ TEST_F(GcsAutoscalerStateManagerTest,
                         {Mocker::GenResourceDemand({{"GPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0),
+                                                   /* num_backlog */ 0,
+                                                   /* label_selectors */ {}),
                          Mocker::GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1),
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {}),
                          Mocker::GenResourceDemand({{"CPU", 3}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
                         {Mocker::GenResourceDemand({{"CPU", 2}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
   }
 
   // Update autoscaling state
@@ -940,19 +962,23 @@ TEST_F(GcsAutoscalerStateManagerTest,
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
                                                    /* num_backlog */ 0),
+                         /* label_selectors */ {},
                          Mocker::GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
                                                    /* num_backlog */ 1),
+                         /* label_selectors */ {},
                          Mocker::GenResourceDemand({{"CPU", 3}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
                         {Mocker::GenResourceDemand({{"CPU", 2}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
   }
 
   // Update autoscaling state
@@ -992,6 +1018,137 @@ TEST_F(GcsAutoscalerStateManagerTest,
     RemoveNode(node_1);
     RemoveNode(node_2);
   }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestNodeLabelsAdded) {
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->set_instance_id("instance_1");
+  (*node->mutable_labels())["accelerator-type"] = "TPU";
+  (*node->mutable_labels())["region"] = "us-central1";
+  AddNode(node);
+
+  const auto &state = GetClusterResourceStateSync();
+  ASSERT_EQ(state.node_states_size(), 1);
+
+  CheckNodeLabels(state.node_states(0),
+                  {{"accelerator-type", "TPU"}, {"region", "us-central1"}});
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSelectors) {
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  // Add label selector to ResourceDemand
+  {
+    rpc::LabelSelector selector;
+
+    auto add_constraint = [&](const std::string &key,
+                              rpc::LabelSelectorOperator op,
+                              const std::string &value) {
+      auto *constraint = selector.add_label_constraints();
+      constraint->set_label_key(key);
+      constraint->set_operator_(op);
+      constraint->add_label_values(value);
+    };
+
+    add_constraint("accelerator-type", rpc::LABEL_OPERATOR_IN, "TPU");
+    add_constraint("node-group", rpc::LABEL_OPERATOR_NOT_IN, "gpu-group");
+    add_constraint("market-type", rpc::LABEL_OPERATOR_IN, "spot");
+    add_constraint("region", rpc::LABEL_OPERATOR_NOT_IN, "us-west4");
+
+    // Simulate an infeasible request with a label selector
+    UpdateResourceLoads(node->node_id(),
+                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                                                   /*ready=*/0,
+                                                   /*infeasible=*/1,
+                                                   /*backlog=*/0,
+                                                   {selector})});
+  }
+
+  // Validate the cluster state includes the generated pending request
+  {
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.pending_resource_requests_size(), 1);
+
+    const auto &req = state.pending_resource_requests(0);
+    ASSERT_EQ(req.count(), 1);
+    CheckResourceRequest(req.request(), {{"CPU", 2}});
+
+    std::unordered_map<std::string, std::pair<rpc::LabelSelectorOperator, std::string>>
+        expected_vals = {
+            {"accelerator-type", {rpc::LABEL_OPERATOR_IN, "TPU"}},
+            {"node-group", {rpc::LABEL_OPERATOR_NOT_IN, "gpu-group"}},
+            {"market-type", {rpc::LABEL_OPERATOR_IN, "spot"}},
+            {"region", {rpc::LABEL_OPERATOR_NOT_IN, "us-west4"}},
+        };
+
+    ASSERT_EQ(req.request().label_selectors_size(), 1);
+    const auto &parsed_selector = req.request().label_selectors(0);
+    ASSERT_EQ(parsed_selector.label_constraints_size(), expected_vals.size());
+
+    for (const auto &constraint : parsed_selector.label_constraints()) {
+      const auto it = expected_vals.find(constraint.label_key());
+      ASSERT_NE(it, expected_vals.end())
+          << "Unexpected label key: " << constraint.label_key();
+      ASSERT_EQ(constraint.operator_(), it->second.first);
+      ASSERT_EQ(constraint.label_values_size(), 1);
+      ASSERT_EQ(constraint.label_values(0), it->second.second);
+    }
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsWithBundleSelectors) {
+  rpc::PlacementGroupLoad load;
+
+  // Create PG with two bundles with different label selectors
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  auto *bundle1 = pg_data->add_bundles();
+  (*bundle1->mutable_unit_resources())["CPU"] = 2;
+  (*bundle1->mutable_unit_resources())["GPU"] = 1;
+  (*bundle1->mutable_label_selector())["accelerator"] = "in(A100,B200)";
+
+  auto *bundle2 = pg_data->add_bundles();
+  (*bundle2->mutable_unit_resources())["CPU"] = 4;
+  (*bundle2->mutable_label_selector())["accelerator"] = "!in(TPU)";
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &r1 = req.bundle_selectors(0).resource_requests(0);
+  const auto &r2 = req.bundle_selectors(0).resource_requests(1);
+
+  ASSERT_EQ(r1.label_selectors_size(), 1);
+  ASSERT_EQ(r2.label_selectors_size(), 1);
+
+  const auto &c1 = r1.label_selectors(0).label_constraints(0);
+  const auto &c2 = r2.label_selectors(0).label_constraints(0);
+
+  EXPECT_EQ(c1.label_key(), "accelerator");
+  EXPECT_EQ(c1.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  ASSERT_EQ(c1.label_values_size(), 2);
+  EXPECT_THAT(absl::flat_hash_set<std::string>(c1.label_values().begin(),
+                                               c1.label_values().end()),
+              ::testing::UnorderedElementsAre("A100", "B200"));
+
+  EXPECT_EQ(c2.label_key(), "accelerator");
+  EXPECT_EQ(c2.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
+  ASSERT_EQ(c2.label_values_size(), 1);
+  EXPECT_EQ(c2.label_values(0), "TPU");
 }
 
 }  // namespace gcs

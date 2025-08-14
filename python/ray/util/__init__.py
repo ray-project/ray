@@ -3,7 +3,7 @@ from typing import List
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.auto_init_hook import wrap_auto_init
-from ray._private.services import get_node_ip_address
+from ray._private.services import get_node_instance_id, get_node_ip_address
 from ray.util import iter
 from ray.util import rpdb as pdb
 from ray.util import debugpy as ray_debugpy
@@ -13,6 +13,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.check_serialize import inspect_serializability
 from ray.util.client_connect import connect, disconnect
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
+from ray.util.helpers import as_completed, map_unordered
 from ray.util.placement_group import (
     get_current_placement_group,
     get_placement_group,
@@ -52,6 +53,7 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
 __all__ = [
     "accelerators",
     "ActorPool",
+    "as_completed",
     "disable_log_once_globally",
     "enable_periodic_logging",
     "iter",
@@ -61,7 +63,9 @@ __all__ = [
     "placement_group_table",
     "get_placement_group",
     "get_current_placement_group",
+    "get_node_instance_id",
     "get_node_ip_address",
+    "map_unordered",
     "remove_placement_group",
     "ray_debugpy",
     "inspect_serializability",

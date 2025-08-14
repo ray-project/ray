@@ -83,6 +83,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
+   serve.config.AutoscalingPolicy
+   serve.config.RequestRouterConfig
 ```
 
 ### Schemas
@@ -99,6 +101,22 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
    serve.schema.EncodingType
+```
+
+### Request Router
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.request_router.ReplicaID
+   serve.request_router.PendingRequest
+   serve.request_router.RunningReplica
+   serve.request_router.FIFOMixin
+   serve.request_router.LocalityMixin
+   serve.request_router.MultiplexMixin
+   serve.request_router.RequestRouter
 ```
 
 #### Advanced APIs
@@ -448,22 +466,4 @@ Content-Type: application/json
 
    serve.llm.LLMServer
    serve.llm.LLMRouter
-```
-
-### OpenAI API Models
-
-```{eval-rst}
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-   :template: autosummary/autopydantic_show_json.rst
-
-   serve.llm.openai_api_models.ChatCompletionRequest
-   serve.llm.openai_api_models.CompletionRequest
-   serve.llm.openai_api_models.ChatCompletionStreamResponse
-   serve.llm.openai_api_models.ChatCompletionResponse
-   serve.llm.openai_api_models.CompletionStreamResponse
-   serve.llm.openai_api_models.CompletionResponse
-   serve.llm.openai_api_models.ErrorResponse
 ```

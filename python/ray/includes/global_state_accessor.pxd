@@ -100,7 +100,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
       RayConfig::instance().initialize(config_list);
 
-      instrumented_io_context io_service;
+      instrumented_io_context io_service{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);

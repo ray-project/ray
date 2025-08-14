@@ -56,7 +56,8 @@ class ReferenceCounterInterface {
       const int64_t object_size,
       bool is_reconstructable,
       bool add_local_ref,
-      const std::optional<NodeID> &pinned_at_raylet_id = std::optional<NodeID>()) = 0;
+      const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) = 0;
   virtual bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
@@ -82,13 +83,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ReferenceCounter(rpc::Address rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
-                   std::function<bool(const NodeID &node_id)> check_node_alive,
+                   std::function<bool(const NodeID &node_id)> is_node_dead,
                    bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        check_node_alive_(std::move(check_node_alive)) {}
+        is_node_dead_(std::move(is_node_dead)) {}
 
   ~ReferenceCounter() override = default;
 
@@ -187,17 +188,20 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
   /// This is used to ensure that the ref is considered in scope before the
   /// corresponding ObjectRef has been returned to the language frontend.
-  /// \param[in] pinned_at_raylet_id The primary location for the object, if it
+  /// \param[in] pinned_at_node_id The primary location for the object, if it
   /// is already known. This is only used for ray.put calls.
-  void AddOwnedObject(const ObjectID &object_id,
-                      const std::vector<ObjectID> &contained_ids,
-                      const rpc::Address &owner_address,
-                      const std::string &call_site,
-                      const int64_t object_size,
-                      bool is_reconstructable,
-                      bool add_local_ref,
-                      const std::optional<NodeID> &pinned_at_raylet_id =
-                          std::optional<NodeID>()) override ABSL_LOCKS_EXCLUDED(mutex_);
+  /// \param[in] tensor_transport The transport used for the object.
+  void AddOwnedObject(
+      const ObjectID &object_id,
+      const std::vector<ObjectID> &contained_ids,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const int64_t object_size,
+      bool is_reconstructable,
+      bool add_local_ref,
+      const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -440,8 +444,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Update the pinned location of an object stored in plasma.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] raylet_id The raylet that is now pinning the object ID.
-  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const NodeID &raylet_id)
+  /// \param[in] node_id The raylet that is now pinning the object ID.
+  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const NodeID &node_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Check whether the object is pinned at a remote plasma store node or
@@ -469,7 +473,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
-  void ResetObjectsOnRemovedNode(const NodeID &raylet_id);
+  void ResetObjectsOnRemovedNode(const NodeID &node_id);
 
   std::vector<ObjectID> FlushObjectsToRecover();
 
@@ -588,6 +592,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
+  /// Get the tensor transport for the given object.
+  std::optional<rpc::TensorTransport> GetTensorTransport(const ObjectID &object_id) const;
+
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
@@ -645,14 +652,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
               std::string call_site,
               int64_t object_size,
               bool is_reconstructable,
-              std::optional<NodeID> pinned_at_raylet_id)
+              std::optional<NodeID> pinned_at_node_id,
+              rpc::TensorTransport tensor_transport)
         : call_site(std::move(call_site)),
           object_size(object_size),
           owner_address(std::move(owner_address)),
-          pinned_at_raylet_id(std::move(pinned_at_raylet_id)),
+          pinned_at_node_id(std::move(pinned_at_node_id)),
+          tensor_transport(tensor_transport),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
-          pending_creation(!pinned_at_raylet_id.has_value()) {}
+          pending_creation(!pinned_at_node_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -761,7 +770,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
-    std::optional<NodeID> pinned_at_raylet_id;
+    std::optional<NodeID> pinned_at_node_id;
+    /// TODO(kevin85421): Make tensor_transport a required field for all constructors.
+    ///
+    /// The transport used for the object.
+    rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
@@ -839,14 +852,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
-  bool AddOwnedObjectInternal(const ObjectID &object_id,
-                              const std::vector<ObjectID> &contained_ids,
-                              const rpc::Address &owner_address,
-                              const std::string &call_site,
-                              const int64_t object_size,
-                              bool is_reconstructable,
-                              bool add_local_ref,
-                              const std::optional<NodeID> &pinned_at_raylet_id)
+  bool AddOwnedObjectInternal(
+      const ObjectID &object_id,
+      const std::vector<ObjectID> &contained_ids,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const int64_t object_size,
+      bool is_reconstructable,
+      bool add_local_ref,
+      const std::optional<NodeID> &pinned_at_node_id,
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
@@ -1082,10 +1097,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::flat_hash_map<ObjectID, std::list<ObjectID>::iterator>
       reconstructable_owned_objects_index_ ABSL_GUARDED_BY(mutex_);
 
-  /// Called to check whether a raylet is still alive. This is used when adding
-  /// the primary or spilled location of an object. If the node is dead, then
+  /// Called to check whether a raylet died. This is used when adding
+  /// the primary or spilled location of an object. If the node died, then
   /// the object will be added to the buffer objects to recover.
-  const std::function<bool(const NodeID &node_id)> check_node_alive_;
+  const std::function<bool(const NodeID &node_id)> is_node_dead_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

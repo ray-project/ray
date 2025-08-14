@@ -20,7 +20,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
@@ -76,6 +76,8 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   instrumented_io_context &io_context_;
   GcsPublisher &gcs_publisher_;
   UsageStatsClient *usage_stats_client_;
+
+  /// Only listens for unexpected worker deaths not expected like node death.
   std::vector<std::function<void(std::shared_ptr<rpc::WorkerTableData>)>>
       worker_dead_listeners_;
 
@@ -84,6 +86,14 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
 
   /// Tracks the number of occurences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
+
+  /// Ray metrics
+  ray::stats::Count ray_metric_unintentional_worker_failures_{
+      /*name=*/"unintentional_worker_failures_total",
+      /*description=*/
+      "Number of worker failures that are not intentional. For example, worker failures "
+      "due to system related errors.",
+      /*unit=*/""};
 };
 
 }  // namespace gcs

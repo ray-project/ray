@@ -38,6 +38,22 @@ py_test(
 )
 
 py_test(
+    name = "test_collective",
+    size = "small",
+    srcs = ["tests/test_collective.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_controller",
     size = "small",
     srcs = ["tests/test_controller.py"],
@@ -86,9 +102,41 @@ py_test(
 )
 
 py_test(
+    name = "test_env_callbacks",
+    size = "small",
+    srcs = ["tests/test_env_callbacks.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_failure_policy",
     size = "small",
     srcs = ["tests/test_failure_policy.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_jax_trainer",
+    size = "small",
+    srcs = ["tests/test_jax_trainer.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -425,6 +473,22 @@ py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_worker_group_poll_status",
+    size = "small",
+    srcs = ["tests/test_worker_group_poll_status.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",

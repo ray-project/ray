@@ -50,6 +50,10 @@ public class Constants {
 
   public static final Double DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30.0;
 
+  public static final Double DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S = 10.0;
+
+  public static final Double DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30.0;
+
   /** Default Serve application name */
   public static final String SERVE_DEFAULT_APP_NAME = "default";
 

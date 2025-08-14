@@ -22,6 +22,14 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
+// Configuration options for Serve's autoscaling policy
+message AutoscalingPolicy {
+  // Name of the policy function or the import path of the policy if user passed a string.
+  // Will be the concatenation of the policy module and the policy name if user passed a
+  // callable.
+  string name = 1;
+}
+
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
@@ -31,7 +39,10 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // The frequency of how long does each replica sending metrics to autoscaler.
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this will be replaced by the environment variables
+  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
+  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
   double metrics_interval_s = 3;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
@@ -58,9 +69,8 @@ message AutoscalingConfig {
   // The cloudpickled policy definition.
   bytes _serialized_policy_def = 11;
 
-  // The import path of the policy if user passed a string. Will be the concatenation
-  // of the policy module and the policy name if user passed a callable.
-  string _policy = 12;
+  // The autoscaling policy definition.
+  AutoscalingPolicy _policy = 12;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
@@ -90,6 +100,27 @@ message LoggingConfig {
 }
 
 //[End] Logging Config
+
+//[Begin] ROUTING CONFIG
+message RequestRouterConfig {
+  // Cloudpickled request router definition.
+  bytes _serialized_request_router_cls = 1;
+
+  // The import path of the request router if user passed a string. It's the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 2;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 3;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 4;
+
+  // kwargs which Ray Serve passes to the router class' initialize_state method.
+  bytes request_router_kwargs = 5;
+}
+//[End] ROUTING CONFIG
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -134,6 +165,9 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // The deployment's routing configuration.
+  RequestRouterConfig request_router_config = 19;
 }
 
 // Deployment language.
@@ -183,7 +217,7 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
-// Now Actor handle can be transfered across language through ray call, but the list of
+// Now Actor handle can be transferred across language through ray call, but the list of
 // Actor handles can't. So we use this message wrapped a Actor name list to pass actor
 // list across language. When Actor handle list supports across language, this message can
 // be replaced.

@@ -1,9 +1,9 @@
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
+from typing import List, Optional, Tuple
 
-from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,11 @@ amd_product_dict = {
     "0x7408": "AMD-Instinct-MI250X",
     "0x740c": "AMD-Instinct-MI250X-MI250",
     "0x740f": "AMD-Instinct-MI210",
+    "0x74a0": "AMD-Instinct-MI300A",
     "0x74a1": "AMD-Instinct-MI300X-OAM",
+    "0x74a2": "AMD-Instinct-MI308X-OAM",
+    "0x74a9": "AMD-Instinct-MI300X-HF",
+    "0x74a5": "AMD-Instinct-MI325X-OAM",
     "0x6798": "AMD-Radeon-R9-200-HD-7900",
     "0x6799": "AMD-Radeon-HD-7900",
     "0x679A": "AMD-Radeon-HD-7900",
@@ -32,21 +36,27 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
-        return HIP_VISIBLE_DEVICES_ENV_VAR
-
-    @staticmethod
-    def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        if "ROCR_VISIBLE_DEVICES" in os.environ:
+        if (
+            HIP_VISIBLE_DEVICES_ENV_VAR not in os.environ
+            and "ROCR_VISIBLE_DEVICES" in os.environ
+        ):
             raise RuntimeError(
                 f"Please use {HIP_VISIBLE_DEVICES_ENV_VAR} instead of ROCR_VISIBLE_DEVICES"
             )
 
-        hip_val = os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)
-        if cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None):
-            assert (
-                hip_val == cuda_val
-            ), f"Inconsistant values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
+        env_var = HIP_VISIBLE_DEVICES_ENV_VAR
+        if (cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)) is not None:
+            if (hip_val := os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)) is None:
+                env_var = CUDA_VISIBLE_DEVICES_ENV_VAR
+            elif hip_val != cuda_val:
+                raise ValueError(
+                    f"Inconsistant values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
+                )
 
+        return env_var
+
+    @staticmethod
+    def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
         amd_visible_devices = os.environ.get(
             AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
         )

@@ -29,7 +29,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -110,10 +110,6 @@ class LopsidedObs(gym.ObservationWrapper):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     # Register our environment with tune.
     if args.num_agents > 0:
         register_env(
@@ -128,9 +124,6 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("lopsided-pend")
         .env_runners(
-            # TODO (sven): MAEnvRunner does not support vectorized envs yet
-            #  due to gym's env checkers and non-compatability with RLlib's
-            #  MultiAgentEnv API.
             num_envs_per_env_runner=1 if args.num_agents > 0 else 20,
             # Define a single connector piece to be prepended to the env-to-module
             # connector pipeline.
@@ -140,7 +133,9 @@ if __name__ == "__main__":
             env_to_module_connector=(
                 None
                 if args.disable_mean_std_filter
-                else lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
+                else lambda env, spaces, device: (
+                    MeanStdFilter(multi_agent=args.num_agents > 0)
+                )
             ),
         )
         .training(

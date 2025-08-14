@@ -62,7 +62,7 @@ message ActorHandle {
   string ray_namespace = 11;
 
   // Whether the actor supports out of order execution.
-  bool execute_out_of_order = 12;
+  bool allow_out_of_order_execution = 12;
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
@@ -83,7 +83,13 @@ message PushTaskRequest {
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
-  // If set to -1, ordering is disabled and the task executes immediately.
+  //
+  // The server will wait up to a configured timeout for the expected sequential
+  // sequence number to arrive if they come out of order. After the timeout, the
+  // server will assume the client is dead or misbehaving and cancel all pending tasks.
+  //
+  // If set to -1, ordering is disabled and the task executes once its
+  // dependencies are resolved.
   int64 sequence_number = 3;
   // The maximum sequence number for which the client has processed responses.
   // This is useful in the following example:
@@ -415,6 +421,12 @@ message NumPendingTasksReply {
   int64 num_pending_tasks = 1;
 }
 
+message FreeActorObjectRequest {
+  bytes object_id = 1;
+}
+
+message FreeActorObjectReply {}
+
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
@@ -455,65 +467,129 @@ message RegisterMutableObjectReaderReply {
 }
 
 service CoreWorkerService {
-  // Notify core worker GCS has restarted.
+  // Raylet notifies its workers that the GCS has restarted.
+  // Failure: Always from local raylet, should not fail.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
       returns (RayletNotifyGCSRestartReply);
-  // Push a task directly to this worker from another.
+
+  // Push a task directly to this worker from another or from GCS with
+  // gcs_actor_scheduling_enabled.
+  // Failure: PushActorTask, PushNormalTask, and PushNormalTask from GCS all handle
+  // failures. TODO: Failure behavior needs to be documented and tested.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+
   // Reply from raylet that wait for actor call args has completed.
+  // Failure: Always from local raylet, should not fail.
   rpc ActorCallArgWaitComplete(ActorCallArgWaitCompleteRequest)
       returns (ActorCallArgWaitCompleteReply);
-  // Ask the object's owner about the object's current status.
+
+  // A worker asks the object's owner worker about the object's current status.
+  // This RPC assumes the ref won't be removed in the middle of execution and it's the
+  // caller's responsibility to guarantee that.
+  // Failure: Retries, it's idempotent.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
-  // Wait for the actor's owner to decide that the actor has no references.
+
+  // From GCS actor manager to the actor's owner.
+  // Waits for the actor's owner to decide that the actor has no references.
   // Replying to this message indicates that the client should force-kill the
   // actor process, if still alive and mark the actor as permanently dead.
+  // Failure: TODO, needs better failure behavior, currently assumes worker failed and
+  // GCS continues to destroy actor regardless of success or failure.
   rpc WaitForActorRefDeleted(WaitForActorRefDeletedRequest)
       returns (WaitForActorRefDeletedReply);
+
   /// The long polling request sent to the core worker for pubsub operations.
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
+  /// Failure: Pubsub system handles failures. TODO: all clients need subscribe failure
+  /// callbacks
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
-  // The RPC to report the intermediate task return to the caller.
+
+  // The RPC to report the intermediate task return from the executor worker to the owner
+  // worker.
+  // Failure: Handles failures, TODO: Failure behavior needs more tests.
   rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
       returns (ReportGeneratorItemReturnsReply);
-  /// The pubsub command batch request used by the subscriber.
+
+  // The pubsub command batch request used by the subscriber.
+  // Subscribe / unsubscribe commands to the publisher worker.
+  // Failure: TODO: Does not handle failures.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+
   // Update the batched object location information to the ownership-based object
   // directory.
+  // Failure: Retries, it's idempotent. TODO: Add idempotency unit tests to assure it
+  // stays idempotent.
   rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
       returns (UpdateObjectLocationBatchReply);
-  // Get object locations from the ownership-based object directory.
+
+  // Get object locations from the the owner worker.
+  // Failure: TODO: Idempotent, should retry.
   rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
       returns (GetObjectLocationsOwnerReply);
-  // Request that the worker shut down without completing outstanding work.
+
+  // Request from the GCS actor manager or actor scheduler that the worker shut down
+  // without completing outstanding work.
+  // Failure: TODO: Never retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
-  // Request that a worker cancels a task.
+
+  // Request from owner worker to executor worker to cancel a task.
+  // Failure: Will retry, TODO: Needs tests for failure behavior.
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
-  // Request for a worker to issue a cancellation.
+
+  // Request from a worker to the owner worker to issue a cancellation.
+  // Failure: TODO: needs failure behavior
   rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
-  // Get metrics from core workers.
+
+  // From raylet to get metrics from its workers.
+  // Failure: Should not fail, always from local raylet.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
-  // Trigger local GC on the worker.
+
+  // From raylet to trigger local GC on its workers.
+  // Failure: Should not fail, always from local raylet.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
-  // Delete objects explicitly.
+
+  // From worker to owner worker to delete objects explicitly.
+  // Failure: TODO: Needs failure behavior.
   rpc DeleteObjects(DeleteObjectsRequest) returns (DeleteObjectsReply);
+
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
+  // Failure: Should not fail, always from local raylet.
   rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
-  // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
+
+  // Restore spilled objects from external storage. Caller: raylet; callee: I/O
+  // worker.
+  // Failure: Should not fail, always from local raylet.
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
+
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  // Failure: Should not fail, always from local raylet.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
+
   // Notification from raylet that an object ID is available in local plasma.
+  // Failure: Should not fail, always from local raylet.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
-  // Request for a worker to exit.
+
+  // Request for a worker to exit from its raylet.
+  // Failure: Should not fail, always from local raylet.
   rpc Exit(ExitRequest) returns (ExitReply);
+
   // Assign the owner of an object to the intended worker.
+  // Failure: TODO: Needs failure behavior.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
-  // Get the number of pending tasks.
+
+  // From gcs job manager to get the number of pending tasks.
+  // Failure: Logs a warning on failure, gcs request can be retried by dashboard or state
+  // API user.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+
+  // Free GPU object from in-actor GPU object store.
+  rpc FreeActorObject(FreeActorObjectRequest) returns (FreeActorObjectReply);
+
+  // Registers a mutable object reader for compiled graphs.
+  // Failure: TODO: Needs failure behavior.
   rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
       returns (RegisterMutableObjectReaderReply);
 }

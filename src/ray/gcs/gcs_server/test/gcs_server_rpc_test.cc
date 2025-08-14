@@ -21,7 +21,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
 
 namespace ray {
 
@@ -55,7 +55,7 @@ class GcsServerTest : public ::testing::Test {
     }
 
     // Create gcs rpc client
-    client_call_manager_.reset(new rpc::ClientCallManager(io_service_));
+    client_call_manager_.reset(new rpc::ClientCallManager(io_service_, false));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
   }
@@ -337,20 +337,21 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     ASSERT_EQ(reply.total(), 3);
   }
   {
-    // Get by node id
+    // Get 2 by node id
     rpc::GetAllNodeInfoRequest request;
-    request.mutable_filters()->set_node_id(node1->node_id());
+    request.add_node_selectors()->set_node_id(node1->node_id());
+    request.add_node_selectors()->set_node_id(node2->node_id());
     rpc::GetAllNodeInfoReply reply;
     RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
 
-    ASSERT_EQ(reply.node_info_list_size(), 1);
-    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
     ASSERT_EQ(reply.total(), 3);
   }
   {
     // Get by state == ALIVE
     rpc::GetAllNodeInfoRequest request;
-    request.mutable_filters()->set_state(rpc::GcsNodeInfo::ALIVE);
+    request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
     rpc::GetAllNodeInfoReply reply;
     RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
 
@@ -362,7 +363,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
   {
     // Get by state == DEAD
     rpc::GetAllNodeInfoRequest request;
-    request.mutable_filters()->set_state(rpc::GcsNodeInfo::DEAD);
+    request.set_state_filter(rpc::GcsNodeInfo::DEAD);
     rpc::GetAllNodeInfoReply reply;
     RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
 
@@ -372,24 +373,64 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
   }
 
   {
-    // Get by node_name
+    // Get 2 by node_name
     rpc::GetAllNodeInfoRequest request;
-    request.mutable_filters()->set_node_name("node1");
+    request.add_node_selectors()->set_node_name("node1");
+    request.add_node_selectors()->set_node_name("node2");
     rpc::GetAllNodeInfoReply reply;
     RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
 
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get 2 by node_ip_address
+    rpc::GetAllNodeInfoRequest request;
+    request.add_node_selectors()->set_node_ip_address("127.0.0.1");
+    request.add_node_selectors()->set_node_ip_address("127.0.0.2");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get 2 by node_id and node_name
+    rpc::GetAllNodeInfoRequest request;
+    request.add_node_selectors()->set_node_id(node1->node_id());
+    request.add_node_selectors()->set_node_name("node2");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by node_id and state filter
+    rpc::GetAllNodeInfoRequest request;
+    request.add_node_selectors()->set_node_id(node1->node_id());
+    request.add_node_selectors()->set_node_id(node3->node_id());
+    request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);
   }
 
   {
-    // Get by node_ip_address
+    // Get by node_id, node_name and state filter
     rpc::GetAllNodeInfoRequest request;
-    request.mutable_filters()->set_node_ip_address("127.0.0.1");
+    request.add_node_selectors()->set_node_id(node1->node_id());
+    request.add_node_selectors()->set_node_name("node3");
+    request.set_state_filter(rpc::GcsNodeInfo::DEAD);
     rpc::GetAllNodeInfoReply reply;
     RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
-
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);

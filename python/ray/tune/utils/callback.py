@@ -1,8 +1,10 @@
+import importlib
 import logging
 import os
 from typing import TYPE_CHECKING, Collection, List, Optional, Type, Union
 
 from ray.tune.callback import Callback, CallbackList
+from ray.tune.constants import RAY_TUNE_CALLBACKS_ENV_VAR
 from ray.tune.logger import (
     CSVLogger,
     CSVLoggerCallback,
@@ -68,6 +70,11 @@ def _create_default_callbacks(
 
     """
     callbacks = callbacks or []
+
+    # Initialize callbacks from environment variable
+    env_callbacks = _initialize_env_callbacks()
+    callbacks.extend(env_callbacks)
+
     has_csv_logger = False
     has_json_logger = False
     has_tbx_logger = False
@@ -139,5 +146,38 @@ def _create_default_callbacks(
                     "installed. Please make sure you have the latest version "
                     "of TensorboardX installed: `pip install -U tensorboardx`"
                 )
+
+    return callbacks
+
+
+def _initialize_env_callbacks() -> List[Callback]:
+    """Initialize callbacks from environment variable.
+
+    Returns:
+        List of callbacks initialized from environment variable.
+    """
+    callbacks = []
+    callbacks_str = os.environ.get(RAY_TUNE_CALLBACKS_ENV_VAR, "")
+    if not callbacks_str:
+        return callbacks
+
+    for callback_path in callbacks_str.split(","):
+        callback_path = callback_path.strip()
+        if not callback_path:
+            continue
+
+        try:
+            module_path, class_name = callback_path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            callback_cls = getattr(module, class_name)
+            if not issubclass(callback_cls, Callback):
+                raise TypeError(
+                    f"Callback class '{callback_path}' must be a subclass of "
+                    f"Callback, got {type(callback_cls).__name__}"
+                )
+            callback = callback_cls()
+            callbacks.append(callback)
+        except (ImportError, AttributeError, ValueError, TypeError) as e:
+            raise ValueError(f"Failed to import callback from '{callback_path}'") from e
 
     return callbacks

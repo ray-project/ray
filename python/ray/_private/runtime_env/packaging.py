@@ -1,9 +1,9 @@
-import time
 import asyncio
 import hashlib
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -11,23 +11,24 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
-from ray.util.annotations import DeveloperAPI
 
+from ray._private.path_utils import is_path
 from ray._private.ray_constants import (
+    GRPC_CPP_MAX_MESSAGE_SIZE,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
-    GRPC_CPP_MAX_MESSAGE_SIZE,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.protocol import Protocol
 from ray._private.thirdparty.pathspec import PathSpec
+from ray._raylet import GcsClient
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
     _internal_kv_put,
     _pin_runtime_env_uri,
 )
-from ray._raylet import GcsClient
+from ray.util.annotations import DeveloperAPI
 
 default_logger = logging.getLogger(__name__)
 
@@ -186,12 +187,6 @@ def _hash_directory(
     return hash_val
 
 
-def is_path(uri_or_path: str) -> bool:
-    """Returns True if uri_or_path is a URI and False otherwise."""
-    parsed = urlparse(uri_or_path)
-    return not parsed.scheme
-
-
 def parse_path(pkg_path: str) -> None:
     """Parse the path to check it is well-formed and exists."""
     path = Path(pkg_path)
@@ -214,6 +209,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
     """
+    if is_path(pkg_uri):
+        raise ValueError(f"Expected URI but received path {pkg_uri}")
+
     uri = urlparse(pkg_uri)
     try:
         protocol = Protocol(uri.scheme)
@@ -497,7 +495,7 @@ def get_uri_for_file(file: str) -> str:
         URI (str)
 
     Raises:
-        ValueError if the file doesn't exist.
+        ValueError: If the file doesn't exist.
     """
     filepath = Path(file).absolute()
     if not filepath.exists() or not filepath.is_file():
@@ -532,7 +530,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         URI (str)
 
     Raises:
-        ValueError if the directory doesn't exist.
+        ValueError: If the directory doesn't exist.
     """
     if excludes is None:
         excludes = []
@@ -956,12 +954,16 @@ async def install_wheel_package(
         # TODO(architkulkarni): Use `await check_output_cmd` or similar.
         exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
     finally:
-        if Path(wheel_uri).exists():
-            Path(wheel_uri).unlink()
+        wheel_uri_path = Path(wheel_uri)
+        if wheel_uri_path.exists():
+            if wheel_uri_path.is_dir():
+                shutil.rmtree(wheel_uri)
+            else:
+                Path(wheel_uri).unlink()
 
         if exit_code != 0:
             if Path(target_dir).exists():
-                Path(target_dir).unlink()
+                shutil.rmtree(target_dir)
             raise RuntimeError(
                 f"Failed to install py_modules wheel {wheel_uri}"
                 f"to {target_dir}:\n{output}"

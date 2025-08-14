@@ -16,12 +16,16 @@
 
 #include <list>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -35,8 +39,16 @@ class CoreWorkerClientPool {
   explicit CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
       : core_worker_client_factory_(std::move(client_factory)){};
 
+  /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
+  /// core worker.
+  static std::function<void()> GetDefaultUnavailableTimeoutCallback(
+      gcs::GcsClient *gcs_client,
+      rpc::CoreWorkerClientPool *worker_client_pool,
+      rpc::RayletClientPool *raylet_client_pool,
+      const rpc::Address &addr);
+
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
-  /// if it does not. The returned pointer is borrowed, and expected to be used
+  /// if it does not. The returned pointer is expected to be used
   /// briefly.
   std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
@@ -45,14 +57,14 @@ class CoreWorkerClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::WorkerID id);
 
-  /// For testing.
-  size_t Size() {
-    absl::MutexLock lock(&mu_);
-    RAY_CHECK_EQ(client_list_.size(), client_map_.size());
-    return client_list_.size();
-  }
+  /// Removes connections to all workers on a node.
+  void Disconnect(ray::NodeID node_id);
 
  private:
+  friend void AssertID(WorkerID worker_id,
+                       CoreWorkerClientPool &client_pool,
+                       bool contains);
+
   /// Try to remove some idle clients to free memory.
   /// It doesn't go through the entire list and remove all idle clients.
   /// Instead, it tries to remove idle clients from the end of the list
@@ -60,6 +72,10 @@ class CoreWorkerClientPool {
   /// However, it's guaranteed that all idle clients will eventually be
   /// removed as long as the method will be called repeatedly.
   void RemoveIdleClients() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Erases a single entry from node_clients_map_.
+  void EraseFromNodeClientMap(const NodeID &node_id, const WorkerID &worker_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// This factory function does the connection to CoreWorkerClient, and is
   /// provided by the constructor (either the default implementation, above, or a
@@ -70,23 +86,34 @@ class CoreWorkerClientPool {
 
   struct CoreWorkerClientEntry {
    public:
-    CoreWorkerClientEntry() {}
-    CoreWorkerClientEntry(ray::WorkerID worker_id,
+    CoreWorkerClientEntry() = default;
+    CoreWorkerClientEntry(WorkerID worker_id,
+                          NodeID node_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
         : worker_id(std::move(worker_id)),
+          node_id(std::move(node_id)),
           core_worker_client(std::move(core_worker_client)) {}
 
-    ray::WorkerID worker_id;
+    WorkerID worker_id;
+    NodeID node_id;
     std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
   };
 
   /// A list of open connections from the most recent accessed to the least recent
   /// accessed. This is used to check and remove idle connections.
   std::list<CoreWorkerClientEntry> client_list_ ABSL_GUARDED_BY(mu_);
+
+  using WorkerIdClientMap =
+      absl::flat_hash_map<WorkerID, std::list<CoreWorkerClientEntry>::iterator>;
+
   /// A pool of open connections by WorkerID. Clients can reuse the connection
   /// objects in this pool by requesting them.
-  absl::flat_hash_map<ray::WorkerID, std::list<CoreWorkerClientEntry>::iterator>
-      client_map_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<WorkerID, std::list<CoreWorkerClientEntry>::iterator>
+      worker_client_map_ ABSL_GUARDED_BY(mu_);
+
+  /// Map from NodeID to map of workerid -> client iterators. Used to disconnect all
+  /// workers on a node.
+  absl::flat_hash_map<NodeID, WorkerIdClientMap> node_clients_map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace rpc

@@ -76,7 +76,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         # Raise an Error, if the provided config is not a multi-agent one.
         if not self.config.is_multi_agent:
@@ -87,9 +87,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 "policy_mapping_fn=...)`."
             )
 
-        # Get the worker index on which this instance is running.
-        self.worker_index: int = kwargs.get("worker_index")
-        self.tune_trial_id: str = kwargs.get("tune_trial_id")
         self.spaces = kwargs.get("spaces", {})
 
         self._setup_metrics()
@@ -287,10 +284,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self._needs_initial_reset = True
 
         # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
-        ts = 0
+        env_ts = 0
+        agent_ts = 0
         eps = 0
         while (
-            (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
+            (eps < num_episodes)
+            if num_timesteps is None
+            else (
+                env_ts < num_timesteps
+                if self.config.count_steps_by == "env_steps"
+                else agent_ts < num_timesteps
+            )
         ):
             # Act randomly.
             if random_actions:
@@ -321,7 +325,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         # count times the number of env runners in the algo.
                         global_env_steps_lifetime = (
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                            + ts
+                            + env_ts
                         ) * (self.config.num_env_runners or 1)
                         with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
                             to_env = self.module.forward_exploration(
@@ -406,9 +410,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     )
                     # Only increase ts when we actually stepped (not reset'd as a reset
                     # does not count as a timestep).
-                    ts += self._increase_sampled_metrics(
+                    env_ts += self._increase_sampled_metrics(
                         1, observations[env_index], episodes[env_index]
                     )
+                    agent_ts += len(observations[env_index])
 
             done_episodes_to_run_env_to_module = []
             for env_index in range(self.num_envs):
@@ -545,7 +550,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        observations, infos = self._try_env_reset()
+        observations, infos = self._try_env_reset(
+            # Only seed (if seed provided) upon initial reset.
+            seed=self._seed if self._needs_initial_reset else None,
+            # TODO (sven): Support options?
+            options=None,
+        )
 
         # Set the initial obs and infos in the episodes.
         for env_index in range(self.num_envs):

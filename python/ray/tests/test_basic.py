@@ -3,15 +3,17 @@ import logging
 import os
 import pickle
 import random
+import re
 import sys
 import time
 
 import pytest
 
 import ray
+import psutil
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     client_test_enabled,
     run_string_as_driver,
 )
@@ -89,15 +91,11 @@ def test_release_cpu_resources(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
-    # This test fails with the flag set to false.
-    ray.init(
-        num_cpus=2,
-        object_store_memory=700e6,
-        _system_config={"inline_object_status_in_refs": True},
-    )
+    ray.init(num_cpus=2)
+
     refs = []
     for _ in range(10):
-        refs.append(ray.put(bytearray(20 * 1024 * 1024)))
+        refs.append(ray.put(bytearray(1024 * 1024)))
 
     @ray.remote
     def consume(refs):
@@ -105,7 +103,7 @@ def test_release_resources_race(shutdown_only):
         ray.get(refs)
         return os.getpid()
 
-    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    pids = set(ray.get([consume.remote(refs) for _ in range(10)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
 
@@ -235,10 +233,44 @@ def test_default_worker_import_dependency(shutdown_only):
     ray.get(f.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="Windows/OSX thread count not policed yet."
+)
+def test_worker_thread_count(monkeypatch, shutdown_only):
+    """This test will fail if the number of threads spawned by a worker process
+    increases. If you find that a patch is now causing this test to fail,
+    consider if this thread count change is expected and adjust the test
+    (or your patch) accordingly!
+    """
+
+    @ray.remote
+    class Actor:
+        def get_thread_count(self):
+            try:
+                process = psutil.Process(os.getpid())
+                return process.num_threads()
+            except ImportError:
+                return None
+
+    # Set the environment variables used by the raylet and worker
+    monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
+    monkeypatch.setenv("RAY_num_server_call_thread", "1")
+
+    # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
+    # test unnecessarily. We should only need to call the assert after
+    # a single call to the worker.  However, because the thread count
+    # per worker today isn't entirely static, we need to allow for this
+    # flexibility.  https://github.com/ray-project/ray/issues/55215
+    actor = Actor.remote()
+    for _ in range(5):
+        ray.get(actor.get_thread_count.remote())
+    # Lowering these numbers in this assert should be celebrated,
+    # increasing these numbers should be scrutinized
+    assert ray.get(actor.get_thread_count.remote()) in {24, 25}
+
+
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
-    import os
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -381,8 +413,6 @@ def test_submit_api(shutdown_only):
 
 
 def test_invalid_arguments():
-    import re
-
     def f():
         return 1
 
@@ -473,9 +503,7 @@ def test_invalid_arguments():
 
 def test_options():
     """General test of option keywords in Ray."""
-    import re
-
-    from ray._private import ray_option_utils
+    from ray._common import ray_option_utils
 
     def f():
         return 1
@@ -1186,7 +1214,4 @@ def test_import_ray_does_not_import_grpc():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

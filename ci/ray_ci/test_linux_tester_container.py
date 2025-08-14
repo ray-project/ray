@@ -2,17 +2,17 @@ import json
 import os
 import platform
 import sys
-import pytest
 import tempfile
-from unittest import mock
 from typing import List, Optional
+from unittest import mock
 
+import pytest
+from ray_release.configs.global_config import get_global_config
+
+from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import RUN_PER_FLAKY_TEST
 from ci.ray_ci.utils import chunk_into_n, ci_init
-from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
-from ray_release.configs.global_config import get_global_config
-
 
 ci_init()
 
@@ -104,7 +104,8 @@ def test_run_tests_in_docker() -> None:
             "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
             "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
         )
-        assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " not in input_str
+        if RUN_PER_FLAKY_TEST > 1:
+            assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " not in input_str
 
         LinuxTesterContainer("team")._run_tests_in_docker(
             ["t1", "t2"], [], "/tmp", ["v=k"], run_flaky_tests=True
@@ -112,7 +113,9 @@ def test_run_tests_in_docker() -> None:
         input_str = inputs[-1]
         assert "--env BUILDKITE_BUILD_URL" in input_str
         assert "--gpus" not in input_str
-        assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " in input_str
+
+        if RUN_PER_FLAKY_TEST > 1:
+            assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " in input_str
 
         LinuxTesterContainer("team")._run_tests_in_docker(
             ["t1", "t2"], [], "/tmp", ["v=k"], cache_test_results=True

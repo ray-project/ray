@@ -30,7 +30,7 @@ setup(
         "pydantic >= 2.5.0",
         "PyGithub",
         "requests",
-        "twine == 5.0.0",
+        "twine == 6.1.0",
         "docker >= 7.1.0",
     ],
 )

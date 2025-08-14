@@ -1,19 +1,18 @@
-import sys
-import pytest
 import asyncio
+import os
+import sys
+import tempfile
+from unittest.mock import ANY, MagicMock, call, patch
+
+import pyarrow.fs as pa_fs
+import pytest
+from pytest import raises
+
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
     CloudObjectCache,
     remote_object_cache,
 )
-
-
-import tempfile
-import os
-from unittest.mock import MagicMock, patch, ANY, call
-
-import pyarrow.fs as pa_fs
-from pytest import raises
 
 
 class MockSyncFetcher:
@@ -361,6 +360,19 @@ class TestCloudFileSystem:
         # Test listing subfolders
         folders = CloudFileSystem.list_subfolders("gs://bucket/parent")
         assert sorted(folders) == ["dir1", "dir2"]
+
+    @patch("ray.llm._internal.common.utils.cloud_utils.CloudFileSystem.get_fs_and_path")
+    def test_list_subfolders_exception_handling(self, mock_get_fs_and_path):
+        """Test that list_subfolders returns empty list when get_fs_and_path raises exception."""
+        # Make get_fs_and_path raise an exception
+        mock_get_fs_and_path.side_effect = ValueError("Example exception")
+
+        # Test that list_subfolders handles the exception gracefully
+        folders = CloudFileSystem.list_subfolders("gs://bucket/parent")
+        assert folders == []
+
+        # Verify get_fs_and_path was called
+        mock_get_fs_and_path.assert_called_once_with("gs://bucket/parent/")
 
     @patch("pyarrow.fs.S3FileSystem")
     def test_download_files(self, mock_s3fs):

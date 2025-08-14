@@ -6,3 +6,4 @@ PyTorch
 PyTorch Lightning
 TensorFlow
 XGBoost
+FSDP

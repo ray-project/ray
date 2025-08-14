@@ -1,4 +1,3 @@
-import os
 import sys
 import pytest
 
@@ -107,7 +106,7 @@ def test_node_label_scheduling_in_cluster(ray_start_cluster):
     assert ray.get(actor.get_node_id.remote(), timeout=3) == node_1
 
     actor = MyActor.options(
-        scheduling_strategy=NodeLabelSchedulingStrategy({"ray.io/node_id": In(node_4)})
+        scheduling_strategy=NodeLabelSchedulingStrategy({"ray.io/node-id": In(node_4)})
     ).remote()
     assert ray.get(actor.get_node_id.remote(), timeout=3) == node_4
 
@@ -338,7 +337,4 @@ def test_node_label_scheduling_invalid_paramter(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

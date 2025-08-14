@@ -13,6 +13,12 @@ Install the KubeRay kubectl plugin using one of the following methods:
 - Install using Krew kubectl plugin manager (recommended)
 - Download from GitHub releases
 
+```{admonition} Plugin since 1.4.0 may be incompatible with KubeRay before 1.4.0
+:class: warning
+Plugin versions since 1.4.0 may be incompatible with KubeRay versions before 1.4.0.
+Try to use the same plugin and KubeRay versions.
+```
+
 ### Install using the Krew kubectl plugin manager (recommended)
 
 1. Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/).
@@ -23,11 +29,11 @@ Install the KubeRay kubectl plugin using one of the following methods:
 
 Go to the [releases page](https://github.com/ray-project/kuberay/releases) and download the binary for your platform.
 
-For example, to install kubectl plugin version 1.3.0 on Linux amd64:
+For example, to install kubectl plugin version 1.4.2 on Linux amd64:
 
 ```bash
-curl -LO https://github.com/ray-project/kuberay/releases/download/v1.3.0/kubectl-ray_v1.3.0_linux_amd64.tar.gz
-tar -xvf kubectl-ray_v1.3.0_linux_amd64.tar.gz
+curl -LO https://github.com/ray-project/kuberay/releases/download/v1.4.2/kubectl-ray_v1.4.2_linux_amd64.tar.gz
+tar -xvf kubectl-ray_v1.4.2_linux_amd64.tar.gz
 cp kubectl-ray ~/.local/bin
 ```
 
@@ -43,22 +49,34 @@ After installing the plugin, you can use `kubectl ray --help` to see the availab
 
 ## Examples
 
-Assume that you have installed the KubeRay operator. If not, follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
+Assume that you have installed the KubeRay operator. If not, follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
 
 ### Example 1: RayCluster Management
 
-The `kubectl ray create cluster` command allows you to create a valid RayCluster without an existing YAML file. The default values are follows:
+The `kubectl ray create cluster` command allows you to create a valid RayCluster without an existing YAML file. The default values are follows (empty values mean unset):
 
-| Parameter       | Default                        |
-|-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
-| ray image       | rayproject/ray:\<ray version\> |
-| head CPU        | 2                              |
-| head memory     | 4Gi                            |
-| worker replicas | 1                              |
-| worker CPU      | 2                              |
-| worker memory   | 4Gi                            |
-| worker GPU      | 0                              |
+| Parameter                                           | Default                        |
+|-----------------------------------------------------|--------------------------------|
+| K8s labels                                          |                                |
+| K8s annotations                                     |                                |
+| ray version                                         | 2.46.0                         |
+| ray image                                           | rayproject/ray:\<ray version\> |
+| head CPU                                            | 2                              |
+| head memory                                         | 4Gi                            |
+| head GPU                                            | 0                              |
+| head ephemeral storage                              |                                |
+| head `ray start` parameters                         |                                |
+| head node selectors                                 |                                |
+| worker replicas                                     | 1                              |
+| worker CPU                                          | 2                              |
+| worker memory                                       | 4Gi                            |
+| worker GPU                                          | 0                              |
+| worker TPU                                          | 0                              |
+| worker ephemeral storage                            |                                |
+| worker `ray start` parameters                       |                                |
+| worker node selectors                               |                                |
+| Number of hosts in default worker group per replica | 1                              |
+| Autoscaler version (v1 or v2)                       |                                |
 
 ```text
 $ kubectl ray create cluster raycluster-sample
@@ -71,6 +89,16 @@ You can override the default values by specifying the flags. For example, to cre
 $ kubectl ray create cluster raycluster-sample-2 --worker-replicas 2
 Created Ray Cluster: raycluster-sample-2
 ```
+
+You can also override the default values with a config file. For example, the following config file sets the worker CPU to 3.
+
+```text
+$ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.4.2/kubectl-plugin/config/samples/create-cluster.sample.yaml
+$ kubectl ray create cluster raycluster-sample-3 --file create-cluster.sample.yaml
+Created Ray Cluster: raycluster-sample-3
+```
+
+See https://github.com/ray-project/kuberay/blob/v1.4.2/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that you can set in the config file.
 
 By default it only creates one worker group. You can use `kubectl ray create workergroup` to add additional worker groups to existing RayClusters.
 
@@ -169,16 +197,18 @@ print(ray.get(futures)) # [0, 1, 4, 9]
 
 You can submit a RayJob without specifying a YAML file. The command generates a RayJob based on the following:
 
-| Parameter       | Default                        |
-|-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
-| ray image       | rayproject/ray:\<ray version\> |
-| head CPU        | 2                              |
-| head memory     | 4Gi                            |
-| worker replicas | 1                              |
-| worker CPU      | 2                              |
-| worker memory   | 4Gi                            |
-| worker GPU      | 0                              |
+| Parameter                                     | Default                        |
+|-----------------------------------------------|--------------------------------|
+| ray version                                   | 2.46.0                         |
+| ray image                                     | rayproject/ray:\<ray version\> |
+| head CPU                                      | 2                              |
+| head memory                                   | 4Gi                            |
+| head GPU                                      | 0                              |
+| worker replicas                               | 1                              |
+| worker CPU                                    | 2                              |
+| worker memory                                 | 4Gi                            |
+| worker GPU                                    | 0                              |
+| TTL to clean up RayClsuter after job finished | 0                              |
 
 ```text
 $ kubectl ray job submit --name rayjob-sample --working-dir . -- python sample_code.py

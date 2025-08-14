@@ -28,15 +28,14 @@
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
-#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 DEFINE_stats(worker_register_time_ms,
@@ -44,6 +43,10 @@ DEFINE_stats(worker_register_time_ms,
              (),
              ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
+
+namespace ray {
+
+namespace raylet {
 
 namespace {
 
@@ -84,10 +87,6 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 
 }  // namespace
 
-namespace ray {
-
-namespace raylet {
-
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID &node_id,
                        std::string node_address,
@@ -97,7 +96,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        int min_worker_port,
                        int max_worker_port,
                        const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       gcs::GcsClient &gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
@@ -115,7 +114,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               // Overwrite the maximum concurrency.
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)),
+      gcs_client_(gcs_client),
       native_library_path_(std::move(native_library_path)),
       starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external(ray_debugger_external),
@@ -130,11 +129,11 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
-  stats::NumWorkersStarted.Record(0);
-  stats::NumWorkersStartedFromCache.Record(0);
-  stats::NumCachedWorkersSkippedJobMismatch.Record(0);
-  stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
-  stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
+  ray_metric_num_workers_started_.Record(0);
+  ray_metric_num_workers_started_from_cache_.Record(0);
+  ray_metric_num_cached_workers_skipped_job_mismatch_.Record(0);
+  ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(0);
+  ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(0);
   // We used to ignore SIGCHLD here. The code is moved to raylet main.cc to support the
   // subreaper feature.
   for (const auto &entry : worker_commands) {
@@ -401,6 +400,13 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
     RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
+
+  // optionally configure the worker's internal grpc thread count
+  int64_t worker_grpc_threads = RayConfig::instance().worker_num_grpc_internal_threads();
+  if (worker_grpc_threads > 0) {
+    env.emplace(kEnvVarKeyGrpcThreadCount, std::to_string(worker_grpc_threads));
+  }
+
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
@@ -523,7 +529,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   auto start = std::chrono::high_resolution_clock::now();
   // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  stats::NumWorkersStarted.Record(1);
+  ray_metric_num_workers_started_.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
   if (!IsIOWorkerType(worker_type)) {
@@ -635,11 +641,21 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env) {
+  // Launch the process to create the worker.
+  std::error_code ec;
+  std::vector<const char *> argv;
+  for (const std::string &arg : worker_command_args) {
+    argv.push_back(arg.c_str());
+  }
+  argv.push_back(NULL);
+
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
-    for (const auto &arg : worker_command_args) {
-      debug_info.append(" ").append(arg);
+    for (const char *arg : argv) {
+      if (arg != NULL) {
+        debug_info.append(" ").append(arg);
+      }
     }
     debug_info.append(", and the envs:");
     for (const auto &entry : env) {
@@ -656,14 +672,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     debug_info.append(".");
     RAY_LOG(DEBUG) << debug_info;
   }
-
-  // Launch the process to create the worker.
-  std::error_code ec;
-  std::vector<const char *> argv;
-  for (const std::string &arg : worker_command_args) {
-    argv.push_back(arg.c_str());
-  }
-  argv.push_back(NULL);
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
@@ -773,8 +781,6 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
                                  : boost::optional<const rpc::JobConfig &>(iter->second);
 }
 
-// TODO(hjiang): In the next integration PR, worker should have port assigned and no
-// [send_reply_callback]. Should delete this overload.
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   pid_t pid,
                                   StartupToken worker_startup_token,
@@ -816,37 +822,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   // Send the reply immediately for worker registrations.
   send_reply_callback(Status::OK(), port);
-  return Status::OK();
-}
-
-Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid,
-                                  StartupToken worker_startup_token) {
-  RAY_CHECK(worker);
-  auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.worker_processes.find(worker_startup_token);
-  if (it == state.worker_processes.end()) {
-    RAY_LOG(WARNING) << "Received a register request from an unknown token: "
-                     << worker_startup_token;
-    return Status::Invalid("Unknown worker");
-  }
-
-  auto process = Process::FromPid(pid);
-  worker->SetProcess(process);
-
-  auto &starting_process_info = it->second;
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      end - starting_process_info.start_time);
-
-  // TODO(hjiang): Add tag to indicate whether port has been assigned beforehand.
-  STATS_worker_register_time_ms.Record(duration.count());
-  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", register cost: " << duration.count()
-                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
-                 << ", startup token: " << worker_startup_token;
-
-  state.registered_workers.insert(worker);
   return Status::OK();
 }
 
@@ -1445,11 +1420,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     }
     skip_reason_count[reason]++;
     if (reason == WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH) {
-      stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
+      ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(1);
     } else if (reason == WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH) {
-      stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(1);
+      ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(1);
     } else if (reason == WorkerUnfitForTaskReason::ROOT_MISMATCH) {
-      stats::NumCachedWorkersSkippedJobMismatch.Record(1);
+      ray_metric_num_cached_workers_skipped_job_mismatch_.Record(1);
     }
     return false;
   };
@@ -1488,7 +1463,7 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
   }
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
             worker->GetAssignedJobId() == pop_worker_request->job_id);
-  stats::NumWorkersStartedFromCache.Record(1);
+  ray_metric_num_workers_started_from_cache_.Record(1);
   PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
 }
 
@@ -1629,7 +1604,7 @@ inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const
          worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
     bool filter_dead_workers, bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
@@ -1653,7 +1628,21 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
+bool WorkerPool::IsWorkerAvailableForScheduling() const {
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      if (!worker->IsRegistered()) {
+        continue;
+      }
+      if (worker->IsAvailableForScheduling()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
     bool filter_dead_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
@@ -1705,7 +1694,7 @@ void WorkerPool::WarnAboutSize() {
 
       auto error_data_ptr = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, get_time_());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
     }
   }
 }

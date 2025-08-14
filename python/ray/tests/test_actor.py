@@ -1,4 +1,3 @@
-import datetime
 import os
 import random
 import sys
@@ -6,28 +5,22 @@ import tempfile
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import gcs_pb2
-from ray._private.utils import hex_to_binary
+from ray._common.utils import hex_to_binary
 from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
-
 from ray.util.state import list_actors
-
-
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -93,7 +86,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     # Create some values to close over.
     val1 = 1
@@ -140,7 +133,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     @ray.remote
     class Actor1:
@@ -217,7 +210,7 @@ def test_use_actor_twice(ray_start_10_cpus):
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+    # Make sure we can define and actors within remote functions.
 
     @ray.remote
     def f(x, n):
@@ -239,7 +232,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+    # Make sure we can create and use actors within remote functions.
 
     @ray.remote
     class Actor1:
@@ -853,11 +846,14 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            assert setproctitle.getproctitle() == f"ray::{name}"
+            assert psutil.Process().cmdline()[0] == f"ray::{name}"
 
     f = Foo.remote()
 
@@ -1133,27 +1129,6 @@ def test_wrapped_actor_handle(ray_start_regular_shared):
     a = A.remote()
     b_list = ray.get(a.get_actor_ref.remote())
     assert ray.get(b_list[0].doit.remote()) == 2
-
-
-@pytest.mark.skip("This test is just used to print the latency of creating 100 actors.")
-def test_actor_creation_latency(ray_start_regular_shared):
-    # This test is just used to test the latency of actor creation.
-    @ray.remote
-    class Actor:
-        def get_value(self):
-            return 1
-
-    start = datetime.datetime.now()
-    actor_handles = [Actor.remote() for _ in range(100)]
-    actor_create_time = datetime.datetime.now()
-    for actor_handle in actor_handles:
-        ray.get(actor_handle.get_value.remote())
-    end = datetime.datetime.now()
-    print(
-        "actor_create_time_consume = {}, total_time_consume = {}".format(
-            actor_create_time - start, end - start
-        )
-    )
 
 
 @pytest.mark.parametrize("enable_concurrency_group", [True, False])
@@ -1650,8 +1625,56 @@ def test_get_local_actor_state(ray_start_regular_shared):
     )
 
 
-if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+@pytest.mark.parametrize("exit_type", ["ray.kill", "out_of_scope"])
+def test_exit_immediately_after_creation(ray_start_regular_shared, exit_type: str):
+    if client_test_enabled() and exit_type == "out_of_scope":
+        pytest.skip("out_of_scope actor cleanup doesn't work with Ray client.")
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    a_id = a._actor_id.hex()
+    b = A.remote()
+    b_id = b._actor_id.hex()
+
+    def _num_actors_alive() -> int:
+        still_alive = list(
+            filter(
+                lambda a: a.actor_id in {a_id, b_id},
+                list_actors(filters=[("state", "=", "ALIVE")]),
+            )
+        )
+        print(still_alive)
+        return len(still_alive)
+
+    wait_for_condition(lambda: _num_actors_alive() == 2)
+
+    if exit_type == "ray.kill":
+        ray.kill(a)
+        ray.kill(b)
+    elif exit_type == "out_of_scope":
+        del a
+        del b
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        pytest.fail(f"Unrecognized exit_type: '{exit_type}'.")
+
+    wait_for_condition(lambda: _num_actors_alive() == 0)
+
+
+def test_one_liner_actor_method_invocation(shutdown_only):
+    @ray.remote
+    class Foo:
+        def method(self):
+            return "ok"
+
+    # This one‐liner used to fail with “Lost reference to actor”.
+    # Now it should succeed and return our value.
+    # See https://github.com/ray-project/ray/pull/53178
+    result = ray.get(Foo.remote().method.remote())
+    assert result == "ok"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

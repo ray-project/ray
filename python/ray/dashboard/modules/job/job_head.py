@@ -1,11 +1,12 @@
 import asyncio
 import dataclasses
-from datetime import datetime
 import enum
 import json
 import logging
-import traceback
 import os
+import time
+import traceback
+from datetime import datetime
 from random import choice
 from typing import AsyncIterator, Dict, List, Optional, Tuple
 
@@ -14,22 +15,23 @@ from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response, StreamResponse
 
 import ray
-from ray import NodeID
-from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
-from ray._private.utils import load_class
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
-    TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
-    WAIT_AVAILABLE_AGENT_TIMEOUT,
-)
-from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_constants import env_bool, KV_NAMESPACE_DASHBOARD
+from ray import NodeID
+from ray._common.utils import get_or_create_event_loop, load_class
+from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, env_bool
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
+)
+from ray._common.network_utils import build_address
+from ray.dashboard.consts import (
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
+    RAY_CLUSTER_ACTIVITY_HOOK,
+    TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
+    WAIT_AVAILABLE_AGENT_TIMEOUT,
 )
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
@@ -48,11 +50,9 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
-from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
-import time
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -325,7 +325,7 @@ class JobHead(SubprocessModule):
                 # JobAgentSubmissionClient. May raise if the node_id is removed in
                 # InternalKV after the _fetch_all_agent_node_ids, though unlikely.
                 ip, http_port, _ = await self._fetch_agent_info(node_id)
-                agent_http_address = f"http://{ip}:{http_port}"
+                agent_http_address = f"http://{build_address(ip, http_port)}"
                 self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
 
             return self._agents[node_id]
@@ -340,7 +340,7 @@ class JobHead(SubprocessModule):
 
         if head_node_id not in self._agents:
             ip, http_port, _ = await self._fetch_agent_info(head_node_id)
-            agent_http_address = f"http://{ip}:{http_port}"
+            agent_http_address = f"http://{build_address(ip, http_port)}"
             self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
 
         return self._agents[head_node_id]

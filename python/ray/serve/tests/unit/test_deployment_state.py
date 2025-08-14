@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -92,11 +92,13 @@ class MockReplicaActorWrapper:
         self._actor_handle = MockActorHandle()
         self._node_id = None
         self._node_ip = None
+        self._node_instance_id = None
         self._node_id_is_set = False
         self._actor_id = None
         self._port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
+        self._docs_path = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -159,6 +161,10 @@ class MockReplicaActorWrapper:
         return None
 
     @property
+    def node_instance_id(self) -> Optional[str]:
+        return None
+
+    @property
     def log_file_path(self) -> Optional[str]:
         return None
 
@@ -173,6 +179,13 @@ class MockReplicaActorWrapper:
     @property
     def initialization_latency_s(self) -> float:
         return self._initialization_latency_s
+
+    def set_docs_path(self, docs_path: str):
+        self._docs_path = docs_path
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
 
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status
@@ -266,12 +279,15 @@ class MockReplicaActorWrapper:
     def check_stopped(self) -> bool:
         return self.done_stopping
 
-    def force_stop(self):
+    def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
     def check_health(self):
         self.health_check_called = True
         return self.healthy
+
+    def get_routing_stats(self) -> Dict[str, Any]:
+        return {}
 
 
 def deployment_info(
@@ -311,7 +327,7 @@ def deployment_version(code_version) -> DeploymentVersion:
 @pytest.fixture
 def mock_deployment_state_manager(
     request,
-) -> Tuple[DeploymentStateManager, MockTimer, Mock]:
+) -> Tuple[DeploymentStateManager, MockTimer, Mock, Mock]:
     """Fully mocked deployment state manager.
 
     i.e kv store and gcs client is mocked so we don't need to initialize
@@ -4783,6 +4799,89 @@ class TestStopReplicasOnDrainingNodes:
                 (ReplicaState.STARTING, 2, v2),
             ],
         )
+
+
+def test_docs_path_not_updated_for_different_version(mock_deployment_state_manager):
+    # Create deployment state manager
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+
+    test_docs_path = "/test/docs/path"
+
+    # Set replicas ready and check statuses
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+        replica._actor.set_docs_path(test_docs_path)
+
+    assert ds.docs_path is None
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert ds.docs_path == test_docs_path
+
+    # Deploy a new version
+    info_2, v2 = deployment_info(version="2")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+
+    dsm.update()
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
+    )
+    assert ds.docs_path == test_docs_path
+
+    test_docs_path_new = "/test/docs/path/2"
+    # Set done stopping replicas ready and check statuses
+    for replica in ds._replicas.get([ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    dsm.update()
+
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+        replica._actor.set_docs_path(test_docs_path_new)
+    assert ds.docs_path == test_docs_path
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    assert ds.docs_path == test_docs_path_new
+
+    # Deploy a new version with None docs path
+    info_3, v3 = deployment_info(version="3")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_3)
+
+    dsm.update()
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v2), (ReplicaState.STARTING, 1, v3)],
+    )
+    assert ds.docs_path == test_docs_path_new
+
+    for replica in ds._replicas.get([ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v3)])
+    assert ds.docs_path == test_docs_path_new
+
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+        replica._actor.set_docs_path(None)
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v3)])
+    assert ds.docs_path is None
 
 
 if __name__ == "__main__":

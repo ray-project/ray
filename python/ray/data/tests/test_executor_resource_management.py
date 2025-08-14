@@ -2,6 +2,9 @@ import pytest
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    ActorPoolScalingRequest,
+)
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
@@ -44,19 +47,19 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert (
         repr(r2)
-        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r3)
-        == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=0.0, gpu=1, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r4)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=100.0MB, memory=0.0B)"
     )
     assert (
         repr(r5)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=1.0GB, memory=64.0MB)"
     )
     assert (
         repr(unlimited)
@@ -290,6 +293,9 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_context):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
+    # Block AP until all actors have fully started up
+    ctx.wait_for_min_actors_s = 60
+
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
     )
@@ -361,10 +367,21 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     # Wait until tasks are done.
     run_op_tasks_sync(op)
 
+    min_usage = ExecutionResources()
+
     # Work is done, scale down the actor pool.
     for pool in op.get_autoscaling_actor_pools():
-        pool.scale_down(pool.current_size())
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
+        # NOTE: Actor Pool will retain the min-size
+        assert num_scaled_down == pool.current_size() - pool.min_size()
+
+        min_usage = min_usage.add(
+            pool.per_actor_resource_usage().scale(pool.min_size())
+        )
+
+    assert op.current_processor_usage() == min_usage
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(
         6400,
@@ -379,7 +396,12 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
 
     # Work is done, scale down the actor pool, and outputs have been consumed.
     for pool in op.get_autoscaling_actor_pools():
-        pool.scale_down(pool.current_size())
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
+        # NOTE: Actor Pool will retain the min-size
+        assert num_scaled_down == pool.current_size() - pool.min_size()
+
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -459,7 +481,12 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 
     # Work is done, scale down the actor pool.
     for pool in op.get_autoscaling_actor_pools():
-        pool.scale_down(pool.current_size())
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
+        # NOTE: Actor Pool will retain the min-size
+        assert num_scaled_down == pool.current_size() - pool.min_size()
+
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(6400, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -469,10 +496,21 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     while op.has_next():
         op.get_next()
 
+    min_usage = ExecutionResources()
+
     # Work is done, scale down the actor pool, and outputs have been consumed.
     for pool in op.get_autoscaling_actor_pools():
-        pool.scale_down(pool.current_size())
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
+        # NOTE: Actor Pool will retain the min-size
+        assert num_scaled_down == pool.current_size() - pool.min_size()
+
+        min_usage = min_usage.add(
+            pool.per_actor_resource_usage().scale(pool.min_size())
+        )
+
+    assert op.current_processor_usage() == min_usage
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0

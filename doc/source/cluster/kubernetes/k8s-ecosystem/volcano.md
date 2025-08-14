@@ -19,23 +19,23 @@ See [Quick Start Guide](https://github.com/volcano-sh/volcano#quick-start-guide)
 
 ### Step 3: Install the KubeRay Operator with batch scheduling
 
-Deploy the KubeRay Operator with the `--enable-batch-scheduler` flag to enable Volcano batch scheduling support.
+Deploy the KubeRay Operator with the `--batch-scheduler=volcano` flag to enable Volcano batch scheduling support.
 
 When installing KubeRay Operator using Helm, you should use one of these two options:
 
-* Set `batchScheduler.enabled` to `true` in your
+* Set `batchScheduler.name` to `volcano` in your
 [`values.yaml`](https://github.com/ray-project/kuberay/blob/753dc05dbed5f6fe61db3a43b34a1b350f26324c/helm-chart/kuberay-operator/values.yaml#L48)
 file:
 ```shell
 # values.yaml file
 batchScheduler:
-    enabled: true
+    name: volcano
 ```
 
-* Pass the `--set batchScheduler.enabled=true` flag when running on the command line:
+* Pass the `--set batchScheduler.name=volcano` flag when running on the command line:
 ```shell
-# Install the Helm chart with --enable-batch-scheduler flag set to true
-helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0 --set batchScheduler.enabled=true
+# Install the Helm chart with the --batch-scheduler=volcano flag
+helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 --set batchScheduler.name=volcano
 ```
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
@@ -45,7 +45,7 @@ The RayCluster custom resource must include the `ray.io/scheduler-name: volcano`
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes label `ray.io/scheduler-name: volcano` in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
 kubectl apply -f ray-cluster.volcano-scheduler.yaml
 
 # Check the RayCluster
@@ -113,7 +113,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes  the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
 kubectl apply -f ray-cluster.volcano-scheduler-queue.yaml
 ```
 
@@ -154,7 +154,7 @@ kubectl get podgroup ray-test-cluster-0-pg -o yaml
 #   phase: Running
 ```
 
-Check the status of the queue to see 1 running job:
+Check the status of the queue to see allocated resources:
 
 ```shell
 kubectl get queue kuberay-test-queue -o yaml
@@ -174,8 +174,11 @@ kubectl get queue kuberay-test-queue -o yaml
 #   reclaimable: true
 #   weight: 1
 # status:
+#   allocated:
+#     cpu: "3"
+#     memory: 4Gi 
+#     pods: "3"
 #   reservation: {}
-#   running: 1
 #   state: Open
 ```
 
@@ -236,10 +239,10 @@ kubectl get pods
 
 # NAME                                            READY   STATUS         RESTARTS   AGE
 # test-cluster-0-worker-worker-ddfbz              1/1     Running        0          7m
-# test-cluster-0-head-vst5j                       1/1     Running        0          7m
+# test-cluster-0-head                             1/1     Running        0          7m
 # test-cluster-0-worker-worker-57pc7              1/1     Running        0          6m59s
 # test-cluster-1-worker-worker-6tzf7              0/1     Pending        0          2m12s
-# test-cluster-1-head-6668q                       0/1     Pending        0          2m12s
+# test-cluster-1-head                             0/1     Pending        0          2m12s
 # test-cluster-1-worker-worker-n5g8k              0/1     Pending        0          2m12s
 ```
 
@@ -311,7 +314,7 @@ kubectl get pods
 
 # NAME                                            READY   STATUS         RESTARTS   AGE
 # test-cluster-1-worker-worker-n5g8k              1/1     Running        0          9m4s
-# test-cluster-1-head-6668q                       1/1     Running        0          9m4s
+# test-cluster-1-head                             1/1     Running        0          9m4s
 # test-cluster-1-worker-worker-6tzf7              1/1     Running        0          9m4s
 ```
 

@@ -17,12 +17,15 @@
 #include <boost/range/adaptor/map.hpp>
 #include <iostream>
 #include <sstream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_instance_set.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
@@ -36,20 +39,33 @@ using scheduling::ResourceID;
 class ResourceRequest {
  public:
   /// Construct an empty ResourceRequest.
-  ResourceRequest() : ResourceRequest({}, false) {}
+  ResourceRequest() : ResourceRequest({}, false, LabelSelector()) {}
 
   /// Construct a ResourceRequest with a given resource map.
   explicit ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
-      : ResourceRequest(resource_map, false){};
+      : ResourceRequest(std::move(resource_map), false, LabelSelector()){};
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
       : resources_(resource_map),
         requires_object_store_memory_(requires_object_store_memory) {}
 
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
+                  bool requires_object_store_memory,
+                  LabelSelector label_selector)
+      : resources_(std::move(resource_map)),
+        requires_object_store_memory_(requires_object_store_memory),
+        label_selector_(std::move(label_selector)) {}
+
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   const ResourceSet &GetResourceSet() const { return resources_; }
+
+  const LabelSelector &GetLabelSelector() const { return label_selector_; }
+
+  void SetLabelSelector(LabelSelector label_selector) {
+    label_selector_ = std::move(label_selector);
+  }
 
   FixedPoint Get(ResourceID resource_id) const { return resources_.Get(resource_id); }
 
@@ -117,6 +133,8 @@ class ResourceRequest {
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
+  // Label selector to schedule this request on a node.
+  LabelSelector label_selector_;
 };
 
 /// Represents a resource set that contains the per-instance resource values.
@@ -276,7 +294,7 @@ class TaskResourceInstances {
       }
       has_added_resource = true;
     }
-    // TODO (chenk008): add custom_resources_
+    // TODO(chenk008): add custom_resources_
     buffer << "}";
     return buffer.str();
   }
@@ -290,7 +308,7 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const NodeResourceSet &resources)
+  explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
   NodeResourceSet available;
@@ -333,6 +351,9 @@ class NodeResources {
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
+  // Returns true if the node's labels satisfy the label selector requirement.
+  bool HasRequiredLabels(const LabelSelector &label_selector) const;
+  bool NodeLabelMatchesConstraint(const LabelConstraint &constraint) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other) const;
   bool operator!=(const NodeResources &other) const;
@@ -361,7 +382,7 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();

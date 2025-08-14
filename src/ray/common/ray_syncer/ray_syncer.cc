@@ -15,6 +15,10 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 
 #include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
@@ -241,7 +245,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
         syncer_.node_state_->RemoveNode(node_id);
       });
-  RAY_LOG(INFO).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
+  RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
   // Disconnect exiting connection if there is any.
   // This can happen when there is transient network error
@@ -250,7 +254,5 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   syncer_.Connect(reactor);
   return reactor;
 }
-
-RaySyncerService::~RaySyncerService() = default;
 
 }  // namespace ray::syncer

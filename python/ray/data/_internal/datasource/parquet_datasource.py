@@ -373,7 +373,6 @@ class ParquetDatasource(Datasource):
 
             meta = self._meta_provider(
                 paths,
-                self._inferred_schema,
                 num_fragments=len(fragments),
                 prefetched_metadata=metadata,
             )
@@ -404,6 +403,7 @@ class ParquetDatasource(Datasource):
                 self._include_paths,
                 self._partitioning,
             )
+
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
@@ -418,6 +418,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                     ),
                     meta,
+                    schema=self._inferred_schema,
                 )
             )
 
@@ -477,11 +478,13 @@ def read_fragments(
             }
 
         def get_batch_iterable():
+            if batch_size is not None:
+                to_batches_kwargs["batch_size"] = batch_size
+
             return fragment.to_batches(
                 use_threads=use_threads,
                 columns=data_columns,
                 schema=schema,
-                batch_size=batch_size,
                 **to_batches_kwargs,
             )
 
@@ -530,6 +533,11 @@ def _sample_fragment(
 ) -> _SampleInfo:
     # Sample the first rows batch from file fragment `serialized_fragment`.
     fragment = _deserialize_fragments_with_retry([file_fragment])[0]
+
+    # If the fragment has no row groups, it's an empty or metadata-only file.
+    # Skip it by returning empty sample info.
+    if fragment.metadata.num_row_groups == 0:
+        return _SampleInfo(actual_bytes_per_row=None, estimated_bytes_per_row=None)
 
     # Only sample the first row group.
     fragment = fragment.subset(row_group_ids=[0])
@@ -593,16 +601,20 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
     return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
-def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
+def estimate_default_read_batch_size_rows(
+    sample_infos: List[_SampleInfo],
+) -> Optional[int]:
+    ctx = DataContext.get_current()
+    if ctx.target_max_block_size is None:
+        return None
+
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
         # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
         # was all null.
         if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
-            max_parquet_reader_row_batch_size_bytes = (
-                DataContext.get_current().target_max_block_size // 10
-            )
+            max_parquet_reader_row_batch_size_bytes = ctx.target_max_block_size // 10
             return max(
                 1,
                 min(
@@ -726,7 +738,10 @@ def _add_partition_fields_to_schema(
             field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
         else:
             field_type = pa.string()
-        schema = schema.append(pa.field(field_name, field_type))
+        if field_name not in schema.names:
+            # Without this check, we would add the same partition field multiple times,
+            # which silently fails when asking for `pa.field()`.
+            schema = schema.append(pa.field(field_name, field_type))
 
     return schema
 

@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -41,7 +40,6 @@ class StreamSplitDataIterator(DataIterator):
     def create(
         base_dataset: "Dataset",
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
@@ -54,7 +52,7 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(_DatasetWrapper(base_dataset), n, equal, locality_hints)
+        ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -84,16 +82,18 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[ObjectRef[Block], BlockMetadata]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
+                    yield RefBundle(
+                        blocks=block_ref_and_md.blocks,
+                        owns_blocks=False,
+                        schema=block_ref_and_md.schema,
+                    )
 
         return gen_blocks(), self._iter_stats, False
 
@@ -136,7 +136,6 @@ class SplitCoordinator:
         self,
         dataset_wrapper: _DatasetWrapper,
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
         dataset = dataset_wrapper._dataset
@@ -148,7 +147,6 @@ class SplitCoordinator:
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
         self._base_dataset = dataset
         self._n = n
-        self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
         self._executor = None
@@ -164,20 +162,8 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 self._executor = self._base_dataset._plan.create_executor()
-
-                def add_split_op(dag):
-                    return OutputSplitter(
-                        dag,
-                        n,
-                        equal,
-                        self._data_context,
-                        locality_hints,
-                    )
-
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor,
-                    dataset._plan,
-                    dag_rewrite=add_split_op,
+                    self._executor, dataset._plan
                 )
                 yield output_iterator
 
@@ -209,9 +195,7 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(
-        self, epoch_id: int, output_split_idx: int
-    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[RefBundle]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -235,6 +219,7 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
+            schema = next_bundle.schema
             block = next_bundle.blocks[-1]
             next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
@@ -244,7 +229,9 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return block
+            return RefBundle(
+                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+            )
         except StopIteration:
             return None
         finally:

@@ -395,8 +395,7 @@ class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
         R"(
 {
   "task_events_max_num_task_in_gcs": 10,
-  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5,
-  "task_events_dropped_task_attempts_gc_threshold_s": 3
+  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5
 }
   )");
   }

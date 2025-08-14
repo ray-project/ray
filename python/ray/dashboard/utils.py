@@ -11,8 +11,10 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from enum import IntEnum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from ray._common.utils import binary_to_hex
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
@@ -26,9 +28,9 @@ import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
 from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsChannel
+from ray._common.network_utils import parse_address
 from ray._private.utils import (
-    binary_to_hex,
-    check_dashboard_dependencies_installed,
+    get_dashboard_dependency_error,
     split_address,
 )
 from ray._raylet import GcsClient
@@ -303,7 +305,7 @@ def get_all_modules(module_type):
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
-    should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
+    should_only_load_minimal_modules = get_dashboard_dependency_error() is not None
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
@@ -344,7 +346,7 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
-    ip, port = address.split(":")
+    ip, port = parse_address(address)
     return ip, int(port)
 
 
@@ -358,7 +360,7 @@ def node_stats_to_dict(
         "parentTaskId",
         "sourceActorId",
         "callerId",
-        "rayletId",
+        "nodeId",
         "workerId",
         "placementGroupId",
     }
@@ -707,9 +709,15 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     Returns:
         API server HTTP URL, e.g. "http://<head-node-ip>:8265".
     """
-    if os.environ.get("RAY_ADDRESS"):
-        logger.debug(f"Using RAY_ADDRESS={os.environ['RAY_ADDRESS']}")
-        address = os.environ["RAY_ADDRESS"]
+    if api_server_address := os.environ.get(
+        ray_constants.RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE
+    ):
+        address = api_server_address
+        logger.debug(f"Using RAY_API_SERVER_ADDRESS={address}")
+    # Fall back to RAY_ADDRESS if RAY_API_SERVER_ADDRESS not set
+    elif ray_address := os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE):
+        address = ray_address
+        logger.debug(f"Using RAY_ADDRESS={address}")
 
     if address and "://" in address:
         module_string, _ = split_address(address)

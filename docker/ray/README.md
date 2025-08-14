@@ -19,7 +19,7 @@ The optional `Platform` tag specifies the platform where the image is intended f
 | Platform tag | Description |
 | --------------- | ----------- |
 | `-cpu`  | These are based off of an Ubuntu image. |
-| `-cuXX` | These are based off of an NVIDIA CUDA image with the specified CUDA version `xx`. They require the Nvidia Docker Runtime. |
+| `-cuXX` | These are based off of an NVIDIA CUDA image with the specified CUDA version `xx`. They require the NVIDIA Docker Runtime. |
 | `-gpu`  | Aliases to a specific `-cuXX` tagged image. |
 | no tag  | Aliases to `-cpu` tagged images for `ray`, and aliases to ``-gpu`` tagged images for `ray-ml`. |
 

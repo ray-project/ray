@@ -67,11 +67,11 @@ And specify a name for tasks (and actor methods too) at task submission time:
 
 .. testcode::
 
-   import setproctitle
+   import psutil
 
    @ray.remote
    def f(x):
-      assert setproctitle.getproctitle() == "ray::special_f"
+      assert psutil.Process().cmdline()[0] == "ray::special_f"
       return x + 1
 
    obj = f.options(name="special_f").remote(3)

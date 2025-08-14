@@ -40,7 +40,7 @@ struct hash<ray::rpc::Address> {
     size_t hash = std::hash<int32_t>()(addr.port());
     hash ^= std::hash<std::string>()(addr.ip_address());
     hash ^= std::hash<std::string>()(addr.worker_id());
-    hash ^= std::hash<std::string>()(addr.raylet_id());
+    hash ^= std::hash<std::string>()(addr.node_id());
     return hash;
   }
 };
@@ -189,6 +189,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
+  virtual void FreeActorObject(const FreeActorObjectRequest &request,
+                               const ClientCallback<FreeActorObjectReply> &callback) {}
+
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -200,7 +203,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const rpc::Address &address,
+  /// \param[in] core_worker_unavailable_timeout_callback The callback function that is
+  /// used by the retryable grpc to remove unresponsive core worker connections from the
+  /// pool once its been unavailable for more than server_unavailable_timeout_seconds.
+  CoreWorkerClient(rpc::Address address,
                    ClientCallManager &client_call_manager,
                    std::function<void()> core_worker_unavailable_timeout_callback);
 
@@ -217,11 +223,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         GetObjectStatus,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   GetObjectStatus,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          KillActor,
@@ -259,11 +266,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         UpdateObjectLocationBatch,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   UpdateObjectLocationBatch,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          GetObjectLocationsOwner,
@@ -337,6 +345,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         FreeActorObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

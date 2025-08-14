@@ -6,7 +6,6 @@ import os
 import pickle
 import time
 from abc import ABC, abstractmethod
-from copy import deepcopy
 from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
 import grpc
@@ -17,7 +16,7 @@ from starlette.types import Receive
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.exceptions import RayActorError, RayTaskError
+from ray._private.ray_logging.filters import CoreContextFilter
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
@@ -27,28 +26,39 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
+    HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
-    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
+    SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_LOG_COMPONENT,
+    SERVE_LOG_COMPONENT_ID,
+    SERVE_LOG_REQUEST_ID,
+    SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_proxy_handle
-from ray.serve._private.grpc_util import start_grpc_server
+from ray.serve._private.grpc_util import (
+    get_grpc_response_status,
+    set_grpc_code_and_details,
+    start_grpc_server,
+)
 from ray.serve._private.http_util import (
     MessageQueue,
+    configure_http_middlewares,
     convert_object_to_asgi_messages,
+    get_http_response_status,
     receive_http_body,
+    send_http_response_on_exception,
     start_asgi_http_server,
-    validate_http_proxy_callback_return,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -67,34 +77,20 @@ from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    call_function_from_import_path,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-TIMEOUT_ERROR_CODE = "408"
-DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
-)
-
-RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
-    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
-)
-# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
-    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
-    or None
 )
 
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
@@ -113,7 +109,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
 
-HEALTHY_MESSAGE = "success"
 DRAINING_MESSAGE = "This node is being drained."
 
 
@@ -137,6 +132,7 @@ class GenericProxy(ABC):
         is_head: bool,
         proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
+        access_log_context: Dict[str, Any] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -212,6 +208,8 @@ class GenericProxy(ABC):
         # The time when the node starts to drain.
         # The node is not draining if it's None.
         self._draining_start_time: Optional[float] = None
+
+        self._access_log_context = access_log_context or {}
 
         getattr(ServeUsageTag, f"{self.protocol.upper()}_PROXY_USED").record("1")
 
@@ -447,6 +445,8 @@ class GenericProxy(ABC):
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
             request_context = ray.serve.context._get_serve_request_context()
+            self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
+            self._access_log_context[SERVE_LOG_REQUEST_ID] = request_context.request_id
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
@@ -454,7 +454,7 @@ class GenericProxy(ABC):
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
-                extra={"log_to_stderr": False, "serve_access_log": True},
+                extra=self._access_log_context,
             )
 
         self.request_counter.inc(
@@ -581,20 +581,6 @@ class gRPCProxy(GenericProxy):
         )
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
-        def set_grpc_code_and_details(
-            context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
-        ):
-            # Only the latest code and details will take effect. If the user already
-            # set them to a truthy value in the context, skip setting them with Serve's
-            # default values. By default, if nothing is set, the code is 0 and the
-            # details is "", which both are falsy. So if the user did not set them or
-            # if they're explicitly set to falsy values, such as None, Serve will
-            # continue to set them with our default values.
-            if not context.code():
-                context.set_code(status.code)
-            if not context.details():
-                context.set_details(status.message)
-
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -709,38 +695,8 @@ class gRPCProxy(GenericProxy):
                 yield result
 
             status = ResponseStatus(code=grpc.StatusCode.OK)
-        except TimeoutError:
-            message = f"Request timed out after {self.request_timeout_s}s."
-            logger.warning(message)
-            status = ResponseStatus(
-                code=grpc.StatusCode.DEADLINE_EXCEEDED,
-                is_error=True,
-                message=message,
-            )
-        except asyncio.CancelledError:
-            message = f"Client for request {request_id} disconnected."
-            logger.info(message)
-            status = ResponseStatus(
-                code=grpc.StatusCode.CANCELLED,
-                is_error=True,
-                message=message,
-            )
-        except BackPressureError as e:
-            status = ResponseStatus(
-                code=grpc.StatusCode.UNAVAILABLE,
-                is_error=True,
-                message=e.message,
-            )
-        except Exception as e:
-            if isinstance(e, (RayActorError, RayTaskError)):
-                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
-            else:
-                logger.exception("Request failed due to unexpected error.")
-            status = ResponseStatus(
-                code=grpc.StatusCode.INTERNAL,
-                is_error=True,
-                message=str(e),
-            )
+        except BaseException as e:
+            status = get_grpc_response_status(e, self.request_timeout_s, request_id)
 
         # The status code should always be set.
         assert status is not None
@@ -758,6 +714,7 @@ class HTTPProxy(GenericProxy):
         proxy_router: ProxyRouter,
         self_actor_name: str,
         request_timeout_s: Optional[float] = None,
+        access_log_context: Dict[str, Any] = None,
     ):
         super().__init__(
             node_id,
@@ -765,6 +722,7 @@ class HTTPProxy(GenericProxy):
             is_head,
             proxy_router,
             request_timeout_s=request_timeout_s,
+            access_log_context=access_log_context,
         )
         self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
@@ -902,7 +860,7 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
-            if key.decode() == "x-request-id":
+            if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -1016,49 +974,12 @@ class HTTPProxy(GenericProxy):
 
                     yield asgi_message
                     response_started = True
-        except TimeoutError:
-            status = ResponseStatus(
-                code=TIMEOUT_ERROR_CODE,
-                is_error=True,
-            )
-            logger.warning(f"Request timed out after {self.request_timeout_s}s.")
-            # We should only send timeout response if we have not sent
-            # any messages to the client yet. Header (including status code)
-            # messages can only be sent once.
-            if not response_started:
-                for message in convert_object_to_asgi_messages(
-                    f"Request {request_id} timed out after {self.request_timeout_s}s.",
-                    status_code=408,
-                ):
-                    yield message
-        except asyncio.CancelledError:
-            status = ResponseStatus(
-                code=DISCONNECT_ERROR_CODE,
-                is_error=True,
-            )
-            logger.info(
-                f"Client for request {request_id} disconnected, cancelling request."
-            )
-        except (BackPressureError, DeploymentUnavailableError) as e:
-            status = ResponseStatus(
-                code="503",
-                is_error=True,
-                message=e.message,
-            )
-            if isinstance(e, RayTaskError):
-                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
-            else:
-                for message in convert_object_to_asgi_messages(e.message, 503):
-                    yield message
-        except Exception as e:
-            if isinstance(e, (RayActorError, RayTaskError)):
-                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
-            else:
-                logger.exception("Request failed due to unexpected error.")
-            status = ResponseStatus(
-                code="500",
-                is_error=True,
-            )
+        except BaseException as e:
+            status = get_http_response_status(e, self.request_timeout_s, request_id)
+            for asgi_message in send_http_response_on_exception(
+                status, response_started
+            ):
+                yield asgi_message
 
         finally:
             # For websocket connection, queue receive task is done when receiving
@@ -1095,51 +1016,13 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
-def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
-    http_options = deepcopy(http_options)
-    # Override keep alive setting if the environment variable is set.
-    # TODO(edoakes): more sane behavior here.
-    if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
-        http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
-
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    http_options.middlewares = http_options.middlewares or []
-    if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-        logger.info(
-            "Calling user-provided callback from import path "
-            f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
-        )
-        http_options.middlewares.extend(
-            validate_http_proxy_callback_return(
-                call_function_from_import_path(
-                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
-                )
-            )
-        )
-
-    return http_options
-
-
-def _set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
-    grpc_options = deepcopy(grpc_options) or gRPCOptions()
-
-    grpc_options.request_timeout_s = (
-        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    return grpc_options
-
-
 @ray.remote(num_cpus=0)
 class ProxyActor:
     def __init__(
         self,
         http_options: HTTPOptions,
+        grpc_options: gRPCOptions,
         *,
-        grpc_options: Optional[gRPCOptions] = None,
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
@@ -1147,16 +1030,8 @@ class ProxyActor:
     ):  # noqa: F821
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-
-        # Configure proxy default HTTP and gRPC options.
-        http_options = _set_proxy_default_http_options(http_options)
-        grpc_options = _set_proxy_default_grpc_options(grpc_options)
-        self._http_options = http_options
+        self._http_options = configure_http_middlewares(http_options)
         self._grpc_options = grpc_options
-
-        # We modify the HTTP and gRPC options above, so delete them to avoid
-        del http_options, grpc_options
-
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()
@@ -1173,6 +1048,7 @@ class ProxyActor:
             component_name="proxy",
             component_id=node_ip_address,
             logging_config=logging_config,
+            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
@@ -1189,9 +1065,32 @@ class ProxyActor:
         configure_component_memory_profiler(
             component_name="proxy", component_id=node_ip_address
         )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="proxy", component_id=node_ip_address
-        )
+        if logging_config.encoding == EncodingType.JSON:
+            # Create logging context for access logs as a performance optimization.
+            # While logging_utils can automatically add Ray core and Serve access log context,
+            # we pre-compute it here since context evaluation is expensive and this context
+            # will be reused for multiple access log entries.
+            ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
+            # remove task level log keys from ray core logging context, it would be nice
+            # to have task level log keys here but we are letting those go in favor of
+            # performance optimization. Also we cannot include task level log keys here because
+            # they would referance the current task (__init__) and not the task that is logging.
+            for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
+                ray_core_logging_context.pop(key, None)
+            access_log_context = {
+                **ray_core_logging_context,
+                SERVE_LOG_COMPONENT: "proxy",
+                SERVE_LOG_COMPONENT_ID: self._node_ip_address,
+                "log_to_stderr": False,
+                "skip_context_filter": True,
+                "serve_access_log": True,
+            }
+        else:
+            access_log_context = {
+                "log_to_stderr": False,
+                "skip_context_filter": True,
+                "serve_access_log": True,
+            }
 
         is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
@@ -1202,6 +1101,7 @@ class ProxyActor:
             self_actor_name=ray.get_runtime_context().get_actor_name(),
             proxy_router=self.proxy_router,
             request_timeout_s=self._http_options.request_timeout_s,
+            access_log_context=access_log_context,
         )
         self.grpc_proxy = (
             gRPCProxy(
@@ -1210,6 +1110,7 @@ class ProxyActor:
                 is_head=is_head,
                 proxy_router=self.proxy_router,
                 request_timeout_s=self._grpc_options.request_timeout_s,
+                access_log_context=access_log_context,
             )
             if grpc_enabled
             else None
@@ -1261,13 +1162,13 @@ class ProxyActor:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return log_file_path
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         _, handle, _ = self.http_proxy.proxy_router.match_route(route)
-        return handle._router._asyncio_router._replica_scheduler._replica_id_set
+        return handle._router._asyncio_router._request_router._replica_id_set
 
     async def ready(self) -> str:
         """Blocks until the proxy HTTP (and optionally gRPC) servers are running.
@@ -1345,27 +1246,6 @@ class ProxyActor:
         return pickle.dumps(
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
-
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            import marshal
-
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
 
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""

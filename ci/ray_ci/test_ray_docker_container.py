@@ -1,9 +1,11 @@
 import os
 import sys
+from datetime import datetime
 from typing import List
 from unittest import mock
-from datetime import datetime
+
 import pytest
+from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
@@ -11,7 +13,6 @@ from ci.ray_ci.docker_container import GPU_PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
-from ray_release.configs.global_config import get_global_config
 
 
 class TestRayDockerContainer(RayCITestBase):
@@ -108,7 +109,7 @@ class TestRayDockerContainer(RayCITestBase):
             cuda = "cu12.1.1-cudnn8"
             container = RayDockerContainer(v, cuda, "ray")
             container.run()
-            assert len(self.cmds) == 19
+            assert len(self.cmds) == 18
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
@@ -117,14 +118,13 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray:{sha}-{pv}-cu121 "
                 f"ray:{sha}-{pv}-cu121_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
-                self.cmds[2]
-                == "python .buildkite/copy_files.py --destination docker_login"
+                self.cmds[1]
+                == "bazel run .buildkite:copy_files -- --destination docker_login"
             )
-            for i in range(3, 11):  # check nightly.date.sha alias
+            for i in range(2, 10):  # check nightly.date.sha alias
                 assert f"/ray:nightly.{formatted_date}.{sha}" in self.cmds[i]
-            for i in range(11, len(self.cmds)):  # check nightly alias
+            for i in range(10, len(self.cmds)):  # check nightly alias
                 assert "/ray:nightly-" in self.cmds[i]
 
             # Run with specific python version and ray-llm image
@@ -135,7 +135,7 @@ class TestRayDockerContainer(RayCITestBase):
             cuda = "cu12.4.1-cudnn"
             container = RayDockerContainer(v, cuda, "ray-llm")
             container.run()
-            assert len(self.cmds) == 7
+            assert len(self.cmds) == 6
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
@@ -144,14 +144,13 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-llm:{sha}-{pv}-cu124 "
                 f"ray-llm:{sha}-{pv}-cu124_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
-                self.cmds[2]
-                == "python .buildkite/copy_files.py --destination docker_login"
+                self.cmds[1]
+                == "bazel run .buildkite:copy_files -- --destination docker_login"
             )
-            for i in range(3, 5):  # check nightly.date.sha alias
+            for i in range(2, 4):  # check nightly.date.sha alias
                 assert f"/ray-llm:nightly.{formatted_date}.{sha}" in self.cmds[i]
-            for i in range(5, len(self.cmds)):  # check nightly alias
+            for i in range(4, len(self.cmds)):  # check nightly alias
                 assert "/ray-llm:nightly-" in self.cmds[i]
 
             # Run with non-default python version and ray-ml image
@@ -161,7 +160,7 @@ class TestRayDockerContainer(RayCITestBase):
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, "cpu", "ray-ml")
             container.run()
-            assert len(self.cmds) == 7
+            assert len(self.cmds) == 6
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
@@ -170,14 +169,13 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
-                self.cmds[2]
-                == "python .buildkite/copy_files.py --destination docker_login"
+                self.cmds[1]
+                == "bazel run .buildkite:copy_files -- --destination docker_login"
             )
-            for i in range(3, 5):  # check nightly.date.sha alias
+            for i in range(2, 4):  # check nightly.date.sha alias
                 assert f"/ray-ml:nightly.{formatted_date}.{sha}" in self.cmds[i]
-            for i in range(5, len(self.cmds)):  # check nightly alias
+            for i in range(4, len(self.cmds)):  # check nightly alias
                 assert "/ray-ml:nightly-" in self.cmds[i]
 
     def test_run_daytime(self) -> None:
@@ -401,6 +399,9 @@ class TestRayDockerContainer(RayCITestBase):
 
         container = RayDockerContainer(v, "cu12.5.1-cudnn", "ray")
         assert container.get_platform_tag() == "-cu125"
+
+        container = RayDockerContainer(v, "cu12.6.3-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu126"
 
         container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray")
         assert container.get_platform_tag() == "-cu128"

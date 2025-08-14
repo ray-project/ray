@@ -8,19 +8,21 @@ import pyarrow
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.block import BlockMetadata
+from ray.data._internal.util import unify_ref_bundles_schema
+from ray.data.block import BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces import Executor
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.execution.streaming_executor import (
+        StreamingExecutor,
+    )
     from ray.data.dataset import Dataset
 
 
@@ -70,7 +72,7 @@ class ExecutionPlan:
         # to also store the metadata in `_snapshot_metadata` instead of
         # `_snapshot_bundle`. For example, we could store the blocks in
         # `self._snapshot_blocks` and the metadata in `self._snapshot_metadata`.
-        self._snapshot_metadata: Optional[BlockMetadata] = None
+        self._snapshot_metadata_schema: Optional["BlockMetadataWithSchema"] = None
 
         # Cached schema.
         self._schema = None
@@ -134,7 +136,7 @@ class ExecutionPlan:
             ):
                 """Traverse (DFS) the LogicalPlan DAG and
                 return a string representation of the operators."""
-                if not op.input_dependencies or op.is_read_op():
+                if isinstance(op, SourceOperator):
                     return curr_str, depth
 
                 curr_max_depth = depth
@@ -159,17 +161,17 @@ class ExecutionPlan:
 
             if self._snapshot_bundle is not None:
                 # This plan has executed some but not all operators.
-                schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+                schema = self._snapshot_bundle.schema
                 count = self._snapshot_bundle.num_rows()
-            elif self._snapshot_metadata is not None:
-                schema = self._snapshot_metadata.schema
-                count = self._snapshot_metadata.num_rows
+            elif self._snapshot_metadata_schema is not None:
+                schema = self._snapshot_metadata_schema.schema
+                count = self._snapshot_metadata_schema.metadata.num_rows
             else:
                 # This plan hasn't executed any operators.
                 has_n_ary_operator = False
                 dag = self._logical_plan.dag
 
-                while not dag.is_read_op() and dag.input_dependencies:
+                while not isinstance(dag, SourceOperator):
                     if len(dag.input_dependencies) > 1:
                         has_n_ary_operator = True
                         break
@@ -181,7 +183,7 @@ class ExecutionPlan:
                     schema = None
                     count = None
                 else:
-                    assert dag.is_read_op() or not dag.input_dependencies, dag
+                    assert isinstance(dag, SourceOperator), dag
                     plan = ExecutionPlan(
                         DatasetStats(metadata={}, parent=None),
                         self._context,
@@ -364,30 +366,23 @@ class ExecutionPlan:
         """
         if self._schema is not None:
             return self._schema
-
         schema = None
-
         if self.has_computed_output():
-            schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+            schema = self._snapshot_bundle.schema
+        else:
+            schema = self._logical_plan.dag.infer_schema()
+            if schema is None and fetch_if_missing:
+                # For consistency with the previous implementation, we fetch the schema if
+                # the plan is read-only even if `fetch_if_missing` is False.
 
-        elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
-            schema = self._logical_plan.dag.aggregate_output_metadata().schema
-
-        elif fetch_if_missing or self.is_read_only():
-            # For consistency with the previous implementation, we fetch the schema if
-            # the plan is read-only even if `fetch_if_missing` is False.
-
-            iter_ref_bundles, _, executor = self.execute_to_iterator()
-
-            # Make sure executor is fully shutdown upon exiting
-            with executor:
-                for ref_bundle in iter_ref_bundles:
-                    for metadata in ref_bundle.metadata:
-                        if metadata.schema is not None:
-                            schema = metadata.schema
+                iter_ref_bundles, _, executor = self.execute_to_iterator()
+                # Make sure executor is fully shutdown upon exiting
+                with executor:
+                    for bundle in iter_ref_bundles:
+                        if bundle.schema is not None:
+                            schema = bundle.schema
                             break
-
-        self._schema = schema
+        self.cache_schema(schema)
         return self._schema
 
     def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
@@ -395,7 +390,7 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.aggregate_output_metadata().input_files
+        return self._logical_plan.dag.infer_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -405,10 +400,11 @@ class ExecutionPlan:
         Returns:
             The number of records of the result Dataset, or None.
         """
+        dag = self._logical_plan.dag
         if self.has_computed_output():
             num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
-        elif self._logical_plan.dag.aggregate_output_metadata().num_rows is not None:
-            num_rows = self._logical_plan.dag.aggregate_output_metadata().num_rows
+        elif dag.infer_metadata().num_rows is not None:
+            num_rows = dag.infer_metadata().num_rows
         else:
             num_rows = None
         return num_rows
@@ -416,7 +412,7 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["Executor"]]:
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
@@ -468,7 +464,6 @@ class ExecutionPlan:
 
         # Always used the saved context for execution.
         context = self._context
-
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.warning(
@@ -485,7 +480,10 @@ class ExecutionPlan:
                 execute_to_legacy_block_list,
             )
 
-            if self._logical_plan.dag.output_data() is not None:
+            if (
+                isinstance(self._logical_plan.dag, SourceOperator)
+                and self._logical_plan.dag.output_data() is not None
+            ):
                 # If the data is already materialized (e.g., `from_pandas`), we can
                 # skip execution and directly return the output data. This avoids
                 # recording unnecessary metrics for an empty plan execution.
@@ -495,7 +493,9 @@ class ExecutionPlan:
                 # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
                 # allow us to remove the unwrapping logic below.
                 output_bundles = self._logical_plan.dag.output_data()
+                schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
+                schema = unify_ref_bundles_schema(output_bundles)
                 bundle = RefBundle(
                     [
                         (block, metadata)
@@ -503,6 +503,7 @@ class ExecutionPlan:
                         for block, metadata in bundle.blocks
                     ],
                     owns_blocks=owns_blocks,
+                    schema=schema,
                 )
             else:
                 # Make sure executor is properly shutdown
@@ -516,6 +517,7 @@ class ExecutionPlan:
                     bundle = RefBundle(
                         tuple(blocks.iter_blocks_with_metadata()),
                         owns_blocks=blocks._owned_by_consumer,
+                        schema=blocks.get_schema(),
                     )
 
                 stats = executor.get_stats()
@@ -586,15 +588,6 @@ class ExecutionPlan:
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return all(isinstance(op, Read) for op in self._logical_plan.sources())
-
-    def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        contains only a Read op. By default, the last operator of
-        the LogicalPlan is used."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-
-        return root_op.is_read_op()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for

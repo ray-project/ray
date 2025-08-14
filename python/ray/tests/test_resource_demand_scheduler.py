@@ -2,6 +2,7 @@ import copy
 import os
 import json
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -9,9 +10,9 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
+import yaml
 
 import pytest
-import yaml
 
 import ray
 import ray._private.ray_constants
@@ -61,8 +62,8 @@ from ray.tests.test_autoscaler import (
     MockGcsClient,
     MockProcessRunner,
     MockProvider,
-    fill_in_raylet_ids,
-    mock_raylet_id,
+    fill_in_node_ids,
+    mock_node_id,
 )
 from functools import partial
 
@@ -948,6 +949,78 @@ def test_request_resources_existing_usage():
     assert not rem
 
 
+def test_do_not_add_nodes_based_on_object_store_memory():
+    provider = MockProvider()
+    TYPES = {
+        "ray.worker.4090.standard": {
+            "resources": {"CPU": 16, "GPU": 1, "memory": 30107260928, "gram": 24},
+            "max_workers": 5,
+        },
+        "ray.worker.4090.highmem": {
+            "resources": {"CPU": 16, "GPU": 1, "memory": 62277025792, "gram": 24},
+            "max_workers": 5,
+        },
+    }
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "ray.worker.4090.standard",
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        },
+        1,
+    )
+    scheduler = ResourceDemandScheduler(
+        provider,
+        TYPES,
+        max_workers=100,
+        head_node_type="empty_node",
+        upscaling_speed=1,
+    )
+
+    ips = provider.non_terminated_node_ips({})
+    assert len(ips) == 1
+
+    unused_resources_by_ip = {
+        ips[0]: {
+            "CPU": 0.0,
+            "GPU": 0.0,
+            "memory": 0.0,
+            "gram": 0.0,
+        }
+    }
+    max_resources_by_ip = {
+        ips[0]: {
+            "CPU": 16.0,
+            "GPU": 1.0,
+            "memory": 30107260928.0,
+            "gram": 24.0,
+            "object_store_memory": 4933059335.0,
+        }
+    }
+    # At this point, there is one node of type "ray.worker.4090.standard" in the cluster,
+    # but all its resources are used.
+    # Now, we try to request a new resource_demand that matches "ray.worker.4090.standard".
+    # The scheduler should add a new node of type "ray.worker.4090.standard".
+    # This test ensures that the scheduler does not take "object_store_memory"
+    # into account when deciding which node type to add. Previously, the scheduler
+    # would consider "object_store_memory" from max_resources_by_ip, and as a result,
+    # choose "ray.worker.4090.highmem" instead of "ray.worker.4090.standard".
+    resource_demands = [{"CPU": 16, "GPU": 1, "memory": 30107260928, "gram": 24}]
+    to_launch, _ = scheduler.get_nodes_to_launch(
+        nodes=provider.non_terminated_nodes({}),
+        launching_nodes={},
+        resource_demands=resource_demands,
+        unused_resources_by_ip=unused_resources_by_ip,
+        pending_placement_groups=[],
+        max_resources_by_ip=max_resources_by_ip,
+        ensure_min_cluster_size=[],
+        node_availability_summary=NodeAvailabilitySummary(node_availabilities={}),
+    )
+    assert to_launch.get("ray.worker.4090.standard") == 1, to_launch
+    assert to_launch.get("ray.worker.4090.highmem") is None, to_launch
+
+
 def test_backlog_queue_impact_on_binpacking_time():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["max_workers"] = 1000
@@ -1194,6 +1267,51 @@ class TestPlacementGroupScaling:
             {},
             resource_demands,
             {},
+            pending_placement_groups,
+            {},
+            [],
+            EMPTY_AVAILABILITY_SUMMARY,
+        )
+        assert to_launch == {}
+        assert not rem
+
+    def test_skip_placed_bundles(self):
+        # test that we do not launch new nodes for bundles that are already placed.
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(
+            provider,
+            TYPES_A,
+            10,
+            head_node_type="p2.8xlarge",
+            upscaling_speed=1,
+        )
+
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
+        # At this point our cluster has 1 p2.8xlarge instances (8 GPUs) and is
+        # fully idle.
+        nodes = provider.non_terminated_nodes({})
+
+        pending_placement_groups = [
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.PACK,
+                bundles=[
+                    Bundle(unit_resources={"GPU": 2}, node_id=nodes[0].encode()),
+                    Bundle(unit_resources={"GPU": 6}),
+                ],
+            ),
+        ]
+        # The bundle that has node_id should not be counted
+        # towards the number of GPUs needed to launch new nodes.
+        # The remaining bundle should be packed onto the existing node and
+        # not require any new nodes.
+        to_launch, rem = scheduler.get_nodes_to_launch(
+            nodes,
+            {},
+            [],
+            {  # 2 GPUs are already used by the first bundle.
+                provider.internal_ip(nodes[0]): {"GPU": 6}
+            },
             pending_placement_groups,
             {},
             [],
@@ -1657,7 +1775,7 @@ class LoadMetricsTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update(
             "1.1.1.1",
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 2},
             {"CPU": 1},
             0,
@@ -1682,7 +1800,7 @@ class LoadMetricsTest(unittest.TestCase):
         ]
         lm.update(
             "1.1.1.1",
-            mock_raylet_id(),
+            mock_node_id(),
             {},
             {},
             DUMMY_IDLE_DURATION_S,
@@ -1707,7 +1825,7 @@ class LoadMetricsTest(unittest.TestCase):
         ]
         lm.update(
             "1.1.1.1",
-            mock_raylet_id(),
+            mock_node_id(),
             {
                 "CPU": 64,
                 "memory": 1000 * 1024 * 1024,
@@ -1722,7 +1840,7 @@ class LoadMetricsTest(unittest.TestCase):
         )
         lm.update(
             "1.1.1.2",
-            mock_raylet_id(),
+            mock_node_id(),
             {
                 "CPU": 64,
                 "GPU": 8,
@@ -1737,14 +1855,14 @@ class LoadMetricsTest(unittest.TestCase):
         )
         lm.update(
             "1.1.1.3",
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 64, "GPU": 8, "accelerator_type:V100": 1},
             {"CPU": 0, "GPU": 0, "accelerator_type:V100": 0.92},
             0,
         )
         lm.update(
             "1.1.1.4",
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 2},
             {"CPU": 2},
             DUMMY_IDLE_DURATION_S,
@@ -1959,9 +2077,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
         for ip in self.provider.non_terminated_node_ips({}):
-            lm.update(ip, mock_raylet_id(), {"CPU": 2}, {"CPU": 0}, 0)
+            lm.update(ip, mock_node_id(), {"CPU": 2}, {"CPU": 0}, 0)
 
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 16}, {"CPU": 1}, 0)
+        lm.update(head_ip, mock_node_id(), {"CPU": 16}, {"CPU": 1}, 0)
         autoscaler.update()
 
         while True:
@@ -1980,7 +2098,7 @@ class AutoscalingTest(unittest.TestCase):
 
         lm.update(
             head_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 16},
             {"CPU": 1},
             0,
@@ -2163,7 +2281,7 @@ class AutoscalingTest(unittest.TestCase):
         ]
         lm.update(
             head_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 16},
             {"CPU": 16},
             DUMMY_IDLE_DURATION_S,
@@ -2248,7 +2366,7 @@ class AutoscalingTest(unittest.TestCase):
         # min workers.
         for node_id in self.provider.non_terminated_nodes({}):
             lm.ray_nodes_last_used_time_by_ip[self.provider.internal_ip(node_id)] = -60
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(3)
 
@@ -2297,12 +2415,12 @@ class AutoscalingTest(unittest.TestCase):
         )
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "GPU": 1}, {}, 0)
+        lm.update(head_ip, mock_node_id(), {"CPU": 4, "GPU": 1}, {}, 0)
         self.waitForNodes(1)
 
         lm.update(
             head_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 4, "GPU": 1},
             {"GPU": 0},
             0,
@@ -2482,7 +2600,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         lm.update(
             "1.2.3.4",
-            mock_raylet_id(),
+            mock_node_id(),
             {},
             {},
             DUMMY_IDLE_DURATION_S,
@@ -2523,7 +2641,7 @@ class AutoscalingTest(unittest.TestCase):
             1,
         )
         lm = LoadMetrics()
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, 0)
+        lm.update("172.0.0.0", mock_node_id(), {"CPU": 0}, {"CPU": 0}, 0)
         autoscaler = MockAutoscaler(
             config_path,
             lm,
@@ -2703,7 +2821,7 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["m4.large"]["min_workers"] = 0
         config["available_node_types"]["m4.large"]["node_config"]["field_changed"] = 1
         config_path = self.write_config(config)
-        fill_in_raylet_ids(self.provider, lm)
+        fill_in_node_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
@@ -2797,7 +2915,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
         lm.update(
             node_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
             DUMMY_IDLE_DURATION_S,
@@ -2812,7 +2930,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 0.2, "WORKER": 1.0}])
         lm.update(
             node_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             {},
             0,
@@ -2822,7 +2940,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         lm.update(
             node_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
             DUMMY_IDLE_DURATION_S,
@@ -2836,7 +2954,7 @@ class AutoscalingTest(unittest.TestCase):
         assert autoscaler.provider.mock_nodes[node_id].state == "unterminatable"
         lm.update(
             "172.0.0.2",
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
             DUMMY_IDLE_DURATION_S,
@@ -2905,7 +3023,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
         lm.update(
             node_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
             DUMMY_IDLE_DURATION_S,
@@ -2923,7 +3041,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 0.2, "WORKER": 1.0}] * 3)
         lm.update(
             node_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             {},
             0,
@@ -2935,21 +3053,21 @@ class AutoscalingTest(unittest.TestCase):
 
         lm.update(
             "172.0.0.2",
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
             DUMMY_IDLE_DURATION_S,
         )
         lm.update(
             "172.0.0.3",
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
             DUMMY_IDLE_DURATION_S,
         )
         lm.update(
             node_ip,
-            mock_raylet_id(),
+            mock_node_id(),
             config["available_node_types"]["def_worker"]["resources"],
             {},
             0,
@@ -3056,7 +3174,7 @@ class AutoscalingTest(unittest.TestCase):
         )
         lm.update(
             "127.0.0.0",
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 2, "GPU": 1},
             {"CPU": 2},
             0,
@@ -3068,7 +3186,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         lm.update(
             "127.0.0.0",
-            mock_raylet_id(),
+            mock_node_id(),
             {"CPU": 2, "GPU": 1},
             {"CPU": 2},
             0,
@@ -4035,9 +4153,4 @@ def test_utilization_score_plugin_2(lexical_score_plugin):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

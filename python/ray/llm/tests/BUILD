@@ -23,7 +23,7 @@ py_test_module_list(
 
 # Batch test
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob([
         "batch/cpu/**/test_*.py",
         "batch/observability/usage_telemetry/test_*.py",
@@ -41,7 +41,9 @@ py_test_module_list(
     env = {
         "VLLM_FLASH_ATTN_VERSION": "2",
     },
-    files = glob(["batch/gpu/**/test_*.py"]),
+    files = glob(
+        ["batch/gpu/**/test_*.py"],
+    ),
     tags = [
         "exclusive",
         "gpu",

@@ -7,8 +7,9 @@ import pytest
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
+from ray._common.test_utils import SignalActor
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import SignalActor
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
@@ -16,8 +17,8 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_scheduler.common import PendingRequest
-from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.common import PendingRequest
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
@@ -67,6 +68,11 @@ class FakeReplicaActor:
             executing_signal_actor = kwargs.pop("executing_signal_actor")
             async with send_signal_on_cancellation(cancelled_signal_actor):
                 await executing_signal_actor.send.remote()
+
+        # Special case: if "raise_task_cancelled_error" is in kwargs, raise TaskCancelledError
+        # This simulates the scenario where the underlying Ray task gets cancelled
+        if kwargs.pop("raise_task_cancelled_error", False):
+            raise TaskCancelledError()
 
         yield pickle.dumps(self._replica_queue_length_info)
         if not self._replica_queue_length_info.accepted:
@@ -201,6 +207,38 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         await send_request_task
 
     await cancelled_signal_actor.wait.remote()
+
+
+@pytest.mark.asyncio
+async def test_send_request_with_rejection_task_cancelled_error(setup_fake_replica):
+    """
+    Test that TaskCancelledError from the underlying Ray task gets converted to
+    asyncio.CancelledError when sending request with rejection.
+    """
+    actor_handle = setup_fake_replica.actor_handle
+    replica = RunningReplica(setup_fake_replica)
+
+    # Set up the replica to accept the request
+    ray.get(
+        actor_handle.set_replica_queue_length_info.remote(
+            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=5),
+        )
+    )
+
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={
+            "raise_task_cancelled_error": True
+        },  # This will trigger TaskCancelledError
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+        ),
+    )
+
+    # The TaskCancelledError should be caught and converted to asyncio.CancelledError
+    with pytest.raises(asyncio.CancelledError):
+        await replica.send_request(pr, with_rejection=True)
 
 
 if __name__ == "__main__":

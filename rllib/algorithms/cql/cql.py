@@ -212,14 +212,6 @@ class CQLConfig(SACConfig):
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
 
-        # In case we run multiple updates per RLlib training step in the `Learner` or
-        # when training on GPU conversion to tensors is managed in batch prefetching.
-        if self.num_gpus_per_learner > 0 or (
-            self.dataset_num_iters_per_learner
-            and self.dataset_num_iters_per_learner > 1
-        ):
-            pipeline.remove("NumpyToTensor")
-
         return pipeline
 
     @override(SACConfig)
@@ -330,7 +322,7 @@ class CQL(SAC):
             )
 
             # Log training results.
-            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

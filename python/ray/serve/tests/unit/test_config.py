@@ -1,10 +1,17 @@
+import sys
+import warnings
+
 import pytest
 
-from ray import cloudpickle
+from ray import cloudpickle, serve
+from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
-from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
-from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_GRPC_PORT,
+)
+from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
@@ -12,6 +19,7 @@ from ray.serve.config import (
     DeploymentMode,
     HTTPOptions,
     ProxyLocation,
+    RequestRouterConfig,
     gRPCOptions,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -32,6 +40,10 @@ fake_policy_return_value = 123
 
 def fake_policy():
     return fake_policy_return_value
+
+
+class FakeRequestRouter:
+    ...
 
 
 def test_autoscaling_config_validation():
@@ -73,6 +85,32 @@ def test_autoscaling_config_validation():
 
     # Default values should not raise an error
     AutoscalingConfig()
+
+
+def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
+    """Test that the metrics_interval_s deprecation warning is raised."""
+    # Warning is raised if we set metrics_interval_s to a non-default value
+    with pytest.warns(DeprecationWarning):
+        AutoscalingConfig(metrics_interval_s=5)
+
+    # ... even if the AutoscalingConfig is instantiated implicitly via the @serve.deployment decorator
+    with pytest.warns(DeprecationWarning):
+
+        @serve.deployment(autoscaling_config={"metrics_interval_s": 5})
+        class Foo:
+            ...
+
+    # ... or if it is deserialized from proto as part of a DeploymentConfig (presumably in the Serve Controller)
+    deployment_config_proto_bytes = DeploymentConfig(
+        autoscaling_config=AutoscalingConfig(metrics_interval_s=5)
+    ).to_proto_bytes()
+    with pytest.warns(DeprecationWarning):
+        DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
+
+    # Default settings should not raise a warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        AutoscalingConfig()
 
 
 class TestDeploymentConfig:
@@ -126,6 +164,58 @@ class TestDeploymentConfig:
 
         # Valid parameter with DEFAULT.VALUE passed in should be ignored
         DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
+
+    def test_setting_and_getting_request_router_class(self):
+        """Check that setting and getting request_router_class works."""
+        request_router_path = (
+            "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+        )
+        if sys.platform == "win32":
+            request_router_path = (
+                "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            )
+
+        # Passing request_router_class as a class.
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                request_router_class=FakeRequestRouter
+            )
+        )
+        assert (
+            deployment_config.request_router_config.request_router_class
+            == request_router_path
+        )
+        assert (
+            deployment_config.request_router_config.get_request_router_class()
+            == FakeRequestRouter
+        )
+
+        # Passing request_router_class as an import path.
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                request_router_class=request_router_path
+            )
+        )
+        assert (
+            deployment_config.request_router_config.request_router_class
+            == request_router_path
+        )
+        assert (
+            deployment_config.request_router_config.get_request_router_class()
+            == FakeRequestRouter
+        )
+
+        # Not passing request_router_class should
+        # default to `PowerOfTwoChoicesRequestRouter`.
+        deployment_config = DeploymentConfig.from_default()
+        assert (
+            deployment_config.request_router_config.request_router_class
+            == "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
+        )
+        assert (
+            deployment_config.request_router_config.get_request_router_class()
+            == PowerOfTwoChoicesRequestRouter
+        )
 
 
 class TestReplicaConfig:
@@ -714,7 +804,7 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
 
 def test_default_autoscaling_policy_import_path():
     """Test that default autoscaling policy can be imported."""
-    policy = import_attr(DEFAULT_AUTOSCALING_POLICY)
+    policy = import_attr(DEFAULT_AUTOSCALING_POLICY_NAME)
 
     assert policy == default_autoscaling_policy
 

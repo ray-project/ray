@@ -104,6 +104,6 @@ class FifoReplayBuffer(ReplayBuffer):
 
         Args:
             state: The new state to set this buffer. Can be obtained by calling
-            `self.get_state()`.
+                `self.get_state()`.
         """
         pass

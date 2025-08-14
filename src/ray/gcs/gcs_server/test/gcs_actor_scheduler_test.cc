@@ -38,7 +38,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("GcsActorSchedulerTest");
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
@@ -78,6 +78,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
         local_node_id_);
+    worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &address) { return worker_client_; });
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_context_->GetIoService(),
         *gcs_actor_table_,
@@ -94,8 +96,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
           success_actors_.emplace_back(std::move(actor));
         },
         *raylet_client_pool_,
-        /*client_factory=*/
-        [this](const rpc::Address &address) { return worker_client_; },
+        *worker_client_pool_,
         /*normal_task_resources_changed_callback=*/
         [gcs_resource_manager](const NodeID &node_id,
                                const rpc::ResourcesData &resources) {
@@ -119,7 +120,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsActor> NewGcsActor(
       const std::unordered_map<std::string, double> &required_placement_resources) {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
+    owner_address.set_node_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("127.0.0.1");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -158,6 +159,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
@@ -169,7 +171,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   NodeID local_node_id_;
 };
 
@@ -576,7 +578,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id_1.Binary());
+  address.set_node_id(node_id_1.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
 
@@ -1127,7 +1129,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
   // 1.Actor is already tied to a leased worker.
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id_1.Binary());
+  address.set_node_id(node_id_1.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
 

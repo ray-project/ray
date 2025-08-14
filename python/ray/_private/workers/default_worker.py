@@ -1,19 +1,23 @@
-import os
 import argparse
 import base64
 import json
-import time
+import os
 import sys
+import time
 
 import ray
 import ray._private.node
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.actor
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
-from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 from ray._private.ray_logging import get_worker_log_file_name
+from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -93,13 +97,6 @@ parser.add_argument(
     help="Specify the path of the temporary directory use by Ray process.",
 )
 parser.add_argument(
-    "--storage",
-    required=False,
-    type=str,
-    default=None,
-    help="Specify the persistent storage path.",
-)
-parser.add_argument(
     "--load-code-from-local",
     default=False,
     action="store_true",
@@ -136,18 +133,18 @@ parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BYTES,
+    default=LOGGING_ROTATE_BYTES,
     help="Specify the max bytes for rotating "
     "log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+    f"{LOGGING_ROTATE_BYTES} bytes.",
 )
 parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    default=LOGGING_ROTATE_BACKUP_COUNT,
     help="Specify the backup count of rotated log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+    f"{LOGGING_ROTATE_BACKUP_COUNT}.",
 )
 parser.add_argument(
     "--runtime-env-hash",
@@ -168,7 +165,9 @@ parser.add_argument(
     action="store_true",
     help="True if Ray debugger is made available externally.",
 )
-parser.add_argument("--session-name", required=False, help="The current session name")
+parser.add_argument(
+    "--session-name", required=False, help="The current Ray session name"
+)
 parser.add_argument(
     "--webui",
     required=False,
@@ -221,12 +220,8 @@ if __name__ == "__main__":
     # for asyncio
     try_install_uvloop()
 
-    raylet_ip_address = args.raylet_ip_address
-    if raylet_ip_address is None:
-        raylet_ip_address = args.node_ip_address
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
-        raylet_ip_address=raylet_ip_address,
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_username=args.redis_username,
@@ -234,7 +229,6 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
-        storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,
         runtime_env_agent_port=args.runtime_env_agent_port,
         gcs_address=args.gcs_address,
@@ -254,11 +248,10 @@ if __name__ == "__main__":
 
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
-    # external storage is intialized.
+    # external storage is initialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
-        from ray._private import external_storage, storage
+        from ray._private import external_storage
 
-        storage._init_storage(args.storage, is_head=False)
         if args.object_spilling_config:
             object_spilling_config = base64.b64decode(args.object_spilling_config)
             object_spilling_config = json.loads(object_spilling_config)

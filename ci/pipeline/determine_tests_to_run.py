@@ -5,17 +5,16 @@ import fnmatch
 import os
 import subprocess
 import sys
-from typing import List, Optional, Set, Tuple
 from pprint import pformat
-
+from typing import List, Optional, Set, Tuple
 
 _ALL_TAGS = set(
     """
     always
-    lint python cpp core_cpp java workflow accelerated_dag dashboard
-    data serve ml tune train llm rllib rllib_gpu rllib_directly
+    lint python cpp core_cpp java workflow compiled_graphs dashboard ray_client
+    data dask serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python k8s_doc
+    release_tests compiled_python spark_on_ray
     """.split()
 )
 

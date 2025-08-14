@@ -42,9 +42,7 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
-DEFINE_string(session_name,
-              "",
-              "session_name: The session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
@@ -71,12 +69,9 @@ int main(int argc, char *argv[]) {
   }
 
   // Backward compatibility notes:
-  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // By default, GCS server flushes all logging and stdout to a single file called
   // `gcs_server.out`, without log rotations. To keep backward compatibility at best
   // effort, we use the same filename as output, and disable log rotation by default.
-
-  // For compatibility, by default GCS server dumps logging into a single file with no
-  // rotation.
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
@@ -114,7 +109,8 @@ int main(int argc, char *argv[]) {
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
-  instrumented_io_context main_service(/*enable_lag_probe=*/true);
+  instrumented_io_context main_service(/*enable_lag_probe=*/true,
+                                       /*running_on_single_thread=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(

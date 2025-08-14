@@ -14,14 +14,14 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
-    wait_for_condition,
     kill_raylet,
 )
+from ray._common.network_utils import build_address
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
     gcs_service_pb2,
@@ -354,10 +354,10 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
 
     # Kill a raylet gracefully.
     def kill_raylet(ip, port, graceful=True):
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        print(f"Sending a shutdown request to {ip}:{port}")
+        print(f"Sending a shutdown request to {build_address(ip, port)}")
         try:
             stub.ShutdownRaylet(
                 node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
@@ -803,9 +803,5 @@ def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

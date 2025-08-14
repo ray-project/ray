@@ -92,6 +92,51 @@ To change the size at which Ray Data splits blocks, configure
 Ray Data can’t split rows. So, if your dataset contains large rows (for example, large
 images), then Ray Data can’t bound the block size.
 
+
+Shuffle Algorithms
+------------------
+
+In data processing shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
+called :ref:`blocks <data_key_concepts>`).
+
+Ray Data implements two main shuffle algorithms:
+
+.. _hash-shuffle:
+
+Hash-shuffling
+~~~~~~~~~~~~~~
+
+.. note:: Hash-shuffling is available in Ray 2.46
+
+Hash-shuffling is a classical hash-partitioning based shuffling where:
+
+1. **Partition phase:** rows in every block are hash-partitioned based on values in the *key columns* into a specified number of partitions, following a simple residual formula of ``hash(key-values) % N`` (used in hash-tables and pretty much everywhere).
+2. **Push phase:** partition's shards from individual blocks are then pushed into corresponding aggregating actors (called ``HashShuffleAggregator``) handling respective partitions.
+3. **Reduce phase:** aggregators combine received individual partition's shards back into blocks optionally applying additional transformations before producing the resulting blocks.
+
+Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, by
+ensuring that rows with the same key-values are being placed into the same partition.
+
+.. note:: To use hash-shuffling in your aggregations and repartitioning operations, you need to currently specify
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``.
+
+.. _range-partitioning-shuffle:
+
+Range-partitioning shuffle
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Range-partitioning based shuffle also is a classical algorithm, based on the dataset being split into target number of ranges as determined by boundaries approximating
+the real ranges of the totally ordered (sorted) dataset.
+
+1. **Sampling phase:** every input block is randomly sampled for (10) rows. Samples are combined into a single dataset, which is then sorted and split into
+   target number of partitions defining approximate *range boundaries*.
+2. **Partition phase:** every block is sorted and split into partitions based on the *range boundaries* derived in the previous step.
+3. **Reduce phase:** individual partitions within the same range are then recombined to produce the resulting block.
+
+.. note:: Range-partitioning shuffle is a default shuffling strategy. To set it explicitly specify
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED`` before creating a ``Dataset``.
+
+
 Operators, plans, and planning
 ------------------------------
 

@@ -16,8 +16,8 @@ from ray_release.test import (
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
-DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
+DATAPLANE_FILENAME = "dataplane_20250624.tar.gz"
+DATAPLANE_DIGEST = "3cffb55f1a56f0bc6256cbf1a38bf1e764e202a647a4272b80531760f1250059"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = (
@@ -30,13 +30,11 @@ REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
 
-def build_anyscale_custom_byod_image(test: Test) -> None:
-    if not test.require_custom_byod_image():
-        logger.info(f"Test {test.get_name()} does not require a custom byod image")
-        return
-    byod_image = test.get_anyscale_byod_image()
-    if _image_exist(byod_image):
-        logger.info(f"Image {byod_image} already exists")
+def build_anyscale_custom_byod_image(
+    image: str, base_image: str, post_build_script: str
+) -> None:
+    if _image_exist(image):
+        logger.info(f"Image {image} already exists")
         return
 
     env = os.environ.copy()
@@ -47,11 +45,11 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
             "build",
             "--progress=plain",
             "--build-arg",
-            f"BASE_IMAGE={test.get_anyscale_base_byod_image()}",
+            f"BASE_IMAGE={base_image}",
             "--build-arg",
-            f"POST_BUILD_SCRIPT={test.get_byod_post_build_script()}",
+            f"POST_BUILD_SCRIPT={post_build_script}",
             "-t",
-            byod_image,
+            image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
             RELEASE_BYOD_DIR,
@@ -59,7 +57,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         stdout=sys.stderr,
         env=env,
     )
-    _validate_and_push(byod_image)
+    _validate_and_push(image)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> None:
@@ -130,8 +128,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",
                         f"PIP_REQUIREMENTS={byod_requirements}",
-                        "--build-arg",
-                        "DEBIAN_REQUIREMENTS=requirements_debian_byod.txt",
                         "-t",
                         byod_image,
                         "-f",

@@ -15,7 +15,11 @@
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -109,6 +113,10 @@ void TaskSpecification::ComputeResources() {
         new ResourceSet(MapFromProtobuf(required_placement_resources)));
   }
 
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
+
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
@@ -121,8 +129,12 @@ void TaskSpecification::ComputeResources() {
             : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc = SchedulingClassDescriptor(
-        resource_set, function_descriptor, depth, GetSchedulingStrategy());
+    auto label_selector = GetLabelSelector();
+    auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                    label_selector,
+                                                    function_descriptor,
+                                                    depth,
+                                                    GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
@@ -136,6 +148,17 @@ TaskID TaskSpecification::TaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->task_id());
+}
+
+std::string TaskSpecification::TaskIdBinary() const {
+  if (message_->task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->task_id();
+}
+
+TaskAttempt TaskSpecification::GetTaskAttempt() const {
+  return std::make_pair(TaskId(), AttemptNumber());
 }
 
 const std::string TaskSpecification::GetSerializedActorHandle() const {
@@ -159,6 +182,13 @@ TaskID TaskSpecification::ParentTaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->parent_task_id());
+}
+
+std::string TaskSpecification::ParentTaskIdBinary() const {
+  if (message_->parent_task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->parent_task_id();
 }
 
 ActorID TaskSpecification::RootDetachedActorId() const {
@@ -268,16 +298,37 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).has_object_ref();
+  // If `has_object_ref()` is true and `is_inlined()` is true, it means that the argument
+  // is an ObjectRef, but the object doesn't get pushed to the object store. Hence, it is
+  // inlined in the task spec.
+  return message_->args(arg_index).has_object_ref() &&
+         !message_->args(arg_index).is_inlined();
 }
 
-ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+ObjectID TaskSpecification::ArgObjectId(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  }
+  return ObjectID::Nil();
+}
+
+std::string TaskSpecification::ArgObjectIdBinary(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return message_->args(arg_index).object_ref().object_id();
+  }
+  return ObjectID::Nil().Binary();
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
+}
+
+rpc::TensorTransport TaskSpecification::ArgTensorTransport(size_t arg_index) const {
+  if (message_->args(arg_index).has_tensor_transport()) {
+    return message_->args(arg_index).tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
@@ -306,6 +357,10 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+const LabelSelector &TaskSpecification::GetLabelSelector() const {
+  return *label_selector_;
+}
+
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
   return message_->scheduling_strategy();
 }
@@ -330,7 +385,7 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
-      dependencies.push_back(ArgId(i));
+      dependencies.push_back(ArgObjectId(i));
     }
   }
   return dependencies;
@@ -415,6 +470,10 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+absl::flat_hash_map<std::string, std::string> TaskSpecification::GetLabels() const {
+  return MapFromProtobuf(message_->labels());
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
@@ -431,8 +490,12 @@ WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
+std::string TaskSpecification::CallerWorkerIdBinary() const {
+  return message_->caller_address().worker_id();
+}
+
 NodeID TaskSpecification::CallerNodeId() const {
-  return NodeID::FromBinary(message_->caller_address().raylet_id());
+  return NodeID::FromBinary(message_->caller_address().node_id());
 }
 
 // === Below are getter methods specific to actor tasks.
@@ -442,9 +505,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::ActorCounter() const {
+uint64_t TaskSpecification::SequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().actor_counter();
+  return message_->actor_task_spec().sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -463,9 +526,16 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
-bool TaskSpecification::ExecuteOutOfOrder() const {
+const rpc::TensorTransport TaskSpecification::TensorTransport() const {
+  if (IsActorTask()) {
+    return message_->tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
+}
+
+bool TaskSpecification::AllowOutOfOrderExecution() const {
   return IsActorCreationTask() &&
-         message_->actor_creation_task_spec().execute_out_of_order();
+         message_->actor_creation_task_spec().allow_out_of_order_execution();
 }
 
 bool TaskSpecification::IsAsyncioActor() const {
@@ -512,7 +582,7 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
+           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 

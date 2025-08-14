@@ -111,7 +111,7 @@ py_test_module_list(
         "tests/experimental/test_torch_tensor_dag.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -122,10 +122,10 @@ py_test_module_list(
 py_test_module_list(
     size = "enormous",
     files = [
-        "tests/experimental/test_accelerated_dag.py",
+        "tests/experimental/test_compiled_graphs.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -142,7 +142,7 @@ py_test(
     env = {"RAY_PYTEST_USE_GPU": "1"},
     main = "tests/experimental/test_torch_tensor_dag.py",
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "multi_gpu",
         "no_windows",
@@ -160,7 +160,7 @@ py_test(
     env = {"RAY_PYTEST_USE_GPU": "1"},
     main = "tests/experimental/test_torch_tensor_transport.py",
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "multi_gpu",
         "no_windows",
@@ -179,7 +179,7 @@ py_test(
 #     env = {"RAY_PYTEST_USE_GPU": "1"},
 #     main = "tests/experimental/test_execution_schedule_gpu.py",
 #     tags = [
-#         "accelerated_dag",
+#         "compiled_graphs",
 #         "exclusive",
 #         "multi_gpu",
 #         "no_windows",

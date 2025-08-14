@@ -3,11 +3,10 @@ from typing import TYPE_CHECKING, Dict, Iterable, Optional, Union
 
 import numpy as np
 
+from .tfrecords_datasource import _get_single_true_type
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
-
-from .tfrecords_datasource import _get_single_true_type
 
 if TYPE_CHECKING:
     import pyarrow

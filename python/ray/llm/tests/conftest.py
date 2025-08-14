@@ -1,8 +1,9 @@
 import os
 import tempfile
-import requests
-import pytest
 from typing import Generator, List
+
+import pytest
+import requests
 
 S3_ARTIFACT_URL = "https://air-example-data.s3.amazonaws.com/"
 S3_ARTIFACT_LLM_OSSCI_URL = S3_ARTIFACT_URL + "rayllm-ossci/"

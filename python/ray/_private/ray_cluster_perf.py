@@ -1,9 +1,10 @@
 """This is the script for `ray clusterbenchmark`."""
 
 import time
-import numpy as np
-import ray
 
+import numpy as np
+
+import ray
 from ray.cluster_utils import Cluster
 
 

@@ -28,12 +28,12 @@
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/local_task_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
@@ -48,28 +48,36 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers, bool filter_io_workers) const {
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
 
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+  bool IsWorkerAvailableForScheduling() const override {
+    RAY_CHECK(false) << "Not used.";
+    return false;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   };
 
-  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   }
@@ -118,6 +126,119 @@ class MockWorkerPool : public WorkerPoolInterface {
     }
   }
 
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const std::shared_ptr<ClientConnection> &connection) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const std::shared_ptr<ClientConnection> &connection) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
+  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void HandleJobFinished(const JobID &job_id) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void Start() override { RAY_CHECK(false) << "Not used."; }
+
+  void SetNodeManagerPort(int node_manager_port) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void SetRuntimeEnvAgentClient(
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers) const override {
+    RAY_CHECK(false) << "Not used.";
+    return {};
+  }
+
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                        const rpc::JobConfig &job_config,
+                        std::function<void(Status, int)> send_reply_callback) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token,
+                        std::function<void(Status, int)> send_reply_callback) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  boost::optional<const rpc::JobConfig &> GetJobConfig(
+      const JobID &job_id) const override {
+    RAY_CHECK(false) << "Not used.";
+    return boost::none;
+  }
+
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        rpc::WorkerExitType disconnect_type) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PrestartWorkers(const TaskSpecification &task_spec,
+                       int64_t backlog_size) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void StartNewWorker(
+      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  std::string DebugString() const override {
+    RAY_CHECK(false) << "Not used.";
+    return "";
+  }
+
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
   size_t CallbackSize(int runtime_env_hash) {
     auto cb_it = callbacks.find(runtime_env_hash);
     if (cb_it != callbacks.end()) {
@@ -160,7 +281,7 @@ RayTask CreateTask(
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_node_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
   spec_builder.SetCommonTaskSpec(id,
                                  "dummy_task",
@@ -753,8 +874,7 @@ TEST_F(ClusterTaskManagerTest, DrainingWhileResolving) {
   missing_objects_.erase(missing_arg);
   std::vector<TaskID> unblocked = {resolving_args_task.GetTaskSpecification().TaskId()};
   local_task_manager_->TasksUnblocked(unblocked);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
 }
 
 TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
@@ -873,8 +993,7 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -928,8 +1047,7 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -996,8 +1114,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
 
   // The third task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 0);
 
   // Two workers start. First task was dispatched now.
@@ -1091,7 +1208,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   pool_.callbacks.clear();
   task_manager_.ScheduleAndDispatchTasks();
   // task1 is spilled and task2 is cancelled.
-  ASSERT_EQ(reply1.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(reply1.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_TRUE(reply2.canceled());
   ASSERT_EQ(reply2.scheduling_failure_message(), "runtime env setup error");
 }
@@ -1690,7 +1807,7 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
   // Make sure the spillback callback is called.
-  ASSERT_EQ(reply.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
   AssertNoLeaks();
 }
 
@@ -1747,12 +1864,13 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   // task1: running. Progress is made, and there's no deadlock.
-  ray::RayTask exemplar;
-  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+  ASSERT_EQ(task_manager_.AnyPendingTasksForResourceAcquisition(&pending_actor_creations,
+                                                                &pending_tasks),
+            nullptr);
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(pending_tasks, 0);
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1765,8 +1883,12 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+  auto pending_task = task_manager_.AnyPendingTasksForResourceAcquisition(
+      &pending_actor_creations, &pending_tasks);
+  ASSERT_EQ(pending_task->GetTaskSpecification().TaskId(),
+            task2.GetTaskSpecification().TaskId());
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(pending_tasks, 1);
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
@@ -2066,14 +2188,14 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
   // Spill from the back of the waiting queue.
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
-  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[2]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[3]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_FALSE(task_manager_.CancelTask(tasks[2].GetTaskSpecification().TaskId()));
   ASSERT_FALSE(task_manager_.CancelTask(tasks[3].GetTaskSpecification().TaskId()));
   // Do not spill back tasks ready to dispatch.
-  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[4]->retry_at_raylet_address().node_id(), "");
 
   AddNode(remote_node_id, 8);
   // Dispatch the ready task.
@@ -2084,8 +2206,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
   // One waiting task spilled.
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
@@ -2095,8 +2217,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
   // One waiting task spilled.
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
@@ -2105,7 +2227,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   AddNode(remote_node_id, 8);
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 4);
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
@@ -2450,7 +2572,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapSpillback) {
   AddNode(remote_node_id, 8);
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
 }
 
 /// Test that we exponentially increase the amount of time it takes to increase
@@ -2801,8 +2923,7 @@ TEST_F(ClusterTaskManagerTest, UnscheduleableWhileDraining) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
 }
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:

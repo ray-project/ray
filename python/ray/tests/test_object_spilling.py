@@ -6,9 +6,12 @@ import sys
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from pathlib import Path
+import os
+
+import psutil
 import numpy as np
 import pytest
-import os
+
 
 import ray
 from ray._private.external_storage import (
@@ -19,8 +22,7 @@ from ray._private.external_storage import (
     ExternalStorageSmartOpenImpl,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import GcsClientOptions
+from ray._common.test_utils import wait_for_condition
 import ray.remote_function
 from ray.tests.conftest import (
     buffer_object_spilling_config,
@@ -62,26 +64,6 @@ def is_dir_empty(temp_folder, node_id, append_path=True):
     return num_files == 0
 
 
-def assert_no_thrashing(address):
-    state = ray._private.state.GlobalState()
-    options = GcsClientOptions.create(
-        address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
-    )
-    state._initialize_global_state(options)
-    summary = memory_summary(address=address, stats_only=True)
-    restored_bytes = 0
-    consumed_bytes = 0
-
-    for line in summary.split("\n"):
-        if "Restored" in line:
-            restored_bytes = int(line.split(" ")[1])
-        if "consumed" in line:
-            consumed_bytes = int(line.split(" ")[-2])
-    assert (
-        consumed_bytes >= restored_bytes
-    ), f"consumed: {consumed_bytes}, restored: {restored_bytes}"
-
-
 @pytest.mark.skipif(platform.system() == "Windows", reason="Doesn't support Windows.")
 def test_spill_file_uniqueness(shutdown_only):
     ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
@@ -98,7 +80,9 @@ def test_spill_file_uniqueness(shutdown_only):
         with patch.object(
             StorageType, "_get_objects_from_store"
         ) as mock_get_objects_from_store:
-            mock_get_objects_from_store.return_value = [(b"somedata", b"metadata")]
+            mock_get_objects_from_store.return_value = [
+                (b"somedata", b"metadata", None)
+            ]
             storage = StorageType(ray_context["node_id"], "/tmp")
             spilled_url_set = {
                 storage.spill_objects(refs, [b"localhost"])[0] for _ in range(10)
@@ -457,7 +441,6 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
 
     print(type(temp_folder))
     wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
-    assert_no_thrashing(ray_context["address"])
 
 
 def test_spill_remote_object(
@@ -504,14 +487,13 @@ def test_spill_remote_object(
 
     # Test passing the spilled object as an arg to another task.
     ray.get(depends.remote(ref))
-    assert_no_thrashing(cluster.address)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = fs_only_object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -543,7 +525,6 @@ def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_on
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -553,7 +534,7 @@ def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_on
 def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = unstable_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -583,13 +564,12 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["address"])
 
 
 def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = slow_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -621,7 +601,6 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["address"])
 
 
 def test_spill_stats(object_spilling_config, shutdown_only):
@@ -657,27 +636,13 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
 
-    # Test if consumed bytes are correctly calculated.
-    obj = ray.put(np.zeros(30 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    def func_with_ref(obj):
-        return True
-
-    ray.get(func_with_ref.remote(obj))
-
-    s = memory_summary(address=address["address"], stats_only=True)
-    # 50MB * 5 references + 30MB used for task execution.
-    assert "Objects consumed by Ray tasks: 280 MiB." in s, s
-    assert_no_thrashing(address["address"])
-
 
 @pytest.mark.skipif(platform.system() == "Darwin", reason="Failing on macOS.")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_async", [False, True])
 async def test_spill_during_get(object_spilling_config, shutdown_only, is_async):
     object_spilling_config, _ = object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
@@ -730,7 +695,6 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     assert duration <= timedelta(
         seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
-    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.parametrize(
@@ -743,25 +707,16 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     ],
     indirect=True,
 )
-def test_spill_worker_failure(ray_start_regular):
-    def run_workload():
-        @ray.remote
-        def f():
-            return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+def test_recover_from_spill_worker_failure(ray_start_regular):
+    @ray.remote
+    def f():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
 
-        ids = []
-        for _ in range(5):
-            x = f.remote()
-            ids.append(x)
-        for id in ids:
-            ray.get(id)
-        del ids
-
-    run_workload()
+    def _run_spilling_workload():
+        for obj_ref in [f.remote() for _ in range(5)]:
+            ray.get(obj_ref)
 
     def get_spill_worker():
-        import psutil
-
         for proc in psutil.process_iter():
             try:
                 name = ray._private.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
@@ -778,24 +733,26 @@ def test_spill_worker_failure(ray_start_regular):
             except psutil.NoSuchProcess:
                 pass
 
-    # Spilling occurred. Get the PID of the spill worker.
+    # Run a workload that forces spilling to occur.
+    _run_spilling_workload()
+
+    # Get the PID of the spill worker that was created and kill it.
     spill_worker_proc = get_spill_worker()
     assert spill_worker_proc
-
-    # Kill the spill worker
     spill_worker_proc.kill()
     spill_worker_proc.wait()
 
-    # Now we trigger spilling again
-    run_workload()
+    # Run the workload again and ensure that it succeeds.
+    _run_spilling_workload()
 
-    # A new spill worker should be created
-    spill_worker_proc = get_spill_worker()
-    assert spill_worker_proc
+    # Check that the spilled files are cleaned up after the workload finishes.
+    wait_for_condition(
+        lambda: is_dir_empty(
+            Path(ray._private.worker._global_node._session_dir),
+            ray.get_runtime_context().get_node_id(),
+        )
+    )
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -18,7 +18,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -29,6 +28,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 
@@ -43,17 +43,10 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// information from.
   OwnershipBasedObjectDirectory(
       instrumented_io_context &io_service,
-      std::shared_ptr<gcs::GcsClient> &gcs_client,
+      gcs::GcsClient &gcs_client,
       pubsub::SubscriberInterface *object_location_subscriber,
       rpc::CoreWorkerClientPool *owner_client_pool,
-      int64_t max_object_report_batch_size,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
-
-  virtual ~OwnershipBasedObjectDirectory() {}
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
@@ -97,7 +90,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
     /// The current set of known locations of this object.
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
-    std::string spilled_url = "";
+    std::string spilled_url;
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
@@ -117,7 +110,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Reference to the event loop.
   instrumented_io_context &io_service_;
   /// Reference to the gcs client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
   /// Info about subscribers to object locations.
   absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.
@@ -165,22 +158,61 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Metrics
 
   /// Number of object locations added to this object directory.
-  uint64_t metrics_num_object_locations_added_;
-  double metrics_num_object_locations_added_per_second_;
+  uint64_t metrics_num_object_locations_added_ = 0;
+  double metrics_num_object_locations_added_per_second_ = 0;
 
-  /// Number of object locations removed from this object directory.
-  uint64_t metrics_num_object_locations_removed_;
-  double metrics_num_object_locations_removed_per_second_;
+  /// Number of object locations removed from this object directory. = 0;
+  uint64_t metrics_num_object_locations_removed_ = 0;
+  double metrics_num_object_locations_removed_per_second_ = 0;
 
-  /// Number of object location lookups.
-  uint64_t metrics_num_object_location_lookups_;
-  double metrics_num_object_location_lookups_per_second_;
+  /// Number of object location lookups. = 0;
+  uint64_t metrics_num_object_location_lookups_ = 0;
+  double metrics_num_object_location_lookups_per_second_ = 0;
 
   /// Number of object location updates.
-  uint64_t metrics_num_object_location_updates_;
-  double metrics_num_object_location_updates_per_second_;
+  uint64_t metrics_num_object_location_updates_ = 0;
+  double metrics_num_object_location_updates_per_second_ = 0;
 
-  uint64_t cum_metrics_num_object_location_updates_;
+  uint64_t cum_metrics_num_object_location_updates_ = 0;
+
+  /// Ray metrics
+  ray::stats::Gauge ray_metric_object_directory_location_subscriptions_{
+      /*name=*/"object_directory_subscriptions",
+      /*description=*/
+      "Number of object location subscriptions. If this is high, the raylet is "
+      "attempting "
+      "to pull a lot of objects.",
+      /*unit=*/"subscriptions"};
+
+  ray::stats::Gauge ray_metric_object_directory_location_updates_{
+      /*name=*/"object_directory_updates",
+      /*description=*/
+      "Number of object location updates per second. If this is high, the raylet is "
+      "attempting to pull a lot of objects and/or the locations for objects are "
+      "frequently "
+      "changing (e.g. due to many object copies or evictions).",
+      /*unit=*/"updates"};
+
+  ray::stats::Gauge ray_metric_object_directory_location_lookups_{
+      /*name=*/"object_directory_lookups",
+      /*description=*/
+      "Number of object location lookups per second. If this is high, the raylet is "
+      "waiting on a lot of objects.",
+      /*unit=*/"lookups"};
+
+  ray::stats::Gauge ray_metric_object_directory_location_added_{
+      /*name=*/"object_directory_added_locations",
+      /*description=*/
+      "Number of object locations added per second. If this is high, a lot of objects "
+      "have been added on this node.",
+      /*unit=*/"additions"};
+
+  ray::stats::Gauge ray_metric_object_directory_location_removed_{
+      /*name=*/"object_directory_removed_locations",
+      /*description=*/
+      "Number of object locations removed per second. If this is high, a lot of objects "
+      "have been removed from this node.",
+      /*unit=*/"removals"};
 
   friend class OwnershipBasedObjectDirectoryTest;
 };

@@ -15,7 +15,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -72,7 +71,8 @@ struct CoreWorkerOptions {
       bool retry_exception,
       // The max number of unconsumed objects where a generator
       // can run without a pause.
-      int64_t generator_backpressure_num_objects)>;
+      int64_t generator_backpressure_num_objects,
+      const rpc::TensorTransport &tensor_transport)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -83,9 +83,9 @@ struct CoreWorkerOptions {
         interactive(false),
         node_ip_address(""),
         node_manager_port(0),
-        raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
+        free_actor_object_callback(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -95,7 +95,7 @@ struct CoreWorkerOptions {
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
-        cancel_async_task(nullptr),
+        cancel_async_actor_task(nullptr),
         is_local_mode(false),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
@@ -106,13 +106,8 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        assigned_worker_port(std::nullopt),
-        assigned_raylet_id(std::nullopt),
         debug_source(""),
-        enable_resource_isolation(false) {
-    // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
-    // neither should be assigned.
-  }
+        enable_resource_isolation(false) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -139,14 +134,12 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
-  /// IP address of the raylet.
-  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// The callback to be called when shutting down a `CoreWorker` instance.
-  std::function<void(const WorkerID &)> on_worker_shutdown;
+  /// Callback to free GPU object from the in-actor object store.
+  std::function<void(const ObjectID &)> free_actor_object_callback;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -177,10 +170,10 @@ struct CoreWorkerOptions {
   // Function that tries to interrupt the currently running Python thread if its
   // task ID matches the one given.
   std::function<bool(const TaskID &task_id)> kill_main;
-  std::function<void(const TaskID &task_id,
-                     const RayFunction &ray_function,
-                     const std::string name_of_concurrency_group_to_execute)>
-      cancel_async_task;
+  // Function to cancel a running asyncio actor task.
+  // Should return a boolean indicating if the task was successfully cancelled or not.
+  // If not, the client will retry.
+  std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
@@ -207,23 +200,11 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
-  /// Session name (Cluster ID) of the cluster.
+  /// The current Ray session name.
   std::string session_name;
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
-  /// Available port number for the worker.
-  ///
-  /// TODO(hjiang): Figure out how to assign available port at core worker start, also
-  /// need to add an end-to-end integration test.
-  ///
-  /// On the next end-to-end integrartion PR, we should check
-  /// - non-empty for worker
-  /// - and empty for driver
-  std::optional<int> assigned_worker_port;
-  /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
-  /// driver.
-  std::optional<NodeID> assigned_raylet_id;
 
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.

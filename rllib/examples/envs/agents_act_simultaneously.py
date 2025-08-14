@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --sheldon-cooper-mode`
+`python [script file name].py --sheldon-cooper-mode`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -57,7 +57,6 @@ parser = add_rllib_example_script_args(
     default_reward=0.9, default_iters=50, default_timesteps=100000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 parser.add_argument(
@@ -94,7 +93,9 @@ if __name__ == "__main__":
             env_config={"sheldon_cooper_mode": args.sheldon_cooper_mode},
         )
         .env_runners(
-            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+            env_to_module_connector=(
+                lambda env, spaces, device: FlattenObservations(multi_agent=True)
+            ),
         )
         .multi_agent(
             # Define two policies.

@@ -1,13 +1,14 @@
 from typing import Dict, Iterator, Tuple
 import logging
 from abc import ABC, abstractmethod
+import sys
+import multiprocessing
 
 import torch
 from torch.utils.data import IterableDataset
-from torch.utils.data.distributed import DistributedSampler
 
-import ray.train
 import ray
+import ray.train
 
 from constants import DatasetKey
 from config import BenchmarkConfig, TorchConfig
@@ -97,6 +98,14 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         """
         pass
 
+    def _create_multiprocessing_context(self):
+        # Importing libs in torch dataloader worker subprocesses is very slow.
+        # Preload all imported modules to speed up subprocess forking.
+        imported_modules = list(sys.modules.keys())
+        ctx = multiprocessing.get_context("forkserver")
+        ctx.set_forkserver_preload(imported_modules)
+        return ctx
+
     def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a DataLoader for training data.
 
@@ -104,7 +113,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for training
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        world_size = ray.train.get_context().get_world_size()
         logger.info(f"Worker {worker_rank}: Creating train dataloader")
 
         dataloader_config = self.get_dataloader_config()
@@ -135,13 +143,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"timeout={timeout}, batch_size={batch_size}"
         )
 
-        if self.benchmark_config.task == "localfs_image_classification_jpeg":
-            train_sampler = DistributedSampler(
-                train_ds, num_replicas=world_size, rank=worker_rank, shuffle=False
-            )
-        else:
-            train_sampler = None
-
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
             batch_size=batch_size,
@@ -152,8 +153,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context="forkserver",
-            sampler=train_sampler,
+            multiprocessing_context=self._create_multiprocessing_context(),
+        )
+        # Add a DistributedSampler to the dataloader if possible (map-style datasets)
+        dataloader = ray.train.torch.prepare_data_loader(
+            dataloader, move_to_device=False
         )
 
         return self.create_batch_iterator(dataloader, device)
@@ -165,7 +169,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for validation
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        world_size = ray.train.get_context().get_world_size()
         logger.info(f"Worker {worker_rank}: Creating validation dataloader")
 
         dataloader_config = self.get_dataloader_config()
@@ -198,13 +201,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"timeout={timeout}, batch_size={batch_size}"
         )
 
-        if self.benchmark_config.task == "localfs_image_classification_jpeg":
-            val_sampler = DistributedSampler(
-                val_ds, num_replicas=world_size, rank=worker_rank, shuffle=False
-            )
-        else:
-            val_sampler = None
-
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
             batch_size=batch_size,
@@ -215,7 +211,9 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context="forkserver",
-            sampler=val_sampler,
+            multiprocessing_context=self._create_multiprocessing_context(),
+        )
+        dataloader = ray.train.torch.prepare_data_loader(
+            dataloader, move_to_device=False
         )
         return self.create_batch_iterator(dataloader, device)

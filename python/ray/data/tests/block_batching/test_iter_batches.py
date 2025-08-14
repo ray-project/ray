@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.iter_batches import (
-    iter_batches,
+    BatchIterator,
     prefetch_batches_locally,
     restore_original_order,
 )
@@ -25,11 +25,13 @@ def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
-            schema=None,
             input_files=[],
             exec_stats=None,
         )
-        yield RefBundle(blocks=((ray.put(block), metadata),), owns_blocks=True)
+        schema = block.schema
+        yield RefBundle(
+            blocks=((ray.put(block), metadata),), owns_blocks=True, schema=schema
+        )
 
 
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])
@@ -121,7 +123,7 @@ def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
 
     # Test that finalize_fn is called in a single thread,
     # even if prefetch_batches is set.
-    output_batches = iter_batches(
+    output_batches = BatchIterator(
         ref_bundles_iter,
         collate_fn=lambda batch: batch,
         finalize_fn=finalize_enforce_single_thread,
@@ -154,7 +156,7 @@ def test_iter_batches_e2e(
 
     ref_bundles_iter = ref_bundle_generator(num_blocks=4, num_rows=2)
 
-    output_batches = iter_batches(
+    output_batches = BatchIterator(
         ref_bundles_iter,
         batch_size=batch_size,
         prefetch_batches=prefetch_batches,
@@ -196,7 +198,7 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
 
     ref_bundles = ref_bundle_generator(num_blocks=20, num_rows=2)
     start_time = time.time()
-    output_batches = iter_batches(
+    output_batches = BatchIterator(
         ref_bundles,
         batch_size=None,
         collate_fn=collate_fn,

@@ -10,10 +10,11 @@ import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import logging_utils
+from ray._common.network_utils import build_address
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._private import logging_utils
 from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class DashboardAgent:
         minimal,
         metrics_export_port=None,
         node_manager_port=None,
+        events_export_addr=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
         *,  # the following are required kwargs
@@ -55,6 +57,7 @@ class DashboardAgent:
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
+        self.events_export_addr = events_export_addr
         self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
@@ -77,9 +80,10 @@ class DashboardAgent:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
-        from ray.dashboard.http_server_agent import HttpServerAgent
         from grpc import aio as aiogrpc
+
         from ray._private.tls_utils import add_port_to_grpc_server
+        from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
@@ -110,7 +114,7 @@ class DashboardAgent:
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
             self.grpc_port = add_port_to_grpc_server(
-                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
+                self.server, build_address(grpc_ip, self.dashboard_agent_port)
             )
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
@@ -123,7 +127,10 @@ class DashboardAgent:
             self.server = None
             self.grpc_port = None
         else:
-            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+            logger.info(
+                "Dashboard agent grpc address: %s",
+                build_address(grpc_ip, self.grpc_port),
+            )
 
         # If the agent is not minimal it should start the http server
         # to communicate with the dashboard in a head node.
@@ -366,7 +373,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="The session name (cluster id) of this cluster.",
+        help="The current Ray session name.",
     )
     parser.add_argument(
         "--stdout-filepath",

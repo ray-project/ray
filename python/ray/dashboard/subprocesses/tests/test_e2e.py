@@ -1,19 +1,24 @@
 import asyncio
+import pathlib
 import re
 import sys
-import pathlib
 from typing import List
 
-from ray.dashboard.optional_deps import aiohttp
 import pytest
 
+from ray._common.test_utils import wait_for_condition
+import ray._private.ray_constants as ray_constants
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
+import ray.dashboard.consts as dashboard_consts
+from ray._common.test_utils import async_wait_for_condition
+from ray.dashboard.optional_deps import aiohttp
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
-import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import async_wait_for_condition
-import ray.dashboard.consts as dashboard_consts
 
 # This test requires non-minimal Ray.
 
@@ -33,8 +38,8 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
         socket_dir=str(tmp_path),
     )
 
@@ -113,6 +118,26 @@ async def test_load_multiple_modules(aiohttp_client, default_module_config):
     assert await response.text() == "Hello, World from GET /test, run_finished: True"
 
     response = await client.get("/test1")
+    assert response.status == 200
+    assert await response.text() == "Hello from TestModule1"
+
+
+async def test_redirect_between_modules(aiohttp_client, default_module_config):
+    """Tests that a redirect can be handled between modules."""
+    app = await start_http_server_app(default_module_config, [TestModule, TestModule1])
+    client = await aiohttp_client(app)
+
+    # Allow redirects to be handled between modules.
+    # NOTE: If redirects were followed at the module level,
+    # the test would error, since following /test in TestModule1 would
+    # result in a 404.
+    # Instead, the redirect should be handled at the subprocess proxy level,
+    # where the redirect request is forwarded to the correct module.
+    response = await client.get("/redirect_between_modules", allow_redirects=True)
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /test, run_finished: True"
+
+    response = await client.get("/redirect_within_module", allow_redirects=True)
     assert response.status == 200
     assert await response.text() == "Hello from TestModule1"
 
@@ -248,6 +273,10 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
 
+    def read_file_content(file_path):
+        with file_path.open("r") as f:
+            return f.read()
+
     response = await client.post(
         "/logging_in_module", data=b"Not all those who wander are lost"
     )
@@ -258,40 +287,46 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.log"
     )
-    with log_file_path.open("r") as f:
-        log_file_content = f.read()
 
-    # Assert on the log format and the content.
-    log_pattern = (
-        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
-    )
-    matches = re.findall(log_pattern, log_file_content)
+    def verify():
+        with log_file_path.open("r") as f:
+            log_file_content = f.read()
 
-    # Expected format: [(file_name, content), ...]
-    expected_logs = [
-        ("utils.py", "TestModule is initing"),
-        ("utils.py", "TestModule is done initing"),
-        ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
-    ]
-    assert all(
-        (file_name, content) in matches for (file_name, content) in expected_logs
-    ), f"Expected to contain {expected_logs}, got {matches}"
+        # Assert on the log format and the content.
+        log_pattern = (
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
+        )
+        matches = re.findall(log_pattern, log_file_content)
+
+        # Expected format: [(file_name, content), ...]
+        expected_logs = [
+            ("utils.py", "TestModule is initing"),
+            ("utils.py", "TestModule is done initing"),
+            ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
+        ]
+        return all(
+            (file_name, content) in matches for (file_name, content) in expected_logs
+        )
+
+    wait_for_condition(verify)
 
     # Assert that stdout is logged to "dashboard_TestModule.out"
     out_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.out"
     )
-    with out_log_file_path.open("r") as f:
-        out_log_file_content = f.read()
-    assert out_log_file_content == "In /logging_in_module, stdout\n"
+    wait_for_condition(
+        lambda: read_file_content(out_log_file_path)
+        == "In /logging_in_module, stdout\n"
+    )
 
     # Assert that stderr is logged to "dashboard_TestModule.err"
     err_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
     )
-    with err_log_file_path.open("r") as f:
-        err_log_file_content = f.read()
-    assert err_log_file_content == "In /logging_in_module, stderr\n"
+    wait_for_condition(
+        lambda: read_file_content(err_log_file_path)
+        == "In /logging_in_module, stderr\n"
+    )
 
 
 async def test_logging_in_module_with_multiple_incarnations(

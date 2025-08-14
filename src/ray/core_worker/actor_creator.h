@@ -37,15 +37,15 @@ class ActorCreatorInterface {
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is registered to
   /// GCS
-  /// \return Status
-  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    gcs::StatusCallback callback) = 0;
+  virtual void AsyncRegisterActor(const TaskSpecification &task_spec,
+                                  gcs::StatusCallback callback) = 0;
 
-  virtual Status AsyncRestartActor(const ActorID &actor_id,
-                                   uint64_t num_restarts,
-                                   gcs::StatusCallback callback) = 0;
+  virtual void AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) = 0;
 
-  virtual Status AsyncReportActorOutOfScope(
+  virtual void AsyncReportActorOutOfScope(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
       gcs::StatusCallback callback) = 0;
@@ -54,8 +54,7 @@ class ActorCreatorInterface {
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
-  /// \return Status
-  virtual Status AsyncCreateActor(
+  virtual void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) = 0;
 
@@ -63,7 +62,6 @@ class ActorCreatorInterface {
   ///
   /// \param actor_id The actor id to wait
   /// \param callback The callback that will be called after actor registered
-  /// \return void
   virtual void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
                                                gcs::StatusCallback callback) = 0;
 
@@ -90,34 +88,35 @@ class DefaultActorCreator : public ActorCreatorInterface {
     return status;
   }
 
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            gcs::StatusCallback callback) override {
+  void AsyncRegisterActor(const TaskSpecification &task_spec,
+                          gcs::StatusCallback callback) override {
     auto actor_id = task_spec.ActorCreationId();
     (*registering_actors_)[actor_id] = {};
     if (callback != nullptr) {
       (*registering_actors_)[actor_id].emplace_back(std::move(callback));
     }
-    return gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [actor_id, this](Status status) {
-          std::vector<ray::gcs::StatusCallback> cbs;
-          cbs = std::move((*registering_actors_)[actor_id]);
-          registering_actors_->erase(actor_id);
-          for (auto &cb : cbs) {
-            cb(status);
-          }
-        });
+    gcs_client_->Actors().AsyncRegisterActor(task_spec, [actor_id, this](Status status) {
+      std::vector<ray::gcs::StatusCallback> cbs;
+      cbs = std::move((*registering_actors_)[actor_id]);
+      registering_actors_->erase(actor_id);
+      for (auto &cb : cbs) {
+        cb(status);
+      }
+    });
   }
 
-  Status AsyncRestartActor(const ActorID &actor_id,
-                           uint64_t num_restarts,
-                           gcs::StatusCallback callback) override {
-    return gcs_client_->Actors().AsyncRestartActor(actor_id, num_restarts, callback);
+  void AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) override {
+    gcs_client_->Actors().AsyncRestartActorForLineageReconstruction(
+        actor_id, num_restarts_due_to_lineage_reconstructions, callback);
   }
 
-  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                    uint64_t num_restarts_due_to_lineage_reconstruction,
-                                    gcs::StatusCallback callback) override {
-    return gcs_client_->Actors().AsyncReportActorOutOfScope(
+  void AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                  uint64_t num_restarts_due_to_lineage_reconstruction,
+                                  gcs::StatusCallback callback) override {
+    gcs_client_->Actors().AsyncReportActorOutOfScope(
         actor_id, num_restarts_due_to_lineage_reconstruction, callback);
   }
 
@@ -132,10 +131,10 @@ class DefaultActorCreator : public ActorCreatorInterface {
     iter->second.emplace_back(std::move(callback));
   }
 
-  Status AsyncCreateActor(
+  void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
-    return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
+    gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
   }
 
  private:

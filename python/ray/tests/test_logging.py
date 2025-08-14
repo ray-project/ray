@@ -16,6 +16,7 @@ import colorama
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     PROCESS_TYPE_DASHBOARD,
@@ -29,9 +30,7 @@ from ray._private.ray_constants import (
     PROCESS_TYPE_RAY_CLIENT_SERVER,
     PROCESS_TYPE_REAPER,
     PROCESS_TYPE_REDIS_SERVER,
-    PROCESS_TYPE_REPORTER,
     PROCESS_TYPE_RUNTIME_ENV_AGENT,
-    PROCESS_TYPE_WEB_UI,
     PROCESS_TYPE_WORKER,
 )
 from ray._private.log_monitor import (
@@ -47,7 +46,6 @@ from ray._private.test_utils import (
     get_log_data,
     init_log_pubsub,
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -546,10 +544,6 @@ def test_log_redirect_to_stderr(shutdown_only):
         PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
         PROCESS_TYPE_REAPER: "",
-        # No reporter process run.
-        PROCESS_TYPE_REPORTER: "",
-        # No web UI process run.
-        PROCESS_TYPE_WEB_UI: "",
         # Unused.
         PROCESS_TYPE_WORKER: "",
     }
@@ -1069,7 +1063,6 @@ def test_ray_does_not_break_makeRecord():
         ("ray.serve", logging.INFO),
         ("ray.train", logging.INFO),
         ("ray.tune", logging.INFO),
-        ("ray.workflow", logging.INFO),
     ),
 )
 @pytest.mark.parametrize(
@@ -1255,12 +1248,7 @@ class TestSetupLogRecordFactory:
 
 
 if __name__ == "__main__":
-    import sys
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

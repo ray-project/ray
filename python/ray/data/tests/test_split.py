@@ -100,8 +100,9 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata())
+        schema = BlockAccessor.for_block(block).schema()
         blk = (blocks[-1], metadata[-1])
-        ref_bundles.append(RefBundle((blk,), owns_blocks=True))
+        ref_bundles.append(RefBundle((blk,), owns_blocks=True, schema=schema))
         total_rows += block_size
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
@@ -485,7 +486,6 @@ def _create_meta(num_rows):
     return BlockMetadata(
         num_rows=num_rows,
         size_bytes=None,
-        schema=None,
         input_files=None,
         exec_stats=None,
     )
@@ -508,8 +508,11 @@ def _create_blocklist(blocks):
 
 
 def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
+    schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
-        [_create_block_and_metadata(block) for block in blocks], owns_blocks=True
+        [_create_block_and_metadata(block) for block in blocks],
+        owns_blocks=True,
+        schema=schema,
     )
 
 
@@ -771,6 +774,90 @@ def test_train_test_split(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ds.train_test_split(test_size=9)
+
+
+def test_train_test_split_stratified(ray_start_regular_shared):
+    # Test basic stratification with simple dataset
+    data = [
+        {"id": 0, "label": "A"},
+        {"id": 1, "label": "A"},
+        {"id": 2, "label": "B"},
+        {"id": 3, "label": "B"},
+        {"id": 4, "label": "C"},
+        {"id": 5, "label": "C"},
+    ]
+    ds = ray.data.from_items(data)
+
+    # Test stratified split
+    train, test = ds.train_test_split(test_size=0.5, stratify="label")
+
+    # Check that we have the right number of samples
+    assert train.count() == 3
+    assert test.count() == 3
+
+    # Check that class proportions are preserved
+    train_labels = [row["label"] for row in train.take()]
+    test_labels = [row["label"] for row in test.take()]
+
+    train_label_counts = {label: train_labels.count(label) for label in ["A", "B", "C"]}
+    test_label_counts = {label: test_labels.count(label) for label in ["A", "B", "C"]}
+
+    # Each class should have exactly 1 sample in each split
+    assert train_label_counts == {"A": 1, "B": 1, "C": 1}
+    assert test_label_counts == {"A": 1, "B": 1, "C": 1}
+
+
+def test_train_test_split_shuffle_stratify_error(ray_start_regular_shared):
+    # Test that shuffle=True and stratify cannot be used together
+    data = [
+        {"id": 0, "label": "A"},
+        {"id": 1, "label": "A"},
+        {"id": 2, "label": "B"},
+        {"id": 3, "label": "B"},
+    ]
+    ds = ray.data.from_items(data)
+
+    # Test that combining shuffle=True and stratify raises ValueError
+    with pytest.raises(
+        ValueError, match="Cannot specify both 'shuffle=True' and 'stratify'"
+    ):
+        ds.train_test_split(test_size=0.5, shuffle=True, stratify="label")
+
+
+def test_train_test_split_stratified_imbalanced(ray_start_regular_shared):
+    # Test stratified split with imbalanced class distribution
+    data = [
+        {"id": 0, "label": "A"},
+        {"id": 1, "label": "A"},
+        {"id": 2, "label": "A"},
+        {"id": 3, "label": "A"},
+        {"id": 4, "label": "A"},
+        {"id": 5, "label": "A"},  # 6 samples of class A
+        {"id": 6, "label": "B"},
+        {"id": 7, "label": "B"},  # 2 samples of class B
+        {"id": 8, "label": "C"},  # 1 sample of class C
+    ]
+    ds = ray.data.from_items(data)
+
+    # Test with 0.3 test size
+    train, test = ds.train_test_split(test_size=0.3, stratify="label")
+
+    train_labels = [row["label"] for row in train.take()]
+    test_labels = [row["label"] for row in test.take()]
+
+    train_label_counts = {label: train_labels.count(label) for label in ["A", "B", "C"]}
+    test_label_counts = {label: test_labels.count(label) for label in ["A", "B", "C"]}
+
+    # Check proportions are maintained as closely as possible
+    # Class A: 6 samples -> test_count = int(6 * 0.3) = 1 -> train: 5, test: 1
+    # Class B: 2 samples -> test_count = int(2 * 0.3) = 0 -> train: 2, test: 0
+    # Class C: 1 sample -> test_count = int(1 * 0.3) = 0 -> train: 1, test: 0
+    assert train_label_counts["A"] == 5
+    assert test_label_counts["A"] == 1
+    assert train_label_counts["B"] == 2
+    assert test_label_counts["B"] == 0
+    assert train_label_counts["C"] == 1
+    assert test_label_counts["C"] == 0
 
 
 def test_split_is_not_disruptive(ray_start_cluster):
