@@ -81,7 +81,9 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   memory_store->Put(obj1, id1);
   memory_store->Put(obj1, id2);
   RAY_UNUSED(memory_store->Get({id1}, -1, context, &results, &got_exception));
+  ASSERT_FALSE(got_exception);
   RAY_UNUSED(memory_store->Get({id2}, -1, context, &results, &got_exception));
+  ASSERT_FALSE(got_exception);
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 

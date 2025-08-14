@@ -64,8 +64,6 @@ class CoreWorkerMemoryStore {
                                                const ObjectID &object_id)>
           object_allocator = nullptr);
 
-  ~CoreWorkerMemoryStore() = default;
-
   /// Put an object with specified ID into object store. If there are pending GetAsync
   /// requests, the callbacks are posted onto the io_context.
   ///
