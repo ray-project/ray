@@ -46,7 +46,7 @@ depsets:
   - name: compiled_ray_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     operation: subset
-    source_depset: ray_base_test_depset
+    source_depset: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     requirements:
       - python/requirements.txt
     output: python/requirements_compiled_ray_py311_${CUDA_CODE}.txt
@@ -54,7 +54,7 @@ depsets:
   - name: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     operation: subset
-    source_depset: compiled_ray_llm_test_depset
+    source_depset: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     requirements:
       - python/requirements.txt
       - python/requirements/llm/llm-requirements.txt
