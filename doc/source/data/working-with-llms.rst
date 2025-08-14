@@ -343,14 +343,34 @@ Data for the following features and attributes is collected to improve Ray Data 
 If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
 to turn it off.
 
-.. _production_guide:
+.. _faqs:
 
-Production guide
+Frequently Asked Questions (FAQs)
 --------------------------------------------------
+
+.. TODO(#55491): Rewrite this section once the restriction is lifted.
+.. _cross_node_parallelism:
+
+How to configure LLM stage to parallelize across multiple nodes?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At the moment, Ray Data LLM doesn't support cross-node parallelism (either
+tensor parallelism or pipeline parallelism).
+
+The processing pipeline is designed to run on a single node. The number of
+GPUs is calculated as the product of the tensor parallel size and the pipeline
+parallel size, and apply
+[`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
+to ensure that each replica of the LLM stage is executed on a single node.
+
+Nevertheless, you can still horizontally scale the LLM stage to multiple nodes
+as long as each replica (TP * PP) fits into a single node. The number of
+replicas is configured by the `concurrency` argument in
+:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
 
 .. _model_cache:
 
-Caching model weight to remote object storage
+How to cache model weight to remote object storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 While deploying Ray Data LLM to large scale clusters, model loading may be rate
