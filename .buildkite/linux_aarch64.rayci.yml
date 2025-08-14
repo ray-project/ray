@@ -13,13 +13,30 @@ steps:
     wanda: ci/docker/manylinux.aarch64.wanda.yaml
     instance_type: builder-arm64
 
+  - name: raycpubase-aarch64
+    label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
+    tags:
+      - python_dependencies
+      - docker
+      - core_cpp
+    wanda: ci/docker/ray.cpu.base.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    instance_type: builder-arm64
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+
   - name: raycudabase-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base (aarch64)"
     tags:
       - python_dependencies
       - docker
       - core_cpp
-    wanda: ci/docker/ray.cuda.base.aarch64.wanda.yaml
+    wanda: ci/docker/ray.cuda.base.wanda.yaml
     matrix:
       setup:
         python:
@@ -40,22 +57,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
-
-  - name: raycpubase-aarch64
-    label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-    wanda: ci/docker/ray.cpu.base.aarch64.wanda.yaml
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-      - "3.12"
-    instance_type: builder-arm64
-    env:
-      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:

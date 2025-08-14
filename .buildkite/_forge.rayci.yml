@@ -19,6 +19,7 @@ steps:
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
     label: "wanda: ray.py{{matrix}}.cpu.base-extra"
@@ -58,6 +59,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
