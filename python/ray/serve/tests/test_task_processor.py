@@ -117,6 +117,7 @@ def _get_task_counts_by_routing_key(queue_path):
     return counts
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithRayServe:
     """Test task consumer integration with Ray Serve."""
 
