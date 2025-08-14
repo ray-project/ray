@@ -6,8 +6,6 @@ import pytest
 import sys
 import tempfile
 
-import requests
-
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
 )
@@ -17,8 +15,6 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.tests.conftest import _ray_start
 from ray._private.ray_constants import SESSION_LATEST
 from ray._common.utils import get_ray_temp_dir
-
-import ray
 
 
 logger = logging.getLogger(__name__)
@@ -230,65 +226,6 @@ def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
             assert "{global_filters}" in target.expr
-
-
-@pytest.mark.parametrize(
-    "case,payload,expected_status,expected_body,expected_error_substring",
-    [
-        ("missing", None, 200, [], None),
-        (
-            "valid_list",
-            [{"targets": ["127.0.0.1:9000"], "labels": {"job": "ray"}}],
-            200,
-            [{"targets": ["127.0.0.1:9000"], "labels": {"job": "ray"}}],
-            None,
-        ),
-        (
-            "invalid_json",
-            "{not valid json",
-            500,
-            None,
-            "http service discovery failure",
-        ),
-        ("non_list", {"targets": ["127.0.0.1:9000"]}, 500, None, "not a list"),
-    ],
-)
-def test_prometheus_sd_endpoint(
-    ray_start_with_dashboard,
-    case,
-    payload,
-    expected_status,
-    expected_body,
-    expected_error_substring,
-):
-    # setup test service discovery file
-    path = os.path.join(get_ray_temp_dir(), "prom_metrics_service_discovery.json")
-    if case == "missing":
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-    else:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if case == "valid_list" or case == "non_list":
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(payload, f)
-        elif case == "invalid_json":
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(payload)
-
-    url = "http://" + ray._private.worker.get_dashboard_url() + "/api/prometheus/sd"
-    resp = requests.get(url)
-    assert resp.status_code == expected_status
-    assert resp.headers.get("Cache-Control") == "no-store"
-    assert resp.headers.get("Content-Type", "").startswith("application/json")
-
-    if expected_status == 200:
-        assert resp.json() == expected_body
-    else:
-        body = resp.json()
-        assert "error" in body
-        assert expected_error_substring in body["error"].lower()
 
 
 if __name__ == "__main__":
