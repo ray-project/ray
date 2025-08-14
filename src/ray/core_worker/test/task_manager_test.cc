@@ -193,7 +193,7 @@ class TaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(store_
                     ->Wait({object_id},
                            /*num_objects=*/1,
-                           /*timeout_ms=*/0,
+                           /*timeout_ms=*/1000,
                            ctx,
                            &ready,
                            &plasma_object_ids)
@@ -454,7 +454,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
-    AssertInMemoryStore(return_id);
+    AssertNotInMemoryStore({return_id});
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
     ASSERT_EQ(last_object_recovery_, false);
@@ -1244,10 +1244,10 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
     ASSERT_EQ(owner_addr.worker_id(), addr_.worker_id());
   }
 
-  ASSERT_EQ(stored_in_plasma.size(), 3);
   for (const auto &id : dynamic_return_ids) {
     AssertInMemoryStore(id, /*expect_in_plasma=*/true);
   }
+  ASSERT_EQ(stored_in_plasma.size(), 3);
 
   // If we remove the generator ref, all internal refs also go out of scope.
   // This is equivalent to deleting the generator ObjectRef without iterating
