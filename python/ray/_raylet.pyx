@@ -2911,21 +2911,24 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
-        c_log_lines = PythonGetLogBatchLines(log_batch)
+        result = {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+        with nogil:
+            c_log_lines = PythonGetLogBatchLines(move(log_batch))
 
         log_lines = []
         for c_log_line in c_log_lines:
             log_lines.append(c_log_line.decode())
 
-        return {
-            "ip": log_batch.ip().decode(),
-            "pid": log_batch.pid().decode(),
-            "job": log_batch.job_id().decode(),
-            "is_err": log_batch.is_error(),
-            "lines": log_lines,
-            "actor_name": log_batch.actor_name().decode(),
-            "task_name": log_batch.task_name().decode(),
-        }
+        result["lines"] = log_lines
+        return result
 
 
 # This class should only be used for tests
