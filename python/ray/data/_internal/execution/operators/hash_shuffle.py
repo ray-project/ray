@@ -443,8 +443,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         data_context: DataContext,
         *,
         key_columns: List[Tuple[str]],
-        num_partitions: int,
         partition_aggregation_factory: StatefulShuffleAggregationFactory,
+        num_partitions: Optional[int] = None,
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
@@ -471,7 +471,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         )
 
         self._key_column_names: List[Tuple[str]] = key_columns
-        self._num_partitions = num_partitions
+        self._num_partitions: int = (
+            num_partitions or data_context.default_hash_shuffle_parallelism
+        )
 
         # Determine max number of shuffle aggregators (defaults to
         # `DataContext.min_parallelism`)
@@ -1072,7 +1074,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         data_context: DataContext,
         *,
         key_columns: Tuple[str],
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         should_sort: bool = False,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
