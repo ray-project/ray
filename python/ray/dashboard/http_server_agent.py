@@ -48,13 +48,13 @@ class HttpServerAgent:
                     self.listen_port,
                 )
                 await site.start()
-                if self.ip not in ["127.0.0.1", "localhost"]:
-                    local_site = aiohttp.web.TCPSite(
-                        self.runner,
-                        "127.0.0.1",
-                        self.listen_port,
-                    )
-                    await local_site.start()
+                # if self.ip not in ["127.0.0.1", "localhost"]:
+                #     local_site = aiohttp.web.TCPSite(
+                #         self.runner,
+                #         "127.0.0.1",
+                #         self.listen_port,
+                #     )
+                #     await local_site.start()
                 if attempt > 0:
                     logger.info(
                         f"Successfully started agent on port {self.listen_port} "
