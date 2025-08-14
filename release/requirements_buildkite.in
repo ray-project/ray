@@ -31,3 +31,13 @@ jsonschema>=4.23.0
 certifi>=2025.1.31
 h11>=0.16.0
 google-cloud-logging
+
+# Azure requirements for launch_and_verify_cluster.py
+azure-core==1.35.0
+azure-identity==1.23.1
+azure-mgmt-compute==35.0.0
+azure-mgmt-network==29.0.0
+azure-mgmt-resource==24.0.0
+azure-common==1.1.28
+msrest==0.7.1
+msrestazure==0.6.4.post1

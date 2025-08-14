@@ -8,6 +8,10 @@ accessible-pygments==0.0.5 \
     --hash=sha256:40918d3e6a2b619ad424cb91e556bd3bd8865443d9f22f1dcdf79e33c8046872 \
     --hash=sha256:88ae3211e68a1d0b011504b2ffc1691feafce124b845bd072ab6f9f66f34d4b7
     # via pydata-sphinx-theme
+adal==1.2.7 \
+    --hash=sha256:2a7451ed7441ddbc57703042204a3e30ef747478eea022c70f789fc7f084bc3d \
+    --hash=sha256:d74f45b81317454d96e982fd1c50e6fb5c99ac2223728aea8764433a39f566f1
+    # via msrestazure
 aioboto3==12.4.0 \
     --hash=sha256:0fa03ac7a8c2c187358dd27cdf84da05e91bc1a3bd85519cad13521343a3d767 \
     --hash=sha256:a8d5a60852482cc7a472f3544e5ad7d2f5a911054ffa066357140dc6690da94b
@@ -149,6 +153,45 @@ aws-requests-auth==0.4.3 \
     --hash=sha256:33593372018b960a31dbbe236f89421678b885c35f0b6a7abfae35bb77e069b2 \
     --hash=sha256:646bc37d62140ea1c709d20148f5d43197e6bd2d63909eb36fa4bb2345759977
     # via -r release/requirements_buildkite.in
+azure-common==1.1.28 \
+    --hash=sha256:4ac0cd3214e36b6a1b6a442686722a5d8cc449603aa833f3f0f40bda836704a3 \
+    --hash=sha256:5c12d3dcf4ec20599ca6b0d3e09e86e146353d443e7fcc050c9a19c1f9df20ad
+    # via
+    #   -r release/requirements_buildkite.in
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
+azure-core==1.35.0 \
+    --hash=sha256:8db78c72868a58f3de8991eb4d22c4d368fae226dac1002998d6c50437e7dad1 \
+    --hash=sha256:c0be528489485e9ede59b6971eb63c1eaacf83ef53001bfe3904e475e972be5c
+    # via
+    #   -r release/requirements_buildkite.in
+    #   azure-identity
+    #   azure-mgmt-core
+    #   msrest
+azure-identity==1.23.1 \
+    --hash=sha256:226c1ef982a9f8d5dcf6e0f9ed35eaef2a4d971e7dd86317e9b9d52e70a035e4 \
+    --hash=sha256:7eed28baa0097a47e3fb53bd35a63b769e6b085bb3cb616dfce2b67f28a004a1
+    # via -r release/requirements_buildkite.in
+azure-mgmt-compute==35.0.0 \
+    --hash=sha256:43196911135507d1ce76f089c4e57d3b225885e5127d023be2ce1c597fd44336 \
+    --hash=sha256:52d18b39da48547a086ba74e418de1bfb1108b8f8c9d6cb002919ece2f3902ed
+    # via -r release/requirements_buildkite.in
+azure-mgmt-core==1.6.0 \
+    --hash=sha256:0460d11e85c408b71c727ee1981f74432bc641bb25dfcf1bb4e90a49e776dbc4 \
+    --hash=sha256:b26232af857b021e61d813d9f4ae530465255cb10b3dde945ad3743f7a58e79c
+    # via
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
+azure-mgmt-network==29.0.0 \
+    --hash=sha256:577fbc76a195f744b97bac4275e11279f7f3e63c659d98773f3b4a9a6e0943b9 \
+    --hash=sha256:c04dc0d9f6b936abe4ec7c5fa9cee1514795b1f84d2742dead2115dcde33476c
+    # via -r release/requirements_buildkite.in
+azure-mgmt-resource==24.0.0 \
+    --hash=sha256:27b32cd223e2784269f5a0db3c282042886ee4072d79cedc638438ece7cd0df4 \
+    --hash=sha256:cf6b8995fcdd407ac9ff1dd474087129429a1d90dbb1ac77f97c19b96237b265
+    # via -r release/requirements_buildkite.in
 babel==2.15.0 \
     --hash=sha256:08706bdad8d0a3413266ab61bd6c34d0c28d6e1e7badf40a2cebe67644e2e1fb \
     --hash=sha256:8daf0e265d05768bc6c7a314cf1321e9a123afc328cc635c18622a2f30a04413
@@ -192,6 +235,7 @@ certifi==2025.1.31 \
     # via
     #   -r release/requirements_buildkite.in
     #   anyscale
+    #   msrest
     #   requests
 cffi==1.16.0 \
     --hash=sha256:0c9ef6ff37e974b73c25eecc13952c55bceed9112be2d9d938ded8e856138bcc \
@@ -396,6 +440,9 @@ cryptography==42.0.5 \
     --hash=sha256:f12764b8fffc7a123f641d7d049d382b73f96a34117e0b637b80643169cec8ac \
     --hash=sha256:f8837fe1d6ac4a8052a9a8ddab256bc006242696f03368a4009be7ee3075cdb7
     # via
+    #   adal
+    #   azure-identity
+    #   msal
     #   pyjwt
     #   secretstorage
 debugpy==1.8.2 \
@@ -823,6 +870,14 @@ ipython==8.18.1 \
     # via
     #   ipykernel
     #   myst-nb
+isodate==0.7.2 \
+    --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
+    --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
+    # via
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
+    #   msrest
 jaraco-classes==3.4.0 \
     --hash=sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd \
     --hash=sha256:f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790
@@ -1003,6 +1058,26 @@ more-itertools==10.2.0 \
     # via
     #   jaraco-classes
     #   jaraco-functools
+msal==1.33.0 \
+    --hash=sha256:836ad80faa3e25a7d71015c990ce61f704a87328b1e73bcbb0623a18cbf17510 \
+    --hash=sha256:c0cd41cecf8eaed733ee7e3be9e040291eba53b0f262d3ae9c58f38b04244273
+    # via
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.3.1 \
+    --hash=sha256:96d3de4d034504e969ac5e85bae8106c8373b5c6568e4c8fa7af2eca9dbe6bca \
+    --hash=sha256:c5b0fd10f65ef62b5f1d62f4251d51cbcaf003fcedae8c91b040a488614be1a4
+    # via azure-identity
+msrest==0.7.1 \
+    --hash=sha256:21120a810e1233e5e6cc7fe40b474eeb4ec6f757a15d7cf86702c369f9567c32 \
+    --hash=sha256:6e7661f46f3afd88b75667b7187a92829924446c7ea1d169be8c4bb7eeb788b9
+    # via
+    #   -r release/requirements_buildkite.in
+    #   msrestazure
+msrestazure==0.6.4.post1 \
+    --hash=sha256:2264493b086c2a0a82ddf5fd87b35b3fffc443819127fed992ac5028354c151e \
+    --hash=sha256:39842007569e8c77885ace5c46e4bf2a9108fcb09b1e6efdf85b6e2c642b55d4
+    # via -r release/requirements_buildkite.in
 multidict==6.0.5 \
     --hash=sha256:01265f5e40f5a17f8241d52656ed27192be03bfa8764d88e8220141d1e4b3556 \
     --hash=sha256:0275e35209c27a3f7951e1ce7aaf93ce0d163b28948444bec61dd7badc6d3f8c \
@@ -1151,6 +1226,10 @@ oauth2client==4.1.3 \
     --hash=sha256:b8a81cc5d60e2d364f0b1b98f958dbd472887acaf1a5b05e21c28c31a2d6d3ac \
     --hash=sha256:d486741e451287f69568a4d26d70d9acd73a2bbfa275746c535b4209891cccc6
     # via anyscale
+oauthlib==3.3.1 \
+    --hash=sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9 \
+    --hash=sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1
+    # via requests-oauthlib
 opentelemetry-api==1.33.1 \
     --hash=sha256:1c6055fc0a2d3f23a50c7e17e16ef75ad489345fd3df1f8b8af7c0bbf8a109e8 \
     --hash=sha256:4db83ebcf7ea93e64637ec6ee6fabee45c5cbe4abd9cf3da95c43828ddb50b83
@@ -1389,7 +1468,10 @@ pygments==2.16.1 \
 pyjwt[crypto]==2.8.0 \
     --hash=sha256:57e28d156e3d5c10088e0c68abb90bfac3df82b40a71bd0daa20c65ccd5c23de \
     --hash=sha256:59127c392cc44c2da5bb3192169a91f429924e17aff6534d70fdc02ab3e04320
-    # via pygithub
+    # via
+    #   adal
+    #   msal
+    #   pygithub
 pynacl==1.5.0 \
     --hash=sha256:06b8f6fa7f5de8d5d2f7573fe8c863c051225a27b61e6860fd047b1775807858 \
     --hash=sha256:0c84947a22519e013607c9be43706dd42513f9e6ae5d39d3613ca1e142fba44d \
@@ -1414,6 +1496,7 @@ python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
     # via
+    #   adal
     #   anyscale
     #   botocore
     #   freezegun
@@ -1591,18 +1674,27 @@ requests==2.32.3 \
     # via
     #   -r release/requirements-doc.txt
     #   -r release/requirements_buildkite.in
+    #   adal
     #   anyscale
     #   aws-requests-auth
+    #   azure-core
     #   docker
     #   google-api-core
     #   google-cloud-storage
     #   id
+    #   msal
+    #   msrest
     #   pybuildkite
     #   pygithub
+    #   requests-oauthlib
     #   requests-toolbelt
     #   sphinx
     #   sphinx-jsonschema
     #   twine
+requests-oauthlib==2.0.0 \
+    --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
+    --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
+    # via msrest
 requests-toolbelt==1.0.0 \
     --hash=sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6 \
     --hash=sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06
@@ -1740,6 +1832,8 @@ six==1.16.0 \
     # via
     #   anyscale
     #   asttokens
+    #   azure-core
+    #   msrestazure
     #   oauth2client
     #   python-dateutil
     #   sphinxcontrib-redoc
@@ -1970,6 +2064,11 @@ typing-extensions==4.11.0 \
     #   aioitertools
     #   anyio
     #   anyscale
+    #   azure-core
+    #   azure-identity
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
     #   ipython
     #   myst-nb
     #   pydantic

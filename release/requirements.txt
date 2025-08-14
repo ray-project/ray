@@ -20,3 +20,13 @@ protobuf >= 3.15.3, != 3.19.5
 pytz
 retry
 kubernetes
+
+# Azure requirements for launch_and_verify_cluster.py
+azure-core
+azure-identity
+azure-mgmt-compute
+azure-mgmt-network
+azure-mgmt-resource
+azure-common
+msrest
+msrestazure
