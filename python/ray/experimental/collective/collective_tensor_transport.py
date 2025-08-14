@@ -62,18 +62,6 @@ class CollectiveTensorTransport(TensorTransportManager):
 
         from ray.experimental.collective import get_collective_groups
 
-        def __ray_update_collective_metadata__(
-            self: "ray.actor.ActorHandle",
-            tensor_transport_metadata: CollectiveTransportMetadata,
-            communicator_name: str,
-            src_rank: int,
-            dst_rank: int,
-        ):
-            tensor_transport_metadata.communicator_name = communicator_name
-            tensor_transport_metadata.src_rank = src_rank
-            tensor_transport_metadata.dst_rank = dst_rank
-            return tensor_transport_metadata
-
         communicators = get_collective_groups(
             [src_actor, dst_actor],
             backend=backend,
@@ -105,13 +93,12 @@ class CollectiveTensorTransport(TensorTransportManager):
                 f"Receiver actor {dst_actor} not found in communicator. "
                 "Please make sure the sender and receiver are in the same communicator."
             )
-        return src_actor.__ray_call__.remote(
-            __ray_update_collective_metadata__,
-            tensor_transport_metadata,
-            communicator.name,
-            src_rank,
-            dst_rank,
-        )
+
+        tensor_transport_metadata = ray.get(tensor_transport_metadata)
+        tensor_transport_metadata.communicator_name = communicator.name
+        tensor_transport_metadata.src_rank = src_rank
+        tensor_transport_metadata.dst_rank = dst_rank
+        return tensor_transport_metadata
 
     @staticmethod
     def recv_multiple_tensors(

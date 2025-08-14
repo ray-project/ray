@@ -71,23 +71,12 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_transport_metadata: NixlTransportMetadata,
         backend: Optional[str] = None,
     ) -> NixlTransportMetadata:
-        """
-        Update the communicator name before sending the GPU object.
-        """
 
-        def __ray_update_collective_metadata__(
-            self: "ray.actor.ActorHandle",
-            tensor_transport_metadata: NixlTransportMetadata,
-            communicator_name: str,
-        ):
-            tensor_transport_metadata.communicator_name = communicator_name
-            return tensor_transport_metadata
+        tensor_transport_metadata = ray.get(tensor_transport_metadata)
 
-        return src_actor.__ray_call__.remote(
-            __ray_update_collective_metadata__,
-            tensor_transport_metadata,
-            NIXL_GROUP_NAME,
-        )
+        tensor_transport_metadata.communicator_name = NIXL_GROUP_NAME
+
+        return tensor_transport_metadata
 
     @staticmethod
     def recv_multiple_tensors(

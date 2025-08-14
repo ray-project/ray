@@ -56,11 +56,11 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             dst_actor: The actor that runs this function.
-            tensor_transport_metadata: The tensor transport metadata for the GPU object.
+            tensor_transport_metadata: The reference of tensor transport metadata for the GPU object.
             backend: The backend to use for the collective operation.
 
         Returns:
-            TensorTransportMetadata: The updated tensor transport metadata.
+            TensorTransportMetadata: The updated tensor transport metadata. Note that it's not a reference.
         """
 
     @staticmethod
