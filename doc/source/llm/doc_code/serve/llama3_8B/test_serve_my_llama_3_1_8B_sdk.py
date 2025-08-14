@@ -3,7 +3,7 @@ This file serves as a documentation example and CI test.
 
 Structure:
 1. Monkeypatch setup: Ensures serve.run is non-blocking and removes accelerator requirements for CI testing.
-2. Docs example (between __qwen_example_start/end__): Embedded in Sphinx docs via literalinclude.
+2. Docs example (between __llama_3_1_8B_example_start/end__): Embedded in Sphinx docs via literalinclude.
 3. Test validation (deployment status polling + cleanup)
 """
 
