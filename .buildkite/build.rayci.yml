@@ -1,6 +1,6 @@
 group: build
 steps:
-  - label: ":tapioca: build: wheel 3.9 (x86_64)"
+  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
       - release_wheels
@@ -8,12 +8,18 @@ steps:
       - oss
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.9 --architecture x86_64 --upload
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
     depends_on:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: placeholderwheel 3.9 (x86_64)"
+  - label: ":tapioca: build: placeholderwheel {{matrix}} (x86_64)"
     key: placeholder_wheels
     tags:
       - release_wheels
@@ -21,24 +27,19 @@ steps:
       - oss
     instance_type: large
     commands:
+      - export RAYCI_DISABLE_CPP_WHEEL=true
+      - export RAYCI_DISABLE_JAVA=true
       - export BUILD_PLACEHOLDER_WHEEL=true
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.9 --architecture x86_64 --upload
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
     depends_on:
       - manylinux
       - forge
-
-  - label: ":tapioca: test: placeholder wheel 3.9 (x86_64)"
-    key: test_placeholder_wheels
-    tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-    instance_type: large
-    commands:
-      - ./ci/build/test-manylinux-placeholder-wheel.sh 3.9
-    depends_on:
-      - placeholder_wheels
-
 
   - label: ":tapioca: build: jar"
     key: java_wheels
