@@ -148,9 +148,7 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         )
 
     def _get_operator_num_cpus_override(self) -> float:
-        return (
-            self.data_context.hash_aggregate_operator_actor_num_cpus_override
-        )
+        return self.data_context.hash_aggregate_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
