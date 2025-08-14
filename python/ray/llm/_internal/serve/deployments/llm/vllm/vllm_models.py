@@ -257,7 +257,7 @@ class VLLMEngineConfig(BaseModelExtended):
         self, dp_rank: Optional[int], dp_address: Optional[str]
     ) -> List[Dict[str, float]]:
         if self.resources_per_bundle:
-            bundle = self.resources_per_bundle
+            bundle = self.resources_per_bundle.copy()
         else:
             bundle = {"GPU": 1}
         if self.accelerator_type:
