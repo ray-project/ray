@@ -186,12 +186,12 @@ class TaskManagerTest : public ::testing::Test {
     absl::flat_hash_set<ObjectID> ready;
     absl::flat_hash_set<ObjectID> plasma_object_ids;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    ASSERT_OK(store_->Wait({object_id},
+    ASSERT_TRUE(store_->Wait({object_id},
                            /*num_objects=*/1,
                            /*timeout_ms=*/0,
                            ctx,
                            &ready,
-                           &plasma_object_ids));
+                           &plasma_object_ids).ok());
     ASSERT_EQ(ready.size(), 1);
     if (expect_in_plasma) {
       ASSERT_EQ(plasma_object_ids.size(), 1);
@@ -202,12 +202,12 @@ class TaskManagerTest : public ::testing::Test {
     absl::flat_hash_set<ObjectID> ready;
     absl::flat_hash_set<ObjectID> plasma_object_ids;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    ASSERT_OK(store_->Wait(object_ids,
+    ASSERT_TRUE(store_->Wait(object_ids,
                            /*num_objects=*/1,
                            /*timeout_ms=*/0,
                            ctx,
                            &ready,
-                           &plasma_object_ids));
+                           &plasma_object_ids).ok());
     ASSERT_EQ(ready.size(), 0);
     ASSERT_EQ(plasma_object_ids.size(), 0);
   }
@@ -217,8 +217,7 @@ class TaskManagerTest : public ::testing::Test {
     bool got_exception = false;
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    ASSERT_OK(store_->Get({object_id}, 0, ctx, &results, &got_exception));
-    ASSERT_OK(status);
+    ASSERT_TRUE(store_->Get({object_id}, 0, ctx, &results, &got_exception).ok());
     ASSERT_EQ(results.size(), 1);
 
     rpc::ErrorType error;
@@ -309,7 +308,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   bool got_exception;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  ASSERT_OK(store_->Get({return_id}, 0, ctx, &results, &got_exception));
+  ASSERT_TRUE(store_->Get({return_id}, 0, ctx, &results, &got_exception).ok());
   ASSERT_FALSE(got_exception);
   ASSERT_EQ(std::memcmp(results[return_id]->GetData()->Data(),
                         return_object->data().data(),
