@@ -413,6 +413,8 @@ class ReplicaBase(ABC):
 
         self._port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._http_port: Optional[int] = None
+        self._grpc_port: Optional[int] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -428,6 +430,8 @@ class ReplicaBase(ABC):
             self._initialization_latency,
             self._port,
             self._docs_path,
+            self._http_port,
+            self._grpc_port,
         )
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
