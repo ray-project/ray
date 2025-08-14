@@ -476,7 +476,8 @@ TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
 class NormalTaskSubmitterTest : public testing::Test {
  public:
   NormalTaskSubmitterTest()
-      : raylet_client_pool(std::make_shared<rpc::RayletClientPool>(
+      : local_node_id(NodeID::FromRandom()),
+        raylet_client_pool(std::make_shared<rpc::RayletClientPool>(
             [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
         raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
@@ -486,7 +487,10 @@ class NormalTaskSubmitterTest : public testing::Test {
         task_manager(std::make_unique<MockTaskManager>()),
         actor_creator(std::make_shared<MockActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
-        lease_policy_ptr(lease_policy.get()) {}
+        lease_policy_ptr(lease_policy.get()) {
+    address.set_node_id(local_node_id.Binary());
+    lease_policy_ptr->SetNodeID(local_node_id);
+  }
 
   NormalTaskSubmitter CreateNormalTaskSubmitter(
       std::shared_ptr<LeaseRequestRateLimiter> rate_limiter,
@@ -494,16 +498,24 @@ class NormalTaskSubmitterTest : public testing::Test {
       std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>
           raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
-      int64_t lease_timeout_ms = kLongTimeout,
-      NodeID local_node_id = NodeID::Nil()) {
+      int64_t lease_timeout_ms = kLongTimeout) {
     if (custom_memory_store != nullptr) {
       store = custom_memory_store;
     }
     if (raylet_client_factory == nullptr) {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
-          [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); });
+          [this](const rpc::Address &) { return this->raylet_client; });
     } else {
-      raylet_client_pool = std::make_shared<rpc::RayletClientPool>(raylet_client_factory);
+      raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
+          [this, raylet_client_factory](
+              const rpc::Address &addr) -> std::shared_ptr<RayletClientInterface> {
+            NodeID addr_node_id = NodeID::FromBinary(addr.node_id());
+            if (addr_node_id == local_node_id) {
+              return this->raylet_client;
+            } else {
+              return raylet_client_factory(addr);
+            }
+          });
     }
     return NormalTaskSubmitter(
         address,
@@ -523,6 +535,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         boost::asio::steady_timer(io_context));
   }
 
+  NodeID local_node_id;
   rpc::Address address;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::shared_ptr<MockRayletClient> raylet_client;
@@ -1375,16 +1388,13 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  auto local_node_id = NodeID::FromRandom();
-  lease_policy_ptr->SetNodeID(local_node_id);
   auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
                                 raylet_client_factory,
                                 store,
-                                kLongTimeout,
-                                local_node_id);
+                                kLongTimeout);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1444,18 +1454,21 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                        const TaskSpecification &different) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
+  auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
+      [&](const rpc::Address &addr) { return raylet_client; });
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_manager = std::make_unique<MockTaskManager>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
+  lease_policy->SetNodeID(NodeID::FromRandom());
   instrumented_io_context io_context;
   NormalTaskSubmitter submitter(
       address,
       raylet_client,
       client_pool,
-      nullptr,
+      raylet_client_pool,
       std::move(lease_policy),
       store,
       *task_manager,
