@@ -534,8 +534,8 @@ class TestSubmit:
                     "python3",
                     "test.py",
                     "--config",
-                    '{"key": "value", "nested": {"data": "test"}}'
-                ]
+                    '{"key": "value", "nested": {"data": "test"}}',
+                ],
             )
             check_exit_code(result, 0)
 
