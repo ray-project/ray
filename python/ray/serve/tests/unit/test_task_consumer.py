@@ -68,19 +68,6 @@ def config():
     )
 
 
-# @pytest.fixture
-# def mock_adapter_factory():
-#     """Mock the get_task_adapter factory to return MockTaskProcessorAdapter."""
-
-#     def _mock_factory(config):
-#         adapter = MockTaskProcessorAdapter(config)
-#         adapter.initialize(config)
-#         return adapter
-
-#     with patch("ray.serve.task_consumer.get_task_adapter", side_effect=_mock_factory):
-#         yield _mock_factory
-
-
 class TestTaskHandlerDecorator:
     """Test the task_handler decorator."""
 

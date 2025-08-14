@@ -1,9 +1,9 @@
-import importlib
 import inspect
 import logging
 from functools import wraps
 from typing import Callable, Optional
 
+from ray._common.utils import import_attr
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import TaskProcessorConfig
 from ray.serve.task_processor import TaskProcessorAdapter
@@ -51,33 +51,7 @@ def instantiate_adapter_from_config(
 
     # Handle string-based adapter specification (module path)
     if isinstance(adapter, str):
-        try:
-            if "." not in adapter:
-                raise ValueError(
-                    f"Adapter string '{adapter}' must be a fully qualified path (e.g., 'module.submodule.ClassName')"
-                )
-
-            module_path, class_name = adapter.rsplit(".", 1)
-            module = importlib.import_module(module_path)
-
-            if not hasattr(module, class_name):
-                raise AttributeError(
-                    f"Module '{module_path}' has no attribute '{class_name}'"
-                )
-
-            adapter_class = getattr(module, class_name)
-
-            if not callable(adapter_class):
-                raise TypeError(f"'{adapter}' is not a callable class")
-
-        except ValueError as e:
-            raise e
-        except ImportError as e:
-            raise ValueError(f"Failed to import module '{module_path}': {e}")
-        except Exception as e:
-            raise ValueError(
-                f"Failed to load adapter from '{adapter}': {type(e).__name__}: {e}"
-            )
+        adapter_class = import_attr(adapter)
 
     elif callable(adapter):
         adapter_class = adapter
