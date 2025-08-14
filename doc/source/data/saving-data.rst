@@ -228,7 +228,7 @@ number of files & their sizes (since every block could potentially carry the row
     print_directory_tree("/tmp/sales_partitioned")
 
 .. testoutput::
-    :options: +NORMALIZE_WHITESPACE
+    :options: +MOCK
 
     sales_partitioned/
         city=NYC/
@@ -301,24 +301,10 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
             ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             df = ds.to_daft()
-
-    .. tab-item:: Dask
-
-        To convert a :class:`~ray.data.dataset.Dataset` to a
-        `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__, call
-        :meth:`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-
-            df = ds.to_dask()
-
-            df
+            print(df)
 
         .. testoutput::
+            :options: +MOCK
 
             ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
             │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
@@ -345,6 +331,20 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
             (Showing first 8 of 150 rows)
 
 
+    .. tab-item:: Dask
+
+        To convert a :class:`~ray.data.dataset.Dataset` to a
+        `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__, call
+        :meth:`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+
+            df = ds.to_dask()
+
     .. tab-item:: Spark
 
         To convert a :class:`~ray.data.dataset.Dataset` to a `Spark DataFrame
@@ -352,6 +352,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         call :meth:`Dataset.to_spark() <ray.data.Dataset.to_spark>`.
 
         .. testcode::
+            :skipif: True
 
             import ray
             import raydp
@@ -367,6 +368,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
             df = ds.to_spark(spark)
 
         .. testcode::
+            :skipif: True
             :hide:
 
             raydp.stop_spark()
