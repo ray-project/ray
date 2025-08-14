@@ -13,12 +13,16 @@ build_arg_sets:
 .common_settings: &common_settings
   override_flags:
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  append_flags:
+    - --python-version=3.11
   build_arg_sets:
     - cpu
     - cu121
     - cu128
 
 depsets:
+# First, extract base test dependencies from the current compiled mono repo one.
+# This also expands to the indirect dependencies for this Python version & platform.
   - name: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     requirements:
@@ -30,6 +34,7 @@ depsets:
     output: python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
     operation: compile
 
+# Second, expand it into LLM test dependencies.
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     operation: expand
@@ -43,6 +48,7 @@ depsets:
       - python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
     output: python/requirements_compiled_rayllm_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
 
+# Third, subset the base test dependencies into Ray dependencies.
   - name: compiled_ray_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     operation: subset
@@ -51,6 +57,7 @@ depsets:
       - python/requirements.txt
     output: python/requirements_compiled_ray_${PYTHON_VERSION}_${CUDA_CODE}.txt
 
+# Fourth, subset the LLM test dependencies into RayLLM dependencies.
   - name: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     operation: subset
