@@ -85,35 +85,6 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def send_object(
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
-        backend: Optional[str] = None,
-    ):
-        pass
-
-    @staticmethod
-    def recv_object(
-        dst_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
-    ):
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
-
-        # Receive tensors from the source rank and store them in the
-        # `dst_actor`'s GPU object store.
-        #
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking the data transfer. Technically,
-        # this is only needed for the sender task, but we put the receiver task
-        # on the same background thread to ensure that all communication
-        # operations are executed in a global order.
-        dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_recv__, obj_id, tensor_transport_metadata
-        )
-
-    @staticmethod
     def recv_multiple_tensors(
         tensors,
         metadata: TensorTransportMetadata,

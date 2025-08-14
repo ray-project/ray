@@ -27,18 +27,6 @@ class GPUObjectMeta(NamedTuple):
     tensor_transport_meta: TensorTransportMetadata
 
 
-def __ray_fetch_gpu_object__(self, obj_id: str):
-    """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
-    from ray._private.worker import global_worker
-
-    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_object(
-        obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_object(obj_id)
-    return tensors
-
-
 class GPUObjectManager:
     def __init__(self):
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
@@ -207,12 +195,12 @@ class GPUObjectManager:
                     gpu_object_meta.tensor_transport_backend,
                 )
             )
-            tensor_transport_manager.send_object(
-                src_actor,
-                obj_id,
-                tensor_transport_metadata,
-                gpu_object_meta.tensor_transport_backend,
-            )
+            if not tensor_transport_manager.is_one_sided():
+                tensor_transport_manager.send_object(
+                    src_actor,
+                    obj_id,
+                    tensor_transport_metadata,
+                )
             tensor_transport_manager.recv_object(
                 dst_actor,
                 obj_id,
