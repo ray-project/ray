@@ -4,6 +4,7 @@ import pprint
 import sys
 import time
 import shlex
+import subprocess
 from typing import Any, Dict, Optional, Tuple, Union
 
 import click
@@ -275,8 +276,13 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
+    if sys.platform == "win32":
+        entrypoint_str = subprocess.list2cmdline(entrypoint)
+    else:
+        entrypoint_str = shlex.join(entrypoint)
+
     job_id = client.submit_job(
-        entrypoint=shlex.join(entrypoint),
+        entrypoint=entrypoint_str,
         submission_id=submission_id,
         runtime_env=final_runtime_env,
         metadata=metadata_json,
