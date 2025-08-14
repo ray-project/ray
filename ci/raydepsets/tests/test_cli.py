@@ -29,7 +29,7 @@ from ci.raydepsets.tests.utils import (
     save_packages_to_file,
 )
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
@@ -189,15 +189,15 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="general_depset",
+                name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
             # Subset general_depset with requirements_test.txt (should lock emoji & pyperclip)
             manager.subset(
-                source_depset="general_depset",
+                source_depset="general_depset__py311_cpu",
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="subset_general_depset",
+                name="subset_general_depset__py311_cpu",
                 output="requirements_compiled_subset_general.txt",
             )
             output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
@@ -220,16 +220,16 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="general_depset",
+                name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
 
             with self.assertRaises(RuntimeError):
                 manager.subset(
-                    source_depset="general_depset",
+                    source_depset="general_depset__py311_cpu",
                     requirements=["requirements_compiled_test.txt"],
                     append_flags=["--no-annotate", "--no-header"],
-                    name="subset_general_depset",
+                    name="subset_general_depset__py311_cpu",
                     output="requirements_compiled_subset_general.txt",
                 )
 
@@ -238,7 +238,7 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             source_depset = Depset(
-                name="general_depset",
+                name="general_depset__py311_cpu",
                 operation="compile",
                 requirements=["requirements_1.txt", "requirements_2.txt"],
                 constraints=["requirement_constraints_1.txt"],
@@ -334,20 +334,48 @@ class TestCli(unittest.TestCase):
             assert len(manager.build_graph.nodes()) == 6
             assert len(manager.build_graph.edges()) == 3
             # assert that the compile depsets are first
-            assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
+            assert (
+                manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
+                == "compile"
+            )
             assert (
                 manager.build_graph.nodes["subset_general_depset"]["operation"]
                 == "subset"
             )
             assert (
-                manager.build_graph.nodes["expand_general_depset"]["operation"]
+                manager.build_graph.nodes["expand_general_depset__py311_cpu"][
+                    "operation"
+                ]
                 == "expand"
             )
             sorted_nodes = list(topological_sort(manager.build_graph))
             # assert that the root nodes are the compile depsets
             assert "ray_base_test_depset" in sorted_nodes[:3]
-            assert "general_depset" in sorted_nodes[:3]
-            assert "build_args_test_depset_py311" in sorted_nodes[:3]
+            assert "general_depset__py311_cpu" in sorted_nodes[:3]
+            assert "build_args_test_depset__py311_cpu" in sorted_nodes[:3]
+
+    def test_build_graph_predecessors(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            assert manager.build_graph is not None
+            assert (
+                manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
+                == "compile"
+            )
+            assert (
+                manager.build_graph.nodes["expanded_depset__py311_cpu"]["operation"]
+                == "compile"
+            )
+            assert (
+                manager.build_graph.nodes["expand_general_depset__py311_cpu"][
+                    "operation"
+                ]
+                == "expand"
+            )
+            assert set(
+                manager.build_graph.predecessors("expand_general_depset__py311_cpu")
+            ) == {"general_depset__py311_cpu", "expanded_depset__py311_cpu"}
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -390,22 +418,22 @@ depsets:
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="general_depset",
+                name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
             manager.compile(
                 constraints=[],
                 requirements=["requirements_expanded.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="expanded_depset",
+                name="expanded_depset__py311_cpu",
                 output="requirements_compiled_expanded.txt",
             )
             manager.expand(
-                depsets=["general_depset", "expanded_depset"],
+                depsets=["general_depset__py311_cpu", "expanded_depset__py311_cpu"],
                 constraints=["requirement_constraints_expand.txt"],
                 append_flags=["--no-annotate", "--no-header"],
                 requirements=[],
-                name="expand_general_depset",
+                name="expand_general_depset__py311_cpu",
                 output="requirements_compiled_expand_general.txt",
             )
             output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
@@ -434,15 +462,15 @@ depsets:
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="general_depset",
+                name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
             manager.expand(
-                depsets=["general_depset"],
+                depsets=["general_depset__py311_cpu"],
                 requirements=["requirements_expanded.txt"],
                 constraints=["requirement_constraints_expand.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="expand_general_depset",
+                name="expand_general_depset__py311_cpu",
                 output="requirements_compiled_expand_general.txt",
             )
             output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
@@ -458,9 +486,8 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("build_args_test_depset_py311")
-            assert depset.name == "build_args_test_depset_py311"
-            assert depset.build_arg_set_name == "py311_cpu"
+            depset = manager.get_depset("build_args_test_depset__py311_cpu")
+            assert depset.name == "build_args_test_depset__py311_cpu"
 
     def test_get_depset_without_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -471,7 +498,16 @@ depsets:
             )
             depset = manager.get_depset("ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
-            assert depset.build_arg_set_name is None
+
+    def test_get_depset_with_build_arg_set_and_no_build_arg_set_provided(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.depsets.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset("build_args_test_depset_py311")
 
 
 if __name__ == "__main__":
