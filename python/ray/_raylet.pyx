@@ -2911,21 +2911,24 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
-        c_log_lines = PythonGetLogBatchLines(log_batch)
+        result = {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+        with nogil:
+            c_log_lines = PythonGetLogBatchLines(move(log_batch))
 
         log_lines = []
         for c_log_line in c_log_lines:
             log_lines.append(c_log_line.decode())
 
-        return {
-            "ip": log_batch.ip().decode(),
-            "pid": log_batch.pid().decode(),
-            "job": log_batch.job_id().decode(),
-            "is_err": log_batch.is_error(),
-            "lines": log_lines,
-            "actor_name": log_batch.actor_name().decode(),
-            "task_name": log_batch.task_name().decode(),
-        }
+        result["lines"] = log_lines
+        return result
 
 
 # This class should only be used for tests
@@ -2973,7 +2976,7 @@ cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port, raylet_ip_address,
+                  node_ip_address, node_manager_port,
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
@@ -3007,7 +3010,6 @@ cdef class CoreWorker:
         options.interactive = hasattr(sys, "ps1")
         options.node_ip_address = node_ip_address.encode("utf-8")
         options.node_manager_port = node_manager_port
-        options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
