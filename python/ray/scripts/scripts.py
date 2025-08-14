@@ -865,6 +865,15 @@ def start(
             # we enable the v2 autoscaler by default if RAY_enable_autoscaler_v2 is not set.
             os.environ.setdefault("RAY_enable_autoscaler_v2", "1")
 
+            # Add warning for potential KubeRay autoscaling configuration conflicts
+            if os.getenv("RAY_enable_autoscaler_v2") == "1":
+                cli_logger.warning(
+                    "KubeRay environment detected with RAY_enable_autoscaler_v2=1. "
+                    "If you encounter startup issues, ensure that 'enableInTreeAutoscaling: true' "
+                    "is set in your RayCluster CR, or set RAY_enable_autoscaler_v2=0 "
+                    "to disable autoscaler v2."
+                )
+
         num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None and address is None:
