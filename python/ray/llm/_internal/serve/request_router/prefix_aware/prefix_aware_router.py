@@ -2,6 +2,7 @@
 import logging
 import time
 from typing import (
+    Any,
     List,
     Optional,
 )
@@ -139,14 +140,42 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 "No request with message or prompt attribute found in pending_request.args"
             )
 
-        # Convert list of messages to concatenated string
-        if isinstance(prompt, list):
-            concatenated_messages = "".join(
-                msg.get("content", "") for msg in prompt if "content" in msg
-            )
-            return concatenated_messages
-        else:
+        return self._normalize_prompt_to_string(prompt)
+
+    def _normalize_prompt_to_string(self, prompt: Any) -> str:
+        """Normalize prompt/messages a single string of characters.
+        This is not exhaustive (e.g. thinking parts, multimodal are not supported).
+        TODO(seiji): find a more maintainable way to normalize the prompt/messages.
+
+        Supported:
+        - string → return as-is
+        - list of strings → concat
+        - list of message dicts with 'content' as string → concat
+        - list of message dicts with 'content' as list of dicts → concat the 'text' fields from those parts
+        """
+        if isinstance(prompt, str):
             return prompt
+
+        if isinstance(prompt, list):
+            pieces: List[str] = []
+            for message in prompt:
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        pieces.append(content)
+                    elif isinstance(content, list):
+                        for part in content:
+                            if isinstance(part, dict):
+                                text_value = part.get("text")
+                                if isinstance(text_value, str):
+                                    pieces.append(text_value)
+                            elif isinstance(part, str):
+                                pieces.append(part)
+                elif isinstance(message, str):
+                    pieces.append(message)
+            return "".join(pieces)
+
+        return ""
 
     async def _prefix_match_best_replicas(
         self,
