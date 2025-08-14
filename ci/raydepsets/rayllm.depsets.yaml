@@ -22,7 +22,7 @@ build_arg_sets:
 
 depsets:
 # First, extract base test dependencies from the current compiled mono repo one.
-# This also expands to the indirect dependencies for this Python version & platform.
+# This also expands to the indirect dependencies for this Python version & platform. noop
   - name: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     requirements:
