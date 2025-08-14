@@ -1090,8 +1090,8 @@ py_test(
     size = "large",
     srcs = ["test_runtime_env_container.py"],
     tags = [
-        "container",
         "exclusive",
+        "runtime_env_container",
         "team:core",
     ],
     deps = [
