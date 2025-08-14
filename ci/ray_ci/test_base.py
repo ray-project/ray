@@ -14,7 +14,7 @@ class RayCITestBase(unittest.TestCase):
             os.environ,
             {
                 "RAYCI_CHECKOUT_DIR": "/ray",
-                "RAYCI_BUILD_ID": "123",
+                "RAYCI_BUILD_ID": "a1b2c3d4",
                 "RAYCI_WORK_REPO": "rayproject/citemp",
                 "BUILDKITE_COMMIT": "123456",
                 "BUILDKITE_BRANCH": "master",
