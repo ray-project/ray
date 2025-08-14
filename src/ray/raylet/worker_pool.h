@@ -41,6 +41,7 @@
 #include "ray/ipc/client_connection.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 
@@ -914,6 +915,34 @@ class WorkerPool : public WorkerPoolInterface {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup after it is created.
   bool enable_resource_isolation_ = false;
+
+  /// Ray metrics
+  ray::stats::Sum ray_metric_num_workers_started_{
+      /*name=*/"internal_num_processes_started",
+      /*description=*/"The total number of worker processes the worker pool has created.",
+      /*unit=*/"processes"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_job_mismatch_{
+      /*name=*/"internal_num_processes_skipped_job_mismatch",
+      /*description=*/"The total number of cached workers skipped due to job mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_{
+      /*name=*/"internal_num_processes_skipped_runtime_environment_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to runtime environment mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_{
+      /*name=*/"internal_num_processes_skipped_dynamic_options_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to dynamic options mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_workers_started_from_cache_{
+      /*name=*/"internal_num_processes_started_from_cache",
+      /*description=*/"The total number of workers started from a cached worker process.",
+      /*unit=*/"workers"};
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;
