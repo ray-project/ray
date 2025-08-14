@@ -162,16 +162,31 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
                                      /*oflag=*/O_CREAT | O_EXCL,
                                      /*mode=*/0644,
                                      /*value=*/1);
+
+    // Point to the shared memory condition variable and mutex
+    semaphores.version_mutex = &header->version_mutex_storage;
+    semaphores.version_cond = &header->version_cond_storage;
+
+    // Signal completion to waiting processes
+    pthread_mutex_lock(&header->version_mutex_storage);
     header->semaphores_created.store(PlasmaObjectHeader::SemaphoresCreationLevel::kDone,
                                      std::memory_order_release);
+    pthread_cond_broadcast(&header->version_cond_storage);  // Wake up all waiters
+    pthread_mutex_unlock(&header->version_mutex_storage);
   } else {
-    // Wait for another thread to initialize the channel.
+    // Wait for another thread to initialize the channel using condition variable
+    pthread_mutex_lock(&header->version_mutex_storage);
     while (header->semaphores_created.load(std::memory_order_acquire) !=
            PlasmaObjectHeader::SemaphoresCreationLevel::kDone) {
-      sched_yield();
+      pthread_cond_wait(&header->version_cond_storage, &header->version_mutex_storage);
     }
+    pthread_mutex_unlock(&header->version_mutex_storage);
     semaphores.object_sem = sem_open(GetSemaphoreObjectName(name).c_str(), /*oflag=*/0);
     semaphores.header_sem = sem_open(GetSemaphoreHeaderName(name).c_str(), /*oflag=*/0);
+
+    // Point to the same shared memory condition variable and mutex as creator
+    semaphores.version_mutex = &header->version_mutex_storage;
+    semaphores.version_cond = &header->version_cond_storage;
   }
   RAY_CHECK_NE(semaphores.object_sem, SEM_FAILED);
   RAY_CHECK_NE(semaphores.header_sem, SEM_FAILED);
@@ -187,6 +202,9 @@ void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   }
   RAY_CHECK_EQ(sem_close(sem.header_sem), 0);
   RAY_CHECK_EQ(sem_close(sem.object_sem), 0);
+
+  // Note: condition variables are in shared memory and will be cleaned up
+  // when the PlasmaObjectHeader is destroyed, not here
 
   std::string name = GetSemaphoreName(GetHeader(object_id));
   // The core worker and the raylet each have their own MutableObjectManager instance, and
