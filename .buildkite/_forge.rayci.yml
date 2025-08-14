@@ -150,7 +150,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
-    depends_on: raycudabaseextra
+    depends_on: ray-mlcudabase
 
   - name: ray-mlcpubase
     label: "wanda: ray-ml.py{{matrix}}.cpu.base"
@@ -176,4 +176,4 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray-ml"
-    depends_on: raycpubaseextra
+    depends_on: ray-mlcpubase
