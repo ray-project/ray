@@ -445,14 +445,6 @@ def test_basic_reconstruction_actor_constructor(
             return e.actor_init_failed
         except (ray.exceptions.RayTaskError, ray.exceptions.ObjectLostError):
             return True
-        except ray.exceptions.ActorUnavailableError as e:
-            # When reconstruction is disabled, the actor may be stuck in a restarting
-            # loop because it cannot get its constructor arguments. We detect this
-            # and return True to indicate the condition has been met.
-            if not reconstruction_enabled and "restarting" in str(e):
-                return True
-            # Otherwise, actor is just temporarily unavailable, keep trying
-            return False
 
     wait_for_condition(probe)
 

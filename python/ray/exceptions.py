@@ -438,24 +438,7 @@ class ActorDiedError(RayActorError):
                 == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
             ):
                 preempted = True
-            if (
-                "initialization method" in cause.error_message
-                or "init method" in cause.error_message
-            ):
-                actor_init_failed = True
-                if (
-                    "Traceback: The actor died because of an error raised in its creation task"
-                    in cause.error_message
-                ):
-                    traceback_start = cause.error_message.find("Traceback: ") + len(
-                        "Traceback: "
-                    )
-                    clean_traceback = cause.error_message[traceback_start:]
-                    error_msg = clean_traceback
-                else:
-                    error_msg = "\n".join(error_msg_lines)
-            else:
-                error_msg = "\n".join(error_msg_lines)
+            error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
 

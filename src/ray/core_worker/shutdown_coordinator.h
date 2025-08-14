@@ -21,7 +21,8 @@
 #include <string>
 #include <string_view>
 
-#include "ray/core_worker/common.h"  // brings WorkerType alias
+// Bring in WorkerType alias and common types
+#include "ray/core_worker/common.h"
 
 namespace ray {
 class LocalMemoryBuffer;
@@ -36,16 +37,13 @@ class ShutdownExecutorInterface {
  public:
   virtual ~ShutdownExecutorInterface() = default;
 
-  /// Execute complete graceful shutdown sequence
   virtual void ExecuteGracefulShutdown(std::string_view exit_type,
                                        std::string_view detail,
                                        std::chrono::milliseconds timeout_ms) = 0;
 
-  /// Execute complete force shutdown sequence
   virtual void ExecuteForceShutdown(std::string_view exit_type,
                                     std::string_view detail) = 0;
 
-  /// Execute worker exit sequence with task draining
   virtual void ExecuteWorkerExit(std::string_view exit_type,
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
@@ -56,11 +54,19 @@ class ShutdownExecutorInterface {
                            const std::shared_ptr<::ray::LocalMemoryBuffer>
                                &creation_task_exception_pb_bytes) = 0;
 
-  /// Execute handle exit sequence with idle checking
   virtual void ExecuteHandleExit(std::string_view exit_type,
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
+  // Best-effort cleanup of child processes spawned by this worker process to
+  // avoid leaked subprocesses holding expensive resources (e.g., CUDA contexts).
+  //
+  // - Intended to be called during shutdown (including force paths).
+  // - Only targets direct children of the current process; crash paths can still leak
+  //   (subreaper not yet used).
+  // - No-ops when disabled by configuration
+  //   (RayConfig::kill_child_processes_on_worker_exit()).
+  // - Platform-dependent: process enumeration may be unavailable on some OSes.
   virtual void KillChildProcessesImmediately() = 0;
 
   virtual bool ShouldWorkerIdleExit() const = 0;
@@ -101,9 +107,9 @@ enum class ShutdownState : std::uint8_t {
 
 /// Thread-safe coordinator for managing worker shutdown state and transitions.
 ///
-/// This class uses a simple mutex to coordinate state transitions and reason updates.
-/// This design prioritizes clarity and correctness over micro-optimizations since
-/// shutdown is a control path and not latency-sensitive.
+/// Uses a single mutex to serialize state transitions and to capture the shutdown
+/// reason exactly once. We favor simple, readable synchronization because shutdown is
+/// control-path, not throughput-critical.
 ///
 /// Key features:
 /// - Atomic state transitions with integrated reason tracking
@@ -142,16 +148,17 @@ class ShutdownCoordinator {
 
   /// Request shutdown with configurable timeout and fallback behavior.
   ///
-  /// This is the main entry point for all shutdown operations. It will:
-  /// 1. Atomically transition to shutting down state (idempotent)
-  /// 2. Execute appropriate shutdown sequence based on mode and worker type
-  /// 3. Handle graceful vs force shutdown behavior with caller-specified timeout
+  /// Single entry-point that captures the first shutdown reason, chooses the
+  /// worker-type-specific path, and optionally falls back to force. Additional
+  /// graceful requests are ignored; a concurrent force may override the reason
+  /// and proceed.
   ///
   /// \param force_shutdown If true, force immediate shutdown; if false, graceful shutdown
   /// \param reason The reason for shutdown initiation
   /// \param detail Optional detailed explanation
   /// \param timeout_ms Timeout for graceful shutdown (-1 = no timeout, 0 = immediate
-  /// force fallback) \param force_on_timeout If true, fallback to force shutdown on
+  /// force fallback)
+  /// \param force_on_timeout If true, fallback to force shutdown on
   /// timeout; if false, wait indefinitely \return true if this call initiated shutdown,
   /// false if already shutting down
   bool RequestShutdown(
@@ -170,23 +177,21 @@ class ShutdownCoordinator {
 
   /// Attempt to transition to disconnecting state.
   ///
-  /// This should be called when beginning disconnection from raylet/GCS.
-  /// Can only succeed if currently in kShuttingDown state (linear progression).
+  /// Begins the disconnection/cleanup phase (e.g., GCS/raylet disconnect). Only
+  /// valid from kShuttingDown.
   ///
   /// \return true if transition succeeded, false if invalid state
   bool TryTransitionToDisconnecting();
 
   /// Attempt to transition to final shutdown state.
   ///
-  /// This should be called when shutdown sequence is complete.
-  /// Can succeed from kDisconnecting (normal shutdown) or kShuttingDown (force shutdown).
+  /// Finalizes shutdown. Allowed from kDisconnecting (normal) or kShuttingDown
+  /// (force path).
   ///
   /// \return true if transition succeeded, false if invalid state
   bool TryTransitionToShutdown();
 
-  /// Get the current shutdown state.
-  ///
-  /// This is a fast, lock-free operation suitable for hot paths.
+  /// Get the current shutdown state (mutex-protected, fast path safe).
   ///
   /// \return Current shutdown state
   ShutdownState GetState() const;
@@ -201,13 +206,7 @@ class ShutdownCoordinator {
 
   /// Check if worker should early-exit from operations.
   ///
-  /// This is the recommended way to check shutdown status in performance-critical
-  /// paths. Returns true for any state other than kRunning.
-  ///
-  /// Note: Uses acquire ordering to ensure consistent observation of shutdown
-  /// initiation. While there's still a race where shutdown could be initiated
-  /// immediately after this check, the acquire ordering ensures we don't miss
-  /// shutdowns that were initiated before the load.
+  /// Recommended hot-path check; returns true for any non-running state.
   ///
   /// \return true if operations should be aborted, false if normal operation
   bool ShouldEarlyExit() const;
@@ -249,18 +248,21 @@ class ShutdownCoordinator {
       bool force_on_timeout,
       const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
-  /// Execute graceful shutdown with timeout
+  /// Executes graceful path; transitions to Disconnecting/Shutdown
   void ExecuteGracefulShutdown(std::string_view detail,
                                std::chrono::milliseconds timeout_ms);
 
-  /// Execute force shutdown immediately
+  /// Executes force path; guarded to run at most once
   void ExecuteForceShutdown(std::string_view detail);
 
-  /// Worker-type specific shutdown behavior
   void ExecuteDriverShutdown(bool force_shutdown,
                              std::string_view detail,
                              std::chrono::milliseconds timeout_ms,
                              bool force_on_timeout);
+  /// Worker-type specific shutdown behavior
+  /// - Honors kActorCreationFailed with serialized exception payloads
+  /// - Uses worker-idle checks for idle exits
+  /// - Drains tasks/references before disconnect
   void ExecuteWorkerShutdown(
       bool force_shutdown,
       std::string_view detail,

@@ -35,7 +35,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(INFO) << "Executing graceful shutdown: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Preserve current CoreWorker::Shutdown() behavior
   if (core_worker_->options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
     // Asyncio coroutines could still run after CoreWorker is removed because it is
@@ -72,6 +71,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   if (core_worker_->gcs_client_) {
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
     // TODO(hjiang): Move the Disconnect() logic to GcsClient destructor.
+    // https://github.com/ray-project/ray/issues/55607
     core_worker_->gcs_client_->Disconnect();
     core_worker_->gcs_client_.reset();
   }
@@ -81,16 +81,9 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
 
 void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type,
                                                       std::string_view detail) {
-  RAY_LOG(WARNING) << "Executing force shutdown: " << exit_type << " - " << detail;
-
-  RAY_LOG(WARNING) << "Force shutdown: About to kill child processes";
   KillChildProcessesImmediately();
-  RAY_LOG(WARNING) << "Force shutdown: About to disconnect from services";
   DisconnectServices(exit_type, detail, nullptr);
-  RAY_LOG(WARNING) << "Force shutdown: About to call QuickExit()";
   QuickExit();
-  RAY_LOG(WARNING)
-      << "Force shutdown: This line should never be reached after QuickExit()";
 }
 
 void CoreWorkerShutdownExecutor::ExecuteWorkerExit(std::string_view exit_type,

@@ -170,21 +170,16 @@ void ShutdownCoordinator::ExecuteGracefulShutdown(std::string_view detail,
 }
 
 void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
-  RAY_LOG(WARNING) << "ExecuteForceShutdown called: detail=" << detail;
-
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
   {
     std::lock_guard<std::mutex> lock(mu_);
     if (force_executed_) {
-      RAY_LOG(WARNING) << "ExecuteForceShutdown already executed; skipping duplicate.";
       return;
     }
     force_executed_ = true;
   }
-  RAY_LOG(WARNING) << "ExecuteForceShutdown: calling executor_->ExecuteForceShutdown";
   executor_->ExecuteForceShutdown(GetExitTypeString(), detail);
-  RAY_LOG(WARNING) << "ExecuteForceShutdown: executor_->ExecuteForceShutdown completed";
 
   // Only update state if we're not already in final state
   // (force shutdown should have terminated the process by now)
