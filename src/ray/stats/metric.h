@@ -265,7 +265,7 @@ void RegisterView(const std::string &name,
                   const std::string &description,
                   const std::vector<opencensus::tags::TagKey> &tag_keys,
                   const std::vector<double> &buckets) {
-  if (!::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  if (!::RayConfig::instance().enable_open_telemetry()) {
     // OpenTelemetry is not enabled, register the view as an OpenCensus view.
     using I = StatsTypeMap<T>;
     auto view_descriptor = opencensus::stats::ViewDescriptor()
