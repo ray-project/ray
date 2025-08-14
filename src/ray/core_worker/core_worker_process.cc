@@ -759,6 +759,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   // We need init stats before using it/spawning threads.
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+  stats::InitOpenTelemetryMetricAgent(options_.metrics_agent_port);
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

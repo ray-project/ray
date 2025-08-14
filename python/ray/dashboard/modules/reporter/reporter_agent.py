@@ -535,6 +535,17 @@ class ReporterAgent(
             output=output, success=success, warning=warning
         )
 
+    async def HealthCheck(
+        self,
+        _request: reporter_pb2.HealthCheckRequest,
+        _context: ServicerContext,
+    ) -> reporter_pb2.HealthCheckReply:
+        """This is a health check endpoint for the reporter agent.
+
+        It is used to check if the reporter agent is ready to receive requests.
+        """
+        return reporter_pb2.HealthCheckReply()
+
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:
@@ -1757,11 +1768,11 @@ class ReporterAgent(
 
     async def run(self, server):
         if server:
-            reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
             if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )
+            reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
         # Initialize GPU metric provider when the agent starts
         self._gpu_metric_provider.initialize()
