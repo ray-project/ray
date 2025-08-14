@@ -276,7 +276,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
 
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
-        ray._private.accelerators.RAY_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR,
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
         True,
     )
     for resource_name, accelerator_ids in (

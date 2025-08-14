@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 # And to avoid breaking changes, this environment variable is set to True by default
 # to follow the previous behavior.
 #
-RAY_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR = "RAY_ACCEL_OVERRIDE_ON_ZERO"
+RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR = "RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"
 
 
 class AcceleratorManager(ABC):

@@ -1984,14 +1984,14 @@ def init(
     from ray._private.ray_constants import env_bool
 
     override_on_zero = env_bool(
-        ray._private.accelerators.RAY_ACCEL_OVERRIDE_ON_ZERO_ENV_VAR,
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
         True,
     )
     if override_on_zero:
         logger.warning(
             "Tip: In future versions of Ray, Ray will no longer override accelerator "
-            "ID variables if num_gpus=0 or num_gpus=None (default). To enable this "
-            "behavior, set RAY_ACCEL_OVERRIDE_ON_ZERO=0"
+            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
+            "this behavior, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0"
         )
 
     node_id = global_worker.core_worker.get_current_node_id()
