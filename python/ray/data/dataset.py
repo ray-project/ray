@@ -5965,6 +5965,7 @@ class Dataset:
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
+    @PublicAPI(api_group=IM_API_GROUP)
     def explain(self) -> str:
         """Returns a string containing logical plan and physical plan.
 

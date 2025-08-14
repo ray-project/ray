@@ -9,8 +9,9 @@ import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
-from ray.data._internal.logical.interfaces.operator import Operator
+from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import unify_ref_bundles_schema
@@ -134,7 +135,7 @@ class ExecutionPlan:
     ):
         """Traverse (DFS) the Plan DAG and
         return a string representation of the operators."""
-        if (including_source == False) and isinstance(op, SourceOperator):
+        if not including_source and isinstance(op, SourceOperator):
             return curr_str, depth
 
         curr_max_depth = depth
