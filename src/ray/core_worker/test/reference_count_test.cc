@@ -277,9 +277,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     return true;
   }
 
-  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
-                           rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override {}
+  void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback) override {}
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
@@ -293,7 +295,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   static rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
-    address.set_raylet_id(NodeID::FromRandom().Binary());
+    address.set_node_id(NodeID::FromRandom().Binary());
     address.set_worker_id(WorkerID::FromRandom().Binary());
     return address;
   }
