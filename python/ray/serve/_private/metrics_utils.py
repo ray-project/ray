@@ -257,10 +257,10 @@ class InMemoryMetricsStore:
 
 
 def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetricsStore:
-    merged = InMemoryMetricsStore()
     if len(stores) == 1:
-        return merged
+        return stores[0]
     else:
+        merged = InMemoryMetricsStore()
         merged.data[QUEUED_REQUESTS_KEY] = [TimeStampedValue(time.time(), 0.0)]
         for store in stores:
             for key, timeseries in store.data.items():

@@ -335,7 +335,7 @@ class RouterMetricsManager:
                 time.time() - look_back_period
             )
             running_requests = {
-                replica_id: self.metrics_store.aggregate_sum([replica_id])[0]
+                replica_id: self.metrics_store.aggregate_avg([replica_id])[0]
                 # If data hasn't been recorded yet, return current
                 # number of queued and ongoing requests.
                 or num_requests
