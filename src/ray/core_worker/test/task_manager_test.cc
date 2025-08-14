@@ -217,8 +217,8 @@ class TaskManagerTest : public ::testing::Test {
                            ctx,
                            &ready,
                            &plasma_object_ids));
-    ASSERT_TRUE(ready.size() == 0);
-    ASSERT_TRUE(plasma_object_ids.size() == 0);
+    ASSERT_EQ(ready.size(), 0);
+    ASSERT_EQ(plasma_object_ids.size(), 0);
   }
 
   void AssertNoLeaks() {
