@@ -170,8 +170,8 @@ class SerializationContext:
                 and worker.gpu_object_manager.is_managed_object(obj.hex())
             ):
                 raise ValueError(
-                    "GPU ObjectRefs in data structures are not supported. "
-                    "Pass GPU ObjectRefs directly to tasks instead."
+                    "Passing GPU ObjectRefs inside data structures is not yet supported. "
+                    "Pass GPU ObjectRefs directly as task arguments instead. For example, use `foo.remote(ref)` instead of `foo.remote([ref])`."
                 )
 
             self.add_contained_object_ref(
