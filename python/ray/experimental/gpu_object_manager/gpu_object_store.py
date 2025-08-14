@@ -27,6 +27,7 @@ COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
     Backend.NCCL: torch.device("cuda"),
     Backend.TORCH_GLOO: torch.device("cpu"),
     # TODO(Qiaolin-Yu): NIXL could also transfer tensors from CPU to CPU.
+    # More details in https://github.com/ray-project/ray/issues/55587.
     Backend.NIXL: torch.device("cuda"),
 }
 
