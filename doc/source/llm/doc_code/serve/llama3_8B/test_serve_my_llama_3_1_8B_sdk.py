@@ -28,7 +28,9 @@ def _testing_build_openai_app(llm_serving_args):
     for config in llm_serving_args["llm_configs"]:
         config.accelerator_type = None
         # Use ungated llama instead
-        config.model_loading_config["model_source"] = "unsloth/Meta-Llama-3.1-8B-Instruct"
+        config.model_loading_config[
+            "model_source"
+        ] = "unsloth/Meta-Llama-3.1-8B-Instruct"
         config.engine_kwargs["hf_token"] = "PLACEHOLDER"
 
     return _original_build_openai_app(llm_serving_args)
@@ -38,7 +40,7 @@ serve.run = _non_blocking_serve_run
 llm.build_openai_app = _testing_build_openai_app
 
 # __llama_3_1_8B_example_start__
-#serve_my_llama_3_1_8B.py
+# serve_my_llama_3_1_8B.py
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
@@ -52,14 +54,15 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=1, max_replicas=2,
+            min_replicas=1,
+            max_replicas=2,
         )
     ),
     engine_kwargs=dict(
         max_model_len=8192,
         ### If your model is not gated, you can skip `hf_token`
         # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
-        hf_token= os.environ["HF_TOKEN"]
+        hf_token=os.environ["HF_TOKEN"],
     ),
 )
 app = build_openai_app({"llm_configs": [llm_config]})
