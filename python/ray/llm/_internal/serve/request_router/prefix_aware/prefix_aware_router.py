@@ -2,6 +2,7 @@
 import logging
 import time
 from typing import (
+    Any,
     List,
     Optional,
 )
@@ -139,14 +140,47 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 "No request with message or prompt attribute found in pending_request.args"
             )
 
-        # Convert list of messages to concatenated string
-        if isinstance(prompt, list):
-            concatenated_messages = "".join(
-                msg.get("content", "") for msg in prompt if "content" in msg
-            )
-            return concatenated_messages
-        else:
+        return self._normalize_prompt_to_string(prompt)
+
+    def _coerce_to_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "".join(self._coerce_to_text(item) for item in value)
+        if isinstance(value, dict):
+            text_value = value.get("text")
+            if isinstance(text_value, str):
+                return text_value
+            if "content" in value:
+                return self._coerce_to_text(value["content"])
+
+        return ""
+
+    def _normalize_prompt_to_string(self, prompt: Any) -> str:
+        """Normalize prompt/messages a single string of characters.
+        This is not exhaustive (e.g. thinking parts, multimodal are not supported).
+        TODO(seiji): find a more maintainable way to normalize the prompt/messages.
+
+        Supported:
+        - string → return as-is
+        - list of strings → concat
+        - list of message dicts with 'content' as string → concat
+        - list of message dicts with 'content' as list of dicts → concat the 'text' fields from those parts
+        """
+        if isinstance(prompt, str):
             return prompt
+
+        if isinstance(prompt, list):
+            return "".join(
+                self._coerce_to_text(
+                    message.get("content") if isinstance(message, dict) else message
+                )
+                for message in prompt
+            )
+
+        return ""
 
     async def _prefix_match_best_replicas(
         self,
