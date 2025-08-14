@@ -375,7 +375,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             )
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
-        Python objects. In the schema, the column name defaults to "item". 
+        Python objects. In the schema, the column name defaults to "item".
 
         .. testcode::
 
@@ -469,7 +469,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.daft.ai>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -482,7 +482,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_, call
         :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
         by your Daft query.
 
@@ -1008,7 +1008,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
         To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
         :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
-        the provided shape. In the schema, the column name defaults to "data". 
+        the provided shape. In the schema, the column name defaults to "data".
 
         .. testcode::
 
