@@ -217,7 +217,7 @@ def test_prometheus_physical_stats_record(
 ):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
+    addr = addresses["node_ip_address"]
     prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
@@ -284,7 +284,7 @@ def test_prometheus_physical_stats_record(
 def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
+    addr = addresses["node_ip_address"]
     prom_addresses = [build_address(addr, metrics_export_port)]
 
     @ray.remote
@@ -335,9 +335,11 @@ def test_report_stats():
         print(record.gauge.name)
         print(record)
     assert len(records) == 41
-    # Verify IsHeadNode tag
+    # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
+            assert "RayNodeType" in record.tags
+            assert record.tags["RayNodeType"] == "head"
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
@@ -458,13 +460,19 @@ def test_report_stats_gpu():
         index = 0
         for record in records:
             if record.tags["GpuIndex"] == "3":
-                assert record.tags == {"ip": ip, "GpuIndex": "3", "IsHeadNode": "true"}
+                assert record.tags == {
+                    "ip": ip,
+                    "GpuIndex": "3",
+                    "IsHeadNode": "true",
+                    "RayNodeType": "head",
+                }
             else:
                 assert record.tags == {
                     "ip": ip,
                     # The tag value must be string for prometheus.
                     "GpuIndex": str(index),
                     "GpuDeviceName": "NVIDIA A10G",
+                    "RayNodeType": "head",
                     "IsHeadNode": "true",
                 }
 

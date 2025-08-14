@@ -96,7 +96,13 @@ class TrainFnUtilsWithRayTrainController(TrainFnUtils):
         return get_internal_train_context().get_checkpoint()
 
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
-        return get_internal_train_context().get_dataset_shard(dataset_name)
+        from ray.train.v2._internal.callbacks.datasets import DatasetShardMetadata
+
+        dataset_info = DatasetShardMetadata(
+            dataset_name=dataset_name,
+            world_rank=get_internal_train_context().get_world_rank(),
+        )
+        return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> ExternalTrainContext:
         return TrainContextWithRayTrainController()

@@ -27,6 +27,7 @@ from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
     DatasetsSetupCallback,
+    TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.datasets import GenDataset
@@ -157,9 +158,11 @@ class DataParallelTrainer:
             data_config=self.data_config,
             scaling_config=self.scaling_config,
         )
+        tpu_reservation_setup_callback = TPUReservationCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
+                tpu_reservation_setup_callback,
                 backend_setup_callback,
                 datasets_setup_callback,
             ]
