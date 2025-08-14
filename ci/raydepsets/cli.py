@@ -20,6 +20,7 @@ DEFAULT_UV_FLAGS = """
     --no-strip-markers
     --emit-index-url
     --emit-find-links
+    --python-version 3.11
     --quiet
 """.split()
 
