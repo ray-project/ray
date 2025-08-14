@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 if TYPE_CHECKING:
     import torch
 
-    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObject
-
 import google.protobuf.message
 
 import ray._private.utils
@@ -517,7 +515,7 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        gpu_objects: Dict[str, "GPUObject"],
+        gpu_objects: Dict[str, List["torch.Tensor"]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
@@ -535,11 +533,7 @@ class SerializationContext:
                 if object_ref is not None:
                     object_id = object_ref.hex()
                     if object_id in gpu_objects:
-                        gpu_object = gpu_objects[object_id]
-                        object_tensors = gpu_object.data
-                        gpu_object.num_readers -= 1
-                        if gpu_object.num_readers == 0:
-                            gpu_objects.pop(object_id)
+                        object_tensors = gpu_objects[object_id]
                 obj = self._deserialize_object(
                     data,
                     metadata,

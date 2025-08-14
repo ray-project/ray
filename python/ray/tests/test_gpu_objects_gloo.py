@@ -2,7 +2,9 @@ import sys
 import random
 import torch
 import pytest
+import threading
 import ray
+import time
 from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
 from ray._common.test_utils import wait_for_condition
@@ -36,8 +38,7 @@ class GPUTestActor:
         )
         if timeout is None:
             timeout = 0
-        gpu_object = gpu_object_store.wait_and_get_object(obj_id, timeout)
-        return gpu_object.data
+        return gpu_object_store.wait_and_get_object(obj_id, timeout)
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
@@ -567,6 +568,116 @@ def test_app_error_fetch_to_driver(ray_start_regular):
     small_tensor = torch.tensor([1, 2, 3])
     ref = actor.echo.remote(small_tensor)
     assert torch.equal(ray.get(ref), small_tensor)
+
+
+def test_write_after_save(ray_start_regular):
+    """Check that an actor can safely write to a tensor after saving it to its
+    local state by calling `ray.experimental.wait_tensor_freed`."""
+
+    @ray.remote(enable_tensor_transport=True)
+    class GPUTestActor:
+        @ray.method(tensor_transport="gloo")
+        def save(self, data: torch.Tensor):
+            # Save the tensor to the actor's local state.
+            self.data = data
+            return data
+
+        def receive(self, data: torch.Tensor):
+            return data
+
+        def increment_saved(self):
+            ray.experimental.wait_tensor_freed(self.data)
+            # Write to the saved tensor.
+            self.data += 1
+            return self.data
+
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    medium_tensor = torch.randn((500, 500))
+    sender, receiver = actors
+    ref = sender.save.remote(medium_tensor)
+    # Sender writes to the GPU object while Ray sends the object to a receiver
+    # task in the background.
+    tensor1 = sender.increment_saved.remote()
+    tensor2 = receiver.receive.remote(ref)
+
+    # The sender task should not have returned yet because the ObjectRef is
+    # still in scope.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(tensor1, timeout=1)
+
+    del ref
+    # Check that Ray completed the transfer of the original tensor before the
+    # sender writes to it.
+    assert torch.allclose(ray.get(tensor1), medium_tensor + 1)
+    assert torch.allclose(ray.get(tensor2), medium_tensor)
+
+
+def test_wait_tensor_freed(ray_start_regular):
+    """Unit test for ray.experimental.wait_tensor_freed. Check that the call
+    returns when the tensor has been freed from the GPU object store."""
+    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
+    obj_id = "random_id"
+    tensor = torch.randn((1,))
+    gpu_object_store.add_object(obj_id, [tensor], is_primary=True)
+
+    assert gpu_object_store.has_object(obj_id)
+    with pytest.raises(TimeoutError):
+        ray.experimental.wait_tensor_freed(tensor, timeout=1)
+    assert gpu_object_store.has_object(obj_id)
+
+    # Simulate garbage collection in a background thread.
+    def gc():
+        time.sleep(0.1)
+        gpu_object_store.pop_object(obj_id)
+
+    gc_thread = threading.Thread(target=gc)
+    gc_thread.start()
+    # Now the wait_tensor_freed call should be able to return.
+    ray.experimental.wait_tensor_freed(tensor)
+    gc_thread.join()
+    assert not gpu_object_store.has_object(obj_id)
+
+
+def test_wait_tensor_freed_double_tensor(ray_start_regular):
+    """Unit test for ray.experimental.wait_tensor_freed when multiple objects
+    contain the same tensor."""
+    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
+    obj_id1 = "random_id1"
+    obj_id2 = "random_id2"
+    tensor = torch.randn((1,))
+    gpu_object_store.add_object(obj_id1, [tensor], is_primary=True)
+    gpu_object_store.add_object(obj_id2, [tensor], is_primary=True)
+
+    assert gpu_object_store.has_object(obj_id1)
+    assert gpu_object_store.has_object(obj_id2)
+    with pytest.raises(TimeoutError):
+        ray.experimental.wait_tensor_freed(tensor, timeout=1)
+    assert gpu_object_store.has_object(obj_id1)
+    assert gpu_object_store.has_object(obj_id2)
+
+    # Simulate garbage collection in a background thread.
+    def gc(obj_id):
+        time.sleep(0.1)
+        gpu_object_store.pop_object(obj_id)
+
+    # Free one object. Tensor should still be stored.
+    gc_thread = threading.Thread(target=gc, args=(obj_id1,))
+    gc_thread.start()
+    with pytest.raises(TimeoutError):
+        ray.experimental.wait_tensor_freed(tensor, timeout=1)
+    gc_thread.join()
+    assert not gpu_object_store.has_object(obj_id1)
+
+    # Free the other object. Now the wait_tensor_freed call should be able to
+    # return.
+    gc_thread = threading.Thread(target=gc, args=(obj_id2,))
+    gc_thread.start()
+    ray.experimental.wait_tensor_freed(tensor)
+    gc_thread.join()
+    assert not gpu_object_store.has_object(obj_id2)
 
 
 if __name__ == "__main__":
