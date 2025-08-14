@@ -205,8 +205,9 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
     return telemetry_agent
 
 
-def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
-    """Push telemetry report for a model."""
+def _retry_get_telemetry_agent(
+    max_retries: int = 5, base_delay: float = 0.1
+) -> TelemetryAgent:
     max_retries = 5
     base_delay = 0.1
 
@@ -214,7 +215,7 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     for attempt in range(max_retries):
         try:
             telemetry_agent = _get_or_create_telemetry_agent()
-            break
+            return telemetry_agent
         except ValueError as e:
             # Due to race conditions among multiple replicas, we may get:
             #   ValueError: Actor with name 'llm_serve_telemetry' already
@@ -234,6 +235,10 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
             # Max total wait time is ~3.5 seconds for 5 attempts.
             time.sleep(delay)
 
+
+def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
+    """Push telemetry report for a model."""
+    telemetry_agent = _retry_get_telemetry_agent()
     assert telemetry_agent is not None
     ray.get(telemetry_agent.record.remote(model))
 
