@@ -100,7 +100,7 @@ def test_reserved_cpu_warnings_no_cpu_usage(ray_start_1_cpu_1_gpu):
     trainer = DummyTrainer(
         train_loop,
         scaling_config=ScalingConfig(
-            num_workers=1, use_gpu=True, trainer_resources={"CPU": 0}
+            num_workers=1, use_gpu=True, trainer_resources={"CPU": 1}
         ),
         datasets={"train": ray.data.range(10)},
     )

@@ -17,6 +17,7 @@ from ray.air.session import (
 )
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import (
+    _TrainingResult,
     get_accelerator,
     get_session,
     init_session,
@@ -168,6 +169,40 @@ def test_report_after_finish(session):
         report(dict(loss=1))
     assert session.get_next() is None
     shutdown_session()
+
+
+@pytest.mark.parametrize(
+    "block,put_result_queue,put_actor_queue",
+    [
+        # Users should never report to both queues simultaneously.
+        (False, False, False),
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+def test_get_result_from_queues(session, block, put_result_queue, put_actor_queue):
+    result_queue_training_result = _TrainingResult(
+        checkpoint=None,
+        metrics={"result_queue_metric_key": "result_queue_metric_value"},
+    )
+    if put_result_queue:
+        session.result_queue.put(result_queue_training_result, block=True)
+    inter_actor_result = {"inter_actor_metric_key": "inter_actor_metric_value"}
+    if put_actor_queue:
+        session._inter_actor_queue.put(inter_actor_result, block=True)
+    result = session._get_result_from_queues(block=block)
+    if put_result_queue:
+        assert result == result_queue_training_result
+    elif put_actor_queue:
+        assert (
+            result.metrics["inter_actor_metric_key"]
+            == inter_actor_result["inter_actor_metric_key"]
+        )
+    else:
+        assert result is None
 
 
 def test_no_start(session):

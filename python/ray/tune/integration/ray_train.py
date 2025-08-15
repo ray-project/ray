@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 from ray.train import Checkpoint as RayTrainCheckpoint
-from ray.train._internal.session import _TrainingResult, get_session
+from ray.train._internal.session import get_session
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.callback import UserCallback
 from ray.tune.trainable.trainable_fn_utils import _in_tune_session
@@ -16,7 +16,7 @@ class TuneReportCallback(UserCallback):
 
     def __init__(self):
         assert _in_tune_session(), "TuneReportCallback must be used in a Tune session."
-        self.training_actor_result_queue = get_session()._inter_actor_result_queue
+        self.training_actor_item_queue = get_session()._inter_actor_queue
 
     def after_report(
         self,
@@ -34,6 +34,4 @@ class TuneReportCallback(UserCallback):
         if checkpoint:
             metrics[CHECKPOINT_PATH_KEY] = checkpoint.path
 
-        self.training_actor_result_queue.put(
-            _TrainingResult(checkpoint=None, metrics=metrics)
-        )
+        self.training_actor_item_queue.put(metrics)

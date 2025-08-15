@@ -40,7 +40,7 @@ def test_used_on_tuner_fit(reset_usage_lib, callsite: TelemetryCallsite):
     check_library_usage_telemetry(
         _call_tuner_fit,
         callsite=callsite,
-        expected_library_usages=[{"tune"}, {"core", "tune"}],
+        expected_library_usages=[{"tune"}, {"core", "tune", "util.Queue"}],
         expected_extra_usage_tags={
             "tune_scheduler": "FIFOScheduler",
             "tune_searcher": "BasicVariantGenerator",

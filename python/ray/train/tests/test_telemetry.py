@@ -37,7 +37,10 @@ def test_used_on_train_fit(reset_usage_lib, callsite: TelemetryCallsite):
     check_library_usage_telemetry(
         _call_train_fit,
         callsite=callsite,
-        expected_library_usages=[{"train", "tune"}, {"core", "train", "tune"}],
+        expected_library_usages=[
+            {"train", "tune"},
+            {"core", "train", "tune", "util.Queue"},
+        ],
         expected_extra_usage_tags={
             "air_entrypoint": "Trainer.fit",
             "air_storage_configuration": "local",
