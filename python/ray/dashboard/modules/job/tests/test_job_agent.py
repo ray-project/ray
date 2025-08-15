@@ -595,18 +595,21 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
     """
     import subprocess
 
-    cmd = (
-        "ray start --head " f"--dashboard-agent-listen-port {get_current_unused_port()}"
-    )
+    dashboard_agent_port = get_current_unused_port()
+    cmd = "ray start --head " f"--dashboard-agent-listen-port {dashboard_agent_port}"
     subprocess.check_output(cmd, shell=True)
 
     try:
         # We will need to wait for the ray to be started in the subprocess.
         address_info = ray.init("auto", ignore_reinit_error=True).address_info
 
-        ip, _ = parse_address(address_info["webui_url"])
+        # Get the actual node IP address from the nodes list
+        nodes = list_nodes()
+        assert len(nodes) > 0, "No nodes found"
+        node_ip = nodes[0].node_ip
+
         dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
-        agent_address = build_address(ip, dashboard_agent_listen_port)
+        agent_address = build_address(node_ip, dashboard_agent_listen_port)
         print("agent address = ", agent_address)
 
         agent_client = JobAgentSubmissionClient(format_web_url(agent_address))
