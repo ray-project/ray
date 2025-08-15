@@ -497,6 +497,7 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
 def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     """Test that passing GPU ObjectRefs inside lists as task arguments raises an error."""
 
+    print("loc2")
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -509,14 +510,16 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
 
     # Test: GPU ref inside a list should fail during task submission
     with pytest.raises(
-        ValueError, match="GPU ObjectRefs in data structures are not supported"
+        ValueError,
+        match="Passing GPU ObjectRefs inside data structures is not yet supported",
     ):
         actor.double.remote([gpu_ref])
 
     # Test: Mixed list with GPU ref and normal data should also fail
     normal_ref = ray.put("normal_data")
     with pytest.raises(
-        ValueError, match="GPU ObjectRefs in data structures are not supported"
+        ValueError,
+        match="Passing GPU ObjectRefs inside data structures is not yet supported",
     ):
         actor.double.remote([gpu_ref, normal_ref])
 
