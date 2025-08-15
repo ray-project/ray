@@ -778,12 +778,14 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
         # The last service discovery content that PrometheusServiceDiscoveryWriter has seen
         self.latest_service_discovery_content = []
+        self._content_lock = threading.RLock()
 
         super().__init__()
 
     def get_latest_service_discovery_content(self):
         """Return the latest stored service discovery content."""
-        return self.latest_service_discovery_content
+        with self._content_lock:
+            return self.latest_service_discovery_content
 
     def get_file_discovery_content(self):
         """Return the content for Prometheus service discovery."""
@@ -801,7 +803,8 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         if dashboard_addr:
             metrics_export_addresses.append(dashboard_addr.decode("utf-8"))
         content = [{"labels": {"job": "ray"}, "targets": metrics_export_addresses}]
-        self.latest_service_discovery_content = content
+        with self._content_lock:
+            self.latest_service_discovery_content = content
         return json.dumps(content)
 
     def write(self):
