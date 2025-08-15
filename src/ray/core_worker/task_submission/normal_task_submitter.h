@@ -112,8 +112,7 @@ class NormalTaskSubmitter {
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
-        cancel_retry_timer_(std::move(cancel_timer)),
-        worker_id_(WorkerID::FromBinary(rpc_address_.worker_id())) {}
+        cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -368,8 +367,6 @@ class NormalTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
-
-  WorkerID worker_id_;
 };
 
 }  // namespace core
