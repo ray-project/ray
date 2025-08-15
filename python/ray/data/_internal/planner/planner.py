@@ -34,6 +34,9 @@ from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
+from ray.data._internal.logical.operators.streaming_data_operator import (
+    UnboundedQueueStreamingData,
+)
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
@@ -44,6 +47,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     plan_udf_map_op,
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
+from ray.data._internal.planner.plan_streaming_op import plan_unbounded_streaming_op
 from ray.data.context import DataContext
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
@@ -157,6 +161,7 @@ class Planner:
         StreamingRepartition: plan_streaming_repartition_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
+        UnboundedQueueStreamingData: plan_unbounded_streaming_op,
     }
 
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:

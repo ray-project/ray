@@ -12,6 +12,12 @@ from ray.data.datasource.datasource import (
     Reader,
     ReadTask,
 )
+from ray.data.datasource.streaming_datasource import (
+    StreamingDatasource,
+    StreamingMetrics,
+    StreamingPosition,
+    create_streaming_read_task,
+)
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     FileShuffleConfig,
@@ -62,8 +68,12 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "StreamingDatasource",
+    "StreamingMetrics",
+    "StreamingPosition",
     "_S3FileSystemWrapper",
     "WriteResult",
+    "create_streaming_read_task",
     "WriteReturnType",
     "SaveMode",
 ]
