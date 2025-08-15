@@ -741,7 +741,9 @@ def get_application_urls(
         app_name in serve_details["applications"]
     ), f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
-    if exclude_route_prefix:
+    # route_prefix is set to None when route_prefix value is specifically set to None
+    # in the config used to deploy the app.
+    if exclude_route_prefix or route_prefix is None:
         route_prefix = ""
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
@@ -753,7 +755,6 @@ def get_application_urls(
         for target_group in target_groups
         if target_group.protocol == protocol
     ]
-
     if len(target_groups) == 0:
         raise ValueError(
             f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
