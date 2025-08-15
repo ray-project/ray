@@ -23,6 +23,7 @@ def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
     test_attr_regex_filters: Optional[Dict[str, str]] = None,
+    test_name_prefix_filter: Optional[str] = None,
     prefer_smoke_tests: bool = False,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
@@ -36,14 +37,30 @@ def filter_tests(
         # TODO: (khluu) Remove this once we start running KubeRay release tests.
         if test.is_kuberay() and get_global_config()["kuberay_disabled"]:
             continue
-        # First, filter by string attributes
-        attr_mismatch = False
-        for attr, regex in test_attr_regex_filters.items():
-            if not re.fullmatch(regex, _unflattened_lookup(test, attr) or ""):
-                attr_mismatch = True
-                break
-        if attr_mismatch:
+
+        # If no filter, select all tests
+        selected = not (test_name_prefix_filter or test_attr_regex_filters)
+
+        # Check if test name matches prefix filter
+        if test_name_prefix_filter and test.get_name().startswith(
+            test_name_prefix_filter
+        ):
+            selected = True
+
+        # Check if any test attributes match regex filters
+        if test_attr_regex_filters:
+            attr_mismatch = False
+            for attr, regex in test_attr_regex_filters.items():
+                attr_value = _unflattened_lookup(test, attr) or ""
+                if not re.fullmatch(regex, attr_value):
+                    attr_mismatch = True
+                    break
+            if not attr_mismatch:
+                selected = True
+
+        if not selected:
             continue
+
         if not run_jailed_tests:
             clone_test = copy.deepcopy(test)
             clone_test.update_from_s3()
