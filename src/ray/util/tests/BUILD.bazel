@@ -159,7 +159,8 @@ ray_cc_test(
     srcs = ["signal_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:raylet_lib",
+        "//src/ray/util",
+        "//src/ray/util:logging",
         "//src/ray/util:path_utils",
         "@com_google_googletest//:gtest_main",
     ],
@@ -187,6 +188,17 @@ ray_cc_test(
         "//src/ray/util",
         "@boost//:asio",
         "@boost//:process",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "network_util_test",
+    size = "small",
+    srcs = ["network_util_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

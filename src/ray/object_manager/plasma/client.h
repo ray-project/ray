@@ -120,12 +120,10 @@ class PlasmaClientInterface {
   /// \param timeout_ms The amount of time in milliseconds to wait before this
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param[out] object_buffers The object results.
-  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
   virtual Status Get(const std::vector<ObjectID> &object_ids,
                      int64_t timeout_ms,
-                     std::vector<ObjectBuffer> *object_buffers,
-                     bool is_from_worker) = 0;
+                     std::vector<ObjectBuffer> *object_buffers) = 0;
 
   /// Get an experimental mutable object.
   ///
@@ -264,8 +262,7 @@ class PlasmaClient : public PlasmaClientInterface {
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers,
-             bool is_from_worker) override;
+             std::vector<ObjectBuffer> *object_buffers) override;
 
   Status GetExperimentalMutableObject(
       const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) override;

@@ -30,7 +30,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -122,7 +121,7 @@ class MockObjectDirectory {
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
   explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
-      : local_raylet_id_(NodeID::FromRandom()),
+      : local_node_id_(NodeID::FromRandom()),
         io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
@@ -142,7 +141,6 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         manager_(
             rpc::Address(),
             raylet_client_pool_,
-            raylet_client_,
             [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
               object_directory_->AsyncGetLocations(object_id, callback);
             },
@@ -161,7 +159,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-              RAY_CHECK(memory_store_->Put(data, object_id));
+              memory_store_->Put(data, object_id);
             }) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
@@ -173,7 +171,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
     io_context_.Stop();
   }
 
-  NodeID local_raylet_id_;
+  NodeID local_node_id_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
   // Used by memory_store_.
@@ -237,8 +235,9 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address()});
-  object_directory_->SetLocations(object_id, addresses);
+  rpc::Address address;
+  address.set_node_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
@@ -256,8 +255,11 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address(), rpc::Address()});
-  object_directory_->SetLocations(object_id, addresses);
+  rpc::Address address1;
+  address1.set_node_id(NodeID::FromRandom().Binary());
+  rpc::Address address2;
+  address2.set_node_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address1, address2});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
@@ -306,7 +308,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   // A new copy of the object is pinned.
   NodeID remote_node_id = NodeID::FromRandom();
   rpc::Address address;
-  address.set_raylet_id(remote_node_id.Binary());
+  address.set_node_id(remote_node_id.Binary());
   object_directory_->SetLocations(object_id, {address});
   ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(raylet_client_->Flush(), 1);

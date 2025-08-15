@@ -43,12 +43,12 @@ class GcsActorSchedulerMockTest : public Test {
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
     actor_table = std::make_unique<GcsActorTable>(store_client);
-    gcs_node_manager = std::make_unique<GcsNodeManager>(
-        nullptr, nullptr, io_context, nullptr, ClusterID::Nil());
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
+    gcs_node_manager = std::make_unique<GcsNodeManager>(
+        nullptr, nullptr, io_context, client_pool.get(), ClusterID::Nil());
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         io_context,
@@ -130,7 +130,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnNode(node_id);
   ray::rpc::RequestWorkerLeaseReply reply;
-  reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
+  reply.mutable_worker_address()->set_node_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
   cb(Status::OK(), std::move(reply));
 }
@@ -162,7 +162,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
           DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
-  reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
+  reply.mutable_worker_address()->set_node_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
   request_worker_lease_cb(Status::OK(), std::move(reply));
 

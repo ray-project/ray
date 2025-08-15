@@ -22,7 +22,8 @@
 #include "absl/memory/memory.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/stats/metric.h"
+#include "ray/stats/tag_defs.h"
 
 DEFINE_stats(test_hist,
              "TestStats",
@@ -93,12 +94,18 @@ class StatsTest : public ::testing::Test {
   virtual void TearDown() override { Shutdown(); }
 
   void Shutdown() { ray::stats::Shutdown(); }
+
+ protected:
+  ray::stats::Gauge ray_metric_test_metrics_{"local_available_resource",
+                                             "The available resources on this node.",
+                                             "",
+                                             {stats::kResourceNameKey}};
 };
 
 TEST_F(StatsTest, F) {
   for (size_t i = 0; i < 20; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    stats::TestMetrics().Record(2345);
+    ray_metric_test_metrics_.Record(2345);
   }
 }
 

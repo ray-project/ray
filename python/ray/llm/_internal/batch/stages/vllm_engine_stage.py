@@ -284,7 +284,7 @@ class vLLMEngineWrapper:
                 guided_decoding=guided_decoding,
             )
         elif self.task_type == vLLMTaskType.EMBED:
-            params = vllm.PoolingParams()
+            params = vllm.PoolingParams(task=self.task_type.value)
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
