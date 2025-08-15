@@ -6,7 +6,7 @@ FROM "$BASE_IMAGE"
 
 ARG PIP_REQUIREMENTS
 
-COPY "$PIP_REQUIREMENTS" .
+COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
 RUN <<EOF
 #!/bin/bash
@@ -35,6 +35,6 @@ make -C /tmp/wrk -j
 sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
 rm -rf /tmp/wrk
 
-"$HOME/anaconda3/bin/pip" install --no-cache-dir -r "$PIP_REQUIREMENTS"
+"$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
 
 EOF
