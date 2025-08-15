@@ -5987,7 +5987,7 @@ class Dataset:
             -------- Physical Plan --------
             ReadRange->Map(<lambda>)
             +- Input
-
+            <BLANKLINE>
 
         Returns:
             A string containing logical plan and physical plan.
