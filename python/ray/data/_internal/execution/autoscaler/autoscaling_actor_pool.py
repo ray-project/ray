@@ -95,6 +95,10 @@ class AutoscalingActorPool(ABC):
             - self.num_tasks_in_flight()
         )
 
+    def num_task_slots(self) -> int:
+        """Number of slots to run tasks."""
+        return self.max_tasks_in_flight_per_actor() * self.num_running_actors()
+
     @abstractmethod
     def scale(self, req: ActorPoolScalingRequest):
         """Applies autoscaling action"""
