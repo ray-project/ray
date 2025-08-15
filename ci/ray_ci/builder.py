@@ -2,19 +2,19 @@ from typing import List
 
 import click
 
+from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.builder_container import (
+    ARCHITECTURE,
+    BUILD_TYPES,
     DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
-    BUILD_TYPES,
-    ARCHITECTURE,
     BuilderContainer,
 )
-from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
+from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import PLATFORMS_RAY
 from ci.ray_ci.ray_docker_container import RayDockerContainer
-from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
-from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.utils import logger, docker_login, ci_init
+from ci.ray_ci.utils import ci_init, docker_login, logger
+from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 
 
 @click.command()
@@ -172,7 +172,7 @@ def build_anyscale(
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload=False
-        ).run()
+        ).run(use_base_extra=True)
         AnyscaleDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
         ).run()

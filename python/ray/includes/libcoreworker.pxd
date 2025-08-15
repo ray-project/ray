@@ -76,7 +76,7 @@ cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/fiber.h" nogil:
+cdef extern from "ray/core_worker/task_execution/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::core::FiberEvent":
         CFiberEvent()
         void Wait()
@@ -116,6 +116,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int MaxPendingCalls() const
         int MaxTaskRetries() const
         c_bool EnableTaskEvents() const
+        c_bool AllowOutOfOrderExecution() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()
@@ -378,7 +379,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool interactive
         c_string node_ip_address
         int node_manager_port
-        c_string raylet_ip_address
         c_string driver_name
         (CRayStatus(
             const CAddress &caller_address,

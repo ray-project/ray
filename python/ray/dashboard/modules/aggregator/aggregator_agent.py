@@ -66,12 +66,8 @@ REQUEST_BACKOFF_MAX = ray_constants.env_integer(
 REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
     f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
-# Address of the external service to send events
-EVENT_SEND_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENT_SEND_ADDR", "http://127.0.0.1"
-)
-# Port of the external service to send events
-EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+# Address of the external service to send events with format of "http://<ip>:<port>"
+EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -91,19 +87,23 @@ if prometheus_client:
     metrics_prefix = "event_aggregator_agent"
     events_received = Counter(
         f"{metrics_prefix}_events_received",
-        "Total number of events received.",
+        "Total number of events received from the upstream components from the "
+        "AddEvents gRPC call.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_dropped_at_core_worker = Counter(
-        f"{metrics_prefix}_events_dropped_at_core_worker",
-        "Total number of events dropped at core worker.",
+    events_failed_to_add_to_aggregator = Counter(
+        f"{metrics_prefix}_events_failed_to_add_to_aggregator",
+        "Total number of events failed to add to the event aggregator. The metric "
+        "counts the events received by the aggregator agent from the AddEvents gRPC "
+        "call but failed to add to the buffer due to unexpected errors.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_dropped_at_event_aggregator = Counter(
         f"{metrics_prefix}_events_dropped_at_event_aggregator",
-        "Total number of events dropped at the event aggregator.",
+        "Total number of events dropped at the event aggregator due to the buffer "
+        "being full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -115,7 +115,9 @@ if prometheus_client:
     )
     events_filtered_out = Counter(
         f"{metrics_prefix}_events_filtered_out",
-        "Total number of events filtered out before publishing to external server.",
+        "Total number of events filtered out before publishing to external server. The "
+        "metric counts the events that are received by the aggregator agent but are "
+        "not part of the public API yet.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -156,10 +158,32 @@ class AggregatorAgent(
         self._stop_event = threading.Event()
         self._publisher_threads = []
         self._events_received_since_last_metrics_update = 0
-        self._events_dropped_at_core_worker_since_last_metrics_update = 0
+        self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
         self._events_filtered_out_since_last_metrics_update = 0
+        self._events_export_addr = (
+            dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
+        )
+
+        self._event_http_target_enabled = bool(self._events_export_addr)
+        if not self._event_http_target_enabled:
+            logger.info(
+                "Event HTTP target not set, skipping sending events to "
+                f"external http service. events_export_addr: {self._events_export_addr}"
+            )
+
+        self._event_processing_enabled = self._event_http_target_enabled
+        if self._event_processing_enabled:
+            logger.info("Event processing enabled")
+        else:
+            logger.info("Event processing disabled")
+
+        self._exposable_event_types = {
+            event_type.strip()
+            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
+        }
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -167,12 +191,6 @@ class AggregatorAgent(
 
         self._is_cleanup = False
         self._cleanup_finished_event = threading.Event()
-
-        self._exposable_event_types = {
-            event_type.strip()
-            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
-            if event_type.strip()
-        }
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -188,58 +206,38 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
+        if not self._event_processing_enabled:
+            return events_event_aggregator_service_pb2.AddEventReply()
+
+        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
+        # metadata (e.g. dropped task attempts) to help with event processing at the
+        # downstream
         events_data = request.events_data
-        with self._lock:
-            self._events_dropped_at_core_worker_since_last_metrics_update += len(
-                events_data.task_events_metadata.dropped_task_attempts
-            )
-        # The status code is defined in `src/ray/common/status.h`
-        status_code = 0
-        error_messages = []
         for event in events_data.events:
+            with self._lock:
+                self._events_received_since_last_metrics_update += 1
             try:
                 self._event_buffer.put_nowait(event)
-                with self._lock:
-                    self._events_received_since_last_metrics_update += 1
             except queue.Full:
-                old_event = self._event_buffer.get_nowait()
+                # Remove the oldest event to make room for the new event.
+                self._event_buffer.get_nowait()
                 self._event_buffer.put_nowait(event)
                 with self._lock:
-                    self._events_received_since_last_metrics_update += 1
                     self._events_dropped_at_event_aggregator_since_last_metrics_update += (
                         1
                     )
-                if status_code == 0:
-                    status_code = 5
-                error_messages.append(
-                    f"event {old_event.event_id.decode()} dropped because event buffer full"
-                )
             except Exception as e:
                 logger.error(
-                    "Failed to add event to buffer. Error: %s",
+                    f"Failed to add event with id={event.event_id.decode()} to buffer. "
+                    "Error: %s",
                     e,
                 )
                 with self._lock:
-                    self._events_dropped_at_event_aggregator_since_last_metrics_update += (
+                    self._events_failed_to_add_to_aggregator_since_last_metrics_update += (
                         1
                     )
-                status_code = 9
-                error_messages.append(
-                    f"event {event.event_id.decode()} failed to add to buffer with error {e}"
-                )
 
-        status_message = "all events received"
-        if error_messages:
-            truncate_num = 5
-            status_message = ", ".join(error_messages[:truncate_num])
-            if len(error_messages) > truncate_num:
-                status_message += (
-                    f", and {len(error_messages) - truncate_num} more events dropped"
-                )
-        status = events_event_aggregator_service_pb2.AddEventsStatus(
-            code=status_code, message=status_message
-        )
-        return events_event_aggregator_service_pb2.AddEventsReply(status=status)
+        return events_event_aggregator_service_pb2.AddEventsReply()
 
     def _can_expose_event(self, event) -> bool:
         """
@@ -254,7 +252,7 @@ class AggregatorAgent(
         """
         Sends a batch of events to the external service via HTTP POST request
         """
-        if not event_batch:
+        if not event_batch or not self._event_http_target_enabled:
             return
 
         filtered_event_batch = [
@@ -274,7 +272,7 @@ class AggregatorAgent(
 
         try:
             response = self._http_session.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=filtered_event_batch_json
+                f"{self._events_export_addr}", json=filtered_event_batch_json
             )
             response.raise_for_status()
             with self._lock:
@@ -323,8 +321,8 @@ class AggregatorAgent(
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
-            _events_dropped_at_core_worker = (
-                self._events_dropped_at_core_worker_since_last_metrics_update
+            _events_failed_to_add_to_aggregator = (
+                self._events_failed_to_add_to_aggregator_since_last_metrics_update
             )
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
@@ -333,7 +331,7 @@ class AggregatorAgent(
             _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
-            self._events_dropped_at_core_worker_since_last_metrics_update = 0
+            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
             self._events_filtered_out_since_last_metrics_update = 0
@@ -346,8 +344,8 @@ class AggregatorAgent(
             "SessionName": self.session_name,
         }
         events_received.labels(**labels).inc(_events_received)
-        events_dropped_at_core_worker.labels(**labels).inc(
-            _events_dropped_at_core_worker
+        events_failed_to_add_to_aggregator.labels(**labels).inc(
+            _events_failed_to_add_to_aggregator
         )
         events_dropped_at_event_aggregator.labels(**labels).inc(
             _events_dropped_at_event_aggregator

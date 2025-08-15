@@ -14,6 +14,10 @@
 
 #include "ray/common/task/task_spec.h"
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 
@@ -202,7 +206,7 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
         /*is_asyncio=*/false,
         /*concurrency_groups=*/{},
         /*extension_data=*/"",
-        /*execute_out_of_order=*/false,
+        /*allow_out_of_order_execution=*/false,
         /*root_detached_actor_id=*/ActorID::Nil());
     ASSERT_TRUE(
         std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId().IsNil());
@@ -223,7 +227,7 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
                                                 /*is_asyncio=*/false,
                                                 /*concurrency_groups=*/{},
                                                 /*extension_data=*/"",
-                                                /*execute_out_of_order=*/false,
+                                                /*allow_out_of_order_execution=*/false,
                                                 /*root_detached_actor_id=*/actor_id);
     ASSERT_EQ(std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
               actor_id);
@@ -234,7 +238,7 @@ TEST(TaskSpecTest, TestCallerAddress) {
   rpc::Address caller_address;
   NodeID caller_node_id = NodeID::FromRandom();
   WorkerID caller_worker_id = WorkerID::FromRandom();
-  caller_address.set_raylet_id(caller_node_id.Binary());
+  caller_address.set_node_id(caller_node_id.Binary());
   caller_address.set_worker_id(caller_worker_id.Binary());
   TaskSpecBuilder task_spec_builder;
   task_spec_builder.SetCommonTaskSpec(
