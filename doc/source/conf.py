@@ -623,6 +623,7 @@ autodoc_mock_imports = [
     "azure.common",
     "azure.core",
     "azure.identity",
+    "azure.keyvault",
     "azure.mgmt.compute",
     "azure.mgmt.network",
     "azure.mgmt.resource",
