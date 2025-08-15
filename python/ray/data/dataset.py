@@ -589,9 +589,9 @@ class Dataset:
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default ``batch_size`` is ``None``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            batch_format: If ``"default"`` or ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+            batch_format: If ``"default"`` or ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pyarrow"``, batches are
                 ``pyarrow.Table``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
@@ -4961,9 +4961,10 @@ class Dataset:
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            batch_format: If ``"default"`` or ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+            batch_format: If ``"default"`` or ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
