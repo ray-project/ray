@@ -14,10 +14,8 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
-    wait_until_server_available,
     find_free_port,
 )
-from ray._common.network_utils import parse_address, build_address
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
@@ -69,23 +67,24 @@ _with_aggregator_port = pytest.mark.parametrize(
 )
 
 
-def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
+def get_event_aggregator_grpc_stub(gcs_address, head_node_id):
     """
     An helper function to get the gRPC stub for the event aggregator agent.
     Should only be used in tests.
     """
-    ip, _ = parse_address(webui_url)
-    agent_address = build_address(ip, ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
-    assert wait_until_server_available(agent_address)
 
     gcs_address = gcs_address
     gcs_client = GcsClient(address=gcs_address)
-    agent_addr = gcs_client.internal_kv_get(
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-    )
-    ip, http_port, grpc_port = json.loads(agent_addr)
+
+    def get_addr():
+        return gcs_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(lambda: get_addr() is not None)
+    ip, _, grpc_port = json.loads(get_addr())
     options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = init_grpc_channel(f"{ip}:{grpc_port}", options=options)
     return EventAggregatorServiceStub(channel)
@@ -120,7 +119,7 @@ def test_aggregator_agent_receive_publish_events_normally(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -175,7 +174,7 @@ def test_aggregator_agent_receive_event_full(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -222,7 +221,7 @@ def test_aggregator_agent_receive_multiple_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -279,7 +278,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventsRequest(
@@ -326,7 +325,7 @@ def test_aggregator_agent_receive_empty_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventsRequest(
@@ -347,7 +346,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     """Test that profile events are not sent when not in exposable event types."""
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -401,7 +400,7 @@ def test_aggregator_agent_receive_profile_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
