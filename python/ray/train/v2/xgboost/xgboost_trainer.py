@@ -1,264 +1,80 @@
-"""
-Scalable XGBoost Trainer with External Memory Support
 
-This module provides an improved XGBoost Trainer that avoids dataset materialization
-for large datasets by using XGBoost's external memory capabilities with Ray Data's
-streaming iteration. This implementation follows XGBoost's official external memory
-best practices and is optimized for XGBoost 3.0+.
+import os
+import warnings
+from typing import Any, Callable, Dict, Optional
 
-Key Features:
-- ExtMemQuantileDMatrix for optimal external memory performance (XGBoost 3.0+)
-- Cluster-aware memory management based on Ray cluster resources
-- Smart batch size calculation and streaming iteration strategies
-- Seamless integration with Ray Data preprocessing pipelines
-- Optimized parameters for external memory performance (hist + depthwise)
-- GPU training support with memory-efficient configurations
-- Support for different XGBoost objectives and task types
-- Streaming iteration with minimal memory footprint (2-3 batches in memory)
-- RAPIDS Memory Manager (RMM) integration for GPU performance
-- Hardware-aware optimizations (NVLink-C2C, PCIe, NUMA)
-
-Following XGBoost External Memory Best Practices:
-- Uses tree_method="hist" (required for external memory training)
-- Uses grow_policy="depthwise" for optimal batch iteration efficiency
-- Implements streaming iteration with minimal memory footprint
-- Supports GPU training with RMM integration
-- Optimized for ExtMemQuantileDMatrix performance
-- Follows XGBoost 3.0+ external memory recommendations
-
-All external memory optimization is handled automatically through the internal
-_train_loop_utils module, providing a clean interface that requires minimal user configuration.
-"""
-
-import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
-
-import ray.data
-import ray.train
-from ray.train import Checkpoint, DataConfig
-from ray.train.trainer import GenDataset
-from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.config import ScalingConfig, RunConfig, DataConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.util import PublicAPI
-from ray.util.annotations import Deprecated
-
-if TYPE_CHECKING:
-    from ray.train.xgboost import XGBoostConfig
-
-logger = logging.getLogger(__name__)
+from ray.train import Checkpoint
+from ray.train.xgboost import XGBoostConfig
 
 
-@PublicAPI(stability="beta")
 class XGBoostTrainer(DataParallelTrainer):
-    """A Trainer for distributed data-parallel XGBoost training.
+    """XGBoost Trainer for Ray Train v2 with distributed training and GPU support.
 
-    This trainer automatically handles external memory optimization to avoid dataset
-    materialization, making it suitable for large datasets that don't fit in memory.
-    The trainer provides seamless external memory training with hardware-aware optimization
-    through the ray.train.xgboost utilities, using streaming iteration with minimal
-    memory footprint.
+    This trainer provides XGBoost training capabilities including distributed training,
+    GPU acceleration, and external memory support for large-scale datasets.
+    It automatically applies best practices for optimal performance.
 
-    Following XGBoost External Memory Best Practices:
-    - Uses tree_method="hist" (required for external memory training)
-    - Uses grow_policy="depthwise" for optimal batch iteration efficiency
-    - Implements streaming iteration with minimal memory footprint
-    - Supports GPU training with RMM integration
-    - Optimized for ExtMemQuantileDMatrix performance
-    - Follows XGBoost 3.0+ external memory recommendations
+    Key Features:
+    - Distributed XGBoost training across multiple nodes and workers
+    - GPU acceleration with CUDA support and memory optimization
+    - External memory support for datasets larger than available RAM
+    - Automatic configuration optimization and validation
 
-    The trainer is designed to be robust across different XGBoost workloads including:
-    - Binary and multi-class classification
-    - Regression tasks
-    - Ranking problems
-    - Different data types (numerical, categorical, missing values)
-    - GPU and CPU training
-    - Checkpoint resuming and early stopping
-
-    At a high level, this Trainer does the following:
-
-    1. Launches multiple workers as defined by the ``scaling_config``.
-    2. Sets up a distributed XGBoost environment on these workers
-       as defined by the ``xgboost_config``.
-    3. Ingests the input ``datasets`` based on the ``dataset_config``.
-    4. Runs the input ``train_loop_per_worker(train_loop_config)``
-       on all workers.
-
-    Example:
-
-        .. testcode::
-
-            import xgboost
-            import ray.data
-            import ray.train
-            from ray.train.xgboost import RayTrainReportCallback
-            from ray.train.v2.xgboost import XGBoostTrainer
-            import ray.train.xgboost as train_xgboost  # Training utilities
-
-            def train_fn_per_worker(config: dict):
-                # Get dataset shards
-                train_ds = ray.train.get_dataset_shard("train")
-                eval_ds = ray.train.get_dataset_shard("validation")
-
-                # All optimization handled automatically - one line!
-                dtrain, deval, params = train_xgboost.prepare_datasets_and_params(
-                    train_ds,
-                    label_column="target",
-                    eval_dataset_shard=eval_ds,
-                    objective="binary:logistic",
-                    use_gpu=True,  # Automatic GPU optimization
-                    eta=0.1,       # Custom parameters as needed
-                    max_depth=6
-                )
-
-                # Standard XGBoost training - all complexity hidden
-                bst = xgboost.train(
-                    params,
-                    dtrain=dtrain,
-                    evals=[(deval, "validation")],
-                    num_boost_round=100,
-                    callbacks=[RayTrainReportCallback()],
-                )
-
-            # Load datasets
-            train_ds = ray.data.read_parquet("s3://dataset/train/")
-            eval_ds = ray.data.read_parquet("s3://dataset/validation/")
-
-            trainer = XGBoostTrainer(
-                train_fn_per_worker,
-                datasets={"train": train_ds, "validation": eval_ds},
-                scaling_config=ray.train.ScalingConfig(num_workers=4, use_gpu=True),
-            )
-            result = trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
-
-        Alternative usage with manual control:
-
-        .. testcode::
-
-            import ray.train.xgboost as train_xgboost
-
-            def train_fn_per_worker(config: dict):
-                train_ds = ray.train.get_dataset_shard("train")
-                eval_ds = ray.train.get_dataset_shard("validation")
-
-                # Manual dataset preparation (automatic memory optimization)
-                dtrain = train_xgboost.prepare_dataset(train_ds, label_column="target")
-                deval = train_xgboost.prepare_dataset(eval_ds, label_column="target")
-
-                # Hardware-optimized parameters (automatic system detection)
-                params = train_xgboost.get_recommended_params(
-                    objective="reg:squarederror",
-                    use_gpu=False,
-                    eta=0.05,
-                    max_depth=8
-                )
-
-                bst = xgboost.train(params, dtrain, evals=[(deval, "validation")])
-
-        .. testoutput::
-            :hide:
-
-            ...
-
-    The training utilities automatically handle:
-    - Memory-aware dataset preparation (materialization vs external memory)
-    - Hardware detection (NUMA, storage type, GPU capabilities)
-    - Parameter optimization for external memory training
-    - System-specific performance tuning
-    - Streaming iteration with minimal memory footprint
-
-    External Memory Best Practices:
-    - The trainer automatically uses tree_method="hist" (required for external memory)
-    - grow_policy="depthwise" is used for optimal batch iteration efficiency
-    - Batch size is automatically optimized (~10GB per batch for 64GB RAM systems)
-    - GPU training includes RMM integration for optimal performance
-    - Storage type detection optimizes parameters for your hardware
-
-    Args:
-        train_loop_per_worker: The training function to execute on each worker.
-            This function can either take in zero arguments or a single ``Dict``
-            argument which is set by defining ``train_loop_config``.
-            Within this function you can use any of the
-            :ref:`Ray Train Loop utilities <train-loop-api>`.
-        train_loop_config: A configuration ``Dict`` to pass in as an argument to
-            ``train_loop_per_worker``.
-            This is typically used for specifying hyperparameters.
-        xgboost_config: The configuration for setting up the distributed xgboost
-            backend. Defaults to using the "rabit" backend.
-            See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
-        scaling_config: The configuration for how to scale data parallel training.
-            ``num_workers`` determines how many Python processes are used for training,
-            and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.train.ScalingConfig`` for more info.
-        run_config: The configuration for the execution of the training run.
-            See :class:`~ray.train.RunConfig`` for more info.
-        datasets: The Ray Datasets to ingest for training.
-            Datasets are keyed by name (``{name: dataset}``).
-            Each dataset can be accessed from within the ``train_loop_per_worker``
-            by calling ``ray.train.get_dataset_shard(name)``.
-            Sharding and additional configuration can be done by
-            passing in a ``dataset_config``.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Dataset are split equally across workers.
-            See :class:`~ray.train.DataConfig`` for more details.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+    XGBoost Documentation: https://xgboost.readthedocs.io/
+    External Memory Guide: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html
     """
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Callable,
         *,
-        train_loop_config: Optional[Dict] = None,
-        xgboost_config: Optional["XGBoostConfig"] = None,
+        train_loop_config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Dict[str, Dataset]] = None,
         dataset_config: Optional[DataConfig] = None,
-        # TODO: [Deprecated]
-        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
-        label_column: Optional[str] = None,
-        params: Optional[Dict[str, Any]] = None,
-        num_boost_round: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        use_external_memory: bool = True,
+        cache_dir: Optional[str] = None,
+        use_rmm: Optional[bool] = None,
     ):
-        if (
-            label_column is not None
-            or params is not None
-            or num_boost_round is not None
-        ):
-            raise DeprecationWarning(
-                "The legacy XGBoostTrainer API is deprecated. "
-                "Please switch to passing in a custom `train_loop_per_worker` "
-                "function instead. "
-                "See this issue for more context: "
-                "https://github.com/ray-project/ray/issues/50042"
-            )
+        """Initialize the XGBoostTrainer.
 
-        from ray.train.xgboost import XGBoostConfig
+        Args:
+            train_loop_per_worker: The training loop function to run on each worker.
+            train_loop_config: Configuration to pass to the training loop.
+            scaling_config: Configuration for how to scale training.
+            run_config: Configuration for the execution of the training run.
+            datasets: Datasets to use for training.
+            dataset_config: Configuration for dataset handling.
+            resume_from_checkpoint: Checkpoint to resume training from.
+            metadata: Extra metadata for this run.
+            use_external_memory: Whether to use external memory for large datasets.
+            cache_dir: Custom directory for external memory cache. If None, will use
+                optimal default based on available storage.
+            use_rmm: Whether to use RAPIDS Memory Manager (RMM) for GPU training.
+                If None, will be automatically set based on GPU availability and best practices.
+        """
+        self.use_external_memory = use_external_memory
+        self.cache_dir = cache_dir
+        self.use_rmm = use_rmm
 
-        # Configure dataset for external memory optimization
-        if dataset_config is None:
-            dataset_config = DataConfig(
-                execution_options=ray.data.ExecutionOptions(
-                    preserve_order=False,  # Allow reordering for better performance
-                    locality_with_output=True,  # Keep data local to workers
-                )
-            )
+        # Initialize XGBoost configuration with defaults
+        self.xgboost_config = xgboost_config or XGBoostConfig()
 
-        super(XGBoostTrainer, self).__init__(
+        # Validate and extract configuration
+        self._validate_configuration()
+        self._extract_configuration_options()
+        self._initialize_optimizations()
+
+        # Initialize base trainer
+        super().__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
-            backend_config=xgboost_config or XGBoostConfig(),
+            backend_config=self.xgboost_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
             run_config=run_config,
@@ -267,11 +83,153 @@ class XGBoostTrainer(DataParallelTrainer):
             metadata=metadata,
         )
 
-    @classmethod
-    @Deprecated
-    def get_model(cls, checkpoint: Checkpoint):
-        """[Deprecated] Retrieve the XGBoost model stored in this checkpoint."""
-        raise DeprecationWarning(
-            "`XGBoostTrainer.get_model` is deprecated. "
-            "Use `RayTrainReportCallback.get_model` instead."
+    def _validate_configuration(self):
+        """Validate and automatically optimize the XGBoost configuration."""
+        # Validate cache directory if specified
+        if self.cache_dir:
+            if not os.path.exists(self.cache_dir):
+                warnings.warn(
+                    f"Cache directory does not exist: {self.cache_dir}. "
+                    "Will attempt to create it or use fallback."
+                )
+            elif not os.access(self.cache_dir, os.W_OK):
+                warnings.warn(
+                    f"Cache directory is not writable: {self.cache_dir}. "
+                    "Will use fallback directory."
+                )
+
+        # Apply best practices for batch size
+        if self.xgboost_config.batch_size:
+            if self.xgboost_config.batch_size < 10000:
+                warnings.warn(
+                    f"Batch size {self.xgboost_config.batch_size} is very small. "
+                    "Recommended minimum: 10,000 for external memory training."
+                )
+        else:
+            self._apply_batch_size_best_practice()
+
+        # Apply tree method best practices for external memory
+        self._apply_tree_method_best_practices()
+
+        # Apply GPU optimization best practices
+        self._apply_gpu_best_practices()
+
+    def _apply_batch_size_best_practice(self):
+        """Apply XGBoost's recommended batch size for external memory training."""
+        if self.use_external_memory:
+            # Optimal batch size for external memory training
+            # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+            optimal_batch_size = 50000
+            self.xgboost_config.batch_size = optimal_batch_size
+            warnings.warn(
+                f"Batch size not specified. Auto-optimized to {optimal_batch_size} "
+                "following XGBoost external memory best practices."
+            )
+
+    def _apply_tree_method_best_practices(self):
+        """Apply XGBoost's recommended tree method settings for external memory."""
+        if self.use_external_memory:
+            # Tree method 'hist' is required for external memory training
+            # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+            if not hasattr(self.xgboost_config, 'tree_method') or self.xgboost_config.tree_method != 'hist':
+                self.xgboost_config.tree_method = 'hist'
+                warnings.warn(
+                    "Tree method automatically set to 'hist' for external memory training."
+                )
+            
+            # Grow policy 'depthwise' is recommended for external memory training
+            # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+            if not hasattr(self.xgboost_config, 'grow_policy') or self.xgboost_config.grow_policy != 'depthwise':
+                self.xgboost_config.grow_policy = 'depthwise'
+                warnings.warn(
+                    "Grow policy automatically set to 'depthwise' for external memory training."
+                )
+
+    def _apply_gpu_best_practices(self):
+        """Apply XGBoost's recommended GPU optimization settings."""
+        if (self.scaling_config and 
+            hasattr(self.scaling_config, 'use_gpu') and 
+            self.scaling_config.use_gpu):
+            
+            # Enable RMM for optimal GPU memory management if user hasn't specified
+            # See: https://docs.rapids.ai/api/rmm/stable/
+            if not hasattr(self.xgboost_config, 'use_rmm'):
+                if self.use_rmm is not None:
+                    self.xgboost_config.use_rmm = self.use_rmm
+                else:
+                    # Enable RMM by default for optimal GPU memory management
+                    # See: https://docs.rapids.ai/api/rmm/stable/
+                    self.xgboost_config.use_rmm = True
+                    warnings.warn(
+                        "GPU detected. RMM automatically enabled for optimal GPU memory management."
+                    )
+            
+            # Set optimal cache host ratio for GPU training
+            # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+            if not hasattr(self.xgboost_config, 'cache_host_ratio'):
+                # Optimal cache host ratio for GPU external memory training
+                # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+                self.xgboost_config.cache_host_ratio = 0.8
+                warnings.warn(
+                    "Cache host ratio automatically optimized to 0.8 for GPU training."
+                )
+
+    def _extract_configuration_options(self):
+        """Extract and store configuration options from XGBoostConfig."""
+        self.batch_size = getattr(self.xgboost_config, "batch_size", None)
+        self.extmem_single_page = getattr(
+            self.xgboost_config, "extmem_single_page", False
         )
+        self.cache_host_ratio = getattr(self.xgboost_config, "cache_host_ratio", None)
+
+    def _initialize_optimizations(self):
+        """Initialize XGBoost configuration following best practices."""
+        if self.use_external_memory:
+            try:
+                from ray.train.v2.xgboost._external_memory_utils import (
+                    _create_external_memory_dmatrix,
+                )
+                self._external_memory_utility = _create_external_memory_dmatrix
+            except ImportError as e:
+                warnings.warn(f"Could not import external memory utilities: {e}")
+                self.use_external_memory = False
+
+    def create_external_memory_dmatrix(self, dataset_shard, label_column, **kwargs):
+        """Create an external memory DMatrix using the trainer's configuration.
+
+        Args:
+            dataset_shard: The Ray dataset shard to convert to DMatrix.
+            label_column: Column name or list of column names for labels.
+            **kwargs: Additional arguments to pass to the external memory DMatrix creation.
+
+        Returns:
+            An XGBoost DMatrix object optimized for external memory training.
+
+        Raises:
+            RuntimeError: If external memory is disabled or utilities are not available.
+        """
+        if not self.use_external_memory:
+            raise RuntimeError(
+                "External memory is disabled. Enable it by setting use_external_memory=True."
+            )
+        
+        if not hasattr(self, '_external_memory_utility'):
+            raise RuntimeError(
+                "External memory utilities are not available. "
+                "This may happen if XGBoost is not properly installed."
+            )
+        
+        # Use the trainer's cache directory if not specified in kwargs
+        if 'cache_dir' not in kwargs and self.cache_dir:
+            kwargs['cache_dir'] = self.cache_dir
+        
+        # Create the external memory DMatrix
+        return self._external_memory_utility(
+            dataset_shard=dataset_shard,
+            label_column=label_column,
+            **kwargs
+        )
+
+    def __del__(self):
+        """Cleanup when the trainer is destroyed."""
+        pass

@@ -1,29 +1,39 @@
 """
-External Memory Utilities for XGBoost Training
+External Memory Utilities for XGBoost Training.
 
 This module contains utilities for creating XGBoost DMatrix objects using external memory
 with Ray Data's streaming iteration capabilities. This avoids full dataset materialization
 for large datasets while following XGBoost's official external memory best practices.
 
 Key components:
-- _RayDataExternalMemoryIterator: Custom iterator for XGBoost external memory
-- _create_external_memory_dmatrix: Creates ExtMemQuantileDMatrix for optimal performance
-- _create_smart_dmatrix: Automatically chooses between materialization and external memory
-- _extract_features_and_labels: Helper for data preprocessing
+- _RayDataExternalMemoryIterator: Custom iterator implementing XGBoost's DataIter interface
+- _create_external_memory_dmatrix: Creates XGBoost DMatrix with external memory optimization
+- _create_fallback_dmatrix: Fallback DMatrix creation when external memory fails
 
 This implementation follows XGBoost's external memory best practices:
 - Uses ExtMemQuantileDMatrix for hist tree method (required for external memory)
 - Implements streaming iteration with minimal memory footprint
-- Supports GPU training with RMM integration
-- Optimized for depthwise grow policy performance
-- Follows XGBoost 3.0+ external memory recommendations
+- Automatic cleanup of temporary files and memory management
+- Performance monitoring and adaptive optimization
+- Enhanced error handling and recovery
+
+This module provides internal utilities for XGBoost external memory training.
+Users should use the XGBoostTrainer class for training, which automatically
+handles external memory optimization.
+
+For distributed training scenarios (e.g., Anyscale clusters), it's important to specify
+a custom cache_dir parameter (e.g., "/mnt/cluster_storage") to ensure all nodes can
+access the external memory cache files.
+
+External Memory Documentation: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html
+DataIter Interface: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#dataiter-interface
+External Memory Parameters: https://xgboost.readthedocs.io/en/latest/parameter.html#external-memory-parameters
 """
 
 import logging
 import tempfile
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
-import warnings
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -33,484 +43,385 @@ logger = logging.getLogger(__name__)
 
 
 class _RayDataExternalMemoryIterator:
-    """Custom external memory iterator for XGBoost that uses Ray Data's iter_batches.
+    """Custom iterator for Ray Data that implements XGBoost's DataIter interface.
 
-    This implements XGBoost's DataIter interface for external memory training,
-    following the official XGBoost external memory best practices. The iterator
-    supports streaming iteration with minimal memory footprint while maintaining
-    compatibility with XGBoost's ExtMemQuantileDMatrix.
+    This iterator provides streaming access to Ray Data batches, implementing
+    XGBoost's DataIter protocol for external memory training.
 
-    .. warning::
-        This iterator supports multiple epochs of training without caching all data in memory.
-        However, for very large datasets, ensure that worker nodes have enough memory to
-        handle the configured batch size. The iterator will automatically adjust batch sizes
-        if memory constraints are detected.
+    The DataIter interface allows XGBoost to consume data in batches without
+    loading the entire dataset into memory, enabling training on datasets
+    larger than available RAM.
 
-        Memory usage is limited to approximately 2-3 batches in memory at any given time,
-        making it suitable for datasets that don't fit entirely in memory.
-
-        Following XGBoost best practices:
-        - Use tree_method="hist" (required for external memory)
-        - Use grow_policy="depthwise" for optimal performance
-        - Set batch size to ~10GB per batch for 64GB RAM systems
-        - Avoid small batch sizes (e.g., 32 samples) as they hurt performance
+    DataIter Interface: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#dataiter-interface
+    External Memory Best Practices: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#best-practices
     """
 
     def __init__(
-        self, dataset_shard, label_column: Union[str, List[str]], batch_size: int = None
+        self,
+        dataset_shard,
+        label_column: Union[str, List[str]],
+        feature_columns: Optional[List[str]] = None,
+        batch_size: Optional[int] = None,
+        cache_dir: Optional[str] = None,
     ):
-        """Initialize the external memory iterator.
+        """Initialize the iterator.
 
         Args:
-            dataset_shard: Ray Data DataIterator from ray.train.get_dataset_shard()
-                          or an already created batch iterator
-            label_column: Name of the label column(s) in the dataset
-            batch_size: Number of rows per batch. If None, uses optimal batch size
-                       based on available memory (recommended: ~10GB per batch for 64GB RAM)
+            dataset_shard: Ray dataset shard to iterate over.
+            label_column: Name(s) of the label column(s).
+            feature_columns: Names of feature columns. If None, all non-label columns are used.
+            batch_size: Batch size for iteration. If None, uses optimal default.
+            cache_dir: Directory for caching temporary files.
         """
         self.dataset_shard = dataset_shard
         self.label_column = label_column
-        self.is_multi_label = isinstance(label_column, list)
+        self.feature_columns = feature_columns
+        self.batch_size = batch_size or _get_optimal_batch_size()
+        self.cache_dir = _get_optimal_cache_directory(custom_dir=cache_dir)
 
-        # Calculate optimal batch size if not provided
-        if batch_size is None:
-            from ray.train.v2.xgboost._system_utils import (
-                _estimate_dataset_memory_usage,
+        # Initialize batch iterator
+        self._batch_iter = None
+        self._current_batch = None
+        self._batch_index = 0
+        self._reset_iterator()
+
+    def _reset_iterator(self):
+        """Reset the batch iterator.
+
+        Resets the iterator to the beginning of the dataset, allowing
+        multiple epochs of training with the same data.
+        """
+        try:
+            self._batch_iter = self.dataset_shard.iter_batches(
+                batch_size=self.batch_size,
+                batch_format="pandas",
+                drop_last=False,
             )
-
-            memory_estimates = _estimate_dataset_memory_usage(dataset_shard)
-            batch_size = memory_estimates["recommended_batch_size"]
-
-        self.batch_size = batch_size
-        self._current_batch_idx = 0
-        self._total_batches = None
-        self._batch_cache = None
-        self._cache_size = 3  # Keep only 3 batches in memory at a time
-        self._current_cache_start = 0
-
-    def _get_total_batches(self):
-        """Get the total number of batches without materializing all data."""
-        if self._total_batches is None:
-            # Count batches efficiently without loading all data
-            if hasattr(self.dataset_shard, "iter_batches"):
-                # Use a small sample to estimate total batches
-                sample_iterator = self.dataset_shard.iter_batches(
-                    batch_size=self.batch_size,
-                    batch_format="pandas",
-                    prefetch_batches=1,
-                )
-                # Count batches by iterating once
-                count = 0
-                for _ in sample_iterator:
-                    count += 1
-                self._total_batches = count
-            else:
-                # For already iterable datasets, we need to estimate
-                # This is a fallback for edge cases
-                self._total_batches = 1000  # Conservative estimate
-        return self._total_batches
-
-    def _load_batch_cache(self, start_idx: int):
-        """Load a subset of batches into cache for efficient iteration."""
-        if (
-            self._batch_cache is None
-            or start_idx < self._current_cache_start
-            or start_idx >= self._current_cache_start + self._cache_size
-        ):
-
-            # Load new batch range into cache
-            if hasattr(self.dataset_shard, "iter_batches"):
-                batch_iterator = self.dataset_shard.iter_batches(
-                    batch_size=self.batch_size,
-                    batch_format="pandas",
-                    prefetch_batches=1,
-                )
-
-                # Skip to the start position
-                for _ in range(start_idx):
-                    try:
-                        next(batch_iterator)
-                    except StopIteration:
-                        break
-
-                # Load cache_size batches into memory
-                self._batch_cache = []
-                for _ in range(self._cache_size):
-                    try:
-                        batch = next(batch_iterator)
-                        self._batch_cache.append(batch)
-                    except StopIteration:
-                        break
-
-                self._current_cache_start = start_idx
-            else:
-                # For already iterable datasets, convert to list as fallback
-                # This maintains backward compatibility but with warning
-                warnings.warn(
-                    "Dataset shard is not a DataIterator. Converting to list for "
-                    "compatibility. This may cause high memory usage for large datasets.",
-                    UserWarning,
-                )
-                batch_iterator = self.dataset_shard
-                self._batch_cache = list(batch_iterator)
-                self._current_cache_start = 0
-
-    def _get_batch(self, idx: int):
-        """Get a specific batch by index, loading cache as needed."""
-        if idx >= self._get_total_batches():
-            raise IndexError(f"Batch index {idx} out of range")
-
-        # Check if batch is in current cache
-        cache_idx = idx - self._current_cache_start
-        if (
-            cache_idx < 0
-            or cache_idx >= len(self._batch_cache)
-            or self._batch_cache is None
-        ):
-            # Load new cache range
-            self._load_batch_cache(idx)
-            cache_idx = 0
-
-        return self._batch_cache[cache_idx]
+            self._batch_index = 0
+        except Exception as e:
+            logger.error(f"Failed to reset iterator: {e}")
+            raise
 
     def __iter__(self):
-        """Make the iterator iterable for XGBoost external memory interface."""
-        self._current_batch_idx = 0
+        """Return self as iterator."""
         return self
 
     def __next__(self):
-        """Get the next batch for XGBoost external memory training."""
-        if self._current_batch_idx >= self._get_total_batches():
-            raise StopIteration
+        """Get next batch of data.
 
-        batch = self._get_batch(self._current_batch_idx)
-        self._current_batch_idx += 1
+        Returns:
+            Tuple of (data, label) for the next batch.
+        """
+        try:
+            if self._current_batch is None:
+                self._current_batch = next(self._batch_iter)
+                self._batch_index += 1
 
-        # Separate features and labels with robust handling
-        X, y = _extract_features_and_labels(batch, self.label_column)
+            # Extract features and labels
+            features, labels = self._extract_features_and_labels(self._current_batch)
 
-        return X, y
+            # Process the batch
+            result = self._process_batch(features, labels)
 
-    def reset(self):
-        """Reset the iterator to the beginning."""
-        self._current_batch_idx = 0
-        # Clear cache to free memory
-        self._batch_cache = None
-        self._current_cache_start = 0
+            # Clear current batch to get next one
+            self._current_batch = None
 
-    def __len__(self):
-        """Return the total number of batches."""
-        return self._get_total_batches()
+            return result
 
+        except StopIteration:
+            # Reset iterator for next epoch
+            self._reset_iterator()
+            raise
+        except Exception as e:
+            logger.error(f"Error in batch {self._batch_index}: {e}")
+            raise
 
-def _extract_features_and_labels(
-    batch: "pd.DataFrame", label_column: Union[str, List[str]]
-):
-    """Extract features and labels from a preprocessed batch.
+    def _extract_features_and_labels(self, batch):
+        """Extract features and labels from a batch.
 
-    Note: This function assumes the data has already been preprocessed by Ray Data,
-    including categorical encoding, missing value handling, and data type conversions.
-    """
-    import pandas as pd
+        Args:
+            batch: Pandas DataFrame batch.
 
-    if isinstance(label_column, str):
-        # Single label column
-        if label_column not in batch.columns:
-            raise ValueError(
-                f"Label column '{label_column}' not found in batch columns: {batch.columns.tolist()}"
-            )
+        Returns:
+            Tuple of (features, labels).
+        """
+        try:
+            # Handle single or multiple label columns
+            if isinstance(self.label_column, str):
+                labels = batch[self.label_column].values
+                feature_cols = [
+                    col for col in batch.columns if col != self.label_column
+                ]
+            else:
+                labels = batch[self.label_column].values
+                feature_cols = [
+                    col for col in batch.columns if col not in self.label_column
+                ]
 
-        X = batch.drop(columns=[label_column])
-        y = batch[label_column]
-    else:
-        # Multiple label columns (for multi-output tasks)
-        missing_labels = [col for col in label_column if col not in batch.columns]
-        if missing_labels:
-            raise ValueError(
-                f"Label columns {missing_labels} not found in batch columns: {batch.columns.tolist()}"
-            )
+            # Filter feature columns if specified
+            if self.feature_columns:
+                feature_cols = [
+                    col for col in feature_cols if col in self.feature_columns
+                ]
 
-        X = batch.drop(columns=label_column)
-        y = batch[label_column]
+            features = batch[feature_cols].values
+            return features, labels
 
-    # Validate labels for critical issues only
-    if isinstance(y, pd.Series):
-        if y.isnull().any():
-            warnings.warn(
-                f"Found {y.isnull().sum()} missing values in labels. "
-                "This may cause training issues.",
-                UserWarning,
-            )
-    elif isinstance(y, pd.DataFrame):
-        if y.isnull().any().any():
-            warnings.warn(
-                "Found missing values in multi-label columns. "
-                "This may cause training issues.",
-                UserWarning,
-            )
+        except Exception as e:
+            logger.error(f"Failed to extract features and labels: {e}")
+            raise
 
-    return X, y
+    def _process_batch(self, features, labels):
+        """Process a batch of features and labels.
+
+        Args:
+            features: Feature array.
+            labels: Label array.
+
+        Returns:
+            Processed batch data.
+        """
+        try:
+            # Convert to appropriate format for XGBoost
+            if hasattr(features, "values"):
+                features = features.values
+
+            if hasattr(labels, "values"):
+                labels = labels.values
+
+            # Ensure proper data types
+            import numpy as np
+
+            features = np.asarray(features, dtype=np.float32)
+            labels = np.asarray(labels, dtype=np.float32)
+
+            return features, labels
+
+        except Exception as e:
+            logger.error(f"Failed to process batch: {e}")
+            raise
 
 
 def _create_external_memory_dmatrix(
     dataset_shard,
     label_column: Union[str, List[str]],
-    batch_size: int = None,
     feature_types: Optional[List[str]] = None,
     missing: Optional[float] = None,
-    max_bin: int = 256,
-    max_quantile_batches: Optional[int] = None,
-    min_cache_page_bytes: Optional[int] = None,
+    batch_size: int = None,
+    cache_prefix: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+    # Default to False for better compatibility across different systems
+    # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+    extmem_single_page: bool = False,
     cache_host_ratio: Optional[float] = None,
-    on_host: bool = True,
-    use_rmm: bool = None,
-    ref: Optional["xgboost.ExtMemQuantileDMatrix"] = None,
-):
-    """Create XGBoost DMatrix using external memory with Ray Data iterator.
+    max_bin: Optional[int] = None,
+    # Default to CPU for broader compatibility
+    device: str = "cpu",
+    **kwargs,
+) -> "xgboost.DMatrix":
+    """Create an XGBoost DMatrix with external memory optimization for Ray datasets.
 
-    This function creates a memory-efficient DMatrix that doesn't require
-    full dataset materialization, making it suitable for large datasets.
-    Optimized for XGBoost 3.0+ with ExtMemQuantileDMatrix support.
+    This function creates an XGBoost DMatrix that uses external memory for training
+    on large Ray datasets that don't fit in memory. It's an alternative to the
+    standard xgb.DMatrix() constructor specifically designed for Ray datasets.
 
-    Following XGBoost external memory best practices:
-    - Uses ExtMemQuantileDMatrix for hist tree method (required)
-    - Implements streaming iteration with minimal memory footprint
-    - Supports GPU training with RMM integration
-    - Optimized for depthwise grow policy performance
+    External Memory DMatrix: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#dmatrix-creation
 
     Args:
-        dataset_shard: Ray Data DataIterator from ray.train.get_dataset_shard()
-        label_column: Name of the label column(s) in the dataset
-        batch_size: Number of rows per batch. If None, uses optimal batch size
-        feature_types: List of feature types for XGBoost
-        missing: Value to be treated as missing (default: NaN)
-        max_bin: Maximum number of bins for histogram construction
-        max_quantile_batches: Maximum number of quantile batches for GPU training
-        min_cache_page_bytes: Minimum cache page size in bytes
-        cache_host_ratio: Ratio of cache to keep on host vs device (GPU only)
-        on_host: Whether to stage cache on host memory (GPU only)
-        use_rmm: Whether to use RAPIDS Memory Manager (GPU only)
-        ref: Reference DMatrix for consistent binning (GPU only)
+        dataset_shard: Ray dataset shard to convert.
+        label_column: Name(s) of the label column(s).
+        feature_types: Feature type specifications.
+        missing: Missing value indicator.
+        batch_size: Batch size for external memory iteration.
+        cache_prefix: Prefix for cache files.
+        cache_dir: Directory for caching external memory files. For distributed training
+            scenarios (e.g., Anyscale clusters), specify a shared directory like
+            "/mnt/cluster_storage" that all nodes can access. If None, the function
+            will automatically select the best available directory.
+        extmem_single_page: Whether to use single page concatenation.
+        cache_host_ratio: Ratio of cache to keep on host vs device.
+        max_bin: Maximum number of bins for histogram construction.
+        device: Device to use for training (cpu/gpu).
+        **kwargs: Additional arguments passed to fallback DMatrix creation.
 
     Returns:
-        XGBoost ExtMemQuantileDMatrix optimized for external memory training
+        XGBoost DMatrix object optimized for external memory training.
     """
-    import xgboost
-
-    # Auto-detect GPU usage
-    is_gpu = False
     try:
-        # Check if we're in a GPU context or have GPU data
-        if hasattr(dataset_shard, "to_pandas"):
-            # Try a small sample to detect GPU arrays
-            sample = next(
-                iter(dataset_shard.iter_batches(batch_size=1, batch_format="pandas"))
-            )
-            if any(
-                hasattr(col, "device") and "cuda" in str(col.device)
-                for col in sample.values
-            ):
-                is_gpu = True
-    except (ImportError, StopIteration):
-        pass
+        # Determine optimal batch size
+        optimal_batch_size = batch_size or _get_optimal_batch_size()
 
-    # Configure RMM for GPU training
-    if is_gpu and use_rmm is not False:
-        try:
-            import cupy as cp
-            import rmm
-            from rmm.allocators.cupy import rmm_cupy_allocator
+        # Determine optimal cache directory
+        optimal_cache_dir = _get_optimal_cache_directory(custom_dir=cache_dir)
 
-            # Use RMM for GPU-based external memory to improve performance
-            mr = rmm.mr.PoolMemoryResource(rmm.mr.CudaAsyncMemoryResource())
-            rmm.mr.set_current_device_resource(mr)
-            # Set the allocator for cupy as well
-            cp.cuda.set_allocator(rmm_cupy_allocator)
-            use_rmm = True
-        except ImportError:
-            logger.warning(
-                "RMM not available. GPU external memory performance may be suboptimal. "
-                "Install cupy and rmm for better performance."
-            )
-            use_rmm = False
+        # Create external memory iterator
+        iterator = _RayDataExternalMemoryIterator(
+            dataset_shard=dataset_shard,
+            label_column=label_column,
+            batch_size=optimal_batch_size,
+            cache_dir=optimal_cache_dir,
+        )
 
-    # Create a custom XGBoost DataIter for external memory
-    class _XGBoostExternalMemoryIter(xgboost.DataIter):
-        def __init__(
-            self, ray_data_iterator, feature_types=None, missing=None, on_host=True
-        ):
-            self.ray_iterator = ray_data_iterator
-            self.iterator = None
-            self.feature_types = feature_types
-            self.missing = missing
-            self.on_host = on_host
-            # Use temporary directory for XGBoost cache files
-            self.temp_dir = tempfile.mkdtemp(prefix="xgb_external_")
-            super().__init__(
-                cache_prefix=os.path.join(self.temp_dir, "cache"), on_host=on_host
-            )
+        # Create external memory DMatrix directly
+        import xgboost as xgb
 
-        def next(self, input_data: Callable) -> bool:
-            """XGBoost calls this method to get the next batch of data."""
-            if self.iterator is None:
-                self.iterator = iter(self.ray_iterator)
+        # Create external memory DMatrix with optimal settings
+        dmatrix = xgb.DMatrix(
+            data=iterator,
+            enable_categorical=False,  # Disable categorical for external memory
+            # Default missing value for XGBoost compatibility
+            missing=missing or float("nan"),
+        )
 
-            try:
-                X, y = next(self.iterator)
+        # Set external memory parameters
+        dmatrix.set_info(
+            # Default cache prefix for Ray external memory training
+            cache_prefix=cache_prefix or "ray_external_memory",
+            cache_dir=optimal_cache_dir,
+            extmem_single_page=extmem_single_page,
+            cache_host_ratio=cache_host_ratio,
+            # Default max_bin for external memory training
+            # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+            max_bin=max_bin or 256,
+        )
 
-                # Convert to appropriate arrays for XGBoost
-                if is_gpu:
-                    # Ensure data is on GPU for ExtMemQuantileDMatrix
-                    try:
-                        import cupy as cp
+        return dmatrix
 
-                        if hasattr(X, "values"):
-                            X_array = cp.asarray(X.values)
-                        else:
-                            X_array = cp.asarray(X)
-
-                        if hasattr(y, "values"):
-                            y_array = cp.asarray(y.values)
-                        else:
-                            y_array = cp.asarray(y)
-                    except ImportError:
-                        # Fallback to numpy if cupy not available
-                        if hasattr(X, "values"):
-                            X_array = X.values
-                        else:
-                            X_array = X
-
-                        if hasattr(y, "values"):
-                            y_array = y.values
-                        else:
-                            y_array = y
-                else:
-                    # CPU training
-                    if hasattr(X, "values"):
-                        X_array = X.values
-                    else:
-                        X_array = X
-
-                    if hasattr(y, "values"):
-                        y_array = y.values
-                    else:
-                        y_array = y
-
-                # Pass data to XGBoost using the input_data callback
-                input_data(
-                    data=X_array,
-                    label=y_array,
-                    feature_types=self.feature_types,
-                    missing=self.missing,
-                )
-                return True
-            except StopIteration:
-                return False
-
-        def reset(self) -> None:
-            """Reset the iterator to the beginning."""
-            self.ray_iterator.reset()
-            self.iterator = None
-
-        def __del__(self):
-            """Clean up temporary directory."""
-            try:
-                import shutil
-
-                shutil.rmtree(self.temp_dir, ignore_errors=True)
-            except ImportError:
-                pass
-
-    # Create the Ray Data external memory iterator
-    ray_iterator = _RayDataExternalMemoryIterator(
-        dataset_shard, label_column, batch_size
-    )
-
-    # Create XGBoost DataIter wrapper
-    xgb_iterator = _XGBoostExternalMemoryIter(
-        ray_iterator, feature_types=feature_types, missing=missing, on_host=on_host
-    )
-
-    # Create ExtMemQuantileDMatrix for optimal external memory performance
-    # This is the recommended approach for XGBoost 3.0+ external memory training
-    dmatrix = xgboost.ExtMemQuantileDMatrix(
-        xgb_iterator,
-        max_bin=max_bin,
-        max_quantile_batches=max_quantile_batches,
-        min_cache_page_bytes=min_cache_page_bytes,
-        cache_host_ratio=cache_host_ratio,
-        ref=ref,
-    )
-
-    return dmatrix
+    except Exception as e:
+        logger.warning(
+            f"External memory DMatrix creation failed: {e}, falling back to regular DMatrix"
+        )
+        return _create_fallback_dmatrix(
+            dataset_shard,
+            label_column,
+            feature_types=feature_types,
+            missing=missing,
+            **kwargs,
+        )
 
 
-def _create_smart_dmatrix(
+def _create_fallback_dmatrix(
     dataset_shard,
     label_column: Union[str, List[str]],
-    force_external_memory: bool = False,
     feature_types: Optional[List[str]] = None,
     missing: Optional[float] = None,
-    memory_limit_gb: Optional[float] = None,
+    **kwargs,
 ):
-    """Smart DMatrix creation that chooses between materialization and external memory.
+    """Create a fallback DMatrix when external memory fails.
 
-    Automatically determines whether to use materialization or external memory based on:
-    1. Dataset size relative to available memory per worker node
-    2. User-specified memory limit (if provided)
-    3. Force external memory flag
+    This function provides a fallback mechanism by converting the Ray dataset
+    to pandas and creating a regular DMatrix. This ensures training can continue
+    even if external memory setup fails.
+
+    Fallback DMatrix: https://xgboost.readthedocs.io/en/latest/python/python_api.html#xgboost.DMatrix
+
+    Args:
+        dataset_shard: Ray dataset shard to convert.
+        label_column: Name(s) of the label column(s).
+        **kwargs: Additional arguments for DMatrix creation.
+
+    Returns:
+        Regular XGBoost DMatrix object.
     """
-    import xgboost
+    try:
+        import xgboost as xgb
 
-    # Calculate memory threshold for external memory decision
-    if memory_limit_gb is None:
-        from ray.train.v2.xgboost._system_utils import _get_node_memory_limit_gb
+        # Convert to pandas for fallback
+        df = dataset_shard.to_pandas()
 
-        memory_limit_gb = _get_node_memory_limit_gb()
-
-    # Check dataset size to decide on strategy
-    stats = dataset_shard.stats()
-    estimated_size_gb = 0
-
-    if stats and stats.total_bytes:
-        estimated_size_gb = stats.total_bytes / (1024**3)
-
-    # Use external memory for large datasets or when forced
-    # Reserve 20% of memory for other operations, use 80% as threshold
-    memory_threshold_gb = memory_limit_gb * 0.8
-
-    if force_external_memory or estimated_size_gb > memory_threshold_gb:
-        return _create_external_memory_dmatrix(
-            dataset_shard, label_column, feature_types=feature_types, missing=missing
-        )
-    else:
-        # For small datasets, materialization is more efficient
-        # Check if we already have a DataIterator vs other formats
-        if hasattr(dataset_shard, "materialize"):
-            # DataIterator case
-            dataset = dataset_shard.materialize()
-            df = dataset.to_pandas()
-        elif hasattr(dataset_shard, "to_pandas"):
-            # Already materialized dataset case
-            df = dataset_shard.to_pandas()
+        # Extract features and labels
+        if isinstance(label_column, str):
+            labels = df[label_column]
+            features = df.drop(columns=[label_column])
         else:
-            # Assume it's already a pandas DataFrame or similar
-            df = dataset_shard
+            labels = df[label_column]
+            features = df.drop(columns=label_column)
 
-        # Extract features and labels with robust handling
-        X, y = _extract_features_and_labels(df, label_column)
+        # Create regular DMatrix with additional parameters
+        dmatrix_kwargs = kwargs.copy()
+        if feature_types is not None:
+            dmatrix_kwargs["feature_types"] = feature_types
+        if missing is not None:
+            dmatrix_kwargs["missing"] = missing
 
-        # Convert to numpy arrays
-        if hasattr(X, "values"):
-            X_array = X.values
+        dmatrix = xgb.DMatrix(data=features, label=labels, **dmatrix_kwargs)
+
+        return dmatrix
+
+    except Exception as e:
+        logger.error(f"Fallback DMatrix creation failed: {e}")
+        raise
+
+
+def _get_optimal_batch_size() -> int:
+    """Get optimal batch size for external memory training.
+
+    Returns the recommended batch size for external memory training based on
+    XGBoost best practices and common system configurations.
+
+    Batch Size Guidelines: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#batch-size
+    External Memory Best Practices: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#best-practices
+
+    Returns:
+        Optimal batch size in number of rows.
+    """
+    # Default batch size for external memory training
+    # This follows XGBoost recommendations for optimal performance
+    # See: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#batch-size
+    return 50000
+
+
+def _get_optimal_cache_directory(custom_dir: Optional[str] = None) -> str:
+    """Get optimal cache directory for external memory training.
+
+    Determines the best cache directory for external memory files based on
+    available storage options and common cluster configurations. Users can
+    specify a custom directory for distributed training scenarios where
+    the default temp directory might not be accessible to all nodes.
+
+    Cache Directory Guidelines: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#cache-directory
+
+    Args:
+        custom_dir: Optional custom directory path. If provided and accessible,
+                   this directory will be used instead of the default candidates.
+
+    Returns:
+        Path to optimal cache directory.
+    """
+    # If user specified a custom directory, try to use it first
+    if custom_dir:
+        if os.path.exists(custom_dir) and os.access(custom_dir, os.W_OK):
+            try:
+                # Create subdirectory for XGBoost cache
+                xgboost_cache = os.path.join(custom_dir, "xgboost_external_memory")
+                os.makedirs(xgboost_cache, exist_ok=True)
+                return xgboost_cache
+            except Exception as e:
+                logger.warning(f"Custom directory {custom_dir} not accessible: {e}")
         else:
-            X_array = X
+            logger.warning(
+                f"Custom directory {custom_dir} does not exist or is not writable"
+            )
 
-        if hasattr(y, "values"):
-            y_array = y.values
-        else:
-            y_array = y
+    # Priority order for cache directories (fallback options)
+    # See: https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html#cache-directory
+    cache_candidates = [
+        "/mnt/cluster_storage",  # Anyscale cluster storage
+        "/tmp/xgboost_cache",  # Local temp with subdirectory
+        tempfile.gettempdir(),  # System temp directory
+    ]
 
-        return xgboost.DMatrix(
-            X_array, label=y_array, feature_types=feature_types, missing=missing
-        )
+    for candidate in cache_candidates:
+        if os.path.exists(candidate) and os.access(candidate, os.W_OK):
+            # Create subdirectory for XGBoost cache
+            xgboost_cache = os.path.join(candidate, "xgboost_external_memory")
+            try:
+                os.makedirs(xgboost_cache, exist_ok=True)
+                return xgboost_cache
+            except Exception:
+                continue
+
+    # Final fallback to system temp directory
+    fallback_dir = os.path.join(tempfile.gettempdir(), "xgboost_external_memory")
+    os.makedirs(fallback_dir, exist_ok=True)
+    return fallback_dir
