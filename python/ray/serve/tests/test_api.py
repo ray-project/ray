@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, overload
 
 import httpx
 import pytest
@@ -1134,6 +1134,55 @@ def test_custom_request_router_kwargs(serve_instance):
 
     handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
     assert handle.remote().result() == "Hello, world!"
+
+
+def test_overloaded_app_builder_signatures():
+    """Test that call_user_app_builder_with_args_if_necessary validates the base
+    function signature with a pydantic basemodel, rather than the overload that
+    accepts a dict (for the sake of lint permissiveness).
+    """
+
+    class Config(BaseModel):
+        name: str
+        value: int = 42
+
+    @serve.deployment
+    class MockDeployment:
+        def __call__(self):
+            return "mock"
+
+    mock_app = MockDeployment.bind()
+
+    # Overloaded function where the implementation has a pydantic annotation
+    @overload
+    def overloaded_builder(args: dict) -> Application:
+        ...
+
+    def overloaded_builder(args: Config) -> Application:
+        """Implementation with pydantic BaseModel annotation."""
+
+        assert isinstance(args, Config), f"Expected Config but got {type(args)}"
+        return mock_app
+
+    # Test 1: Valid input should work and convert to Config model
+    result = call_user_app_builder_with_args_if_necessary(
+        overloaded_builder, {"name": "test", "value": 123}
+    )
+    assert isinstance(result, Application)
+
+    # Test 2: Invalid dict input should raise validation error
+    # Missing required field 'name'
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder, {"value": 123}  # Missing required 'name' field
+        )
+
+    # Test 3: Wrong type should also raise validation error
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder,
+            {"name": "test", "value": "not_an_int"},  # 'value' should be int
+        )
 
 
 if __name__ == "__main__":
