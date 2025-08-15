@@ -115,6 +115,7 @@ ReplicaMetadata = Tuple[
     Optional[float],
     Optional[int],
     Optional[str],
+    Optional[int],  # rank
 ]
 
 
@@ -356,6 +357,7 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        rank: Optional[int] = None,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -402,7 +404,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None)
+        self._set_internal_replica_context(servable_object=None, rank=rank)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -422,19 +424,29 @@ class ReplicaBase(ABC):
         return self._metrics_manager.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
+        # Get current rank from replica context
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
             self._port,
             self._docs_path,
+            current_rank,  # Include rank for recovery
         )
 
-    def _set_internal_replica_context(self, *, servable_object: Callable = None):
+    def _set_internal_replica_context(
+        self, *, servable_object: Callable = None, rank: Optional[int] = None
+    ):
+        # Calculate world_size from deployment config instead of storing it
+        world_size = self._deployment_config.num_replicas
+
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=rank,
+            world_size=world_size,
         )
 
     def _configure_logger_and_profilers(
@@ -751,7 +763,11 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(
+        self,
+        deployment_config: DeploymentConfig,
+        rank: int,
+    ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -760,6 +776,7 @@ class ReplicaBase(ABC):
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
             )
+
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
                 self._version, deployment_config
@@ -780,9 +797,9 @@ class ReplicaBase(ABC):
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config.
+            # deployment_config and rank.
             self._set_internal_replica_context(
-                servable_object=self._user_callable_wrapper.user_callable
+                servable_object=self._user_callable_wrapper.user_callable, rank=rank
             )
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
@@ -889,8 +906,10 @@ class ReplicaBase(ABC):
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
+        # Get current rank from replica context during initialization
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable
+            servable_object=self._user_callable_wrapper.user_callable, rank=current_rank
         )
 
         # Save the initialization latency if the replica is initializing
@@ -964,6 +983,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        rank: Optional[int] = None,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -980,6 +1000,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1041,8 +1062,12 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config)
+    async def reconfigure(
+        self,
+        deployment_config,
+        rank: int,
+    ) -> ReplicaMetadata:
+        await self._replica_impl.reconfigure(deployment_config, rank=rank)
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(
