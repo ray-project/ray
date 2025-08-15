@@ -41,7 +41,7 @@ def patch_tune_session():
 
 @pytest.fixture
 def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4, ignore_reinit_error=True)
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()

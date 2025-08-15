@@ -105,12 +105,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
 class FunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=4,
-            num_gpus=0,
-            object_store_memory=150 * 1024 * 1024,
-            ignore_reinit_error=True,
-        )
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
         ray.shutdown()

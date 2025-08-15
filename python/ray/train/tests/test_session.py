@@ -192,7 +192,7 @@ def test_get_result_from_queues(session, block, put_result_queue, put_actor_queu
         session.result_queue.put(result_queue_training_result, block=True)
     inter_actor_result = {"inter_actor_metric_key": "inter_actor_metric_value"}
     if put_actor_queue:
-        session._inter_actor_queue.put(inter_actor_result, block=True)
+        session._get_or_create_inter_actor_queue().put(inter_actor_result, block=True)
     result = session._get_result_from_queues(block=block)
     if put_result_queue:
         assert result == result_queue_training_result

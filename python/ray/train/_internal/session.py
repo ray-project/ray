@@ -207,7 +207,7 @@ class _TrainSession:
         self.result_queue = queue.Queue(1)
 
         # Queue for sending results from training actor to main thread.
-        self._inter_actor_queue: ray_queue.Queue[Dict] = ray_queue.Queue(1)
+        self._inter_actor_queue: Optional[ray_queue.Queue[Dict]] = None
 
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
@@ -319,19 +319,26 @@ class _TrainSession:
         # Return None if there are no more results to fetch.
         return result
 
+    def _get_or_create_inter_actor_queue(self):
+        """Get or create the inter-actor queue."""
+        if self._inter_actor_queue is None:
+            self._inter_actor_queue = ray_queue.Queue(1)
+        return self._inter_actor_queue
+
     def _get_result_from_queues(self, block: bool) -> Optional[_TrainingResult]:
         """Get result from result queue. Pass result from training actor result queue if needed."""
         result = None
-        try:
-            inter_actor_item = self._inter_actor_queue.get(
-                block=block, timeout=_RESULT_FETCH_TIMEOUT
-            )
-            if inter_actor_item:
-                # Must release continue_lock to allow report to work.
-                self.continue_lock.release()
-                self.report(inter_actor_item)
-        except ray_queue.Empty:
-            pass
+        if self._inter_actor_queue is not None:
+            try:
+                inter_actor_item = self._inter_actor_queue.get(
+                    block=block, timeout=_RESULT_FETCH_TIMEOUT
+                )
+                if inter_actor_item:
+                    # Must release continue_lock to allow report to work.
+                    self.continue_lock.release()
+                    self.report(inter_actor_item)
+            except ray_queue.Empty:
+                pass
         try:
             result = self.result_queue.get(block=block, timeout=_RESULT_FETCH_TIMEOUT)
         except queue.Empty:

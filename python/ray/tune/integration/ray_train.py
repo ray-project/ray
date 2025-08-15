@@ -16,7 +16,9 @@ class TuneReportCallback(UserCallback):
 
     def __init__(self):
         assert _in_tune_session(), "TuneReportCallback must be used in a Tune session."
-        self.training_actor_item_queue = get_session()._inter_actor_queue
+        self.training_actor_item_queue = (
+            get_session()._get_or_create_inter_actor_queue()
+        )
 
     def after_report(
         self,
