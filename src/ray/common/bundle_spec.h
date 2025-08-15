@@ -15,8 +15,10 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <regex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -32,8 +34,8 @@ namespace ray {
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
 
-const std::string kGroupKeyword = "_group_";
-const size_t kGroupKeywordSize = kGroupKeyword.size();
+inline constexpr std::string_view kGroupKeyword = "_group_";
+inline constexpr size_t kGroupKeywordSize = kGroupKeyword.size();
 
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
  public:

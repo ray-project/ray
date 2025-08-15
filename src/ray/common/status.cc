@@ -31,6 +31,7 @@
 #include <boost/system/error_code.hpp>
 #include <cassert>
 #include <sstream>
+#include <string>
 #include <string_view>
 
 #include "absl/container/flat_hash_map.h"
