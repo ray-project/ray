@@ -1379,7 +1379,7 @@ sys.exit({EXIT_CODE})
         check_job_failed,
         job_manager=job_manager,
         job_id=job_id,
-        expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
+        expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
     )
 
     # Check that the job failed
