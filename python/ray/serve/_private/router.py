@@ -1043,7 +1043,10 @@ class CurrentLoopRouter(Router):
         finally:
             loop.close()
 
-    def shutdown(self) -> asyncio.Future:
+    def shutdown(self) -> concurrent.futures.Future:
         # Shutdown in a separate thread so the main event loop can block
         # on the shutdown result without causing deadlock.
-        return asyncio.to_thread(self._run_shutdown_in_thread)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._run_shutdown_in_thread)
+        executor.shutdown(wait=False)  # Don't wait for the executor itself
+        return future
