@@ -595,6 +595,8 @@ std::string TaskSpecification::DebugString() const {
              << runtime_env_info.runtime_env_config().eager_install();
       stream << ", setup_timeout_seconds="
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+      stream << ", disable_cache="
+             << runtime_env_info.runtime_env_config().disable_cache();
     }
   }
 
@@ -624,6 +626,8 @@ std::string TaskSpecification::RuntimeEnvDebugString() const {
              << runtime_env_info.runtime_env_config().eager_install();
       stream << ", setup_timeout_seconds="
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+      stream << ", disable_cache="
+             << runtime_env_info.runtime_env_config().disable_cache();
     }
   }
   return stream.str();
