@@ -711,7 +711,7 @@ gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gymnasium==1.0.0
+gymnasium==1.1.1
     # via
     #   -r python/requirements.txt
     #   minigrid
