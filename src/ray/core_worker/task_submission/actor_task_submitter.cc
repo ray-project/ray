@@ -621,7 +621,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       };
 
   task_manager_.MarkTaskWaitingForExecution(task_id,
-                                            NodeID::FromBinary(addr.raylet_id()),
+                                            NodeID::FromBinary(addr.node_id()),
                                             WorkerID::FromBinary(addr.worker_id()));
   queue.rpc_client->PushActorTask(
       std::move(request), skip_queue, std::move(wrapped_callback));

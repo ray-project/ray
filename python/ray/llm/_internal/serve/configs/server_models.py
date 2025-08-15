@@ -34,6 +34,9 @@ from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
+from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
+    SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
 
@@ -220,8 +223,16 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        try:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            self._supports_vision = hasattr(hf_config, "vision_config")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                f"Original error: {repr(e)}"
+            ) from e
 
     def _set_model_architecture(
         self,
@@ -233,9 +244,23 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures") and hf_config.architectures:
-                self._model_architecture = hf_config.architectures[0]
+            try:
+                hf_config = transformers.PretrainedConfig.from_pretrained(
+                    model_id_or_path
+                )
+                if (
+                    hf_config
+                    and hasattr(hf_config, "architectures")
+                    and hf_config.architectures
+                ):
+                    self._model_architecture = hf_config.architectures[0]
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                    f"Original error: {repr(e)}"
+                ) from e
 
         if model_architecture:
             self._model_architecture = model_architecture
@@ -455,6 +480,28 @@ class LLMConfig(BaseModelExtended):
             deployment_config["name"] = name_prefix + deployment_config["name"]
 
         return deployment_config
+
+    def setup_engine_backend(self):
+        self._setup_kv_connector_backend()
+
+    def _setup_kv_connector_backend(self):
+        """Private method to setup kv connector dependning on the local deployment state"""
+        # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
+        kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
+        if not kv_transfer_config:
+            return
+
+        kv_connector = kv_transfer_config.get("kv_connector")
+        if not kv_connector:
+            raise ValueError("Connector type is not specified.")
+
+        kv_connector_backend_class = SUPPORTED_KV_CONNECTOR_BACKENDS.get(kv_connector)
+        if not kv_connector_backend_class:
+            raise ValueError(f"Unsupported connector type: {kv_connector}")
+
+        # 2. Setup the backend
+        kv_connector_backend = kv_connector_backend_class(kv_transfer_config)
+        kv_connector_backend.setup()
 
 
 def _is_yaml_file(filename: str) -> bool:
