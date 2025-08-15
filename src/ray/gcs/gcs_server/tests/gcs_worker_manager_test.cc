@@ -23,7 +23,7 @@
 
 // clang-format off
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "src/ray/protobuf/gcs.pb.h"

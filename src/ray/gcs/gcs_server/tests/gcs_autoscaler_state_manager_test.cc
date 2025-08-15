@@ -24,7 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
