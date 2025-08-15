@@ -14,9 +14,7 @@ from freezegun import freeze_time
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ActorPoolScalingRequest,
-)
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo

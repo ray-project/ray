@@ -18,7 +18,7 @@ from typing import (
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
