@@ -71,8 +71,6 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
-    # ~ signal that an object is arriving
-
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
@@ -132,12 +130,11 @@ class GPUObjectStore:
 
     def __init__(self):
         # A dictionary that maps from an object ID to a queue of tensor lists.
-        # Each entry in the queue is a list of tensors for one copy of the object.
         #
-        # Mapping from tensor to the IDs of objects that contain it.
-        self._tensor_to_object_ids: Dict["torch.Tensor", Set[str]] = defaultdict(set)
         # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
         self._gpu_object_store: Dict[str, deque[_GPUObject]] = defaultdict(deque)
+        # Mapping from tensor to the IDs of objects that contain it.
+        self._tensor_to_object_ids: Dict["torch.Tensor", Set[str]] = defaultdict(set)
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
@@ -147,10 +144,10 @@ class GPUObjectStore:
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
-            return (
-                obj_id in self._gpu_object_store
-                and len(self._gpu_object_store[obj_id]) > 0
-            )
+            existed = obj_id in self._gpu_object_store
+            if existed:
+                return len(self._gpu_object_store[obj_id]) > 0
+            return existed
 
     def has_tensor(self, tensor: "torch.Tensor") -> bool:
         with self._lock:
@@ -158,11 +155,10 @@ class GPUObjectStore:
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
-            queue = self._gpu_object_store.get(obj_id)
-            if queue and len(queue) > 0:
+            if self.has_object(obj_id):
                 # For primary copies, we peek at the front without removing
                 # For non-primary, we also peek (pop happens separately)
-                return queue[0].data
+                return self._gpu_object_store[obj_id][0].data
             return None
 
     def add_object(
@@ -193,8 +189,7 @@ class GPUObjectStore:
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
-            queue = self._gpu_object_store.get(obj_id)
-            return queue and len(queue) > 0 and queue[0].is_primary
+            return self.has_object(obj_id) and self._gpu_object_store[obj_id][0].is_primary
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
@@ -248,8 +243,7 @@ class GPUObjectStore:
         """
         with self._object_present_cv:
             if not self._object_present_cv.wait_for(
-                lambda: obj_id in self._gpu_object_store
-                and len(self._gpu_object_store[obj_id]) > 0,
+                lambda: self.has_object(obj_id),
                 timeout=timeout,
             ):
                 raise TimeoutError(
@@ -258,10 +252,7 @@ class GPUObjectStore:
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
-            assert (
-                obj_id in self._gpu_object_store
-                and len(self._gpu_object_store[obj_id]) > 0
-            ), f"obj_id={obj_id} not found in GPU object store"
+            assert self.has_object(obj_id), f"obj_id={obj_id} not found in GPU object store"
             queue = self._gpu_object_store.get(obj_id)
             gpu_object = queue.popleft()
             if len(queue) == 0:
