@@ -5,8 +5,9 @@ from collections import defaultdict
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
-from ray.util.collective.types import Backend
-from ray.experimental.gpu_object_manager.gpu_object_manager import (
+from ray.util.collective.types import (
+    Backend,
+    CommunicatorMetadata,
     TensorTransportMetadata,
 )
 
@@ -44,7 +45,12 @@ def _tensor_transport_to_collective_backend(
         )
 
 
-def __ray_send__(self, obj_id: str, tensor_transport_meta: TensorTransportMetadata):
+def __ray_send__(
+    self,
+    obj_id: str,
+    tensor_transport_meta: TensorTransportMetadata,
+    communicator_meta: CommunicatorMetadata,
+):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     from ray._private.worker import global_worker
 
@@ -55,9 +61,7 @@ def __ray_send__(self, obj_id: str, tensor_transport_meta: TensorTransportMetada
 
     tensors = gpu_object_store.get_object(obj_id)
 
-    backend = collective.get_group_handle(
-        tensor_transport_meta.communicator_name
-    ).backend()
+    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
     from ray.experimental.collective import get_tensor_transport_manager
@@ -66,8 +70,8 @@ def __ray_send__(self, obj_id: str, tensor_transport_meta: TensorTransportMetada
     tensor_transport_manager.send_multiple_tensors(
         tensors,
         tensor_transport_meta,
+        communicator_meta,
         device=device,
-        group_name=tensor_transport_meta.communicator_name,
     )
 
 
@@ -75,15 +79,14 @@ def __ray_recv__(
     self,
     obj_id: str,
     tensor_transport_meta: TensorTransportMetadata,
+    communicator_meta: CommunicatorMetadata,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
     from ray.experimental.collective import get_tensor_transport_manager
 
-    backend = collective.get_group_handle(
-        tensor_transport_meta.communicator_name
-    ).backend()
+    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
     tensor_meta = tensor_transport_meta.tensor_meta
@@ -99,7 +102,7 @@ def __ray_recv__(
     tensor_transport_manager.recv_multiple_tensors(
         tensors,
         tensor_transport_meta,
-        group_name=tensor_transport_meta.communicator_name,
+        communicator_meta,
     )
 
     gpu_object_store.add_object(obj_id, tensors)

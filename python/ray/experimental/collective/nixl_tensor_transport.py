@@ -5,7 +5,11 @@ from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportEnum,
 )
-from ray.util.collective.types import NIXL_GROUP_NAME, NixlTransportMetadata
+from ray.util.collective.types import (
+    NIXL_GROUP_NAME,
+    NixlTransportMetadata,
+    NixlCommunicatorMetadata,
+)
 
 if TYPE_CHECKING:
     import torch
@@ -65,41 +69,50 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def get_collective_metadata(
+    def get_communicator_metadata(
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
-        tensor_transport_metadata: NixlTransportMetadata,
         backend: Optional[str] = None,
-    ) -> NixlTransportMetadata:
+    ) -> NixlCommunicatorMetadata:
 
-        tensor_transport_metadata = ray.get(tensor_transport_metadata)
+        communicator_metadata = NixlCommunicatorMetadata(
+            communicator_name=NIXL_GROUP_NAME,
+        )
 
-        tensor_transport_metadata.communicator_name = NIXL_GROUP_NAME
-
-        return tensor_transport_metadata
+        return communicator_metadata
 
     @staticmethod
     def recv_multiple_tensors(
         tensors,
-        metadata: NixlTransportMetadata,
-        group_name: str = "default",
+        tensor_transport_metadata: NixlTransportMetadata,
+        communicator_metadata: NixlCommunicatorMetadata,
     ):
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective import types
 
         if tensors:
-            g = get_group_handle(group_name)
+            g = get_group_handle(communicator_metadata.communicator_name)
 
             assert isinstance(
-                metadata, types.NixlTransportMetadata
+                tensor_transport_metadata, types.NixlTransportMetadata
             ), "metadata must be a NixlTransportMetadata object for NIXL transport"
-            g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
+            assert isinstance(
+                communicator_metadata, types.NixlCommunicatorMetadata
+            ), "metadata must be a NixlCommunicatorMetadata object for NIXL transport"
+
+            g.recv(
+                tensors,
+                tensor_transport_metadata.nixl_serialized_descs,
+                tensor_transport_metadata.nixl_agent_meta,
+            )
 
     @staticmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        metadata: NixlTransportMetadata,
+        tensor_transport_metadata: NixlTransportMetadata,
+        communicator_metadata: NixlCommunicatorMetadata,
         device: "torch.device",
-        group_name: str = "default",
     ):
-        pass
+        raise NotImplementedError(
+            "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
+        )

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING
-from ray.util.collective.types import TensorTransportMetadata
+from ray.util.collective.types import TensorTransportMetadata, CommunicatorMetadata
 from ray._private.custom_types import TensorTransportEnum
 
 import ray
@@ -42,35 +42,39 @@ class TensorTransportManager(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_collective_metadata(
+    def get_communicator_metadata(
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
-        tensor_transport_metadata: TensorTransportMetadata,
         backend: Optional[str] = None,
-    ) -> TensorTransportMetadata:
+    ) -> CommunicatorMetadata:
         """
-        Update the collective metadata (e.g. communicator name, src/dst rank) in
-        `tensor_transport_metadata` and return the updated metadata.
+        Get the communicator metadata (e.g. communicator name, src/dst rank) for the send/recv operation.
         This function is called before sending the GPU object.
 
         Args:
             src_actor: The actor that runs this function.
             dst_actor: The actor that runs this function.
-            tensor_transport_metadata: The reference of tensor transport metadata for the GPU object.
             backend: The backend to use for the collective operation.
 
         Returns:
-            TensorTransportMetadata: The updated tensor transport metadata. Note that it's not a reference.
+            CommunicatorMetadata: The communicator metadata.
         """
 
     @staticmethod
     def send_object(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
+        tensor_transport_metadata_ref: TensorTransportMetadata,
+        communicator_metadata_ref: CommunicatorMetadata,
     ):
         """
         Send the GPU object to the destination actor.
+
+        Args:
+            src_actor: The actor that runs this function.
+            obj_id: The ID of the GPU object to send.
+            tensor_transport_metadata_ref: The ObjectRef of tensor transport metadata for the GPU object.
+            communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
 
@@ -81,14 +85,16 @@ class TensorTransportManager(ABC):
         src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_send__,
             obj_id,
-            tensor_transport_metadata,
+            tensor_transport_metadata_ref,
+            communicator_metadata_ref,
         )
 
     @staticmethod
     def recv_object(
         dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
+        tensor_transport_metadata_ref: TensorTransportMetadata,
+        communicator_metadata_ref: CommunicatorMetadata,
     ):
         """
         Receive the GPU object from the source actor.
@@ -98,7 +104,8 @@ class TensorTransportManager(ABC):
         Args:
             dst_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to receive.
-            tensor_transport_metadata: The tensor transport metadata for the GPU object.
+            tensor_transport_metadata_ref: The ObjectRef of tensor transport metadata for the GPU object.
+            communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
@@ -111,23 +118,26 @@ class TensorTransportManager(ABC):
         # on the same background thread to ensure that all communication
         # operations are executed in a global order.
         dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_recv__, obj_id, tensor_transport_metadata
+            __ray_recv__,
+            obj_id,
+            tensor_transport_metadata_ref,
+            communicator_metadata_ref,
         )
 
     @staticmethod
     @abstractmethod
     def recv_multiple_tensors(
         tensors: List["torch.Tensor"],
-        metadata: TensorTransportMetadata,
-        group_name: str = "default",
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         """
         Receive multiple tensors from the source actor.
 
         Args:
             tensors: The pre-allocated tensor space to receive the tensors.
-            metadata: The tensor transport metadata for the GPU object.
-            group_name: The name of the collective group.
+            tensor_transport_metadata: The tensor transport metadata for the GPU object.
+            communicator_metadata: The communicator metadata for the send/recv operation.
 
         """
 
@@ -135,16 +145,16 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        metadata: TensorTransportMetadata,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
         device: "torch.device",
-        group_name: str = "default",
     ):
         """
         Send multiple tensors to the destination actor.
 
         Args:
             tensors: The tensors to send.
-            metadata: The tensor transport metadata for the GPU object.
+            tensor_transport_metadata: The tensor transport metadata for the GPU object.
+            communicator_metadata: The communicator metadata for the send/recv operation.
             device: The device to send the tensors to.
-            group_name: The name of the collective group.
         """

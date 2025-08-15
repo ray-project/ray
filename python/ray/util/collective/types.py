@@ -61,11 +61,9 @@ class TensorTransportMetadata:
 
     Args:
         tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        communicator_name: The name of the communicator.
     """
 
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
-    communicator_name: str = ""
 
 
 @dataclass
@@ -83,7 +81,23 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
 @dataclass
 class CollectiveTransportMetadata(TensorTransportMetadata):
-    """Metadata for tensors stored in the GPU object store for collective transport.
+    """Metadata for tensors stored in the GPU object store for collective transport."""
+
+
+@dataclass
+class CommunicatorMetadata:
+    """Metadata for the communicator.
+
+    Args:
+        communicator_name: The name of the communicator.
+    """
+
+    communicator_name: str = ""
+
+
+@dataclass
+class CollectiveCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the collective communicator (e.g. NCCL, GLOO).
 
     Args:
         src_rank: The rank of the source actor.
@@ -92,6 +106,11 @@ class CollectiveTransportMetadata(TensorTransportMetadata):
 
     src_rank: Optional[int32] = None
     dst_rank: Optional[int32] = None
+
+
+@dataclass
+class NixlCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the NIXL communicator."""
 
 
 class ReduceOp(Enum):

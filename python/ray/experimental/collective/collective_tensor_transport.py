@@ -6,7 +6,10 @@ from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportEnum,
 )
 
-from ray.util.collective.types import CollectiveTransportMetadata
+from ray.util.collective.types import (
+    CollectiveTransportMetadata,
+    CollectiveCommunicatorMetadata,
+)
 
 if TYPE_CHECKING:
     import torch
@@ -53,12 +56,11 @@ class CollectiveTensorTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def get_collective_metadata(
+    def get_communicator_metadata(
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
-        tensor_transport_metadata: CollectiveTransportMetadata,
         backend: Optional[str] = None,
-    ) -> CollectiveTransportMetadata:
+    ) -> CollectiveCommunicatorMetadata:
 
         from ray.experimental.collective import get_collective_groups
 
@@ -94,33 +96,42 @@ class CollectiveTensorTransport(TensorTransportManager):
                 "Please make sure the sender and receiver are in the same communicator."
             )
 
-        tensor_transport_metadata = ray.get(tensor_transport_metadata)
-        tensor_transport_metadata.communicator_name = communicator.name
-        tensor_transport_metadata.src_rank = src_rank
-        tensor_transport_metadata.dst_rank = dst_rank
-        return tensor_transport_metadata
+        communicator_metadata = CollectiveCommunicatorMetadata(
+            communicator_name=communicator.name,
+            src_rank=src_rank,
+            dst_rank=dst_rank,
+        )
+        return communicator_metadata
 
     @staticmethod
     def recv_multiple_tensors(
         tensors,
-        metadata: CollectiveTransportMetadata,
-        group_name: str = "default",
+        tensor_transport_metadata: CollectiveTransportMetadata,
+        communicator_metadata: CollectiveCommunicatorMetadata,
     ):
         from ray.util.collective import types
         from ray.util.collective.collective import recv
 
         assert isinstance(
-            metadata, types.CollectiveTransportMetadata
+            tensor_transport_metadata, types.CollectiveTransportMetadata
         ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
+        assert isinstance(
+            communicator_metadata, types.CollectiveCommunicatorMetadata
+        ), "metadata must be a CollectiveCommunicatorMetadata object for non-NIXL transport"
+
         for tensor in tensors:
-            recv(tensor, metadata.src_rank, group_name)
+            recv(
+                tensor,
+                communicator_metadata.src_rank,
+                communicator_metadata.communicator_name,
+            )
 
     @staticmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        metadata: CollectiveTransportMetadata,
+        tensor_transport_metadata: CollectiveTransportMetadata,
+        communicator_metadata: CollectiveCommunicatorMetadata,
         device: "torch.device",
-        group_name: str = "default",
     ):
         import ray.util.collective as collective
 
@@ -133,6 +144,6 @@ class CollectiveTensorTransport(TensorTransportManager):
                 )
             collective.send(
                 tensor,
-                metadata.dst_rank,
-                group_name=metadata.communicator_name,
+                communicator_metadata.dst_rank,
+                communicator_metadata.communicator_name,
             )

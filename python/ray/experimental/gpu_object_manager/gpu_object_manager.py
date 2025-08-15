@@ -201,7 +201,7 @@ class GPUObjectManager:
             gpu_object_meta = self._get_gpu_object_metadata(obj_ref)
 
             src_actor = gpu_object_meta.src_actor
-            tensor_meta = gpu_object_meta.tensor_transport_meta
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             if src_actor._actor_id == dst_actor._actor_id:
                 # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
@@ -212,24 +212,23 @@ class GPUObjectManager:
             tensor_transport_manager = get_tensor_transport_manager(
                 gpu_object_meta.tensor_transport_backend
             )
-            tensor_transport_metadata = (
-                tensor_transport_manager.get_collective_metadata(
-                    src_actor,
-                    dst_actor,
-                    tensor_meta,
-                    gpu_object_meta.tensor_transport_backend,
-                )
+            communicator_meta = tensor_transport_manager.get_communicator_metadata(
+                src_actor,
+                dst_actor,
+                gpu_object_meta.tensor_transport_backend,
             )
             if not tensor_transport_manager.is_one_sided():
                 tensor_transport_manager.send_object(
                     src_actor,
                     obj_id,
-                    tensor_transport_metadata,
+                    tensor_transport_meta,
+                    communicator_meta,
                 )
             tensor_transport_manager.recv_object(
                 dst_actor,
                 obj_id,
-                tensor_transport_metadata,
+                tensor_transport_meta,
+                communicator_meta,
             )
 
     def get_gpu_object(self, object_id: str) -> List["torch.Tensor"]:
