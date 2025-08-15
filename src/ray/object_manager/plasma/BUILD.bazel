@@ -69,8 +69,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "plasma_store_server_lib",
-    srcs = ["store_runner.cc"],
-    hdrs = ["store_runner.h"],
+    srcs = ["plasma_store_runner.cc"],
+    hdrs = ["plasma_store_runner.h"],
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
     deps = [
