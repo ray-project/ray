@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
-#include "fakes/ray/ipc/raylet_ipc_client.h"
 #include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
@@ -40,6 +39,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
+#include "ray/ipc/fake_raylet_ipc_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {

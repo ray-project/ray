@@ -787,7 +787,7 @@ class ReplicaBase(ABC):
                 servable_object=self._user_callable_wrapper.user_callable
             )
 
-            self._route_prefix = route_prefix
+            self._route_prefix = self._version.route_prefix
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
