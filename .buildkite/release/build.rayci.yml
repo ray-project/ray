@@ -40,7 +40,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
       REQUIREMENTS_FILE: "requirements_llm_byod_{{matrix.python}}.txt"
-  
+
   - name: ray-mlbaseextra-test
     label: "wanda: ray.py{{matrix}}.ml.base-extra-test"
     wanda: ci/docker/ray.ml.base-extra-test.wanda.yaml
@@ -55,7 +55,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
       REQUIREMENTS_FILE: "requirements_ml_byod_{{matrix.python}}.txt"
-  
+
   - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
     key: anyscalebuild
     instance_type: release-medium
