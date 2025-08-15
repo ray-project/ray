@@ -77,9 +77,8 @@ class StoreClientTestBase : public ::testing::Test {
     auto delete_callback = [this](auto) { --pending_count_; };
     for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      store_client_->AsyncDelete(table_name_,
-                                 key.Hex(),
-                                 {delete_callback, *io_service_pool_->Get()});
+      store_client_->AsyncDelete(
+          table_name_, key.Hex(), {delete_callback, *io_service_pool_->Get()});
     }
     WaitPendingDone();
   }
@@ -98,9 +97,8 @@ class StoreClientTestBase : public ::testing::Test {
     };
     for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      store_client_->AsyncGet(table_name_,
-                              key.Hex(),
-                              {get_callback, *io_service_pool_->Get()});
+      store_client_->AsyncGet(
+          table_name_, key.Hex(), {get_callback, *io_service_pool_->Get()});
     }
     WaitPendingDone();
   }
@@ -166,9 +164,8 @@ class StoreClientTestBase : public ::testing::Test {
 
       pending_count_ += result_set.size();
 
-      store_client_->AsyncGetKeys(table_name_,
-                                  prefix,
-                                  {get_keys_callback, *io_service_pool_->Get()});
+      store_client_->AsyncGetKeys(
+          table_name_, prefix, {get_keys_callback, *io_service_pool_->Get()});
       WaitPendingDone();
     }
   }
@@ -181,9 +178,8 @@ class StoreClientTestBase : public ::testing::Test {
 
     pending_count_ += key_to_value_.size();
     for (const auto &item : key_to_value_) {
-      store_client_->AsyncExists(table_name_,
-                                 item.first.Hex(),
-                                 {exists_callback, *io_service_pool_->Get()});
+      store_client_->AsyncExists(
+          table_name_, item.first.Hex(), {exists_callback, *io_service_pool_->Get()});
     }
     WaitPendingDone();
   }
@@ -195,9 +191,8 @@ class StoreClientTestBase : public ::testing::Test {
     for (auto &[key, _] : key_to_value_) {
       keys.push_back(key.Hex());
     }
-    store_client_->AsyncBatchDelete(table_name_,
-                                    keys,
-                                    {delete_callback, *io_service_pool_->Get()});
+    store_client_->AsyncBatchDelete(
+        table_name_, keys, {delete_callback, *io_service_pool_->Get()});
     WaitPendingDone();
   }
 

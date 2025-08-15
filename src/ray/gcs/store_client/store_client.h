@@ -44,10 +44,10 @@ class StoreClient {
   /// \param callback WARNING: it returns true if and only if A NEW ENTRY is added.
   /// Overwritten return false.
   virtual void AsyncPut(const std::string &table_name,
-                          const std::string &key,
-                          std::string data,
-                          bool overwrite,
-                          Postable<void(bool)> callback) = 0;
+                        const std::string &key,
+                        std::string data,
+                        bool overwrite,
+                        Postable<void(bool)> callback) = 0;
 
   /// Get data from the given table asynchronously.
   ///
@@ -55,8 +55,8 @@ class StoreClient {
   /// \param key The key to lookup from the table.
   /// \param callback returns the value or null.
   virtual void AsyncGet(const std::string &table_name,
-                          const std::string &key,
-                          ToPostable<OptionalItemCallback<std::string>> callback) = 0;
+                        const std::string &key,
+                        ToPostable<OptionalItemCallback<std::string>> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -82,8 +82,8 @@ class StoreClient {
   /// \param key The key that will be deleted from the table.
   /// \param callback returns true if an entry with matching key is deleted.
   virtual void AsyncDelete(const std::string &table_name,
-                             const std::string &key,
-                             Postable<void(bool)> callback) = 0;
+                           const std::string &key,
+                           Postable<void(bool)> callback) = 0;
 
   /// Batch delete data from the given table asynchronously.
   ///
@@ -91,8 +91,8 @@ class StoreClient {
   /// \param keys The keys that will be deleted from the table.
   /// \param callback returns the number of deleted entries.
   virtual void AsyncBatchDelete(const std::string &table_name,
-                                  const std::vector<std::string> &keys,
-                                  Postable<void(int64_t)> callback) = 0;
+                                const std::vector<std::string> &keys,
+                                Postable<void(int64_t)> callback) = 0;
 
   /// Get next job id by `INCR` "JobCounter" key asynchronously.
   ///
@@ -105,8 +105,8 @@ class StoreClient {
   /// \param prefix The prefix to be scaned.
   /// \param callback returns all matching keys in a vector.
   virtual void AsyncGetKeys(const std::string &table_name,
-                              const std::string &prefix,
-                              Postable<void(std::vector<std::string>)> callback) = 0;
+                            const std::string &prefix,
+                            Postable<void(std::vector<std::string>)> callback) = 0;
 
   /// Check whether the key exists in the table.
   ///
@@ -114,8 +114,8 @@ class StoreClient {
   /// \param key The key to be checked.
   /// \param callback Returns true if such key exists.
   virtual void AsyncExists(const std::string &table_name,
-                             const std::string &key,
-                             Postable<void(bool)> callback) = 0;
+                           const std::string &key,
+                           Postable<void(bool)> callback) = 0;
 
  protected:
   StoreClient() = default;

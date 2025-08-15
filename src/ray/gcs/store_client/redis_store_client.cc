@@ -127,10 +127,10 @@ RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
 }
 
 void RedisStoreClient::AsyncPut(const std::string &table_name,
-                                  const std::string &key,
-                                  std::string data,
-                                  bool overwrite,
-                                  Postable<void(bool)> callback) {
+                                const std::string &key,
+                                std::string data,
+                                bool overwrite,
+                                Postable<void(bool)> callback) {
   RedisCommand command{/*command=*/overwrite ? "HSET" : "HSETNX",
                        RedisKey{external_storage_namespace_, table_name},
                        /*args=*/{key, std::move(data)}};
@@ -143,10 +143,9 @@ void RedisStoreClient::AsyncPut(const std::string &table_name,
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
 }
 
-void RedisStoreClient::AsyncGet(
-    const std::string &table_name,
-    const std::string &key,
-    ToPostable<OptionalItemCallback<std::string>> callback) {
+void RedisStoreClient::AsyncGet(const std::string &table_name,
+                                const std::string &key,
+                                ToPostable<OptionalItemCallback<std::string>> callback) {
   auto redis_callback = [callback = std::move(callback)](
                             const std::shared_ptr<CallbackReply> &reply) mutable {
     std::optional<std::string> result;
@@ -176,17 +175,16 @@ void RedisStoreClient::AsyncGetAll(
 }
 
 void RedisStoreClient::AsyncDelete(const std::string &table_name,
-                                     const std::string &key,
-                                     Postable<void(bool)> callback) {
-  AsyncBatchDelete(
-      table_name, {key}, std::move(callback).TransformArg([](int64_t cnt) {
-        return cnt > 0;
-      }));
+                                   const std::string &key,
+                                   Postable<void(bool)> callback) {
+  AsyncBatchDelete(table_name, {key}, std::move(callback).TransformArg([](int64_t cnt) {
+    return cnt > 0;
+  }));
 }
 
 void RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                          const std::vector<std::string> &keys,
-                                          Postable<void(int64_t)> callback) {
+                                        const std::vector<std::string> &keys,
+                                        Postable<void(int64_t)> callback) {
   if (keys.empty()) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncBatchDelete", 0);
     return;
@@ -322,8 +320,8 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
 }
 
 void RedisStoreClient::DeleteByKeys(const std::string &table,
-                                      const std::vector<std::string> &keys,
-                                      Postable<void(int64_t)> callback) {
+                                    const std::vector<std::string> &keys,
+                                    Postable<void(int64_t)> callback) {
   auto del_cmds =
       GenCommandsBatched("HDEL", RedisKey{external_storage_namespace_, table}, keys);
   auto total_count = del_cmds.size();
@@ -457,8 +455,8 @@ void RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
 }
 
 void RedisStoreClient::AsyncGetKeys(const std::string &table_name,
-                                      const std::string &prefix,
-                                      Postable<void(std::vector<std::string>)> callback) {
+                                    const std::string &prefix,
+                                    Postable<void(std::vector<std::string>)> callback) {
   RedisScanner::ScanKeysAndValues(
       redis_client_,
       RedisKey{external_storage_namespace_, table_name},
@@ -475,8 +473,8 @@ void RedisStoreClient::AsyncGetKeys(const std::string &table_name,
 }
 
 void RedisStoreClient::AsyncExists(const std::string &table_name,
-                                     const std::string &key,
-                                     Postable<void(bool)> callback) {
+                                   const std::string &key,
+                                   Postable<void(bool)> callback) {
   RedisCommand command = {
       "HEXISTS", RedisKey{external_storage_namespace_, table_name}, {key}};
   SendRedisCmdArgsAsKeys(

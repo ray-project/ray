@@ -79,8 +79,8 @@ void StoreClientInternalKV::MultiGet(
   delegate_->AsyncMultiGet(
       table_name_,
       prefixed_keys,
-      std::move(callback)
-          .TransformArg([](absl::flat_hash_map<std::string, std::string> before_extract) {
+      std::move(callback).TransformArg(
+          [](absl::flat_hash_map<std::string, std::string> before_extract) {
             absl::flat_hash_map<std::string, std::string> ret;
             ret.reserve(before_extract.size());
             for (auto &&item : std::move(before_extract)) {
@@ -104,11 +104,10 @@ void StoreClientInternalKV::Del(const std::string &ns,
                                 bool del_by_prefix,
                                 Postable<void(int64_t)> callback) {
   if (!del_by_prefix) {
-    delegate_->AsyncDelete(
-        table_name_,
-        MakeKey(ns, key),
-        std::move(callback).TransformArg(
-            [](bool deleted) -> int64_t { return deleted ? 1 : 0; }));
+    delegate_->AsyncDelete(table_name_,
+                           MakeKey(ns, key),
+                           std::move(callback).TransformArg(
+                               [](bool deleted) -> int64_t { return deleted ? 1 : 0; }));
     return;
   }
 

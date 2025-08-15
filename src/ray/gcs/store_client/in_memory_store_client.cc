@@ -21,10 +21,10 @@
 namespace ray::gcs {
 
 void InMemoryStoreClient::AsyncPut(const std::string &table_name,
-                                     const std::string &key,
-                                     std::string data,
-                                     bool overwrite,
-                                     Postable<void(bool)> callback) {
+                                   const std::string &key,
+                                   std::string data,
+                                   bool overwrite,
+                                   Postable<void(bool)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   bool inserted = false;
   if (overwrite) {
@@ -74,16 +74,16 @@ void InMemoryStoreClient::AsyncMultiGet(
 }
 
 void InMemoryStoreClient::AsyncDelete(const std::string &table_name,
-                                        const std::string &key,
-                                        Postable<void(bool)> callback) {
+                                      const std::string &key,
+                                      Postable<void(bool)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   auto erased = table.Erase(key);
   std::move(callback).Post("GcsInMemoryStore.Delete", erased);
 }
 
 void InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                             const std::vector<std::string> &keys,
-                                             Postable<void(int64_t)> callback) {
+                                           const std::vector<std::string> &keys,
+                                           Postable<void(int64_t)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   int64_t num_erased = table.EraseKeys(absl::MakeSpan(keys));
   std::move(callback).Post("GcsInMemoryStore.BatchDelete", num_erased);
@@ -131,8 +131,8 @@ void InMemoryStoreClient::AsyncGetKeys(
 }
 
 void InMemoryStoreClient::AsyncExists(const std::string &table_name,
-                                        const std::string &key,
-                                        Postable<void(bool)> callback) {
+                                      const std::string &key,
+                                      Postable<void(bool)> callback) {
   bool result = false;
   auto table = GetTable(table_name);
   if (table != nullptr) {
