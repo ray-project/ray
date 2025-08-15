@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
 namespace ipc {
