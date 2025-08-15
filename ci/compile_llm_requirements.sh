@@ -2,6 +2,17 @@
 
 set -euo pipefail
 
+SED_CMD=sed
+# On macos, use gnu-sed because 'sed -i' may not be used with stdin
+if [[ "$(uname)" == "Darwin" ]]; then
+	# check if gsed is available
+	if ! command -v gsed &> /dev/null; then
+		echo "--- gsed is not installed. Install via `brew install gnu-sed`"
+		exit 1
+	fi
+	SED_CMD=gsed
+fi
+
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 if [[ "${PYTHON_CODE}" != "py311" ]]; then
 	echo "--- Python version is not 3.11"
@@ -25,14 +36,15 @@ for CUDA_CODE in cpu cu121 cu128; do
 		--no-strip-markers
 		--emit-index-url
 		--emit-find-links
+		--python-platform x86_64-manylinux_2_28
 	)
 
 	mkdir -p /tmp/ray-deps
 
 	# Remove the GPU constraints
 	cp python/requirements_compiled.txt /tmp/ray-deps/requirements_compiled.txt
-	sed -i '/^--extra-index-url /d' /tmp/ray-deps/requirements_compiled.txt
-	sed -i '/^--find-links /d' /tmp/ray-deps/requirements_compiled.txt
+	${SED_CMD} -i '/^--extra-index-url /d' /tmp/ray-deps/requirements_compiled.txt
+	${SED_CMD} -i '/^--find-links /d' /tmp/ray-deps/requirements_compiled.txt
 
 	# First, extract base test dependencies from the current compiled mono repo one.
 	# This also expands to the indirect dependencies for this Python version & platform.
