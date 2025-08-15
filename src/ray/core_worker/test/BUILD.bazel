@@ -226,11 +226,11 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//:ray_mock",
-        "//src/ray/ipc:fake_raylet_ipc_client",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_count",
+        "//src/ray/ipc:fake_raylet_ipc_client",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
