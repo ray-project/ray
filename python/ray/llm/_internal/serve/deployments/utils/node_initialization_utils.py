@@ -90,7 +90,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
 
     engine_config = llm_config.get_engine_config()
     assert engine_config is not None
-    pg = engine_config.get_or_create_pg()
+    pg = engine_config.get_or_create_pg(llm_config.engine_kwargs)
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
     if engine_config.placement_strategy == "STRICT_PACK":
