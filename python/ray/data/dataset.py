@@ -5965,24 +5965,32 @@ class Dataset:
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
-    @PublicAPI(api_group=IM_API_GROUP)
+    @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
     def explain(self) -> str:
-        """Returns a string containing logical plan and physical plan.
+        """Show the logical plan and physical plan of the dataset.
 
-        Example:
-            >>> import ray
-            >>> from ray.data import Dataset
-            >>> ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            >>> ds = ds.map(lambda x: x + 1)
-            >>> print(ds.explain())
+        Examples:
+
+        .. testcode::
+
+            import ray
+            from ray.data import Dataset
+            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+            ds = ds.map(lambda x: x + 1)
+            print(ds.explain())
+
+        .. testoutput::
+
             -------- Logical Plan --------
             Map(<lambda>)
             +- ReadRange
             -------- Physical Plan --------
             ReadRange->Map(<lambda>)
             +- Input
-            <BLANKLINE>
 
+
+        Returns:
+            A string containing logical plan and physical plan.
         """
         return self._plan.explain()
 
