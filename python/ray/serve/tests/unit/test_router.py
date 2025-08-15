@@ -184,6 +184,11 @@ class FakeRequestRouter(RequestRouter):
                 replica_id, queue_len_info.num_ongoing_requests
             )
 
+    def on_send_request(self, replica_id: ReplicaID):
+        if self._use_queue_len_cache:
+            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
+            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests + 1)
+
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         self._replica_queue_len_cache.invalidate_key(replica_id)
 

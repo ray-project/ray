@@ -683,6 +683,9 @@ class AsyncioRouter:
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
 
+                # Proactively update the queue length cache.
+                self.request_router.on_send_request(replica.replica_id)
+
             # Keep track of requests that have been sent out to replicas
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
                 _request_context = ray.serve.context._get_serve_request_context()
