@@ -31,15 +31,15 @@ class WorkerInterface;
 /// Manages the lifetime of a task on the local node. It receives request from
 /// cluster_task_manager and tries to execute the task locally.
 /// Read raylet/local_task_manager.h for more information.
-class ILocalTaskManager {
+class LocalTaskManagerInterface {
  public:
-  virtual ~ILocalTaskManager() = default;
+  virtual ~LocalTaskManagerInterface() = default;
 
   /// Queue task and schedule.
-  virtual void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) = 0;
+  virtual void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) = 0;
 
   // Schedule and dispatch tasks.
-  virtual void ScheduleAndDispatchTasks() = 0;
+  virtual void ScheduleAndDispatchLeases() = 0;
 
   /// Attempt to cancel all queued tasks that match the predicate.
   ///
@@ -47,14 +47,14 @@ class ILocalTaskManager {
   /// \param failure_type: The reason for cancellation.
   /// \param scheduling_failure_message: The reason message for cancellation.
   /// \return True if any task was successfully cancelled.
-  virtual bool CancelTasks(
+  virtual bool CancelLeases(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const = 0;
+      &GetLeaseToDispatch() const = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     absl::flat_hash_map<WorkerID, int64_t>>
@@ -66,12 +66,12 @@ class ILocalTaskManager {
 
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
-  virtual const RayTask *AnyPendingTasksForResourceAcquisition(
-      int *num_pending_actor_creation, int *num_pending_tasks) const = 0;
+  virtual const RayTask *AnyPendingLeasesForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_leases) const = 0;
 
-  virtual void TasksUnblocked(const std::vector<TaskID> &ready_ids) = 0;
+  virtual void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) = 0;
 
-  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) = 0;
+  virtual void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayTask *lease) = 0;
 
   virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 
@@ -81,45 +81,46 @@ class ILocalTaskManager {
   virtual bool ReturnCpuResourcesToUnblockedWorker(
       std::shared_ptr<WorkerInterface> worker) = 0;
 
-  virtual ResourceSet CalcNormalTaskResources() const = 0;
+  virtual ResourceSet CalcNormalLeaseResources() const = 0;
 
   virtual void RecordMetrics() const = 0;
 
   virtual void DebugStr(std::stringstream &buffer) const = 0;
 
-  virtual size_t GetNumTaskSpilled() const = 0;
-  virtual size_t GetNumWaitingTaskSpilled() const = 0;
-  virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
+  virtual size_t GetNumLeaseSpilled() const = 0;
+  virtual size_t GetNumWaitingLeaseSpilled() const = 0;
+  virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
 };
 
 /// A noop local task manager. It is a no-op class. We need this because there's no
 /// "LocalTaskManager" when the `ClusterTaskManager` is used within GCS. In the long term,
 /// we should make `ClusterTaskManager` not aware of `LocalTaskManager`.
-class NoopLocalTaskManager : public ILocalTaskManager {
+class NoopLocalTaskManager : public LocalTaskManagerInterface {
  public:
   NoopLocalTaskManager() = default;
 
-  /// Queue task and schedule.
-  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {
+  /// Queue lease and schedule.
+  void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override {
     RAY_CHECK(false)
         << "This function should never be called by gcs' local task manager.";
   }
 
-  // Schedule and dispatch tasks.
-  void ScheduleAndDispatchTasks() override {}
+  // Schedule and dispatch leases.
+  void ScheduleAndDispatchLeases() override {}
 
-  bool CancelTasks(std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
-                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                   const std::string &scheduling_failure_message) override {
+  bool CancelLeases(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message) override {
     return false;
   }
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const override {
+      &GetLeaseToDispatch() const override {
     static const absl::flat_hash_map<SchedulingClass,
                                      std::deque<std::shared_ptr<internal::Work>>>
-        tasks_to_dispatch;
-    return tasks_to_dispatch;
+        leases_to_dispatch;
+    return leases_to_dispatch;
   }
 
   const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
@@ -136,14 +137,14 @@ class NoopLocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
-  const RayTask *AnyPendingTasksForResourceAcquisition(
-      int *num_pending_actor_creation, int *num_pending_tasks) const override {
+  const RayTask *AnyPendingLeasesForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_leases) const override {
     return nullptr;
   }
 
-  void TasksUnblocked(const std::vector<TaskID> &ready_ids) override {}
+  void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override {}
 
-  void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) override {}
+  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayTask *lease) override {}
 
   void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override {}
 
@@ -157,15 +158,15 @@ class NoopLocalTaskManager : public ILocalTaskManager {
     return false;
   }
 
-  ResourceSet CalcNormalTaskResources() const override { return ResourceSet(); }
+  ResourceSet CalcNormalLeaseResources() const override { return ResourceSet(); }
 
   void RecordMetrics() const override{};
 
   void DebugStr(std::stringstream &buffer) const override {}
 
-  size_t GetNumTaskSpilled() const override { return 0; }
-  size_t GetNumWaitingTaskSpilled() const override { return 0; }
-  size_t GetNumUnschedulableTaskSpilled() const override { return 0; }
+  size_t GetNumLeaseSpilled() const override { return 0; }
+  size_t GetNumWaitingLeaseSpilled() const override { return 0; }
+  size_t GetNumUnschedulableLeaseSpilled() const override { return 0; }
 };
 
 }  // namespace raylet

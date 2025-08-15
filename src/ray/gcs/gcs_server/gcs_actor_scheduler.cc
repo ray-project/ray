@@ -103,11 +103,11 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_task_manager_.QueueAndScheduleTask(std::move(task),
-                                             /*grant_or_reject*/ false,
-                                             /*is_selected_based_on_locality*/ false,
-                                             /*reply*/ reply.get(),
-                                             send_reply_callback);
+  cluster_task_manager_.QueueAndScheduleLease(std::move(task),
+                                              /*grant_or_reject*/ false,
+                                              /*is_selected_based_on_locality*/ false,
+                                              /*reply*/ reply.get(),
+                                              send_reply_callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
@@ -666,7 +666,7 @@ void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
 void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetAcquiredResources().IsEmpty()) {
     ReturnActorAcquiredResources(actor);
-    cluster_task_manager_.ScheduleAndDispatchTasks();
+    cluster_task_manager_.ScheduleAndDispatchLeases();
   }
 }
 

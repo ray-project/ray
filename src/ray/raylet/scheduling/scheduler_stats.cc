@@ -25,7 +25,7 @@ namespace ray {
 namespace raylet {
 
 SchedulerStats::SchedulerStats(const ClusterTaskManager &cluster_task_manager,
-                               const ILocalTaskManager &local_task_manager)
+                               const LocalTaskManagerInterface &local_task_manager)
     : cluster_task_manager_(cluster_task_manager),
       local_task_manager_(local_task_manager) {}
 
@@ -44,8 +44,8 @@ void SchedulerStats::ComputeStats() {
   size_t num_cancelled_tasks = 0;
 
   size_t num_infeasible_tasks =
-      std::accumulate(cluster_task_manager_.infeasible_tasks_.begin(),
-                      cluster_task_manager_.infeasible_tasks_.end(),
+      std::accumulate(cluster_task_manager_.infeasible_leases_.begin(),
+                      cluster_task_manager_.infeasible_leases_.end(),
                       static_cast<size_t>(0),
                       accumulator);
 
@@ -91,13 +91,13 @@ void SchedulerStats::ComputeStats() {
     return state + pair.second.size();
   };
   size_t num_tasks_to_schedule =
-      std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
-                      cluster_task_manager_.tasks_to_schedule_.end(),
+      std::accumulate(cluster_task_manager_.leases_to_schedule_.begin(),
+                      cluster_task_manager_.leases_to_schedule_.end(),
                       static_cast<size_t>(0),
                       per_work_accumulator);
   size_t num_tasks_to_dispatch =
-      std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
-                      local_task_manager_.GetTaskToDispatch().end(),
+      std::accumulate(local_task_manager_.GetLeaseToDispatch().begin(),
+                      local_task_manager_.GetLeaseToDispatch().end(),
                       static_cast<size_t>(0),
                       per_work_accumulator);
 
@@ -121,10 +121,10 @@ void SchedulerStats::RecordMetrics() const {
   /// that function is expensive. ComputeStats is called by ComputeAndReportDebugStr
   /// method and they are always periodically called by node manager.
   stats::NumSpilledTasks.Record(metric_tasks_spilled_ +
-                                local_task_manager_.GetNumTaskSpilled());
+                                local_task_manager_.GetNumLeaseSpilled());
   local_task_manager_.RecordMetrics();
   stats::NumInfeasibleSchedulingClasses.Record(
-      cluster_task_manager_.infeasible_tasks_.size());
+      cluster_task_manager_.infeasible_leases_.size());
   /// Worker startup failure
   ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
       num_worker_not_started_by_job_config_not_exist_, "JobConfigMissing");
@@ -137,10 +137,10 @@ void SchedulerStats::RecordMetrics() const {
   ray::stats::STATS_scheduler_tasks.Record(num_cancelled_tasks_, "Cancelled");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_dispatch_, "Dispatched");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_schedule_, "Received");
-  ray::stats::STATS_scheduler_tasks.Record(local_task_manager_.GetNumWaitingTaskSpilled(),
-                                           "SpilledWaiting");
   ray::stats::STATS_scheduler_tasks.Record(
-      local_task_manager_.GetNumUnschedulableTaskSpilled(), "SpilledUnschedulable");
+      local_task_manager_.GetNumWaitingLeaseSpilled(), "SpilledWaiting");
+  ray::stats::STATS_scheduler_tasks.Record(
+      local_task_manager_.GetNumUnschedulableLeaseSpilled(), "SpilledUnschedulable");
 
   /// Pending task count.
   ray::stats::STATS_scheduler_unscheduleable_tasks.Record(num_infeasible_tasks_,

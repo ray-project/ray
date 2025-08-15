@@ -106,11 +106,11 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
-void NormalTaskSubmitter::ReturnWorker(const rpc::Address &addr,
-                                       bool was_error,
-                                       const std::string &error_detail,
-                                       bool worker_exiting,
-                                       const SchedulingKey &scheduling_key) {
+void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
+                                            bool was_error,
+                                            const std::string &error_detail,
+                                            bool worker_exiting,
+                                            const SchedulingKey &scheduling_key) {
   RAY_LOG(DEBUG) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
                  << " to raylet " << NodeID::FromBinary(addr.raylet_id());
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -128,7 +128,7 @@ void NormalTaskSubmitter::ReturnWorker(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status = lease_entry.raylet_client->ReturnWorker(
+  auto status = lease_entry.raylet_client->ReturnWorkerLease(
       addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
@@ -160,7 +160,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks to do.
     if (!lease_entry.is_busy) {
-      ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
+      ReturnWorkerLease(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
     auto client = core_worker_client_pool_->GetOrConnect(addr);
@@ -324,11 +324,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   // Generate a LeaseID using the current worker ID
   const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_);
 
-  // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
-  // same TaskID to request a worker. TODO(joshlee): Remove this once
-  // cluster_task_manager and local_task_manager are refactored to use LeaseID
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
-  resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
   resource_spec_msg.set_lease_id(lease_id.Binary());
   const TaskSpecification resource_spec = TaskSpecification(std::move(resource_spec_msg));
   rpc::Address best_node_address;

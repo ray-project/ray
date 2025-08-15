@@ -143,7 +143,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::RayletClientPool &raylet_client_pool,
       pubsub::SubscriberInterface &core_worker_subscriber,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      ILocalTaskManager &local_task_manager,
+      LocalTaskManagerInterface &local_task_manager,
       ClusterTaskManagerInterface &cluster_task_manager,
       IObjectDirectory &object_directory,
       ObjectManagerInterface &object_manager,
@@ -363,7 +363,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker that finished the task.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker);
+  bool FinishAssignedLease(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
@@ -560,12 +560,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                         rpc::ReportWorkerBacklogReply *reply,
                                         rpc::SendReplyCallback send_reply_callback,
                                         WorkerPoolInterface &worker_pool,
-                                        ILocalTaskManager &local_task_manager);
+                                        LocalTaskManagerInterface &local_task_manager);
 
-  /// Handle a `ReturnWorker` request.
-  void HandleReturnWorker(rpc::ReturnWorkerRequest request,
-                          rpc::ReturnWorkerReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReturnWorkerLease` request.
+  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
+                               rpc::ReturnWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedActorWorkers` request.
   // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
@@ -837,7 +837,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   ClusterResourceScheduler &cluster_resource_scheduler_;
-  ILocalTaskManager &local_task_manager_;
+  LocalTaskManagerInterface &local_task_manager_;
   ClusterTaskManagerInterface &cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;

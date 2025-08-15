@@ -772,7 +772,7 @@ void GcsServer::InstallEventListeners() {
           RAY_CHECK(channel != nullptr);
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
-        cluster_task_manager_->ScheduleAndDispatchTasks();
+        cluster_task_manager_->ScheduleAndDispatchLeases();
       });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -829,7 +829,7 @@ void GcsServer::InstallEventListeners() {
             // Because resources have been changed, we need to try to schedule the
             // pending placement groups and actors.
             gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchTasks();
+            cluster_task_manager_->ScheduleAndDispatchLeases();
           },
           "GcsServer.SchedulePendingActors");
     });
@@ -840,7 +840,7 @@ void GcsServer::InstallEventListeners() {
             // Because some placement group resources have been committed or deleted, we
             // need to try to schedule the pending placement groups and actors.
             gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchTasks();
+            cluster_task_manager_->ScheduleAndDispatchLeases();
           },
           "GcsServer.SchedulePendingPGActors");
     });

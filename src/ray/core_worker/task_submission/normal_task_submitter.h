@@ -215,11 +215,11 @@ class NormalTaskSubmitter {
   /// \param[in] error_detail The reason why it was errored.
   /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::Address &addr,
-                    bool was_error,
-                    const std::string &error_detail,
-                    bool worker_exiting,
-                    const SchedulingKey &scheduling_key)
+  void ReturnWorkerLease(const rpc::Address &addr,
+                         bool was_error,
+                         const std::string &error_detail,
+                         bool worker_exiting,
+                         const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.

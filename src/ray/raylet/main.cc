@@ -270,7 +270,7 @@ int main(int argc, char *argv[]) {
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
-  std::unique_ptr<ray::raylet::ILocalTaskManager> local_task_manager;
+  std::unique_ptr<ray::raylet::LocalTaskManagerInterface> local_task_manager;
   std::unique_ptr<ray::raylet::ClusterTaskManagerInterface> cluster_task_manager;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
@@ -525,7 +525,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.worker_commands,
         node_manager_config.native_library_path,
         /*starting_worker_timeout_callback=*/
-        [&] { cluster_task_manager->ScheduleAndDispatchTasks(); },
+        [&] { cluster_task_manager->ScheduleAndDispatchLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
         node_manager_config.enable_resource_isolation);

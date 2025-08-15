@@ -876,7 +876,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
-  RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
+  RAY_CHECK(!driver->GetAssignedLeaseId().IsNil());
   Status status = GetNextFreePort(&port);
   if (!status.ok()) {
     send_reply_callback(status, /*port=*/0);

@@ -224,11 +224,11 @@ class MockTaskManager : public MockTaskManagerInterface {
 
 class MockRayletClient : public FakeRayletClient {
  public:
-  Status ReturnWorker(int worker_port,
-                      const WorkerID &worker_id,
-                      bool disconnect_worker,
-                      const std::string &disconnect_worker_error_detail,
-                      bool worker_exiting) override {
+  Status ReturnWorkerLease(int worker_port,
+                           const WorkerID &worker_id,
+                           bool disconnect_worker,
+                           const std::string &disconnect_worker_error_detail,
+                           bool worker_exiting) override {
     std::lock_guard<std::mutex> lock(mu_);
     if (disconnect_worker) {
       num_workers_disconnected++;

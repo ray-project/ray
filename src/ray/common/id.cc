@@ -344,6 +344,13 @@ LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id) {
   return LeaseID::FromBinary(data);
 }
 
+LeaseID LeaseID::DriverLeaseID(const WorkerID &worker_id) {
+  std::string data(kUniqueBytesLength, 0);
+  std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return LeaseID::FromBinary(data);
+}
+
 WorkerID LeaseID::WorkerId() const {
   return WorkerID::FromBinary(std::string(
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), kUniqueIDSize));

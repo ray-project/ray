@@ -1819,9 +1819,9 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
     NotifyCoreWorkerToKillActor(
         actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
   } else {
-    const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
-    RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(task_id)
-        << "The actor hasn't been created yet, cancel scheduling task";
+    const auto &lease_id = actor->GetCreationTaskSpecification().LeaseId();
+    RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
+        << "The actor hasn't been created yet, cancel scheduling lease";
     if (!worker_id.IsNil()) {
       // The actor is in phase of creating, so we need to notify the core
       // worker exit to avoid process and resource leak.

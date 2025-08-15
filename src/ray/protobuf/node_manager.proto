@@ -133,7 +133,7 @@ message CancelResourceReserveRequest {
 message CancelResourceReserveReply {}
 
 // Release a worker back to its raylet.
-message ReturnWorkerRequest {
+message ReturnWorkerLeaseRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
   // The lease id of the owner of the leased worker
@@ -147,7 +147,7 @@ message ReturnWorkerRequest {
   string disconnect_worker_error_detail = 5;
 }
 
-message ReturnWorkerReply {}
+message ReturnWorkerLeaseReply {}
 
 message ReleaseUnusedActorWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
@@ -419,7 +419,7 @@ service NodeManagerService {
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Release a worker back to its raylet.
   // Failure:  TODO: Failure behavior needs to be fixed.
-  rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  rpc ReturnWorkerLease(ReturnWorkerLeaseRequest) returns (ReturnWorkerLeaseReply);
   // This method is only used by GCS, and the purpose is to release leased workers
   // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
   // in the previous lifecycle. In this case, GCS will send a list of worker ids that

@@ -161,7 +161,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
+  std::unique_ptr<raylet::LocalTaskManagerInterface> local_task_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;

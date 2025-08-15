@@ -397,6 +397,14 @@ class LeaseID : public BaseID<LeaseID> {
   /// \return The `LeaseID` for the worker lease.
   static LeaseID FromWorkerId(const WorkerID &worker_id);
 
+  /// Creates a `LeaseID` from a driver ID. The counter bits are nulled out only for
+  /// driver.
+  ///
+  /// \param worker_id The driver id to which this lease belongs.
+  ///
+  /// \return The `LeaseID` for the worker lease.
+  static LeaseID DriverLeaseID(const WorkerID &worker_id);
+
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static LeaseID FromRandom();
 
