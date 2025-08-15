@@ -250,7 +250,7 @@ class VLLMEngineConfig(BaseModelExtended):
         dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         pg = get_current_placement_group()
         if pg:
-            logger.log(
+            logger.debug(
                 "Using existing placement group %s, details: %s",
                 pg.id,
                 placement_group_table(pg),
