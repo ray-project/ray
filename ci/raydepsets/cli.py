@@ -12,14 +12,14 @@ from ci.raydepsets.workspace import Depset, Workspace
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --no-strip-markers
-    --emit-index-url
-    --emit-find-links
     --unsafe-package ray
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
     --index-strategy unsafe-best-match
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
     --quiet
 """.split()
 
@@ -49,7 +49,7 @@ def cli():
 @click.option(
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
-def load(
+def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
@@ -57,7 +57,7 @@ def load(
     uv_cache_dir: Optional[str],
 ):
     """
-    Load dependency sets from a config file.
+    Build dependency sets from a config file.
     Args:
         config_path: The path to the config file. If not specified, ci/raydepsets/ray.depsets.yaml will be used.
     """
@@ -169,12 +169,12 @@ class DependencySetManager:
             args.extend(_flatten_flags(append_flags))
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", self.get_path(constraint)])
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.extend([self.get_path(requirement)])
+                args.extend([requirement])
         if output:
-            args.extend(["-o", self.get_path(output)])
+            args.extend(["-o", output])
         self.exec_uv_cmd("compile", args)
 
     def subset(

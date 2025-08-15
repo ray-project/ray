@@ -18,7 +18,7 @@ from ci.raydepsets.cli import (
     _get_depset,
     _override_uv_flags,
     _uv_binary,
-    load,
+    build,
 )
 from ci.raydepsets.tests.utils import (
     append_to_file,
@@ -51,7 +51,7 @@ def _create_test_manager(
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
-            load,
+            build,
             [
                 "fake_path/test.depsets.yaml",
                 "--workspace-dir",
@@ -93,7 +93,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.7.20" in result.stdout.decode("utf-8")
+        assert "uv 0.8.10" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -177,7 +177,7 @@ class TestCli(unittest.TestCase):
             uv_cache_dir = Path(tmpdir) / "uv_cache"
 
             result = CliRunner().invoke(
-                load,
+                build,
                 [
                     "test.depsets.yaml",
                     "--workspace-dir",
