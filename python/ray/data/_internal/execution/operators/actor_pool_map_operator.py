@@ -10,11 +10,13 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
-from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.autoscaler import AutoscalingActorPool
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
+from ray.data._internal.actor_autoscaler import (
+    AutoscalingActorPool,
+)
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
 from ray.data._internal.execution.interfaces import (

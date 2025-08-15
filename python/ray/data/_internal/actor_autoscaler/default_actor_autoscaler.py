@@ -1,15 +1,9 @@
 import logging
 import math
-import time
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Optional
 
-import ray
-from .autoscaler import Autoscaler
 from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
-from .util import get_max_scale_up
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
-)
+from .base_actor_autoscaler import ActorAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.context import WARN_PREFIX, AutoscalingConfig
 
@@ -18,24 +12,18 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
-
 logger = logging.getLogger(__name__)
 
 
-class DefaultAutoscaler(Autoscaler):
-
-    # Min number of seconds between two autoscaling requests.
-    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
-
+class DefaultActorAutoscaler(ActorAutoscaler):
     def __init__(
         self,
         topology: "Topology",
         resource_manager: "ResourceManager",
         *,
-        execution_id: str,
         config: AutoscalingConfig,
     ):
-        super().__init__(topology, resource_manager, execution_id)
+        super().__init__(topology, resource_manager)
 
         self._actor_pool_scaling_up_threshold = (
             config.actor_pool_util_upscaling_threshold
@@ -46,12 +34,14 @@ class DefaultAutoscaler(Autoscaler):
 
         self._validate_autoscaling_config()
 
-        # Last time when a request was sent to Ray's autoscaler.
-        self._last_request_time = 0
-
     def try_trigger_scaling(self):
-        self._try_scale_up_cluster()
-        self._try_scale_up_or_down_actor_pool()
+        for op, state in self._topology.items():
+            actor_pools = op.get_autoscaling_actor_pools()
+            for actor_pool in actor_pools:
+                # Trigger auto-scaling
+                actor_pool.scale(
+                    self._derive_target_scaling_config(actor_pool, op, state)
+                )
 
     def _derive_target_scaling_config(
         self,
@@ -99,7 +89,7 @@ class DefaultAutoscaler(Autoscaler):
                     reason="operator exceeding resource quota"
                 )
             budget = self._resource_manager.get_budget(op)
-            if get_max_scale_up(actor_pool, budget) == 0:
+            if _get_max_scale_up(actor_pool, budget) == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
 
             return ActorPoolScalingRequest.upscale(
@@ -129,86 +119,6 @@ class DefaultAutoscaler(Autoscaler):
                 )
             )
 
-    def _try_scale_up_or_down_actor_pool(self):
-        for op, state in self._topology.items():
-            actor_pools = op.get_autoscaling_actor_pools()
-            for actor_pool in actor_pools:
-                # Trigger auto-scaling
-                actor_pool.scale(
-                    self._derive_target_scaling_config(actor_pool, op, state)
-                )
-
-    def _try_scale_up_cluster(self):
-        """Try to scale up the cluster to accomodate the provided in-progress workload.
-
-        This makes a resource request to Ray's autoscaler consisting of the current,
-        aggregate usage of all operators in the DAG + the incremental usage of all
-        operators that are ready for dispatch (i.e. that have inputs queued). If the
-        autoscaler were to grant this resource request, it would allow us to dispatch
-        one task for every ready operator.
-
-        Note that this resource request does not take the global resource limits or the
-        liveness policy into account; it only tries to make the existing resource usage
-        + one more task per ready operator feasible in the cluster.
-        """
-        # Limit the frequency of autoscaling requests.
-        now = time.time()
-        if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
-            return
-
-        # Scale up the cluster, if no ops are allowed to run, but there are still data
-        # in the input queues.
-        no_runnable_op = all(
-            not op_state._scheduling_status.runnable
-            for _, op_state in self._topology.items()
-        )
-        any_has_input = any(
-            op_state._pending_dispatch_input_bundles_count() > 0
-            for _, op_state in self._topology.items()
-        )
-        if not (no_runnable_op and any_has_input):
-            return
-
-        self._last_request_time = now
-
-        # Get resource usage for all ops + additional resources needed to launch one
-        # more task for each ready op.
-        resource_request = []
-
-        def to_bundle(resource: ExecutionResources) -> Dict:
-            req = {}
-            if resource.cpu:
-                req["CPU"] = math.ceil(resource.cpu)
-            if resource.gpu:
-                req["GPU"] = math.ceil(resource.gpu)
-            return req
-
-        for op, state in self._topology.items():
-            per_task_resource = op.incremental_resource_usage()
-            task_bundle = to_bundle(per_task_resource)
-            resource_request.extend([task_bundle] * op.num_active_tasks())
-            # Only include incremental resource usage for ops that are ready for
-            # dispatch.
-            if state._pending_dispatch_input_bundles_count() > 0:
-                # TODO(Clark): Scale up more aggressively by adding incremental resource
-                # usage for more than one bundle in the queue for this op?
-                resource_request.append(task_bundle)
-
-        self._send_resource_request(resource_request)
-
-    def _send_resource_request(self, resource_request):
-        # Make autoscaler resource request.
-        actor = get_or_create_autoscaling_requester_actor()
-        actor.request_resources.remote(resource_request, self._execution_id)
-
-    def on_executor_shutdown(self):
-        # Make request for zero resources to autoscaler for this execution.
-        actor = get_or_create_autoscaling_requester_actor()
-        actor.request_resources.remote({}, self._execution_id)
-
-    def get_total_resources(self) -> ExecutionResources:
-        return ExecutionResources.from_resource_dict(ray.cluster_resources())
-
     def _validate_autoscaling_config(self):
         for op, state in self._topology.items():
             for actor_pool in op.get_autoscaling_actor_pools():
@@ -229,3 +139,46 @@ class DefaultAutoscaler(Autoscaler):
                 f"actor pool is configured to avoid buffering (its "
                 f"`max_tasks_in_flight_per_actor` == `max_concurrency`)"
             )
+
+
+def _get_max_scale_up(
+    actor_pool: AutoscalingActorPool,
+    budget: Optional[ExecutionResources],
+) -> Optional[int]:
+    """Get the maximum number of actors that can be scaled up.
+
+    Args:
+        actor_pool: The actor pool to scale up.
+        budget: The budget to scale up.
+
+    Returns:
+        The maximum number of actors that can be scaled up, or `None` if you can
+        scale up infinitely.
+    """
+    if budget is None:
+        return None
+
+    assert budget.cpu >= 0 and budget.gpu >= 0
+
+    num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
+    num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
+    assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0
+
+    max_cpu_scale_up: float = float("inf")
+    if num_cpus_per_actor > 0 and not math.isinf(budget.cpu):
+        max_cpu_scale_up = budget.cpu // num_cpus_per_actor
+
+    max_gpu_scale_up: float = float("inf")
+    if num_gpus_per_actor > 0 and not math.isinf(budget.gpu):
+        max_gpu_scale_up = budget.gpu // num_gpus_per_actor
+
+    max_scale_up = min(max_cpu_scale_up, max_gpu_scale_up)
+    if math.isinf(max_scale_up):
+        return None
+    else:
+        assert not math.isnan(max_scale_up), (
+            budget,
+            num_cpus_per_actor,
+            num_gpus_per_actor,
+        )
+        return int(max_scale_up)
