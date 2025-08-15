@@ -2,13 +2,12 @@ import copy
 from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.map_operator import MapBatches
+from ray.data._internal.logical.operators.map_operator import AbstractMap, MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
     Limit,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 
 
 class LimitPushdownRule(Rule):
@@ -141,64 +140,34 @@ class LimitPushdownRule(Rule):
         if not ops_to_recreate:
             return limit_op
 
-        # Determine where to place the limit
-        if isinstance(current_op, Read):
-            # Special case: if we reached a Read operator, enable per-block limiting
-            new_read_op = self._create_read_with_per_block_limit(
-                current_op, limit_op._limit
-            )
-            limit_input = new_read_op
-        else:
-            # Place limit at the deepest compatible position
-            limit_input = current_op
-
-        # Create the limit and recreate the chain
-        return self._create_operator_chain(
-            limit_input, limit_op._limit, ops_to_recreate
+        # Apply per-block limit to the deepest operator if it supports it
+        limit_input = self._apply_per_block_limit_if_supported(
+            current_op, limit_op._limit
         )
 
-    def _create_operator_chain(
-        self,
-        limit_input: LogicalOperator,
-        limit: int,
-        ops_to_recreate: List[LogicalOperator],
-    ) -> LogicalOperator:
-        """Create a chain: limit_input -> Limit -> recreated operators."""
-        new_limit = Limit(limit_input, limit)
+        # Build the new operator chain: limit_input -> Limit -> recreated operators with limits
+        new_limit = Limit(limit_input, limit_op._limit)
         result_op = new_limit
 
-        # Recreate the intermediate operators in reverse order (bottom to top)
+        # Recreate the intermediate operators and apply per-block limits
         for op_to_recreate in reversed(ops_to_recreate):
-            result_op = self._recreate_operator_with_new_input(
+            recreated_op = self._recreate_operator_with_new_input(
                 op_to_recreate, result_op
             )
+            # Apply per-block limit to map operators
+            self._apply_per_block_limit_if_supported(recreated_op, limit_op._limit)
+            result_op = recreated_op
 
         return result_op
 
-    def _create_read_with_per_block_limit(
-        self, original_read: Read, limit: int
-    ) -> Read:
-        """Create a new Read operator with per-block limit set."""
-        new_read_op = Read(
-            datasource=original_read._datasource,
-            datasource_or_legacy_reader=original_read._datasource_or_legacy_reader,
-            parallelism=original_read._parallelism,
-            mem_size=original_read._mem_size,
-            num_outputs=original_read._num_outputs,
-            ray_remote_args=original_read._ray_remote_args,
-            concurrency=original_read._concurrency,
-        )
-
-        new_read_op.set_per_block_limit(limit)
-
-        # Copy any other state that might have been set
-        if (
-            hasattr(original_read, "_detected_parallelism")
-            and original_read._detected_parallelism is not None
-        ):
-            new_read_op.set_detected_parallelism(original_read._detected_parallelism)
-
-        return new_read_op
+    def _apply_per_block_limit_if_supported(
+        self, op: LogicalOperator, limit: int
+    ) -> LogicalOperator:
+        """Apply per-block limit to operators that support it."""
+        if isinstance(op, AbstractMap):
+            op.set_per_block_limit(limit)
+            return op
+        return op
 
     def _recreate_operator_with_new_input(
         self, original_op: LogicalOperator, new_input: LogicalOperator
@@ -213,6 +182,7 @@ class LimitPushdownRule(Rule):
             new_op = copy.copy(original_op)
             new_op._input_dependencies = [new_input]
             new_op._output_dependencies = []
+
             return new_op
 
         except Exception:
