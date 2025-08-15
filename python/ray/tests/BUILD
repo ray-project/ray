@@ -45,7 +45,6 @@ py_test_module_list(
         "test_advanced_7.py",
         "test_advanced_8.py",
         "test_advanced_9.py",
-        "test_aggregated_prometheus_metrics.py",
         "test_async.py",
         "test_asyncio.py",
         "test_component_failures_2.py",
@@ -58,6 +57,7 @@ py_test_module_list(
         "test_get_locations.py",
         "test_global_state.py",
         "test_healthcheck.py",
+        "test_metric_cardinality.py",
         "test_metrics_agent.py",
         "test_metrics_head.py",
         "test_multiprocessing.py",
@@ -67,6 +67,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_util_helpers.py",
     ],
     tags = [
         "exclusive",
@@ -82,13 +83,13 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     env = {
-        "RAY_experimental_enable_open_telemetry_on_agent": "1",
-        "RAY_experimental_enable_open_telemetry_on_core": "1",
+        "RAY_enable_open_telemetry": "1",
     },
     files = [
+        "test_metric_cardinality.py",
         "test_metrics_agent.py",
     ],
-    name_suffix = "_open_telemetry",
+    name_suffix = "_otel",
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",
@@ -873,6 +874,7 @@ py_test_module_list(
         "test_actor_failures.py",
         "test_cancel.py",
         "test_chaos.py",
+        "test_core_worker_fault_tolerance.py",
         "test_failure.py",
         "test_failure_2.py",
         "test_generators.py",
@@ -1087,8 +1089,8 @@ py_test(
     size = "large",
     srcs = ["test_runtime_env_container.py"],
     tags = [
-        "container",
         "exclusive",
+        "runtime_env_container",
         "team:core",
     ],
     deps = [

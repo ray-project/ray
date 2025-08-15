@@ -4,10 +4,10 @@ import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
-from pydantic import BaseModel, Field
-from vllm.config import KVTransferConfig
+from pydantic import Field
 
 from ray import serve
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -26,7 +26,6 @@ from ray.serve.llm import (
     LLMConfig,
     LLMRouter,
     LLMServer,
-    ModelLoadingConfig,
     build_llm_deployment,
 )
 
@@ -34,7 +33,7 @@ logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
-class PDServingArgs(BaseModel):
+class PDServingArgs(BaseModelExtended):
     """Schema for P/D serving args."""
 
     prefill_config: Union[str, LLMConfig]
@@ -67,34 +66,30 @@ class PDServingArgs(BaseModel):
 
 class PDProxyServer(LLMServer):
     _default_engine_cls = None
-    """
-    Proxy between P/D LLM servers.
+    """Proxy between P/D LLM servers.
 
     For chat and completions, proxy sends the request to the prefill server and
     then parses the response to send to the decode server.
 
     Args:
-        llm_config: The LLM config for the proxy server, LLMRouter will use this config to
-            setup the supported model list (/v1/models endpoint) and route request to proper
-            server according to the model id.
         prefill_server: The prefill server deployment handle.
         decode_server: The decode server deployment handle.
     """
 
     async def __init__(
         self,
-        llm_config: LLMConfig,
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
-        # We pass `llm_config` here to let super() extract the model_id, such that /v1/models
-        # endpoint can work correctly.
-        # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router query model_id through
-        # API, instead of passing it in as an argument.
-        await super().__init__(
-            llm_config,
-        )
 
+        # We pass `llm_config` here to let super() extract the model_id,
+        # such that /v1/models endpoint can work correctly.
+        # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router
+        # query model_id through API, instead of passing it in as an argument.
+        # We can obtain llm_config from prefill_server for obtaining model_id
+        # assuming there is no mismatch between prefill and decode server.
+        llm_config = await prefill_server.llm_config.remote()
+        await super().__init__(llm_config)
         self.prefill_server = prefill_server.options(stream=True)
         self.decode_server = decode_server.options(stream=True)
 
@@ -179,8 +174,8 @@ class PDProxyServer(LLMServer):
         return serve.deployment()(cls)
 
 
-def build_app(pd_serving_args: dict) -> Application:
-    """Build a deployable application utilizing P/D disaggregation."""
+def build_pd_openai_app(pd_serving_args: dict) -> Application:
+    """Build a deployable application utilizing prefill/decode disaggregation."""
 
     pd_config = PDServingArgs.model_validate(pd_serving_args).parse_args()
 
@@ -191,7 +186,7 @@ def build_app(pd_serving_args: dict) -> Application:
         if "kv_transfer_config" not in config.engine_kwargs:
             config.engine_kwargs.update(
                 {
-                    "kv_transfer_config": KVTransferConfig(
+                    "kv_transfer_config": dict(
                         kv_connector="NixlConnector",
                         kv_role="kv_both",
                         engine_id=str(uuid.uuid4()),
@@ -210,9 +205,6 @@ def build_app(pd_serving_args: dict) -> Application:
         PDProxyServer.as_deployment()
         .options(**pd_config.proxy_deployment_config)
         .bind(
-            llm_config=LLMConfig(
-                model_loading_config=ModelLoadingConfig(model_id=model_id)
-            ),
             prefill_server=prefill_deployment,
             decode_server=decode_deployment,
         )

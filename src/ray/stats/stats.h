@@ -32,6 +32,7 @@
 #include "ray/stats/metric_exporter.h"
 #include "ray/telemetry/open_telemetry_metric_recorder.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 
@@ -44,6 +45,12 @@ using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 // TODO(sang) Put all states and logic into a singleton class Stats.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static absl::Mutex stats_mutex;
+
+// Returns true if OpenCensus should be enabled.
+static inline bool should_enable_open_census() {
+  return !RayConfig::instance().enable_open_telemetry() ||
+         !RayConfig::instance().enable_grpc_metrics_collection_for().empty();
+}
 
 /// Initialize stats for a process.
 /// NOTE:
@@ -83,14 +90,15 @@ static inline void Init(
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
   // Register the metric recorder.
-  if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  if (RayConfig::instance().enable_open_telemetry()) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+        BuildAddress("127.0.0.1", metrics_agent_port),
         std::chrono::milliseconds(
             absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
         std::chrono::milliseconds(
             absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
-  } else {
+  }
+  if (should_enable_open_census()) {
     metrics_io_service_pool = std::make_shared<IOServicePool>(1);
     metrics_io_service_pool->Run();
     instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
@@ -122,9 +130,10 @@ static inline void Shutdown() {
     // Return if stats had never been initialized.
     return;
   }
-  if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  if (RayConfig::instance().enable_open_telemetry()) {
     OpenTelemetryMetricRecorder::GetInstance().Shutdown();
-  } else {
+  }
+  if (should_enable_open_census()) {
     metrics_io_service_pool->Stop();
     opencensus::stats::DeltaProducer::Get()->Shutdown();
     opencensus::stats::StatsExporter::Shutdown();

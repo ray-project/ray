@@ -22,6 +22,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
 extern "C" {
@@ -204,7 +205,7 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         },
         "RedisRequestContext.Callback");
     auto end_time = absl::Now();
-    ray::stats::GcsLatency().Record(
+    request_cxt->ray_metric_gcs_latency_.Record(
         absl::ToDoubleMilliseconds(end_time - request_cxt->start_time_));
     delete request_cxt;
   }
@@ -355,7 +356,7 @@ ConnectWithoutRetries(const std::string &address,
     if (newContext == nullptr) {
       oss << "Could not allocate Redis context.";
     } else if (newContext->err) {
-      oss << "Could not establish connection to Redis " << address << ":" << port
+      oss << "Could not establish connection to Redis " << BuildAddress(address, port)
           << " (context.err = " << newContext->err << ").";
     }
     return std::make_pair(Status::RedisError(oss.str()), nullptr);
@@ -370,7 +371,8 @@ std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
 ConnectWithRetries(const std::string &address,
                    int port,
                    const RedisConnectFunctionType &connect_function) {
-  RAY_LOG(INFO) << "Attempting to connect to address " << address << ":" << port << ".";
+  RAY_LOG(INFO) << "Attempting to connect to address " << BuildAddress(address, port)
+                << ".";
   int connection_attempts = 0;
   auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
   auto status = resp.first;
@@ -405,9 +407,9 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
     return std::nullopt;
   }
   RAY_CHECK_EQ(parts.size(), 3u);
-  std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
-  RAY_CHECK_EQ(ip_port.size(), 2u);
-  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
+  auto ip_port = ParseAddress(parts[2]);
+  RAY_CHECK(ip_port.has_value());
+  return std::make_pair((*ip_port)[0], std::stoi((*ip_port)[1]));
 }
 }  // namespace
 
@@ -494,7 +496,7 @@ Status RedisContext::ConnectRedisCluster(const std::string &username,
     Disconnect();
     const auto &[ip, port] = maybe_ip_port.value();
     // Connect to the true leader.
-    RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
+    RAY_LOG(INFO) << "Redis cluster leader is " << BuildAddress(ip, port)
                   << ". Reconnect to it.";
     return Connect(ip, port, username, password, enable_ssl);
   } else {
@@ -556,8 +558,8 @@ Status ConnectRedisSentinel(RedisContext &context,
     return Status::RedisError(
         "Failed to get the ip and port of the primary node from Redis sentinel");
   } else {
-    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: " << actual_ip
-                  << ":" << actual_port;
+    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: "
+                  << BuildAddress(actual_ip, actual_port);
     context.Disconnect();
     return context.Connect(
         actual_ip, std::stoi(actual_port), username, password, enable_ssl);
@@ -604,7 +606,7 @@ Status RedisContext::Connect(const std::string &address,
   // addresses and only the first one will be used.
   auto ip_addresses = ResolveDNS(io_service_, address, port);
   RAY_CHECK(!ip_addresses.empty())
-      << "Failed to resolve DNS for " << address << ":" << port;
+      << "Failed to resolve DNS for " << BuildAddress(address, port);
 
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
 
@@ -644,7 +646,7 @@ Status RedisContext::Connect(const std::string &address,
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
     return ConnectRedisCluster(
-        username, password, enable_ssl, ip_addresses[0] + ":" + std::to_string(port));
+        username, password, enable_ssl, BuildAddress(ip_addresses[0], port));
   }
 }
 
