@@ -7,6 +7,7 @@ import pytest
 
 import ray
 from ray.data import DataContext
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.metadata_exporter import (
     UNKNOWN,
@@ -147,6 +148,9 @@ def dummy_dataset_topology():
                 uuid="uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                execution_start_time=1.0,
+                execution_end_time=1.0,
+                state="FINISHED",
                 args=sanitize_for_struct(dummy_operator._get_args()),
             ),
             Operator(
@@ -155,6 +159,9 @@ def dummy_dataset_topology():
                 uuid="uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                execution_start_time=0.0,
+                execution_end_time=0.0,
+                state="RUNNING",
                 args=sanitize_for_struct(dummy_operator._get_args()),
             ),
         ],
@@ -244,6 +251,9 @@ def dummy_dataset_topology_expected_output():
                 },
                 "input_dependencies": [],
                 "sub_stages": [],
+                "execution_start_time": 1.0,
+                "execution_end_time": 1.0,
+                "state": "FINISHED",
             },
             {
                 "name": "ReadRange->Map(<lambda>)->Filter(<lambda>)",
@@ -323,6 +333,9 @@ def dummy_dataset_topology_expected_output():
                     },
                 },
                 "sub_stages": [],
+                "execution_start_time": 0.0,
+                "execution_end_time": 0.0,
+                "state": "RUNNING",
             },
         ]
     }
@@ -447,6 +460,9 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                execution_start_time=1.0,
+                execution_end_time=1.0,
+                state="FINISHED",
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)",
@@ -454,6 +470,9 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                execution_start_time=2.0,
+                execution_end_time=0.0,
+                state="RUNNING",
             ),
         ],
     )
@@ -611,6 +630,92 @@ def test_sanitize_for_struct(input_obj, expected_output, truncate_length):
     """Test sanitize_for_struct with various input types and truncation lengths."""
     result = sanitize_for_struct(input_obj, truncate_length)
     assert result == expected_output, f"Expected {expected_output}, got {result}"
+
+
+def test_update_dataset_metadata_state(
+    ray_start_cluster_with_export_api_write, dummy_dataset_topology
+):
+    """Test dataset state update at the export API"""
+    stats_actor = _get_or_create_stats_actor()
+    # Register dataset
+    ray.get(
+        stats_actor.register_dataset.remote(
+            job_id=STUB_JOB_ID,
+            dataset_tag=STUB_DATASET_ID,
+            operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
+            topology=dummy_dataset_topology,
+            data_context=DataContext.get_current(),
+        )
+    )
+    # Check that export files were created as expected
+    data = _get_exported_data()
+    assert len(data) == 1
+    assert data[0]["event_data"]["state"] == DatasetState.PENDING.name
+
+    # Test update state to RUNNING
+    ray.get(
+        stats_actor.update_dataset_metadata_state.remote(
+            dataset_id=STUB_DATASET_ID, new_state=DatasetState.RUNNING.name
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 2
+    assert data[1]["event_data"]["state"] == DatasetState.RUNNING.name
+    assert data[1]["event_data"]["execution_start_time"] > 0
+
+    # Test update to FINISHED
+    ray.get(
+        stats_actor.update_dataset_metadata_state.remote(
+            dataset_id=STUB_DATASET_ID, new_state=DatasetState.FINISHED.name
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 3
+    assert data[2]["event_data"]["state"] == DatasetState.FINISHED.name
+    assert data[2]["event_data"]["execution_end_time"] > 0
+    assert (
+        data[2]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.FINISHED.name
+    )
+    assert data[2]["event_data"]["topology"]["operators"][1]["execution_end_time"] > 0
+
+
+def test_update_dataset_metadata_operator_states(
+    ray_start_cluster_with_export_api_write, dummy_dataset_topology
+):
+    stats_actor = _get_or_create_stats_actor()
+    # Register dataset
+    ray.get(
+        stats_actor.register_dataset.remote(
+            dataset_tag=STUB_DATASET_ID,
+            operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
+            topology=dummy_dataset_topology,
+            job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 1
+    assert (
+        data[0]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.RUNNING.name
+    )
+
+    # Test update to FINISHED
+    operator_id = "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"
+    ray.get(
+        stats_actor.update_dataset_metadata_operator_states.remote(
+            dataset_id=STUB_DATASET_ID,
+            operator_states={operator_id: DatasetState.FINISHED.name},
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 2
+    assert (
+        data[1]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.FINISHED.name
+    )
+    assert data[1]["event_data"]["topology"]["operators"][1]["execution_end_time"] > 0
 
 
 if __name__ == "__main__":

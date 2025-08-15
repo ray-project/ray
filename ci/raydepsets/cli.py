@@ -49,7 +49,7 @@ def cli():
 @click.option(
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
-def load(
+def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
@@ -57,7 +57,7 @@ def load(
     uv_cache_dir: Optional[str],
 ):
     """
-    Load dependency sets from a config file.
+    Build dependency sets from a config file.
     Args:
         config_path: The path to the config file. If not specified, ci/raydepsets/ray.depsets.yaml will be used.
     """

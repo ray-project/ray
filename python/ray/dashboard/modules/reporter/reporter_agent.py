@@ -41,8 +41,7 @@ from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
-    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
-    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    RAY_ENABLE_OPEN_TELEMETRY,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -1734,7 +1733,7 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT:
+            if RAY_ENABLE_OPEN_TELEMETRY:
                 self._open_telemetry_metric_recorder.record_and_export(
                     records,
                     global_tags={
@@ -1758,7 +1757,7 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
+            if RAY_ENABLE_OPEN_TELEMETRY:
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )

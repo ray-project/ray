@@ -9,6 +9,7 @@ import ray
 from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
+    OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
@@ -499,6 +500,9 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return await replica_result.to_object_ref_async()
 
@@ -522,6 +526,9 @@ class DeploymentResponse(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -640,6 +647,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return replica_result.to_object_ref_gen()
 
@@ -660,6 +670,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(

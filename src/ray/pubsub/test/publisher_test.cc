@@ -342,6 +342,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
 
 TEST_F(PublisherTest, TestSubscriber) {
   absl::flat_hash_set<ObjectID> object_ids_published;
+  reply = rpc::PubsubLongPollingReply();
   send_reply_callback = [this, &object_ids_published](Status status,
                                                       std::function<void()> success,
                                                       std::function<void()> failure) {
@@ -351,7 +352,7 @@ TEST_F(PublisherTest, TestSubscriber) {
           ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
       object_ids_published.emplace(oid);
     }
-    reply = rpc::PubsubLongPollingReply();
+    reply.Clear();
   };
 
   auto subscriber = std::make_shared<SubscriberState>(

@@ -21,6 +21,12 @@ namespace raylet_scheduling_policy {
 
 double LeastResourceScorer::Score(const ResourceRequest &required_resources,
                                   const NodeResources &node_resources) {
+  // Check if the node has required labels before scoring on the resources.
+  const auto &label_selector = required_resources.GetLabelSelector();
+  if (!node_resources.HasRequiredLabels(label_selector)) {
+    return -1.;
+  }
+
   // In GCS-based actor scheduling, the `NodeResources` are only acquired or released by
   // actor scheduling, instead of being updated by resource reports from raylets. So we
   // have to subtract normal task resources (if exist) from the current available

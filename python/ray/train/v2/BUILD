@@ -71,7 +71,7 @@ py_test(
 
 py_test(
     name = "test_data_integration",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_data_integration.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [

@@ -27,7 +27,11 @@ if [[ "${PYTHON-}" != "3.12" ]]; then
     tensorflow tensorflow-probability torch torchvision \
     transformers aioboto3
 fi
-git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
+
+git clone --branch=4.2.0 --depth=1 https://github.com/wg/wrk.git /tmp/wrk
+make -C /tmp/wrk -j
+sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
+rm -rf /tmp/wrk
 
 # Install custom Pydantic version if requested.
 if [[ -n "${PYDANTIC_VERSION-}" ]]; then
