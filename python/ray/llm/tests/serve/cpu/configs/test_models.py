@@ -4,7 +4,11 @@ from pathlib import Path
 import pydantic
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LoraConfig,
+    ModelLoadingConfig,
+)
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
@@ -295,7 +299,7 @@ class TestFieldValidators:
 
         llm_config = LLMConfig(model_loading_config=config_dict, llm_engine="vLLM")
 
-        assert isinstance(llm_config.model_loading_config, dict)
+        assert isinstance(llm_config.model_loading_config, ModelLoadingConfig)
         assert (
             llm_config.model_loading_config["model_id"] == "microsoft/DialoGPT-medium"
         )
@@ -330,7 +334,7 @@ class TestFieldValidators:
             llm_engine="vLLM",
         )
 
-        assert isinstance(llm_config2.lora_config, dict)
+        assert isinstance(llm_config2.lora_config, LoraConfig)
         assert llm_config2.lora_config["max_num_adapters_per_replica"] == 8
         assert (
             llm_config2.lora_config["dynamic_lora_loading_path"] == "s3://bucket/lora"

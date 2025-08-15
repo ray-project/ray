@@ -148,7 +148,7 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    model_loading_config: Dict[str, Any] = Field(
+    model_loading_config: Union[Dict[str, Any], ModelLoadingConfig] = Field(
         description="The settings for how to download and expose the model. Validated against ModelLoadingConfig."
     )
 
@@ -179,7 +179,7 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[Dict[str, Any]] = Field(
+    lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
         default=None,
         description="Settings for LoRA adapter. Validated against LoraConfig.",
     )
@@ -314,28 +314,34 @@ class LLMConfig(BaseModelExtended):
         return value
 
     @field_validator("model_loading_config")
-    def validate_model_loading_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_model_loading_config(
+        cls, value: Union[Dict[str, Any], ModelLoadingConfig]
+    ) -> ModelLoadingConfig:
         """Validates the model loading config dictionary."""
+        if isinstance(value, ModelLoadingConfig):
+            return value
+
         try:
-            ModelLoadingConfig(**value)
+            model_loading_config = ModelLoadingConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid model_loading_config: {value}") from e
 
-        return value
+        return model_loading_config
 
     @field_validator("lora_config")
     def validate_lora_config(
-        cls, value: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        cls, value: Optional[Union[Dict[str, Any], LoraConfig]]
+    ) -> Optional[LoraConfig]:
         """Validates the lora config dictionary."""
-        if value is None:
+        if value is None or isinstance(value, LoraConfig):
             return value
+
         try:
-            LoraConfig(**value)
+            lora_config = LoraConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid lora_config: {value}") from e
 
-        return value
+        return lora_config
 
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
