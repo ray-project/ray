@@ -208,7 +208,7 @@ class JobManager:
                             job_id,
                             JobStatus.FAILED,
                             message=err_msg,
-                            error_type=JobErrorType.JOB_START_TIMEOUT,
+                            error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
                         )
                         is_alive = False
                         logger.error(err_msg)

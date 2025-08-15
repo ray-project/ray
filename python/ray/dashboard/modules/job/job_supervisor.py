@@ -450,7 +450,7 @@ class JobSupervisor:
                         JobStatus.FAILED,
                         message=message,
                         driver_exit_code=return_code,
-                        error_type=JobErrorType.JOB_DRIVER_SCRIPT_ERROR,
+                        error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
                     )
         except Exception:
             self._logger.error(
@@ -462,7 +462,7 @@ class JobSupervisor:
                     self._job_id,
                     JobStatus.FAILED,
                     message=traceback.format_exc(),
-                    error_type=JobErrorType.JOB_DRIVER_SCRIPT_START_ERROR,
+                    error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_START_ERROR,
                 )
             except Exception:
                 self._logger.error(

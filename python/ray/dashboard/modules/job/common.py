@@ -73,7 +73,7 @@ class JobErrorType(str, Enum):
     # Runtime environment failed to be set up
     RUNTIME_ENV_SETUP_FAILURE = "RUNTIME_ENV_SETUP_FAILURE"
     # Job supervisor actor launched, but job failed to start within timeout
-    JOB_START_TIMEOUT = "JOB_START_TIMEOUT"
+    JOB_SUPERVISOR_ACTOR_START_TIMEOUT = "JOB_SUPERVISOR_ACTOR_START_TIMEOUT"
     # Job supervisor actor failed to start
     JOB_SUPERVISOR_ACTOR_START_FAILURE = "JOB_SUPERVISOR_ACTOR_START_FAILURE"
     # Job supervisor actor failed to be scheduled
@@ -81,9 +81,9 @@ class JobErrorType(str, Enum):
     # Job supervisor actor failed for unknown exception
     JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE = "JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE"
     # Job driver script failed to start due to exception
-    JOB_DRIVER_SCRIPT_START_ERROR = "JOB_DRIVER_SCRIPT_START_ERROR"
+    JOB_ENTRYPOINT_COMMAND_START_ERROR = "JOB_ENTRYPOINT_COMMAND_START_ERROR"
     # Job driver script failed due to non-zero exit code
-    JOB_DRIVER_SCRIPT_ERROR = "JOB_DRIVER_SCRIPT_ERROR"
+    JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
 
 
 # TODO(aguo): Convert to pydantic model

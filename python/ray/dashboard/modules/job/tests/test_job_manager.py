@@ -1055,7 +1055,7 @@ class TestTailLogs:
                 check_job_failed,
                 job_manager=job_manager,
                 job_id=job_id,
-                expected_error_type=JobErrorType.JOB_DRIVER_SCRIPT_ERROR,
+                expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
             )
             # check if the driver is killed
             data = await job_manager.get_job_info(job_id)
@@ -1273,7 +1273,7 @@ async def test_failed_job_logs_max_char(job_manager):
         check_job_failed,
         job_manager=job_manager,
         job_id=job_id,
-        expected_error_type=JobErrorType.JOB_DRIVER_SCRIPT_ERROR,
+        expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
     )
 
     # Verify the status message length
@@ -1379,7 +1379,7 @@ sys.exit({EXIT_CODE})
         check_job_failed,
         job_manager=job_manager,
         job_id=job_id,
-        expected_error_type=JobErrorType.JOB_DRIVER_SCRIPT_ERROR,
+        expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
     )
 
     # Check that the job failed
