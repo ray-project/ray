@@ -70,6 +70,7 @@ def __ray_recv__(
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
+
     # ~ signal that an object is arriving
 
     backend = collective.get_group_handle(communicator_name).backend()
@@ -144,11 +145,12 @@ class GPUObjectStore:
         # Signal when an object is freed from the object store.
         self._object_freed_cv = threading.Condition(self._lock)
 
-        
-
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
-            return obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0
+            return (
+                obj_id in self._gpu_object_store
+                and len(self._gpu_object_store[obj_id]) > 0
+            )
 
     def has_tensor(self, tensor: "torch.Tensor") -> bool:
         with self._lock:
@@ -181,19 +183,18 @@ class GPUObjectStore:
             for tensor in gpu_object:
                 self._tensor_to_object_ids[tensor].add(obj_id)
             # Append to the queue instead of overwriting
-            self._gpu_object_store[obj_id].append(_GPUObject(
-                gpu_object,
-                is_primary,
-            ))
+            self._gpu_object_store[obj_id].append(
+                _GPUObject(
+                    gpu_object,
+                    is_primary,
+                )
+            )
             self._object_present_cv.notify_all()
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
             queue = self._gpu_object_store.get(obj_id)
-            return (
-                queue and len(queue) > 0
-                and queue[0].is_primary
-            )
+            return queue and len(queue) > 0 and queue[0].is_primary
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
@@ -247,8 +248,9 @@ class GPUObjectStore:
         """
         with self._object_present_cv:
             if not self._object_present_cv.wait_for(
-                lambda: obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0,
-                timeout=timeout
+                lambda: obj_id in self._gpu_object_store
+                and len(self._gpu_object_store[obj_id]) > 0,
+                timeout=timeout,
             ):
                 raise TimeoutError(
                     f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
@@ -257,7 +259,8 @@ class GPUObjectStore:
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
             assert (
-                obj_id in self._gpu_object_store and len(self._gpu_object_store[obj_id]) > 0
+                obj_id in self._gpu_object_store
+                and len(self._gpu_object_store[obj_id]) > 0
             ), f"obj_id={obj_id} not found in GPU object store"
             queue = self._gpu_object_store.get(obj_id)
             gpu_object = queue.popleft()

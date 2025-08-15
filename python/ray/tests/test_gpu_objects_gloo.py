@@ -567,11 +567,11 @@ def test_write_after_save(ray_start_regular):
             # Write to the saved tensor.
             self.data += 1
             return self.data
- 
+
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
-    
+
     medium_tensor = torch.randn((500, 500))
     sender, receiver = actors
     ref = sender.save.remote(medium_tensor)
