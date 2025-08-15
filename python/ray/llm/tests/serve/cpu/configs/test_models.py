@@ -316,9 +316,7 @@ class TestFieldValidators:
         llm_config = LLMConfig(model_loading_config=config_dict, llm_engine="vLLM")
 
         assert isinstance(llm_config.model_loading_config, ModelLoadingConfig)
-        assert (
-            llm_config.model_loading_config["model_id"] == "microsoft/DialoGPT-medium"
-        )
+        assert llm_config.model_loading_config.model_id == "microsoft/DialoGPT-medium"
 
     def test_model_loading_config_validation_error(self):
         """Test that invalid dict raises proper validation error."""
@@ -351,10 +349,8 @@ class TestFieldValidators:
         )
 
         assert isinstance(llm_config2.lora_config, LoraConfig)
-        assert llm_config2.lora_config["max_num_adapters_per_replica"] == 8
-        assert (
-            llm_config2.lora_config["dynamic_lora_loading_path"] == "s3://bucket/lora"
-        )
+        assert llm_config2.lora_config.max_num_adapters_per_replica == 8
+        assert llm_config2.lora_config.dynamic_lora_loading_path == "s3://bucket/lora"
 
     def test_lora_config_validation_error(self):
         """Test that invalid lora config dict raises proper validation error."""
