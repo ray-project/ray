@@ -31,4 +31,8 @@ TEST_F(RayConfigTest, ConvertValueTrimsVectorElements) {
   ASSERT_EQ(output, expected_output);
 }
 
+TEST_F(RayConfigTest, TestSubreaperIntervalConfig) {
+  ASSERT_EQ(RayConfig::instance().subreaper_cleanup_interval_ms(), 5000);
+}
+
 }  // namespace ray
