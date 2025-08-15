@@ -23,13 +23,16 @@ namespace telemetry {
 
 class RayJobEventRecorder : public RayEventRecorderBase<rpc::JobTableData> {
  public:
-  RayJobEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                      instrumented_io_context &io_service);
+  RayJobEventRecorder(instrumented_io_context &io_service, int dashboard_agent_port);
   ~RayJobEventRecorder() override = default;
 
  private:
+  RayJobEventRecorder(std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
+                      instrumented_io_context &io_service);
   void ConvertToRayEvent(const rpc::JobTableData &data,
                          rpc::events::RayEvent &ray_event) override;
+
+  friend class RayJobEventRecorderTest;
 };
 
 }  // namespace telemetry

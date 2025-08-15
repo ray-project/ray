@@ -178,6 +178,7 @@ ray_cc_library(
         ":gcs_task_manager",
         "//src/ray/common:ray_syncer",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/telemetry:ray_job_event_recorder",
         "//src/ray/util:array",
         "//src/ray/util:type_traits",
     ],
