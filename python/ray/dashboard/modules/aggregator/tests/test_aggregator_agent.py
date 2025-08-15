@@ -14,10 +14,8 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
-    wait_until_server_available,
     find_free_port,
 )
-from ray._common.network_utils import parse_address, build_address
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
