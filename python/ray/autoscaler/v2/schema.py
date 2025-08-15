@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+import time
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
@@ -219,6 +220,61 @@ class ClusterStatus:
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)
     # We should show them properly in the future.
+
+
+@dataclass
+class IPPRStatus:
+    cloud_instance_id: str
+    min_cpu: float
+    max_cpu: float
+    min_memory: float
+    max_memory: float
+    current_cpu: float
+    current_memory: float
+    resize_timeout: int
+    desired_cpu: Optional[float] = None
+    desired_memory: Optional[float] = None
+    resized_at: Optional[int] = None
+    resized_status: Optional[str] = None
+    resized_message: Optional[str] = None
+    suggested_cpu: Optional[float] = None
+    suggested_memory: Optional[float] = None
+    raylet_id: Optional[str] = None
+
+    def update(
+        self,
+        raylet_id: str,
+        desired_cpu: Optional[float],
+        desired_memory: Optional[float],
+    ) -> None:
+        if desired_cpu is not None:
+            self.desired_cpu = desired_cpu
+        if desired_memory is not None:
+            self.desired_memory = desired_memory
+        self.raylet_id = raylet_id
+        self.resized_at = None
+        self.resized_status = "new"
+        self.resized_message = None
+
+    def is_new(self) -> bool:
+        return self.resized_status == "new" and self.raylet_id
+
+    def is_in_progress(self) -> bool:
+        return (
+            self.resized_status == "inprogress" or self.resized_status == "deferred"
+        ) and self.resized_at is not None
+
+    def is_finished(self) -> bool:
+        return self.resized_status is None
+
+    def is_timeout(self) -> bool:
+        return (
+            self.is_in_progress()
+            and self.resized_at + self.resize_timeout < time.time()
+        )
+
+    def is_failed(self) -> bool:
+        return self.resized_status == "error" or self.resized_status == "infeasible"
 
 
 @dataclass

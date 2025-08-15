@@ -259,7 +259,12 @@ class IKubernetesHttpApiClient(ABC):
         pass
 
     @abstractmethod
-    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def patch(
+        self,
+        path: str,
+        payload: List[Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         pass
 
@@ -311,7 +316,12 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             result.raise_for_status()
         return result.json()
 
-    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def patch(
+        self,
+        path: str,
+        payload: List[Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers
 
         Args:
@@ -333,7 +343,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         result = requests.patch(
             url,
             json.dumps(payload),
-            headers={**headers, "Content-type": "application/json-patch+json"},
+            headers={**headers, "Content-type": content_type},
             verify=verify,
         )
         if not result.status_code == 200:

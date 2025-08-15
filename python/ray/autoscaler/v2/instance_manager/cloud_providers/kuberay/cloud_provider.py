@@ -23,6 +23,10 @@ from ray.autoscaler._private.kuberay.node_provider import (
     worker_delete_patch,
     worker_replica_patch,
 )
+from ray._raylet import GcsClient
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
+    KubeRayIPPRProvider,
+)
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -32,7 +36,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         self,
         cluster_name: str,
         provider_config: Dict[str, Any],
+        gcs_client: Optional[GcsClient] = None,
         k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
         """
@@ -74,6 +79,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
+        self._ippr_provider = KubeRayIPPRProvider(
+            gcs_client=gcs_client, k8s_api_client=self._k8s_api_client
+        )
 
     @dataclass
     class ScaleRequest:
@@ -181,6 +189,15 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
         return errors
+
+    def get_ippr_capacities(self) -> Dict[str, Dict[str, float]]:
+        return self._ippr_provider.get_ippr_capacities()
+
+    def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        return self._ippr_provider.get_ippr_statuses()
+
+    def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
+        self._ippr_provider.do_ippr_requests(resizes)
 
     ############################
     # Private
@@ -393,7 +410,9 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._ippr_provider.validate_and_set_ippr_spec(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
+        self._ippr_provider.sync_with_raylets()
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -499,6 +518,9 @@ class KubeRayProvider(ICloudInstanceProvider):
             cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
+
+        self._ippr_provider.sync_ippr_status_from_pods(pod_list["items"])
+
         return cloud_instances
 
     @staticmethod

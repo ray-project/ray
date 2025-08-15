@@ -83,7 +83,7 @@ def test_log_scheduling_updates():
                 )
             )
         ],
-        cluster_shape={"type-1": 1, "type-2": 2},
+        cluster_resources={"CPU": 5, "GPU": 5, "TPU": 2},
         node_type_configs={
             "type-1": NodeTypeConfig(
                 name="type-1",
@@ -117,7 +117,7 @@ def test_log_scheduling_updates():
 
     assert mock_logger.get_logs("error") == []
     assert mock_logger.get_logs("debug") == [
-        "Current cluster shape: {'type-1': 1, 'type-2': 2}."
+        "Current cluster resources: {'CPU': 5, 'GPU': 5, 'TPU': 2}."
     ]
 
 

@@ -33,6 +33,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -787,15 +788,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
       scheduling::NodeID(node_id.Binary()), labels);
 
-  // TODO: Always use the message from ray syncer.  // NOLINT
-  ResourceRequest resources;
-  for (auto &resource_entry : node_info.resources_total()) {
-    resources.Set(scheduling::ResourceID(resource_entry.first),
-                  FixedPoint(resource_entry.second));
-  }
-  if (ResourceCreateUpdated(node_id, resources)) {
-    cluster_task_manager_.ScheduleAndDispatchTasks();
-  }
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
                                                  syncer::MessageType::RESOURCE_VIEW)) {
@@ -1843,6 +1835,122 @@ void NodeManager::HandleCancelResourceReserve(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleResizeLocalResourceInstances(
+    rpc::ResizeLocalResourceInstancesRequest request,
+    rpc::ResizeLocalResourceInstancesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto target_resource_map = MapFromProtobuf(request.resources());
+
+  // Check if any resource is a unit instance resource
+  // Unit instance resources (e.g., GPU) cannot be resized with this API
+  for (const auto &[resource_name, target_value] : target_resource_map) {
+    if (ResourceID(resource_name).IsUnitInstanceResource()) {
+      std::string error_msg = absl::StrFormat(
+          "Cannot resize unit instance resource '%s'. Unit instance resources "
+          "(e.g., GPU) cannot be resized dynamically.",
+          resource_name);
+      send_reply_callback(Status::InvalidArgument(error_msg), nullptr, nullptr);
+      return;
+    }
+  }
+
+  // Get current local resources and convert to resource maps
+  const auto current_resources =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
+  auto current_total_map =
+      current_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
+  auto current_available_map = current_resources.GetAvailableResourceInstances()
+                                   .ToNodeResourceSet()
+                                   .GetResourceMap();
+
+  // Calculate delta resource map (target - current) and validate
+  absl::flat_hash_map<std::string, double> delta_resource_map;
+  for (const auto &[resource_name, target_value] : target_resource_map) {
+    double current_total = 0.0;
+    double current_available = 0.0;
+
+    if (auto total_it = current_total_map.find(resource_name);
+        total_it != current_total_map.end()) {
+      current_total = total_it->second;
+    }
+
+    if (auto available_it = current_available_map.find(resource_name);
+        available_it != current_available_map.end()) {
+      current_available = available_it->second;
+    }
+
+    double delta_value = target_value - current_total;
+
+    // Check if applying delta would make available resources negative
+    if (double new_available = current_available + delta_value; new_available < 0.0) {
+      std::string error_msg = absl::StrFormat(
+          "Cannot resize %s to %g: would make available resources negative "
+          "(current_available=%g, delta=%g, new_available=%g). ",
+          resource_name,
+          target_value,
+          current_available,
+          delta_value,
+          new_available);
+      send_reply_callback(
+          Status::RpcError(error_msg, grpc::StatusCode::FAILED_PRECONDITION),
+          nullptr,
+          nullptr);
+      return;
+    }
+
+    if (delta_value != 0.0) {
+      delta_resource_map[resource_name] = delta_value;
+    }
+  }
+
+  // Convert delta resource map to NodeResourceInstanceSet and apply
+  if (!delta_resource_map.empty()) {
+    NodeResourceSet delta_resources(delta_resource_map);
+    NodeResourceInstanceSet delta_instances(delta_resources);
+
+    // Apply deltas for each resource
+    for (const auto &resource_id : delta_resources.ExplicitResourceIds()) {
+      const auto &instances = delta_instances.Get(resource_id);
+      cluster_resource_scheduler_.GetLocalResourceManager().AddLocalResourceInstances(
+          resource_id, instances);
+    }
+  }
+
+  // Get updated resource state and populate reply
+  const auto updated_resources =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
+  auto updated_total_map =
+      updated_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
+  auto updated_available_map = updated_resources.GetAvailableResourceInstances()
+                                   .ToNodeResourceSet()
+                                   .GetResourceMap();
+
+  if (!delta_resource_map.empty()) {
+    // Log the updated resources
+    RAY_LOG(INFO) << "Successfully resized local resources. Current total resources:";
+    for (const auto &[resource_name, updated_value] : updated_total_map) {
+      RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
+    }
+    RAY_LOG(INFO) << "Available resources:";
+    for (const auto &[resource_name, updated_value] : updated_available_map) {
+      RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
+    }
+    // Trigger scheduling to account for the new resources
+    cluster_task_manager_.ScheduleAndDispatchTasks();
+    // Trigger immediate resource broadcasting to GCS
+    // instead of waiting for the periodic report (which happens every 100ms by default)
+    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW);
+  }
+
+  // Populate the reply with current resource state
+  auto *total_resources = reply->mutable_total_resources();
+  auto *available_resources = reply->mutable_available_resources();
+  total_resources->insert(updated_total_map.begin(), updated_total_map.end());
+  available_resources->insert(updated_available_map.begin(), updated_available_map.end());
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -2679,7 +2787,14 @@ void NodeManager::ConsumeSyncMessage(
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(message->node_id());
-    if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
+    ResourceRequest resources;
+    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+      resources.Set(scheduling::ResourceID(resource_entry.first),
+                    FixedPoint(resource_entry.second));
+    }
+    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+    if (capacity_updated || usage_update) {
       cluster_task_manager_.ScheduleAndDispatchTasks();
     }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
