@@ -26,7 +26,6 @@ import os
 import subprocess
 import sys
 import time
-from urllib.parse import urlparse
 
 import psutil
 
@@ -241,17 +240,10 @@ def symmetric_run(
         raise click.ClickException("Ray is already started on this node.")
 
     # 1. Parse address and check if we are on the head node.
-    try:
-        parsed_address = urlparse(f"//{address}")
-        gcs_ip = parsed_address.hostname
-        gcs_port = parsed_address.port
-    except Exception:
+    gcs_ip_port = ray._common.network_utils.parse_address(address)
+    if gcs_ip_port is None:
         raise click.ClickException(f"Invalid address format: {address}")
-
-    if not gcs_ip or not gcs_port:
-        raise click.ClickException(
-            f"Invalid address: {address}. Must be in format <host>:<port>"
-        )
+    gcs_ip, gcs_port = gcs_ip_port
 
     try:
         # AF_UNSPEC allows resolving both IPv4 and IPv6
@@ -274,7 +266,8 @@ def symmetric_run(
 
     # Add localhost ips if we are running on a single node.
     if min_nodes > 1:
-        # Ban localhost ips if we are running on a single node.
+        # Ban localhost ips if we are not running on a single node
+        # to avoid starting N head nodes
         my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
 
     is_head = resolved_gcs_ip in my_ips
