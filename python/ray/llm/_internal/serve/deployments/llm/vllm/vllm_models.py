@@ -266,7 +266,7 @@ class VLLMEngineConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
-            name = "" if dp_rank is None else  f"dp_{dp_rank}"
+            name = "" if dp_rank is None else f"dp_{dp_rank}"
 
             pg = placement_group(
                 bundles=self.placement_bundles,
