@@ -155,10 +155,10 @@ class RayletIpcClientInterface {
 
   /// Push an error to the relevant driver.
   ///
-  /// \param The ID of the job_id that the error is for.
-  /// \param The type of the error.
-  /// \param The error message.
-  /// \param The timestamp of the error.
+  /// \param job_id The ID of the job_id that the error is for.
+  /// \param type The type of the error.
+  /// \param error_message The error message.
+  /// \param timestamp The timestamp of the error.
   /// \return ray::Status.
   virtual ray::Status PushError(const ray::JobID &job_id,
                                 const std::string &type,
