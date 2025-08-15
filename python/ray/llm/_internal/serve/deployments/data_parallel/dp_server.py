@@ -46,8 +46,8 @@ class DPServer(LLMServer):
                 f"DP rank {self.dp_rank} has set DP master info: {self.dp_address}, {self.dp_rpc_port}"
             )
         else:
-            timeout = 20
-            while timeout > 0:
+            waited_seconds = 0
+            while True:
                 (
                     dp_address,
                     dp_rpc_port,
@@ -57,12 +57,11 @@ class DPServer(LLMServer):
                     self.dp_rpc_port = dp_rpc_port
                     break
                 logger.info(
-                    f"DP rank {self.dp_rank} is waiting for DP master info, timeout in {timeout} seconds"
+                    f"DP rank {self.dp_rank} is waiting for DP master info, "
+                    f"already waited for {waited_seconds} seconds"
                 )
                 time.sleep(1)
-                timeout -= 1
-            if timeout == 0:
-                raise TimeoutError("Failed to get DP master info")
+                waited_seconds += 1
             logger.info(
                 f"DP rank {self.dp_rank} got DP master info: {self.dp_address}, {self.dp_rpc_port}"
             )
