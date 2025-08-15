@@ -3,17 +3,12 @@ set -euo pipefail
 
 SOURCE_IMAGE="$1"
 DEST_IMAGE="$2"
-REQUIREMENTS="$3"
-ECR="$4"
-
-DOCKER_BUILDKIT=1 docker build \
-    --build-arg BASE_IMAGE="$SOURCE_IMAGE" \
-    --build-arg PIP_REQUIREMENTS="$REQUIREMENTS" \
-    -t "$DEST_IMAGE" \
-    -f release/ray_release/byod/byod.Dockerfile \
-    release/ray_release/byod
+ECR="$3"
 
 # publish anyscale image
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin "$ECR"
+
+docker pull "$SOURCE_IMAGE"
+docker tag "$SOURCE_IMAGE" "$DEST_IMAGE"
 docker push "$DEST_IMAGE"
