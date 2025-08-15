@@ -48,6 +48,7 @@ from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
+from ray.train.v2._internal.execution.local_mode_utils import BackendForLocalMode
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
@@ -79,6 +80,7 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        backend_for_local_mode: Optional[BackendForLocalMode] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
@@ -87,6 +89,14 @@ class DataParallelTrainer:
         self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
+
+        self.running_in_local_mode = self.scaling_config.num_workers == 0
+        if self.running_in_local_mode:
+            self.backend_for_local_mode = backend_for_local_mode or BackendForLocalMode(
+                datasets=self.datasets,
+            )
+        else:
+            self.backend_for_local_mode = None
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -125,25 +135,28 @@ class DataParallelTrainer:
             ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
         """
         train_fn = self._get_train_func()
-        train_fn_ref = ObjectRefWrapper(train_fn)
+        if self.running_in_local_mode:
+            return self.backend_for_local_mode.fit(train_fn)
+        else:
+            train_fn_ref = ObjectRefWrapper(train_fn)
 
-        result = self._initialize_and_run_controller(
-            train_fn_ref=train_fn_ref,
-            scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=create_failure_policy(self.run_config.failure_config),
-            train_run_context=self.train_run_context,
-            callbacks=self._create_default_callbacks(),
-        )
+            result = self._initialize_and_run_controller(
+                train_fn_ref=train_fn_ref,
+                scaling_policy=create_scaling_policy(self.scaling_config),
+                failure_policy=create_failure_policy(self.run_config.failure_config),
+                train_run_context=self.train_run_context,
+                callbacks=self._create_default_callbacks(),
+            )
 
-        if result.error:
-            # NOTE: If the training run errored out, raise an error back to the
-            # user's driver script.
-            # For example, if the Train `FailurePolicy` runs out of retries,
-            # and one of the workers errors. The controller will exit, and
-            # the error will be raised here.
-            raise result.error
+            if result.error:
+                # NOTE: If the training run errored out, raise an error back to the
+                # user's driver script.
+                # For example, if the Train `FailurePolicy` runs out of retries,
+                # and one of the workers errors. The controller will exit, and
+                # the error will be raised here.
+                raise result.error
 
-        return result
+            return result
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable

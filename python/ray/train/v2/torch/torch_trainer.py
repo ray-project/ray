@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from ray.train import Checkpoint, DataConfig, Result
+from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
@@ -179,9 +179,6 @@ class TorchTrainer(DataParallelTrainer):
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
-        running_without_ray_train_controller: Whether the training job is running
-            without the ray train controller. If set to True, the trainer will be
-            running locally without the ray train controller.
     """
 
     def __init__(
@@ -197,21 +194,8 @@ class TorchTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        running_without_ray_train_controller: Optional[bool] = False,
     ):
-
         from ray.train.torch.config import TorchConfig
-
-        self.running_without_ray_train_controller = running_without_ray_train_controller
-
-        if self.running_without_ray_train_controller:
-            from ray.train.v2._internal.execution.torch_without_ray_train_controller import (
-                TorchBackendWithoutRayTrainController,
-            )
-
-            self.backend_without_ray_train = TorchBackendWithoutRayTrainController(
-                datasets=datasets
-            )
 
         torch_config = torch_config or TorchConfig()
         if not torch_config.backend:
@@ -229,20 +213,3 @@ class TorchTrainer(DataParallelTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )
-
-    def fit(self) -> Result:
-        """Run the training loop.
-        If running_without_ray_train_controller is True, the training loop will be run locally without the ray train controller.
-        Otherwise, will escalate to :meth:`~ray.train.v2.api.data_parallel_trainer.DataParallelTrainer.fit`.
-
-        Returns:
-            A Result object containing the training result.
-
-        Raises:
-            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
-            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
-        """
-        if self.running_without_ray_train_controller:
-            return self.backend_without_ray_train.fit(self._get_train_func())
-        else:
-            return super(TorchTrainer, self).fit()

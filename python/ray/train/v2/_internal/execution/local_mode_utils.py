@@ -18,7 +18,7 @@ from ray.train.v2.api.context import (
 logger = logging.getLogger(__name__)
 
 
-class TorchWithoutRayTrainControllerFnUtils(TrainFnUtils):
+class LocalModeTrainFnUtils(TrainFnUtils):
     """TrainFnUtils for jobs launched without ray train controller.
     This is more for testing purposes, and some functionality is missing.
     """
@@ -68,7 +68,7 @@ class TorchWithoutRayTrainControllerFnUtils(TrainFnUtils):
         return self._last_metrics
 
 
-class TorchBackendWithoutRayTrainController:
+class BackendForLocalMode:
     def __init__(self, datasets: Optional[Dict[str, GenDataset]] = None):
         if datasets is not None:
             datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
@@ -77,7 +77,7 @@ class TorchBackendWithoutRayTrainController:
         self.local_rank = 0
 
         set_train_fn_utils(
-            TorchWithoutRayTrainControllerFnUtils(
+            LocalModeTrainFnUtils(
                 experiment_name=self._get_experiment_name(),
                 local_world_size=self.local_world_size,
                 local_rank=self.local_rank,
@@ -86,12 +86,12 @@ class TorchBackendWithoutRayTrainController:
         )
 
     def _get_experiment_name(self) -> str:
-        return f"train_without_ray_train_controller-{date_str()}"
+        return f"local_training-{date_str()}"
 
     def fit(self, train_func: Callable[[], None]) -> Result:
         train_func()
         train_fn_utils = get_train_fn_utils()
-        assert isinstance(train_fn_utils, TorchWithoutRayTrainControllerFnUtils)
+        assert isinstance(train_fn_utils, LocalModeTrainFnUtils)
         return Result(
             metrics=train_fn_utils._get_last_metrics(),
             checkpoint=None,
