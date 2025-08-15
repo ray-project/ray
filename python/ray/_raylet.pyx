@@ -1002,7 +1002,6 @@ cdef prepare_args_internal(
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
-
 cdef raise_if_dependency_failed(arg):
     """This method is used to improve the readability of backtrace.
 
@@ -3385,6 +3384,25 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
+
+    def create_owned_object_reference(
+            self,
+            serialized_object,
+            c_bool pin_object=True,
+            owner_address=None,
+            c_bool inline_small_object=True,
+            c_bool _is_experimental_channel=False,
+    ):
+        """Create an object reference with the current worker as the owner.
+        """
+        created_object = self.put_serialized_object_and_increment_local_ref(serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+
+        return ObjectRef(
+            created_object,
+            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString(),
+            # Already added when the ref is updated.
+            skip_adding_local_ref=True
+        )
 
     def put_serialized_object_and_increment_local_ref(
             self,
