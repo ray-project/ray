@@ -99,7 +99,9 @@ test_coverage() {
 }
 
 api_annotations() {
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  python -m pip show setuptools || echo "setuptools not found"
+  python -m setuptools --version || true
+  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]" --config-settings editable_mode=compat
   ./ci/lint/check_api_annotations.py
 }
 
