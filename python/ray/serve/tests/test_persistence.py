@@ -4,7 +4,8 @@ from ray._private.test_utils import run_string_as_driver
 
 
 def test_new_driver(serve_instance):
-    run_string_as_driver("""
+    run_string_as_driver(
+        """
 import ray
 ray.init(address="{}", namespace="default_test_namespace")
 
@@ -16,8 +17,9 @@ def driver():
 
 serve.run(driver.bind(), name="app")
 """.format(
-        ray.get_runtime_context().gcs_address,
-    ))
+            ray.get_runtime_context().gcs_address,
+        )
+    )
 
     handle = serve.get_app_handle("app")
     assert handle.remote().result() == "OK!"
