@@ -502,7 +502,7 @@ std::string TaskSpecification::CallerWorkerIdBinary() const {
 }
 
 NodeID TaskSpecification::CallerNodeId() const {
-  return NodeID::FromBinary(message_->caller_address().raylet_id());
+  return NodeID::FromBinary(message_->caller_address().node_id());
 }
 
 // === Below are getter methods specific to actor tasks.

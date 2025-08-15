@@ -109,7 +109,7 @@ class GcsActor {
 
     actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
-    actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
+    actor_table_data_.mutable_address()->set_node_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);

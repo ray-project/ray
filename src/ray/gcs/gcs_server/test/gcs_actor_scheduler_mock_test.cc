@@ -130,7 +130,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnNode(node_id);
   ray::rpc::RequestWorkerLeaseReply reply;
-  reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
+  reply.mutable_worker_address()->set_node_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
   cb(Status::OK(), std::move(reply));
 }
@@ -162,7 +162,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
           DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
-  reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
+  reply.mutable_worker_address()->set_node_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
   request_worker_lease_cb(Status::OK(), std::move(reply));
 

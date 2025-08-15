@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
 namespace ipc {
@@ -29,7 +29,7 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
                              const std::string &ip_address,
                              const std::string &serialized_job_config,
                              const StartupToken &startup_token,
-                             NodeID *raylet_id,
+                             NodeID *node_id,
                              int *assigned_port) override {
     return Status::OK();
   }

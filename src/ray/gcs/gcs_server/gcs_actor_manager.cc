@@ -180,11 +180,11 @@ bool is_uuid(const std::string &str) {
 }
 
 NodeID GcsActor::GetNodeID() const {
-  const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
-  if (raylet_id_binary.empty()) {
+  const auto &node_id_binary = actor_table_data_.address().node_id();
+  if (node_id_binary.empty()) {
     return NodeID::Nil();
   }
-  return NodeID::FromBinary(raylet_id_binary);
+  return NodeID::FromBinary(node_id_binary);
 }
 
 void GcsActor::UpdateAddress(const rpc::Address &address) {
@@ -206,7 +206,7 @@ WorkerID GcsActor::GetOwnerID() const {
 }
 
 NodeID GcsActor::GetOwnerNodeID() const {
-  return NodeID::FromBinary(GetOwnerAddress().raylet_id());
+  return NodeID::FromBinary(GetOwnerAddress().node_id());
 }
 
 const rpc::Address &GcsActor::GetOwnerAddress() const {
@@ -798,12 +798,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                "explicitly connect to this namespace with ray.init(namespace=\""
             << actor->GetRayNamespace() << "\", ...)";
 
-        auto error_data_ptr = gcs::CreateErrorTableData(
+        auto error_data = CreateErrorTableData(
             "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
 
-        RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
-        RAY_CHECK_OK(
-            gcs_publisher_->PublishError(job_id.Hex(), *error_data_ptr, nullptr));
+        RAY_LOG(WARNING) << error_data.SerializeAsString();
+        gcs_publisher_->PublishError(job_id.Hex(), std::move(error_data));
       }
       actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
     } else {
@@ -819,7 +818,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   function_manager_.AddJobReference(actor_id.JobId());
 
   const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
@@ -866,8 +865,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                   return;
                 }
 
-                RAY_CHECK_OK(gcs_publisher_->PublishActor(
-                    actor->GetActorID(), actor->GetActorTableData(), nullptr));
+                gcs_publisher_->PublishActor(actor->GetActorID(),
+                                             actor->GetActorTableData());
                 // Invoke all callbacks for all registration requests of this actor
                 // (duplicated requests are included) and remove all of them from
                 // actor_to_register_callbacks_.
@@ -948,7 +947,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
       current_sys_time_ms());
 
   // Pub this state for dashboard showing.
-  RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
+  gcs_publisher_->PublishActor(actor_id, actor_table_data);
   actor->WriteActorExportEvent();
   RemoveUnresolvedActor(actor);
 
@@ -1168,8 +1167,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
          if (done_callback) {
            done_callback();
          }
-         RAY_CHECK_OK(gcs_publisher_->PublishActor(
-             actor_id, GenActorDataOnlyWithStates(*actor_table_data), nullptr));
+         gcs_publisher_->PublishActor(actor_id,
+                                      GenActorDataOnlyWithStates(*actor_table_data));
          if (!is_restartable) {
            RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(
                actor_id, {[](auto) {}, io_context_}));
@@ -1404,8 +1403,8 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
         actor_id,
         actor_table_data,
         {[this, actor_id, actor_table_data](Status status) {
-           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-               actor_id, GenActorDataOnlyWithStates(actor_table_data), nullptr));
+           gcs_publisher_->PublishActor(actor_id,
+                                        GenActorDataOnlyWithStates(actor_table_data));
          },
          io_context_}));
   }
@@ -1483,8 +1482,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            if (done_callback) {
              done_callback();
            }
-           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-               actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
+           gcs_publisher_->PublishActor(
+               actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
            actor->WriteActorExportEvent();
          },
          io_context_}));
@@ -1512,8 +1511,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            if (done_callback) {
              done_callback();
            }
-           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-               actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
+           gcs_publisher_->PublishActor(
+               actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
            RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(
                actor_id, {[](auto) {}, io_context_}));
            actor->WriteActorExportEvent();
@@ -1618,14 +1617,18 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
 
-  auto actor_table_data = *mutable_actor_table_data;
+  auto actor_data_only_with_states =
+      GenActorDataOnlyWithStates(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id,
-      actor_table_data,
-      {[this, actor_id, actor_table_data, actor, reply](Status status) {
-         RAY_CHECK_OK(gcs_publisher_->PublishActor(
-             actor_id, GenActorDataOnlyWithStates(actor_table_data), nullptr));
+      *mutable_actor_table_data,
+      {[this,
+        actor_id,
+        actor_data_only_with_states = std::move(actor_data_only_with_states),
+        actor,
+        reply](Status status) mutable {
+         gcs_publisher_->PublishActor(actor_id, std::move(actor_data_only_with_states));
          actor->WriteActorExportEvent();
          // Invoke all callbacks for all registration requests of this actor (duplicated
          // requests are included) and remove all of them from
@@ -1669,7 +1672,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
 
       if (actor_table_data.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
         const auto &owner = actor->GetOwnerAddress();
-        const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
+        const auto &owner_node = NodeID::FromBinary(owner.node_id());
         const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
         RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                       .emplace(actor->GetActorID())
@@ -1738,7 +1741,7 @@ const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
 
 void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor) {
   const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.node_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
