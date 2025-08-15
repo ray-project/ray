@@ -21,7 +21,7 @@
 #include <string_view>
 #include <utility>
 
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/compat.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/spdlog_fd_sink.h"
