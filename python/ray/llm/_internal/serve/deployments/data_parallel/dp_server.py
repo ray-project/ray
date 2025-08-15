@@ -39,31 +39,21 @@ class DPServer(LLMServer):
         if self.dp_rank == 0:
             self.dp_address = get_ip()
             self.dp_rpc_port = get_open_port()
-            self.dp_rank_assigner.set_dp_master_info.remote(
+            await self.dp_rank_assigner.set_dp_master_info.remote(
                 self.dp_address, self.dp_rpc_port
             )
             logger.info(
                 f"DP rank {self.dp_rank} has set DP master info: {self.dp_address}, {self.dp_rpc_port}"
             )
         else:
-            waited_seconds = 0
-            while True:
-                (
-                    dp_address,
-                    dp_rpc_port,
-                ) = await self.dp_rank_assigner.get_dp_master_info.remote()
-                if dp_address and dp_rpc_port:
-                    self.dp_address = dp_address
-                    self.dp_rpc_port = dp_rpc_port
-                    break
-                logger.info(
-                    f"DP rank {self.dp_rank} is waiting for DP master info, "
-                    f"already waited for {waited_seconds} seconds"
-                )
-                time.sleep(1)
-                waited_seconds += 1
+            timestamp = time.time()
+            (
+                self.dp_address,
+                self.dp_rpc_port,
+            ) = await self.dp_rank_assigner.get_dp_master_info.remote()
             logger.info(
-                f"DP rank {self.dp_rank} got DP master info: {self.dp_address}, {self.dp_rpc_port}"
+                f"DP rank {self.dp_rank} got DP master info: {self.dp_address}, {self.dp_rpc_port}, "
+                f"after waiting for {time.time() - timestamp:.3f} seconds"
             )
 
         # override the engine_kwargs to assign the DP rank.
