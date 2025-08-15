@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 
 from ray import serve
@@ -6,6 +7,10 @@ from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUES
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
+)
+from ray.llm._internal.serve.deployments.data_parallel.utils import (
+    get_ip,
+    get_open_port,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.serve.deployment import Application
@@ -29,10 +34,43 @@ class DPServer(LLMServer):
 
         replica_ctx = serve.get_replica_context()
         self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx)
-        logger.info(f"DP rank: {self.dp_rank}")
+        logger.info(f"DP rank {self.dp_rank} has registered")
+
+        if self.dp_rank == 0:
+            self.dp_address = get_ip()
+            self.dp_rpc_port = get_open_port()
+            self.dp_rank_assigner.set_dp_master_info.remote(
+                self.dp_address, self.dp_rpc_port
+            )
+            logger.info(
+                f"DP rank {self.dp_rank} has set DP master info: {self.dp_address}, {self.dp_rpc_port}"
+            )
+        else:
+            timeout = 20
+            while timeout > 0:
+                (
+                    dp_address,
+                    dp_rpc_port,
+                ) = await self.dp_rank_assigner.get_dp_master_info.remote()
+                if dp_address and dp_rpc_port:
+                    self.dp_address = dp_address
+                    self.dp_rpc_port = dp_rpc_port
+                    break
+                logger.info(
+                    f"DP rank {self.dp_rank} is waiting for DP master info, timeout in {timeout} seconds"
+                )
+                time.sleep(1)
+                timeout -= 1
+            if timeout == 0:
+                raise TimeoutError("Failed to get DP master info")
+            logger.info(
+                f"DP rank {self.dp_rank} got DP master info: {self.dp_address}, {self.dp_rpc_port}"
+            )
 
         # override the engine_kwargs to assign the DP rank.
         llm_config.engine_kwargs["data_parallel_rank"] = self.dp_rank
+        llm_config.engine_kwargs["data_parallel_address"] = self.dp_address
+        llm_config.engine_kwargs["data_parallel_rpc_port"] = self.dp_rpc_port
 
         await super().__init__(llm_config)
 
