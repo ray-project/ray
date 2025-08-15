@@ -1,4 +1,3 @@
-
 import os
 import warnings
 from typing import Any, Callable, Dict, Optional
@@ -131,29 +130,37 @@ class XGBoostTrainer(DataParallelTrainer):
         if self.use_external_memory:
             # Tree method 'hist' is required for external memory training
             # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
-            if not hasattr(self.xgboost_config, 'tree_method') or self.xgboost_config.tree_method != 'hist':
-                self.xgboost_config.tree_method = 'hist'
+            if (
+                not hasattr(self.xgboost_config, "tree_method")
+                or self.xgboost_config.tree_method != "hist"
+            ):
+                self.xgboost_config.tree_method = "hist"
                 warnings.warn(
                     "Tree method automatically set to 'hist' for external memory training."
                 )
-            
+
             # Grow policy 'depthwise' is recommended for external memory training
             # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
-            if not hasattr(self.xgboost_config, 'grow_policy') or self.xgboost_config.grow_policy != 'depthwise':
-                self.xgboost_config.grow_policy = 'depthwise'
+            if (
+                not hasattr(self.xgboost_config, "grow_policy")
+                or self.xgboost_config.grow_policy != "depthwise"
+            ):
+                self.xgboost_config.grow_policy = "depthwise"
                 warnings.warn(
                     "Grow policy automatically set to 'depthwise' for external memory training."
                 )
 
     def _apply_gpu_best_practices(self):
         """Apply XGBoost's recommended GPU optimization settings."""
-        if (self.scaling_config and 
-            hasattr(self.scaling_config, 'use_gpu') and 
-            self.scaling_config.use_gpu):
-            
+        if (
+            self.scaling_config
+            and hasattr(self.scaling_config, "use_gpu")
+            and self.scaling_config.use_gpu
+        ):
+
             # Enable RMM for optimal GPU memory management if user hasn't specified
             # See: https://docs.rapids.ai/api/rmm/stable/
-            if not hasattr(self.xgboost_config, 'use_rmm'):
+            if not hasattr(self.xgboost_config, "use_rmm"):
                 if self.use_rmm is not None:
                     self.xgboost_config.use_rmm = self.use_rmm
                 else:
@@ -163,10 +170,10 @@ class XGBoostTrainer(DataParallelTrainer):
                     warnings.warn(
                         "GPU detected. RMM automatically enabled for optimal GPU memory management."
                     )
-            
+
             # Set optimal cache host ratio for GPU training
             # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
-            if not hasattr(self.xgboost_config, 'cache_host_ratio'):
+            if not hasattr(self.xgboost_config, "cache_host_ratio"):
                 # Optimal cache host ratio for GPU external memory training
                 # See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
                 self.xgboost_config.cache_host_ratio = 0.8
@@ -189,6 +196,7 @@ class XGBoostTrainer(DataParallelTrainer):
                 from ray.train.v2.xgboost._external_memory_utils import (
                     _create_external_memory_dmatrix,
                 )
+
                 self._external_memory_utility = _create_external_memory_dmatrix
             except ImportError as e:
                 warnings.warn(f"Could not import external memory utilities: {e}")
@@ -212,22 +220,20 @@ class XGBoostTrainer(DataParallelTrainer):
             raise RuntimeError(
                 "External memory is disabled. Enable it by setting use_external_memory=True."
             )
-        
-        if not hasattr(self, '_external_memory_utility'):
+
+        if not hasattr(self, "_external_memory_utility"):
             raise RuntimeError(
                 "External memory utilities are not available. "
                 "This may happen if XGBoost is not properly installed."
             )
-        
+
         # Use the trainer's cache directory if not specified in kwargs
-        if 'cache_dir' not in kwargs and self.cache_dir:
-            kwargs['cache_dir'] = self.cache_dir
-        
+        if "cache_dir" not in kwargs and self.cache_dir:
+            kwargs["cache_dir"] = self.cache_dir
+
         # Create the external memory DMatrix
         return self._external_memory_utility(
-            dataset_shard=dataset_shard,
-            label_column=label_column,
-            **kwargs
+            dataset_shard=dataset_shard, label_column=label_column, **kwargs
         )
 
     def __del__(self):
