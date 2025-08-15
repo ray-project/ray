@@ -148,8 +148,8 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    model_loading_config: Union[ModelLoadingConfig, Dict[str, Any]] = Field(
-        description="The settings for how to download and expose the model."
+    model_loading_config: Dict[str, Any] = Field(
+        description="The settings for how to download and expose the model. Validated against ModelLoadingConfig."
     )
 
     llm_engine: str = Field(
@@ -179,8 +179,9 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[Union[LoraConfig, Dict[str, Any]]] = Field(
-        default=None, description="Settings for LoRA adapter."
+    lora_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Settings for LoRA adapter. Validated against LoraConfig.",
     )
 
     deployment_config: Dict[str, Any] = Field(
@@ -192,7 +193,7 @@ class LLMConfig(BaseModelExtended):
             `autoscaling_config`, `max_queued_requests`, `user_config`,
             `health_check_period_s`, `health_check_timeout_s`,
             `graceful_shutdown_wait_loop_s`, `graceful_shutdown_timeout_s`,
-            `logging_config`.
+            `logging_config`, `request_router_config`.
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
@@ -309,6 +310,30 @@ class LLMConfig(BaseModelExtended):
             DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
+
+        return value
+
+    @field_validator("model_loading_config")
+    def validate_model_loading_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the model loading config dictionary."""
+        try:
+            ModelLoadingConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid model_loading_config: {value}") from e
+
+        return value
+
+    @field_validator("lora_config")
+    def validate_lora_config(
+        cls, value: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Validates the lora config dictionary."""
+        if value is None:
+            return value
+        try:
+            LoraConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid lora_config: {value}") from e
 
         return value
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, overload
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -52,9 +52,12 @@ def _get_llm_deployments(
     return llm_deployments
 
 
-def build_openai_app(
-    llm_serving_args: Union[LLMServingArgs, Dict[str, Any]]
-) -> Application:
+@overload
+def build_openai_app(llm_serving_args: Dict[str, Any]) -> Application:
+    ...
+
+
+def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
     rayllm_args = LLMServingArgs.model_validate(llm_serving_args).parse_args()
 
     llm_configs = rayllm_args.llm_configs
