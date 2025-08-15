@@ -19,7 +19,7 @@
 #include <memory>
 #include <utility>
 
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 
 namespace ray {
 

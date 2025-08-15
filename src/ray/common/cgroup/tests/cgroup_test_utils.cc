@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/cgroup/test/cgroup_test_utils.h"
+#include "ray/common/cgroup/tests/cgroup_test_utils.h"
 
 #include <gtest/gtest.h>
 
@@ -21,7 +21,7 @@
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/container_util.h"
 #include "ray/util/filesystem.h"
 

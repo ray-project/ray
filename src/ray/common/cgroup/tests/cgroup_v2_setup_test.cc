@@ -20,7 +20,7 @@
 // https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/8/html/managing_monitoring_and_updating_the_kernel/using-cgroups-v2-to-control-distribution-of-cpu-time-for-applications_managing-monitoring-and-updating-the-kernel#mounting-cgroups-v2_using-cgroups-v2-to-control-distribution-of-cpu-time-for-applications
 //
 // Execution command:
-// sudo bazel-bin/src/ray/common/cgroup/test/cgroup_v2_setup_test
+// sudo bazel-bin/src/ray/common/cgroup/tests/cgroup_v2_setup_test
 
 #include <gtest/gtest.h>
 #include <sys/types.h>
@@ -35,8 +35,8 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 #include "ray/common/cgroup/cgroup_utils.h"
-#include "ray/common/cgroup/test/cgroup_test_utils.h"
-#include "ray/common/test/testing.h"
+#include "ray/common/cgroup/tests/cgroup_test_utils.h"
+#include "ray/common/tests/testing.h"
 
 namespace ray {
 

@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "ray/common/cgroup/cgroup_setup.h"
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 
 namespace ray::internal {
 
