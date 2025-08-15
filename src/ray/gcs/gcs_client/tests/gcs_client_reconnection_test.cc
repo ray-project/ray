@@ -25,7 +25,7 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"

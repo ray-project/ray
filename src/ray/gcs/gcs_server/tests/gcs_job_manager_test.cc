@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"

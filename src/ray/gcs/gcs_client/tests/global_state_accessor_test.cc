@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/path_utils.h"
 

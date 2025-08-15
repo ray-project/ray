@@ -19,7 +19,7 @@
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"

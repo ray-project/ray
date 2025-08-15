@@ -24,7 +24,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "mock/ray/pubsub/publisher.h"
 // clang-format on
 

@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
 
