@@ -22,6 +22,14 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
+// Configuration options for Serve's autoscaling policy
+message AutoscalingPolicy {
+  // Name of the policy function or the import path of the policy if user passed a string.
+  // Will be the concatenation of the policy module and the policy name if user passed a
+  // callable.
+  string name = 1;
+}
+
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
@@ -31,7 +39,10 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // The frequency of how long does each replica sending metrics to autoscaler.
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this will be replaced by the environment variables
+  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
+  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
   double metrics_interval_s = 3;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
@@ -58,9 +69,8 @@ message AutoscalingConfig {
   // The cloudpickled policy definition.
   bytes _serialized_policy_def = 11;
 
-  // The import path of the policy if user passed a string. Will be the concatenation
-  // of the policy module and the policy name if user passed a callable.
-  string _policy = 12;
+  // The autoscaling policy definition.
+  AutoscalingPolicy _policy = 12;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas

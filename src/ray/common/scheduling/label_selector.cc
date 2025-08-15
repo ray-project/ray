@@ -14,6 +14,9 @@
 
 #include "ray/common/scheduling/label_selector.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/match.h"
 #include "ray/util/logging.h"
 

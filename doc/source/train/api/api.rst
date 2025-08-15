@@ -104,6 +104,7 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
 
 

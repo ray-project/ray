@@ -28,6 +28,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/pubsub.grpc.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -46,7 +47,8 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
       rpc::PubsubLongPollingReply *reply) override {
     auto *reactor = context->DefaultReactor();
     publisher_->ConnectToSubscriber(*request,
-                                    reply,
+                                    reply->mutable_publisher_id(),
+                                    reply->mutable_pub_messages(),
                                     [reactor](ray::Status status,
                                               std::function<void()> success_cb,
                                               std::function<void()> failure_cb) {
@@ -194,7 +196,7 @@ class IntegrationTest : public ::testing::Test {
         /*get_client=*/
         [](const rpc::Address &address) {
           return std::make_shared<CallbackSubscriberClient>(
-              absl::StrCat(address.ip_address(), ":", address.port()));
+              BuildAddress(address.ip_address(), address.port()));
         },
         io_service_.Get());
   }
