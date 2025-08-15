@@ -126,32 +126,32 @@ class CreateRequestQueue {
                   const std::shared_ptr<ClientInterface> &client,
                   CreateObjectCallback create_callback,
                   size_t object_size)
-        : object_id(object_id),
-          request_id(request_id),
-          client(client),
-          create_callback(create_callback),
-          object_size(object_size) {}
+        : object_id_(object_id),
+          request_id_(request_id),
+          client_(client),
+          create_callback_(create_callback),
+          object_size_(object_size) {}
 
     // The ObjectID to create.
-    const ObjectID object_id;
+    const ObjectID object_id_;
 
     // A request ID that can be returned to the caller to get the result once
     // ready.
-    const uint64_t request_id;
+    const uint64_t request_id_;
 
     // A pointer to the client, used as a key to delete requests that were made
     // by a client that is now disconnected.
-    const std::shared_ptr<ClientInterface> client;
+    const std::shared_ptr<ClientInterface> client_;
 
     // A callback to attempt to create the object.
-    const CreateObjectCallback create_callback;
+    const CreateObjectCallback create_callback_;
 
-    const size_t object_size;
+    const size_t object_size_;
 
     // The results of the creation call. These should be sent back to the
     // client once ready.
-    PlasmaError error = PlasmaError::OK;
-    PlasmaObject result = {};
+    PlasmaError error_ = PlasmaError::OK;
+    PlasmaObject result_ = {};
   };
 
   /// Process a single request. Sets the request's error result to the error

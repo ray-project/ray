@@ -249,8 +249,8 @@ void ServerConnection::DoAsyncWrites() {
   }
 
   // Helper function to call all handlers with the input status.
-  auto call_handlers = [this](const ray::Status &status, int num_messages) {
-    for (int i = 0; i < num_messages; i++) {
+  auto call_handlers = [this](const ray::Status &status, int num_msgs) {
+    for (int i = 0; i < num_msgs; i++) {
       auto write_buffer = std::move(async_write_queue_.front());
       write_buffer->handler(status);
       async_write_queue_.pop_front();
