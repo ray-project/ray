@@ -3388,10 +3388,11 @@ cdef class CoreWorker:
     def put_object(
             self,
             serialized_object,
-            c_bool pin_object=True,
-            owner_address=None,
-            c_bool inline_small_object=True,
-            c_bool _is_experimental_channel=False,
+            *,
+            c_bool pin_object,
+            owner_address,
+            c_bool inline_small_object,
+            c_bool _is_experimental_channel,
     ):
         """Create an object reference with the current worker as the owner.
         """
