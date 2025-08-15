@@ -60,7 +60,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask
         --install-mask all-ray-libraries
 
   - label: ":ray: core: cgraph python tests"
@@ -86,7 +86,7 @@ steps:
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
     depends_on: corebuild-multipy
     matrix:
       setup:
@@ -115,7 +115,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
 
   - label: ":ray: core: memory pressure tests"
     tags:
@@ -433,10 +433,10 @@ steps:
       - raycpubase
       - corebuild
 
-  - label: ":ray: core: container tests"
+  - label: ":ray: core: runtime env container tests"
     tags:
-      - python
       - docker
+      - runtime_env_container
       - oss
     instance_type: medium
     commands:
@@ -447,7 +447,7 @@ steps:
       # Disable test DB, these tests will never succeed if run in the flaky step.
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask all-ray-libraries
-        --only-tags container
+        --only-tags runtime_env_container
     depends_on:
       - manylinux
       - forge

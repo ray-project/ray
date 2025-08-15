@@ -99,6 +99,10 @@ python/ray/util/spark/
 @ python spark_on_ray
 ;
 
+python/ray/runtime_env/
+@ python runtime_env_container
+;
+
 python/
 @ ml tune train data
 # Python changes might impact cross language stack in Java.
