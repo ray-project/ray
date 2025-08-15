@@ -462,7 +462,7 @@ py_test(
     srcs = ["ray_release/tests/test_custom_byod_build_init.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
-        "ray_release/tests/custom_byod_build_expected.yaml"
+        "ray_release/tests/custom_byod_build_expected.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
