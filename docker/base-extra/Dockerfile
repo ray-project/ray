@@ -7,6 +7,7 @@ FROM "$BASE_IMAGE"
 ENV TERM=xterm
 
 ARG SSH_PORT=5020
+ARG RAY_IMAGE_TESTING=0
 
 RUN <<EOF
 #!/bin/bash
@@ -41,8 +42,37 @@ wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
     | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
 
 # Add gdb since ray dashboard uses `memray attach`, which requires gdb.
+
+DEB_PKGS=(
+    google-cloud-sdk
+    supervisor
+    vim
+    zsh
+    nfs-common
+    zip
+    unzip
+    build-essential
+    ssh
+    curl
+    gdb
+)
+
+if [[ "$RAY_IMAGE_TESTING" == "1" ]]; then
+    DEB_PKGS+=(
+        apt-transport-https
+        ca-certificates
+        htop
+        libaio1
+        libgl1-mesa-glx
+        libglfw3
+        libjemalloc-dev
+        libosmesa6-dev
+        patchelf
+    )
+fi
+
 sudo apt-get update -y
-sudo apt-get install -y google-cloud-sdk supervisor vim zsh nfs-common zip unzip build-essential ssh curl gdb
+sudo apt-get install -y "${DEB_PKGS[@]}"
 sudo apt-get autoclean
 
 # Install azcopy
