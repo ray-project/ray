@@ -106,7 +106,7 @@ class _LLMServerBase(ABC):
 
     @abstractmethod
     async def reset_prefix_cache(self) -> None:
-        """Restarts the prefix cache of the underlying engine"""
+        """Reset the prefix cache of the underlying engine"""
 
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
@@ -398,6 +398,7 @@ class LLMServer(_LLMServerBase):
             raise e
 
     async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
         if self.engine is None:
             return
         try:

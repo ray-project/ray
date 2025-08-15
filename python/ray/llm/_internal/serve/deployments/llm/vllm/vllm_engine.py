@@ -480,5 +480,5 @@ class VLLMEngine(LLMEngine):
             raise e from None
 
     async def reset_prefix_cache(self) -> None:
-        assert self._engine_client is not None
+        assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.reset_prefix_cache()

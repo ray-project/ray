@@ -38,7 +38,7 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def reset_prefix_cache(self) -> None:
-        """Restarts the prefix cache of the underlying engine"""
+        """Reset the prefix cache of the underlying engine"""
 
     @abc.abstractmethod
     async def chat(
