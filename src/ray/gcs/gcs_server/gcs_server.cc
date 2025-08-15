@@ -118,24 +118,32 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   auto &io_context = io_context_provider_.GetDefaultIOContext();
+  std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>();
+    store_client = std::make_unique<InMemoryStoreClient>();
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);
-    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ =
-        std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
+    store_client = std::make_unique<RedisStoreClient>(redis_client);
+
+    // Health check Redis periodically and crash if it becomes unavailable.
+    redis_health_check_periodical_runner_ = PeriodicalRunner::Create(io_context);
+    redis_health_check_periodical_runner_->RunFnPeriodically(
+        [*store_client] {
+          store_client.AsyncCheckHealth([](const Status &status) {
+            RAY_CHECK_OK(status) << "Redis connection failed.";
+          })
+        },
+        RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+        "GcsServer.deadline_timer.redis_health_check");
     break;
   }
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
+
+  gcs_table_storage_ = std::make_unique<GcsTableStorage>(std::move(store_client));
 
   auto inner_publisher = std::make_unique<pubsub::Publisher>(
       /*channels=*/
@@ -158,14 +166,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 }
 
 GcsServer::~GcsServer() { Stop(); }
-
-RedisClientOptions GcsServer::GetRedisClientOptions() const {
-  return RedisClientOptions(config_.redis_address,
-                            config_.redis_port,
-                            config_.redis_username,
-                            config_.redis_password,
-                            config_.enable_redis_ssl);
-}
 
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
@@ -322,8 +322,8 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
-    if (gcs_redis_failure_detector_) {
-      gcs_redis_failure_detector_->Stop();
+    if (redis_health_check_periodical_runner_) {
+      redis_health_check_periodical_runner_.reset();
     }
 
     RAY_LOG(INFO) << "GCS server stopped.";
@@ -875,7 +875,12 @@ std::string GcsServer::GetDebugState() const {
 
 std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
     instrumented_io_context &io_service) {
-  auto redis_client = std::make_shared<RedisClient>(GetRedisClientOptions());
+  auto redis_client =
+      std::make_shared<RedisClient>(RedisClientOptions(config_.redis_address,
+                                                       config_.redis_port,
+                                                       config_.redis_username,
+                                                       config_.redis_password,
+                                                       config_.enable_redis_ssl));
   auto status = redis_client->Connect(io_service);
   RAY_CHECK_OK(status) << "Failed to init redis gcs client";
   return redis_client;
