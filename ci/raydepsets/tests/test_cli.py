@@ -14,7 +14,6 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
-    _append_uv_flags,
     _flatten_flags,
     _get_depset,
     _override_uv_flags,
@@ -151,6 +150,27 @@ class TestCli(unittest.TestCase):
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
+    def test_compile_with_append_and_override_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--python-version 3.10"],
+                override_flags=["--extra-index-url https://dummyurl.com"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            output_text = output_file.read_text()
+            assert "--python-version 3.10" in output_text
+            assert "--extra-index-url https://dummyurl.com" in output_text
+            assert (
+                "--extra-index-url https://download.pytorch.org/whl/cu128"
+                not in output_text
+            )
+
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
@@ -275,16 +295,6 @@ class TestCli(unittest.TestCase):
                 manager.get_path("requirements_test.txt")
                 == f"{tmpdir}/requirements_test.txt"
             )
-
-    def test_append_uv_flags(self):
-        assert _append_uv_flags(
-            ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
-        ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
-
-    def test_append_uv_flags_int(self):
-        assert _append_uv_flags(
-            ["--python-version=3.10"], DEFAULT_UV_FLAGS.copy()
-        ) == DEFAULT_UV_FLAGS.copy() + ["--python-version=3.10"]
 
     def test_append_uv_flags_exist_in_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
