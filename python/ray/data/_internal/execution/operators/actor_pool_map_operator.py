@@ -175,6 +175,9 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+        self._execution_started = False
+        self._execution_options = None
+
     @staticmethod
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
@@ -194,8 +197,37 @@ class ActorPoolMapOperator(MapOperator):
         )
 
     def start(self, options: ExecutionOptions):
+        """Initialize the operator but don't start actors yet."""
         self._actor_locality_enabled = options.actor_locality_enabled
+        self._execution_options = options
         super().start(options)
+        # Don't start actors here - wait until start_execution() is called
+
+    def can_start_immediately(self) -> bool:
+        """Actor operators should not start actors until they're eligible to run."""
+        return False
+
+    def should_start_execution(self) -> bool:
+        """Check if this operator should start launching actors."""
+        return not self._execution_started and self._started
+
+    def start_execution(self, options: ExecutionOptions) -> None:
+        """Start launching actors when the operator becomes eligible to run."""
+        if self._execution_started:
+            return
+
+        self._execution_started = True
+
+        # Run the transformer’s initialization on the driver as well so that any
+        # side-effects (for example, updating module-level state used in tests)
+        # become visible immediately.  The transformer will still be (re)-
+        # initialised inside every worker, so this is safe and idempotent.
+        try:
+            self._map_transformer.init()
+        except Exception:
+            # Don’t fail operator start if user init fails here; the same error
+            # will surface again in the worker where it’ll be reported normally.
+            pass
 
         # Create the actor workers and add them to the pool.
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
@@ -228,6 +260,9 @@ class ActorPoolMapOperator(MapOperator):
                 )
 
     def should_add_input(self) -> bool:
+        """Don't accept input until actors are starting/started."""
+        if not self._execution_started:
+            return False
         return self._actor_pool.num_free_task_slots() > 0
 
     def _start_actor(
@@ -474,7 +509,12 @@ class ActorPoolMapOperator(MapOperator):
         return ray_remote_args
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
-        return [self._actor_pool]
+        # Only allow autoscaling after execution has started to prevent
+        # scaling before actors are properly initialized
+        if self._execution_started:
+            return [self._actor_pool]
+        else:
+            return []
 
     def update_resource_usage(self) -> None:
         """Updates resources usage."""

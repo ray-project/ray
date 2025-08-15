@@ -445,6 +445,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 self._resource_manager,
                 self._backpressure_policies,
+                self._options,
                 # If consumer is idling (there's nothing for it to consume)
                 # enforce liveness, ie that at least a single task gets scheduled
                 ensure_liveness=self._consumer_idling(),

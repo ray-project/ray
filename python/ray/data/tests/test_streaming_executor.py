@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
@@ -26,6 +27,12 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
 )
 from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -41,6 +48,7 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
+    _is_stage_eligible_to_run,
     _rank_operators,
     build_streaming_topology,
     get_eligible_operators,
@@ -919,6 +927,314 @@ def test_create_topology_metadata_with_sub_stages():
     assert sub_stage1.id.endswith("_sub_0")
     assert sub_stage2.name == "SubStage2"
     assert sub_stage2.id.endswith("_sub_1")
+
+
+def test_lazy_actor_starting():
+    """Test that actor operators don't start actors immediately during topology setup."""
+    inputs = make_ref_bundles([[x] for x in range(10)])
+
+    # Create a simple pipeline: Input -> Map (actors) -> Map (tasks)
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+
+    # Create an actor map operator
+    actor_map_op = ActorPoolMapOperator(
+        map_transformer=make_map_transformer(lambda block: [b * 2 for b in block]),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=1),
+        name="ActorMap",
+    )
+
+    # Create a task map operator after the actor operator
+    task_map_op = MapOperator.create(
+        make_map_transformer(lambda block: [b + 1 for b in block]),
+        actor_map_op,
+        DataContext.get_current(),
+        name="TaskMap",
+    )
+
+    # Build topology - this should not start actors yet
+    opts = ExecutionOptions()
+    topology, _ = build_streaming_topology(task_map_op, opts)
+
+    # Verify that the actor operator is marked as not execution-started
+    actor_state = topology[actor_map_op]
+    assert (
+        not actor_state._execution_started
+    ), "Actor operator should not have started execution yet"
+
+    # Verify that the actor operator's should_add_input returns False initially
+    assert (
+        not actor_map_op.should_add_input()
+    ), "Actor operator should not accept input before execution starts"
+
+    # Verify that can_start_immediately returns False for actor operators
+    assert (
+        not actor_map_op.can_start_immediately()
+    ), "Actor operators should not start immediately"
+
+
+def test_stage_eligibility_logic():
+    """Test the _is_stage_eligible_to_run logic for different operator types."""
+    inputs = make_ref_bundles([[x] for x in range(5)])
+
+    # Test case 1: Input operators are always eligible
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+    topology = {input_op: OpState(input_op, [])}
+
+    assert _is_stage_eligible_to_run(
+        input_op, topology
+    ), "Input operators should always be eligible"
+
+    # Test case 2: Streaming operator with no output from dependency should not be eligible
+    map_op = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        input_op,
+        DataContext.get_current(),
+    )
+    map_state = OpState(map_op, [OpBufferQueue()])
+    input_state = OpState(input_op, [])
+    topology = {input_op: input_state, map_op: map_state}
+
+    # Initially not eligible (no output from input_op)
+    assert not _is_stage_eligible_to_run(
+        map_op, topology
+    ), "Map operator should not be eligible without input output"
+
+    # After input produces output, should be eligible
+    input_state.num_completed_tasks = 1
+    assert _is_stage_eligible_to_run(
+        map_op, topology
+    ), "Map operator should be eligible after input produces output"
+
+    # Test case 3: AllToAllOperator must be completed for downstream to be eligible
+    from ray.data._internal.execution.operators.base_physical_operator import (
+        AllToAllOperator,
+    )
+
+    def dummy_all_to_all_fn(bundles, ctx):
+        return bundles, {}
+
+    all_to_all_op = AllToAllOperator(
+        bulk_fn=dummy_all_to_all_fn,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        name="AllToAll",
+    )
+
+    downstream_op = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        all_to_all_op,
+        DataContext.get_current(),
+    )
+
+    all_to_all_state = OpState(all_to_all_op, [OpBufferQueue()])
+    downstream_state = OpState(downstream_op, [OpBufferQueue()])
+    topology = {
+        input_op: input_state,
+        all_to_all_op: all_to_all_state,
+        downstream_op: downstream_state,
+    }
+
+    # Should not be eligible until AllToAllOperator completes
+    assert not _is_stage_eligible_to_run(
+        downstream_op, topology
+    ), "Downstream should not be eligible until AllToAll completes"
+
+    # Mark AllToAllOperator as completed
+    all_to_all_op.mark_execution_finished()
+    assert _is_stage_eligible_to_run(
+        downstream_op, topology
+    ), "Downstream should be eligible after AllToAll completes"
+
+
+def test_lazy_actor_starting_with_get_eligible_operators():
+    """Test that lazy actor starting is triggered during get_eligible_operators."""
+    inputs = make_ref_bundles([[x] for x in range(5)])
+
+    # Create pipeline: Input -> AllToAll -> ActorMap
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+
+    def dummy_all_to_all_fn(bundles, ctx):
+        return bundles, {}
+
+    all_to_all_op = AllToAllOperator(
+        bulk_fn=dummy_all_to_all_fn,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        name="AllToAll",
+    )
+
+    actor_map_op = ActorPoolMapOperator(
+        map_transformer=make_map_transformer(lambda block: [b * 2 for b in block]),
+        input_op=all_to_all_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=1),
+        name="ActorMap",
+    )
+
+    # Build topology
+    opts = ExecutionOptions()
+    topology, _ = build_streaming_topology(actor_map_op, opts)
+
+    # Initially, actor operator should not have started execution
+    actor_state = topology[actor_map_op]
+    assert not actor_state._execution_started
+
+    # Mock the start_execution method to verify it gets called
+    with patch.object(actor_map_op, "start_execution") as mock_start_execution:
+        # Complete the AllToAllOperator to make the stage eligible
+        all_to_all_op.mark_execution_finished()
+
+        # Add some output to AllToAllOperator
+        all_to_all_state = topology[all_to_all_op]
+        all_to_all_state.output_queue.append(make_ref_bundle("dummy"))
+
+        # Call get_eligible_operators - this should trigger lazy starting
+        _ = get_eligible_operators(topology, [], opts, ensure_liveness=False)
+
+        # Verify that start_execution was called
+        mock_start_execution.assert_called_once_with(opts)
+
+        # Verify that the actor state is now marked as execution started
+        assert actor_state._execution_started
+
+
+def test_actor_should_add_input_before_and_after_execution_start():
+    """Test that actor operators reject input before execution starts."""
+    inputs = make_ref_bundles([[x] for x in range(5)])
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+
+    actor_map_op = ActorPoolMapOperator(
+        map_transformer=make_map_transformer(lambda block: [b * 2 for b in block]),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=1),
+        name="ActorMap",
+    )
+
+    # Initially should not accept input
+    assert (
+        not actor_map_op.should_add_input()
+    ), "Should not accept input before execution starts"
+
+    # After calling start_execution, should check actor pool
+    opts = ExecutionOptions()
+    with patch.object(actor_map_op._actor_pool, "num_free_task_slots", return_value=1):
+        actor_map_op.start_execution(opts)
+        assert (
+            actor_map_op.should_add_input()
+        ), "Should accept input after execution starts with free slots"
+
+    with patch.object(actor_map_op._actor_pool, "num_free_task_slots", return_value=0):
+        assert (
+            not actor_map_op.should_add_input()
+        ), "Should not accept input when no free slots"
+
+
+def test_can_start_immediately_interface():
+    """Test the can_start_immediately interface for different operator types."""
+    inputs = make_ref_bundles([[x] for x in range(5)])
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+
+    # Regular operators should start immediately
+    map_op = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        input_op,
+        DataContext.get_current(),
+    )
+    assert map_op.can_start_immediately(), "Regular operators should start immediately"
+
+    # Actor operators should not start immediately
+    actor_map_op = ActorPoolMapOperator(
+        map_transformer=make_map_transformer(lambda block: block),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=1),
+    )
+    assert (
+        not actor_map_op.can_start_immediately()
+    ), "Actor operators should not start immediately"
+
+
+def test_lazy_starting_integration():
+    """Integration test for lazy actor starting in a realistic pipeline."""
+    inputs = make_ref_bundles([[x] for x in range(10)])
+
+    # Create pipeline: Input -> Repartition (AllToAll) -> ActorMap -> TaskMap
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+
+    # Mock repartition as AllToAllOperator
+    def repartition_fn(bundles, ctx):
+        # Simple repartition that just passes through
+        return bundles, {}
+
+    repartition_op = AllToAllOperator(
+        bulk_fn=repartition_fn,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        name="Repartition",
+    )
+
+    actor_map_op = ActorPoolMapOperator(
+        map_transformer=make_map_transformer(lambda block: [b * 2 for b in block]),
+        input_op=repartition_op,
+        data_context=DataContext.get_current(),
+        target_max_block_size=None,
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=1),
+        name="ActorMap",
+    )
+
+    task_map_op = MapOperator.create(
+        make_map_transformer(lambda block: [b + 1 for b in block]),
+        actor_map_op,
+        DataContext.get_current(),
+        name="TaskMap",
+    )
+
+    # Build topology
+    opts = ExecutionOptions()
+    topology, _ = build_streaming_topology(task_map_op, opts)
+
+    # Track actor starting
+    actor_started = []
+    original_start_execution = actor_map_op.start_execution
+
+    def mock_start_execution(options):
+        actor_started.append(True)
+        return original_start_execution(options)
+
+    actor_map_op.start_execution = mock_start_execution
+
+    # Initially actors should not be started
+    assert len(actor_started) == 0, "Actors should not start initially"
+
+    # Simulate execution progression
+    # 1. Input operator produces data
+    input_state = topology[input_op]
+    input_state.num_completed_tasks = 1
+
+    # 2. Check eligibility - repartition not done yet, so actors shouldn't start
+    _ = get_eligible_operators(topology, [], opts, ensure_liveness=False)
+    assert (
+        len(actor_started) == 0
+    ), "Actors should not start until repartition completes"
+
+    # 3. Complete repartition stage
+    repartition_op.mark_execution_finished()
+    repartition_state = topology[repartition_op]
+    repartition_state.output_queue.append(make_ref_bundle("dummy"))
+
+    # 4. Now actors should start
+    _ = get_eligible_operators(topology, [], opts, ensure_liveness=False)
+    assert len(actor_started) == 1, "Actors should start after repartition completes"
 
 
 if __name__ == "__main__":

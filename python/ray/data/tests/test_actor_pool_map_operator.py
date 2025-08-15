@@ -758,6 +758,288 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
     assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
 
 
+def test_lazy_actor_starting_execution(ray_start_10_cpus_shared, restore_data_context):
+    """Tests that actor pool operators use lazy starting execution.
+
+    This test verifies that actors are not started immediately when the DAG is created,
+    but only when the operator becomes eligible to run.
+    """
+    import time
+
+    import ray
+
+    # ------------------------------------------------------------------
+    # Helper: lightweight counter actor to record when workers spin up.
+    # ------------------------------------------------------------------
+
+    @ray.remote(num_cpus=0)
+    class _Counter:
+        def __init__(self):
+            self._n = 0
+
+        def inc(self):
+            self._n += 1
+
+        def get(self):
+            return self._n
+
+    # Create (or get) the counter that workers will update.
+    try:
+        counter = ray.get_actor("tracking_counter")
+    except ValueError:
+        counter = _Counter.options(name="tracking_counter").remote()
+
+    class TrackingActor:
+        """Map-batch worker whose constructor touches `tracking_counter`."""
+
+        def __init__(self):
+            # Bump the shared counter so the driver knows an actor was created.
+            ray.get_actor("tracking_counter").inc.remote()
+            self.initialized = True
+            print(f"TrackingActor initialized at {time.time()}")
+
+        def __call__(self, batch):
+            # Add a small delay to ensure this actor is actually needed
+            time.sleep(0.01)
+            # batch is a dict like {"id": [0, 1, 2, 3, 4]}
+            # Return transformed batch in same format
+            return {"id": [x * 2 for x in batch["id"]]}
+
+    # Test 1: Verify DAG creation doesn't start actors
+    dag_creation_start = time.time()
+    print(f"Starting DAG creation at {dag_creation_start}")
+
+    # Create a larger dataset to ensure the actor stage gets triggered
+    ds = ray.data.range(100, override_num_blocks=10).map_batches(  # Larger dataset
+        TrackingActor,
+        batch_size=10,  # Reasonable batch size
+        compute=ray.data.ActorPoolStrategy(
+            min_size=1,  # Start with 1 actor to ensure scaling
+            max_size=2,  # Allow scaling to verify execution starts
+        ),
+    )
+
+    dag_creation_time = time.time() - dag_creation_start
+    print(f"DAG creation completed in {dag_creation_time:.3f}s")
+    # Query counter before execution – should be zero.
+    assert ray.get(counter.get.remote()) == 0
+
+    # DAG creation should be fast since actors haven't started
+    assert (
+        dag_creation_time < 1.0
+    ), f"DAG creation took {dag_creation_time}s, should be fast"
+
+    # Test 2: Execute and verify actors start when needed
+    execution_start = time.time()
+    print(f"Starting execution at {execution_start}")
+    result = ds.take_all()
+    execution_time = time.time() - execution_start
+    print(f"Execution completed in {execution_time:.3f}s")
+    actor_count = ray.get(counter.get.remote())
+    print(f"Actors started: {actor_count}")
+
+    # Verify correctness
+    expected = [{"id": x * 2} for x in range(100)]
+    assert sorted(result, key=lambda x: x["id"]) == sorted(
+        expected, key=lambda x: x["id"]
+    ), f"Expected {len(expected)} items, got {len(result)}"
+
+    # At least one TrackingActor must have been created during execution.
+    assert actor_count > 0, "No actors were launched during execution."
+
+    print(f"✓ DAG creation: {dag_creation_time:.3f}s (no actors started)")
+    print(f"✓ Execution: {execution_time:.3f}s")
+    print(f"✓ Total actors initialized: {actor_count}")
+
+
+def test_lazy_starting_with_slow_input(ray_start_10_cpus_shared, restore_data_context):
+    """Tests lazy starting with a slow input operator to ensure timing is correct."""
+
+    import time
+
+    import ray
+
+    # Get (or create) the shared tracking_counter actor.
+    @ray.remote(num_cpus=0)
+    class _Counter:
+        def __init__(self):
+            self._n = 0
+
+        def inc(self):
+            self._n += 1
+
+        def get(self):
+            return self._n
+
+    try:
+        counter = ray.get_actor("tracking_counter")
+    except ValueError:
+        counter = _Counter.options(name="tracking_counter").remote()
+
+    before = ray.get(counter.get.remote())
+
+    class DelayedActor:
+        def __init__(self):
+            # Record actor start via the shared counter.
+            ray.get_actor("tracking_counter").inc.remote()
+            print(f"DelayedActor initialized at {time.time()}")
+
+        def __call__(self, batch):
+            return {"id": [x + 1000 for x in batch["id"]]}
+
+    # Create a dataset with a slow transformation first
+    def slow_transform(batch):
+        time.sleep(0.1)  # Make input stage slow
+        return batch
+
+    dag_start = time.time()
+
+    ds = (
+        ray.data.range(50, override_num_blocks=5)
+        .map_batches(slow_transform, batch_size=10)  # Slow first stage
+        .map_batches(
+            DelayedActor,
+            batch_size=10,
+            compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
+        )
+    )
+
+    creation_time = time.time() - dag_start
+
+    # Verify DAG creation is fast and no actors yet
+    assert creation_time < 1.0, f"DAG creation took {creation_time}s"
+    assert ray.get(counter.get.remote()) == before, "Actors started during DAG creation"
+
+    # Execute the pipeline
+    execution_start = time.time()
+    result = ds.take_all()
+    execution_time = time.time() - execution_start
+
+    # Verify correctness
+    expected = [{"id": x + 1000} for x in range(50)]
+    assert sorted(result, key=lambda x: x["id"]) == sorted(
+        expected, key=lambda x: x["id"]
+    )
+
+    # Verify some actors launched during execution
+    after = ray.get(counter.get.remote())
+    assert after - before > 0, "Actors should have been started during execution"
+
+    print(f"✓ DAG with slow input created in {creation_time:.3f}s")
+    print(f"✓ Executed in {execution_time:.3f}s")
+    print(f"✓ Actors launched during execution: {after-before}")
+
+
+def test_lazy_starting_with_blocking_operations(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    """Tests lazy starting behavior with blocking operations in the pipeline."""
+
+    import time
+
+    actor_start_times = []
+
+    class TimedActor:
+        def __init__(self):
+            actor_start_times.append(time.time())
+            print(f"TimedActor initialized at {time.time()}")
+
+        def __call__(self, batch):
+            return {"id": [x + 100 for x in batch["id"]]}
+
+    # Test with a pipeline that has a repartition before the actor stage
+    dag_start = time.time()
+
+    ds = (
+        # Larger dataset ⇒ more bundles to repartition ⇒ easier to see
+        # the UI pause before the actor stage starts.
+        ray.data.range(10_000, override_num_blocks=100)
+        .repartition(num_blocks=20)  # Blocking boundary
+        .map_batches(
+            TimedActor,
+            batch_size=500,  # Fewer actor invocations
+            compute=ray.data.ActorPoolStrategy(size=1),
+        )
+    )
+
+    creation_time = time.time() - dag_start
+
+    # Verify DAG creation is fast
+    assert creation_time < 0.5, f"DAG creation took {creation_time}s"
+    assert len(actor_start_times) == 0, "Actors should not start during DAG creation"
+
+    # Execute the pipeline
+    result = ds.take_all()
+
+    # Verify correctness
+    expected = [{"id": x + 100} for x in range(10_000)]
+    assert sorted(result, key=lambda x: x["id"]) == sorted(
+        expected, key=lambda x: x["id"]
+    )
+    # Verify timing: actors should start after repartition begins, not at DAG creation
+    assert len(actor_start_times) > 0, "Actors should have been started"
+
+    first_actor_time = min(actor_start_times)
+    delay = first_actor_time - dag_start
+
+    # Actor should start well after DAG creation (after repartition becomes eligible)
+    assert delay > 0.01, f"Actor started too early: {delay}s after DAG creation"
+
+
+def test_lazy_starting_resource_efficiency(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    """Tests that lazy starting saves resources when pipelines are created but not executed."""
+
+    import time
+
+    expensive_actor_count = 0
+
+    class ExpensiveActor:
+        def __init__(self):
+            nonlocal expensive_actor_count
+            expensive_actor_count += 1
+            print(f"ExpensiveActor #{expensive_actor_count} initialized")
+            # Simulate some startup cost
+            time.sleep(0.01)
+
+        def __call__(self, batch):
+            return {"id": [x * 10 for x in batch["id"]]}
+
+    # Create multiple pipelines but only execute one
+    creation_start = time.time()
+
+    # Pipeline 1: Will be executed
+    active_ds = ray.data.range(10, override_num_blocks=2).map_batches(
+        lambda batch: {"id": [i + 1 for i in batch["id"]]}, batch_size=5
+    )
+
+    # Pipeline 2: Will NOT be executed (should not start expensive actors)
+    _ = ray.data.range(50, override_num_blocks=5).map_batches(
+        ExpensiveActor, batch_size=10, compute=ray.data.ActorPoolStrategy(size=2)
+    )
+
+    creation_time = time.time() - creation_start
+
+    # Creating pipelines should be fast regardless of complexity
+    assert creation_time < 1.0, f"Pipeline creation took {creation_time}s"
+    assert (
+        expensive_actor_count == 0
+    ), "Expensive actors should not be started during DAG creation"
+
+    # Execute only the simple pipeline
+    result = active_ds.take_all()
+    expected = [{"id": x + 1} for x in range(10)]
+    assert sorted(result, key=lambda x: x["id"]) == sorted(
+        expected, key=lambda x: x["id"]
+    )
+
+    # Expensive actors should still not be started since unused_ds was not executed
+    assert (
+        expensive_actor_count == 0
+    ), f"Expensive actors were started: {expensive_actor_count}"
+
+
 if __name__ == "__main__":
     import sys
 
