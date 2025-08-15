@@ -33,6 +33,7 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -745,6 +746,199 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 
   EXPECT_EQ(failed_pin_reply.successes_size(), 1);
   EXPECT_FALSE(failed_pin_reply.successes(0));
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
+  // Test 1: Up scaling (increasing resource capacity)
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  (*request.mutable_resources())["CPU"] = 8.0;
+  (*request.mutable_resources())["memory"] = 16000000.0;
+
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  // Check that reply contains the updated resources
+  EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 16000000.0);
+  EXPECT_EQ(reply.available_resources().at("CPU"), 8.0);
+  EXPECT_EQ(reply.available_resources().at("memory"), 16000000.0);
+
+  // Test 2: Down scaling (decreasing resources)
+  (*request.mutable_resources())["CPU"] = 4.0;
+  (*request.mutable_resources())["memory"] = 8000000.0;
+
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  // Check that reply contains the updated (reduced) resources
+  EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
+  EXPECT_EQ(reply.available_resources().at("CPU"), 4.0);
+  EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
+
+  // Test 3: No changes (same values)
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  // Should still succeed and return current state
+  EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
+  EXPECT_EQ(reply.available_resources().at("CPU"), 4.0);
+  EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
+
+  // Test 4: Now update only CPU, leaving memory unchanged
+  request.mutable_resources()->clear();
+  (*request.mutable_resources())["CPU"] = 8.0;  // Double the CPU
+
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  // Check that CPU was updated, and memory was unchanged
+  EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
+  EXPECT_EQ(reply.available_resources().at("CPU"), 8.0);
+  EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {
+  // Test trying to resize unit instance resources (GPU, etc.)
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  (*request.mutable_resources())["GPU"] = 4.0;  // GPU is a unit instance resource
+
+  bool callback_called = false;
+  Status callback_status;
+
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called, &callback_status](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        callback_status = s;
+      });
+
+  // The callback should have been called with an InvalidArgument status
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(callback_status.ok());
+  EXPECT_TRUE(callback_status.IsInvalidArgument());
+  // Check the error message contains expected details
+  std::string error_msg = callback_status.message();
+  EXPECT_TRUE(error_msg.find("Cannot resize unit instance resource 'GPU'") !=
+              std::string::npos);
+  EXPECT_TRUE(error_msg.find("Unit instance resources") != std::string::npos);
+  EXPECT_TRUE(error_msg.find("cannot be resized dynamically") != std::string::npos);
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesFailedPreconditions) {
+  // Test 1: Negative resource values
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  (*request.mutable_resources())["CPU"] = -1.0;  // Negative value should cause issues
+
+  bool callback_called = false;
+  Status callback_status;
+
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called, &callback_status](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        callback_status = s;
+      });
+
+  // The callback should have been called with an error status
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(callback_status.ok());
+  EXPECT_TRUE(callback_status.IsRpcError());
+  EXPECT_EQ(callback_status.rpc_code(),
+            static_cast<int>(grpc::StatusCode::FAILED_PRECONDITION));
+  // Check the error message contains expected details for insufficient resources
+  std::string error_msg = callback_status.message();
+  EXPECT_TRUE(error_msg.find("Cannot resize CPU to -1") != std::string::npos);
+  EXPECT_TRUE(error_msg.find("would make available resources negative") !=
+              std::string::npos);
+
+  // Test 2: Downsizing below resource usage
+  // First set up resources with some in use
+  callback_called = false;
+  (*request.mutable_resources())["CPU"] = 8.0;
+  (*request.mutable_resources())["memory"] = 16000000.0;
+
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+
+  EXPECT_TRUE(callback_called);
+
+  // Simulate resource usage by allocating task resources through the local resource
+  // manager
+  const absl::flat_hash_map<std::string, double> task_resources = {
+      {"CPU", 6.0}};  // Use 6 out of 8 CPUs
+
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool allocation_success =
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          task_resources, task_allocation);
+
+  EXPECT_TRUE(allocation_success);
+
+  // Now try to downsize CPU to 4 (which should fail since 6 CPUs are in use)
+  callback_called = false;
+  (*request.mutable_resources())["CPU"] = 4.0;  // Less than the 6 in use
+
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called, &callback_status](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        callback_status = s;
+      });
+
+  // The callback should have been called with an error status
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(callback_status.ok());
+  EXPECT_TRUE(callback_status.IsRpcError());
+  EXPECT_EQ(callback_status.rpc_code(),
+            static_cast<int>(grpc::StatusCode::FAILED_PRECONDITION));
+  // Check the error message contains expected details for insufficient resources
+  error_msg = callback_status.message();
+  EXPECT_TRUE(error_msg.find("Cannot resize CPU to 4") != std::string::npos);
+  EXPECT_TRUE(error_msg.find("would make available resources negative") !=
+              std::string::npos);
 }
 
 }  // namespace ray::raylet
