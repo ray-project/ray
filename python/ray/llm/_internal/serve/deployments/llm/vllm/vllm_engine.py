@@ -478,3 +478,8 @@ class VLLMEngine(LLMEngine):
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
+
+
+    async def reset_prefix_cache(self) -> None:
+        assert self._engine_client is not None
+        await self._engine_client.reset_prefix_cache()
