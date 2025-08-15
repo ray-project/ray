@@ -189,7 +189,9 @@ class GPUObjectStore:
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
-            return self.has_object(obj_id) and self._gpu_object_store[obj_id][0].is_primary
+            return (
+                self.has_object(obj_id) and self._gpu_object_store[obj_id][0].is_primary
+            )
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
@@ -252,7 +254,9 @@ class GPUObjectStore:
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
-            assert self.has_object(obj_id), f"obj_id={obj_id} not found in GPU object store"
+            assert self.has_object(
+                obj_id
+            ), f"obj_id={obj_id} not found in GPU object store"
             queue = self._gpu_object_store.get(obj_id)
             gpu_object = queue.popleft()
             if len(queue) == 0:
