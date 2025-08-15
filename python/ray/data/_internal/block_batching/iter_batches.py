@@ -382,8 +382,8 @@ def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     next_index_required = 0
     buffer: Dict[int, Batch] = {}
     for batch in batch_iter:
-        assert batch.batch_idx not in buffer
-        buffer[batch.batch_idx] = batch
+        assert batch.metadata.batch_idx not in buffer
+        buffer[batch.metadata.batch_idx] = batch
         while next_index_required in buffer:
             yield buffer.pop(next_index_required)
             next_index_required += 1
