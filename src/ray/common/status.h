@@ -41,6 +41,8 @@ namespace boost::system {
 class error_code;
 }  // namespace boost::system
 
+// NOLINTBEGIN
+
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
@@ -69,67 +71,71 @@ struct overloaded : Ts... {
 template <class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
-namespace Status {
+namespace StatusT {
 
-#define ERROR_TYPE(error_name)                                           \
-  class error_name {                                                     \
-   public:                                                               \
-    template <typename T>                                                \
-    error_name(T &&message) : message_(std::forward(message)) {}         \
-                                                                         \
-    const std::string &message() const { return message_; }              \
-    std::string &message() { return message_; }                          \
-                                                                         \
-    std::string ToString() {                                             \
-      return absl::StrCat("Error: " #error_name ", Message:", message_); \
-    }                                                                    \
-                                                                         \
-   private:                                                              \
-    std::string message_;                                                \
+#define STATUS_TYPE(status_name)                                            \
+  class status_name {                                                       \
+   public:                                                                  \
+    template <typename T>                                                   \
+    status_name(T &&message) : message_(std::forward<T>(message)) {}        \
+                                                                            \
+    const std::string &message() const { return message_; }                 \
+    std::string &message() { return message_; }                             \
+                                                                            \
+    std::string ToString() {                                                \
+      return absl::StrCat("StatusT: " #status_name ", Message:", message_); \
+    }                                                                       \
+                                                                            \
+   private:                                                                 \
+    std::string message_;                                                   \
   };
 
 class OK {};
 
-ERROR_TYPE(OutOfMemory);
-ERROR_TYPE(KeyError);
-ERROR_TYPE(IOError);
+STATUS_TYPE(OutOfMemory);
+STATUS_TYPE(KeyError);
+STATUS_TYPE(IOError);
+STATUS_TYPE(Invalid);
+STATUS_TYPE(NotFound);
+STATUS_TYPE(PermissionDenied);
+STATUS_TYPE(InvalidArgument);
+STATUS_TYPE(AlreadyExists);
 
-};  // namespace Status
+};  // namespace StatusT
 
-// This is just a pretty wrapper on top of std::optional<std::variant<ErrorTypes...>> so
+// This is just a pretty wrapper on top of std::optional<std::variant<StatusTypes...>> so
 // that we have nicer names like has_error instead of has_value for the error case and we
 // can return ok instead of std::nullopt
-template <typename... ErrorTypes>
-class StatusReturn {
+template <typename... StatusTypes>
+class StatusSet {
  public:
-  static_assert((!std::is_same_v<ErrorTypes, Status::OK> && ...),
+  static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
                 "Ok cannot be an error type");
 
-  StatusReturn(Status::OK) : error_(std::nullopt) {}
-
-  template <typename ErrorType>
-  StatusReturn(ErrorType &&error) : error_(std::forward(error)) {}
+  StatusSet(StatusT::OK) : error_(std::nullopt) {}
+  template <typename StatusType>
+  StatusSet(StatusType &&status) : error_(std::forward<StatusType>(status)) {}
 
   bool ok() const { return !error_.has_value(); }
 
   bool has_error() const { return error_.has_value(); }
 
-  const std::variant<ErrorTypes...> &error() const { return *error_; }
+  const std::variant<StatusTypes...> &error() const { return *error_; }
 
-  std::variant<ErrorTypes...> &error() { return *error_; }
+  std::variant<StatusTypes...> &error() { return *error_; }
 
   std::string ToString() { return has_error() ? error_.ToString() : "OK"; }
 
  private:
-  std::optional<std::variant<ErrorTypes...>> error_;
+  std::optional<std::variant<StatusTypes...>> error_;
 };
 
 // Function that only returns IOError or OutOfMemory
-inline StatusReturn<Status::IOError, Status::OutOfMemory> DoThing() {
+inline StatusSet<StatusT::IOError, StatusT::OutOfMemory> DoThing() {
   if (std::rand() % 2 == 0) {
-    return Status::OK();
+    return StatusT::OK();
   }
-  return Status::IOError("error message");
+  return StatusT::OutOfMemory("error message");
 }
 
 inline void UseDoThing() {
@@ -138,10 +144,10 @@ inline void UseDoThing() {
   // it's has_error instead of has_value for the error case
   if (result.has_error()) {
     // Handle our different types of errors
-    std::visit(overloaded{[](const Status::IOError &) {
+    std::visit(overloaded{[](const StatusT::IOError &) {
                             // Handle IOError
                           },
-                          [](const Status::OutOfMemory &) {
+                          [](const StatusT::OutOfMemory &) {
                             // Handle OutOfMemory
                           }},
                result.error());
@@ -478,5 +484,7 @@ inline Status &Status::operator=(Status &&rhs) {
 }
 
 Status boost_to_ray_status(const boost::system::error_code &error);
+
+// NOLINTEND
 
 }  // namespace ray
