@@ -12,7 +12,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -28,7 +28,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -42,7 +42,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common/cgroup:fake_cgroup_setup",
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -59,7 +59,7 @@ ray_cc_test(
         ":cgroup_test_utils",
         "//src/ray/common/cgroup:cgroup_setup",
         "//src/ray/common/cgroup:cgroup_utils",
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -70,7 +70,7 @@ ray_cc_library(
     srcs = ["cgroup_test_utils.cc"],
     hdrs = ["cgroup_test_utils.h"],
     deps = [
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "//src/ray/util:compat",
         "//src/ray/util:container_util",
         "//src/ray/util:filesystem",

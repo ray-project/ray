@@ -243,3 +243,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "source_location_test",
+    size = "small",
+    srcs = ["source_location_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:source_location",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

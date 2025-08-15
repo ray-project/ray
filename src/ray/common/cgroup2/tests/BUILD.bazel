@@ -26,7 +26,7 @@ ray_cc_test(
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common/cgroup2:sysfs_cgroup_driver",
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],

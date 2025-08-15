@@ -9,7 +9,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/gcs/test:gcs_test_util_lib",
+        "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -33,7 +33,7 @@ ray_cc_test(
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/gcs/test:gcs_test_util_lib",
+        "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -60,7 +60,7 @@ ray_cc_test(
     deps = [
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/gcs/test:gcs_test_util_lib",
+        "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -86,7 +86,7 @@ ray_cc_test(
     deps = [
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/gcs/test:gcs_test_util_lib",
+        "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
