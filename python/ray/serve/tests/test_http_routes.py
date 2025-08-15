@@ -171,11 +171,11 @@ def test_path_prefixing_1(serve_instance):
             return p
 
     serve.run(D4.bind(), route_prefix="/hello/world/again", name="app4")
-    check_req("/hello/", "app1", text="1")
-    check_req("/", "app2", text="2")
-    check_req("/hello/world/", "app3", text="3")
-    check_req("/hello/world/again/", "app4", text="4")
-    check_req("/hello/world/again/hi", "app4", text="hi")
+    check_req("/hello/", "app1") == "1"
+    check_req("/", "app2") == "2"
+    check_req("/hello/world/", "app3") == "3"
+    check_req("/hello/world/again/", "app4") == "4"
+    check_req("/hello/world/again/hi", "app4") == '"hi"'
 
 
 @pytest.mark.parametrize("base_path", ["", "subpath"])
