@@ -8,7 +8,11 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    BatchMetadata,
+    BlockPrefetcher,
+)
 from ray.data._internal.block_batching.iter_batches import (
     BatchIterator,
     prefetch_batches_locally,
@@ -95,14 +99,14 @@ def test_prefetch_batches_locally(
 
 def test_restore_from_original_order():
     base_iterator = [
-        Batch(1, None),
-        Batch(0, None),
-        Batch(3, None),
-        Batch(2, None),
+        Batch(BatchMetadata(batch_idx=1), None),
+        Batch(BatchMetadata(batch_idx=0), None),
+        Batch(BatchMetadata(batch_idx=3), None),
+        Batch(BatchMetadata(batch_idx=2), None),
     ]
 
     ordered = list(restore_original_order(iter(base_iterator)))
-    idx = [batch.batch_idx for batch in ordered]
+    idx = [batch.metadata.batch_idx for batch in ordered]
     assert idx == [0, 1, 2, 3]
 
 
