@@ -1,4 +1,3 @@
-import sys
 import click
 from ray_release.byod.build import build_anyscale_custom_byod_image
 
@@ -12,4 +11,4 @@ def main(image_name: str, base_image: str, post_build_script: str):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
