@@ -8,11 +8,11 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//:ray_mock",
         "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
+        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -53,13 +53,13 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
-        "//src/ray/raylet/scheduling:cluster_task_manager",
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/raylet:local_task_manager",
+        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
+        "//src/ray/raylet/scheduling:cluster_task_manager",
         "//src/ray/raylet/tests:util",
         "@com_google_googletest//:gtest_main",
     ],
