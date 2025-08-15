@@ -230,6 +230,7 @@ ray_cc_test(
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_count",
+        "//src/ray/ipc:fake_raylet_ipc_client",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
