@@ -104,7 +104,7 @@ config_setting(
 )
 
 alias(
-    name = "uv",
+    name = "uv_file",
     actual = select({
         "//:linux_x86_64": "@uv_x86_64-linux//:file",
         "//:darwin_aarch64": "@uv_aarch64-darwin//:file",
