@@ -130,12 +130,13 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     // Health check Redis periodically and crash if it becomes unavailable.
     redis_health_check_periodical_runner_ = PeriodicalRunner::Create(io_context);
     redis_health_check_periodical_runner_->RunFnPeriodically(
-      [*store_client] { store_client.AsyncCheckHealth([](const Status &status) {
-          RAY_CHECK_OK(status) << "Redis connection failed.";
-        }
-      )},
-      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
-      "GcsServer.deadline_timer.redis_health_check");
+        [*store_client] {
+          store_client.AsyncCheckHealth([](const Status &status) {
+            RAY_CHECK_OK(status) << "Redis connection failed.";
+          })
+        },
+        RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+        "GcsServer.deadline_timer.redis_health_check");
     break;
   }
   default:
@@ -874,11 +875,12 @@ std::string GcsServer::GetDebugState() const {
 
 std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
     instrumented_io_context &io_service) {
-  auto redis_client = std::make_shared<RedisClient>(RedisClientOptions(config_.redis_address,
-                            config_.redis_port,
-                            config_.redis_username,
-                            config_.redis_password,
-                            config_.enable_redis_ssl));
+  auto redis_client =
+      std::make_shared<RedisClient>(RedisClientOptions(config_.redis_address,
+                                                       config_.redis_port,
+                                                       config_.redis_username,
+                                                       config_.redis_password,
+                                                       config_.enable_redis_ssl));
   auto status = redis_client->Connect(io_service);
   RAY_CHECK_OK(status) << "Failed to init redis gcs client";
   return redis_client;
