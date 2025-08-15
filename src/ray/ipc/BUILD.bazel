@@ -21,16 +21,32 @@ ray_cc_library(
     name = "raylet_ipc_client",
     srcs = ["raylet_ipc_client.cc"],
     hdrs = ["raylet_ipc_client.h"],
+    visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         ":client_connection",
         "//src/ray/common:asio",
         "//src/ray/common:buffer",
         "//src/ray/common:id",
         "//src/ray/common:status",
+        "//src/ray/ipc:raylet_ipc_client_interface",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util:logging",
         "//src/ray/util:process",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_ipc_client_interface",
+    hdrs = ["raylet_ipc_client_interface.h"],
+    deps = [
+        "//src/ray/common:buffer",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/util:process",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
