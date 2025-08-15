@@ -70,6 +70,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
+        "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/raylet:placement_group_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
