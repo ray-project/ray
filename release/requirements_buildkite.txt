@@ -158,6 +158,7 @@ azure-common==1.1.28 \
     --hash=sha256:5c12d3dcf4ec20599ca6b0d3e09e86e146353d443e7fcc050c9a19c1f9df20ad
     # via
     #   -r release/requirements_buildkite.in
+    #   azure-keyvault-secrets
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
@@ -167,11 +168,16 @@ azure-core==1.35.0 \
     # via
     #   -r release/requirements_buildkite.in
     #   azure-identity
+    #   azure-keyvault-secrets
     #   azure-mgmt-core
     #   msrest
 azure-identity==1.23.1 \
     --hash=sha256:226c1ef982a9f8d5dcf6e0f9ed35eaef2a4d971e7dd86317e9b9d52e70a035e4 \
     --hash=sha256:7eed28baa0097a47e3fb53bd35a63b769e6b085bb3cb616dfce2b67f28a004a1
+    # via -r release/requirements_buildkite.in
+azure-keyvault-secrets==4.7.0 \
+    --hash=sha256:77ee2534ba651a1f306c85d7b505bc3ccee8fea77450ebafafc26aec16e5445d \
+    --hash=sha256:a16c7e6dfa9cba68892bb6fcb905bf2e2ec1f2a6dc05522b61df79621e050901
     # via -r release/requirements_buildkite.in
 azure-mgmt-compute==35.0.0 \
     --hash=sha256:43196911135507d1ce76f089c4e57d3b225885e5127d023be2ce1c597fd44336 \
@@ -874,6 +880,7 @@ isodate==0.7.2 \
     --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
     --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
     # via
+    #   azure-keyvault-secrets
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
@@ -2066,6 +2073,7 @@ typing-extensions==4.11.0 \
     #   anyscale
     #   azure-core
     #   azure-identity
+    #   azure-keyvault-secrets
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
