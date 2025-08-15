@@ -3,14 +3,11 @@ import time
 from typing import Optional
 
 from ray import serve
+from ray.experimental.collective.util import get_address_and_port
 from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
-)
-from ray.llm._internal.serve.deployments.data_parallel.utils import (
-    get_ip,
-    get_open_port,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.serve.deployment import Application
@@ -37,8 +34,7 @@ class DPServer(LLMServer):
         logger.info(f"DP rank {self.dp_rank} has registered")
 
         if self.dp_rank == 0:
-            self.dp_address = get_ip()
-            self.dp_rpc_port = get_open_port()
+            self.dp_address, self.dp_rpc_port = get_address_and_port()
             await self.dp_rank_assigner.set_dp_master_info.remote(
                 self.dp_address, self.dp_rpc_port
             )
