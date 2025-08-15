@@ -35,7 +35,7 @@ TEST(SourceLocationTest, StringifyTest) {
     auto loc = RAY_LOC();
     std::stringstream ss{};
     ss << loc;
-    EXPECT_EQ(ss.str(), "src/ray/common/source_location_test.cc:35");
+    EXPECT_EQ(ss.str(), "src/ray/common/tests/source_location_test.cc:35");
   }
 }
 
