@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/cgroup2/test/cgroup_test_utils.h"
+#include "ray/common/cgroup2/tests/cgroup_test_utils.h"
 
 #include <errno.h>
 #include <fcntl.h>
