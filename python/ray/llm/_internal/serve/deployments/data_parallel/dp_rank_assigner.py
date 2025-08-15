@@ -16,6 +16,9 @@ class DPRankAssigner:
         self.dp_size = dp_size
         self.lock = asyncio.Lock()
         self.next_rank = 0
+        self.dp_address = None
+        self.dp_rpc_port = None
+        self.master_info_event = asyncio.Event()
 
     async def register(self, replica_ctx: "serve.context.ReplicaContext"):
         async with self.lock:
@@ -28,3 +31,12 @@ class DPRankAssigner:
             rank = self.next_rank
             self.next_rank += 1
             return rank
+
+    async def set_dp_master_info(self, dp_address: str, dp_rpc_port: int):
+        self.dp_address = dp_address
+        self.dp_rpc_port = dp_rpc_port
+        self.master_info_event.set()
+
+    async def get_dp_master_info(self):
+        await self.master_info_event.wait()
+        return self.dp_address, self.dp_rpc_port
