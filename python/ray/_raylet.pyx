@@ -3385,7 +3385,7 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
-    def create_owned_object_reference(
+    def put_object(
             self,
             serialized_object,
             c_bool pin_object=True,
@@ -3395,12 +3395,16 @@ cdef class CoreWorker:
     ):
         """Create an object reference with the current worker as the owner.
         """
-        created_object = self.put_serialized_object_and_increment_local_ref(serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+        created_object = self.put_serialized_object_and_increment_local_ref(
+            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+        if owner_address is None:
+            owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
+        # skip_adding_local_ref is True because it's already added through the call to
+        # put_serialized_object_and_increment_local_ref.
         return ObjectRef(
             created_object,
-            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString(),
-            # Already added when the ref is updated.
+            owner_address,
             skip_adding_local_ref=True
         )
 

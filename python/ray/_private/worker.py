@@ -852,7 +852,7 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return self.core_worker.create_owned_object_reference(
+        return self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
