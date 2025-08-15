@@ -497,6 +497,21 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
   return Status::OK();
 }
 
+void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
+  auto redis_callback = [callback = std::move(callback)](
+                            const std::shared_ptr<CallbackReply> &reply) mutable {
+    Status status = Status::OK();
+    if (reply->IsError()) {
+      status = reply->ReadAsStatus();
+    }
+    std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
+  };
+
+  RedisCommand command{"PING"};
+  SendRedisCmdArgsAsKeys(std::move(command), std::move(redis_callback));
+  return;
+}
+
 // Returns True if at least 1 key is deleted, False otherwise.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,

@@ -126,12 +126,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);
     store_client = std::make_unique<RedisStoreClient>(redis_client);
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ =
-        std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
+
+    // Health check Redis periodically and crash if it becomes unavailable.
+    redis_health_check_periodical_runner_ = PeriodicalRunner::Create(io_context);
+    redis_health_check_periodical_runner_->RunFnPeriodically(
+      [*store_client] { store_client.AsyncCheckHealth([](const Status &status) {
+          RAY_CHECK_OK(status) << "Redis connection failed.";
+        }
+      )},
+      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+      "GcsServer.deadline_timer.redis_health_check");
     break;
   }
   default:
@@ -317,8 +321,8 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
-    if (gcs_redis_failure_detector_) {
-      gcs_redis_failure_detector_->Stop();
+    if (redis_health_check_periodical_runner_) {
+      redis_health_check_periodical_runner_.reset();
     }
 
     RAY_LOG(INFO) << "GCS server stopped.";

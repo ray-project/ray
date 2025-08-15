@@ -149,6 +149,11 @@ class RedisStoreClient : public StoreClient {
                      const std::string &key,
                      Postable<void(bool)> callback) override;
 
+  // Method specific to the redis store client that checks if Redis is available.
+  //
+  // \param callback The callback that will be called with a Status. OK means healthy.
+  void AsyncCheckHealth(Postable<void(Status)> callback) override;
+
  private:
   /// \class RedisScanner
   ///
