@@ -166,7 +166,7 @@ class DependencySetManager:
         if override_flags:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
-            args = _append_uv_flags(append_flags, args)
+            args.extend(_flatten_flags(append_flags))
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
@@ -269,11 +269,6 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
-
-
-def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
-    args.extend(flags)
-    return args
 
 
 def _uv_binary():
