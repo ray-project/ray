@@ -10,6 +10,8 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
+    depends_on:
+      - raycpubaseextra
   
   - name: raycudabaseextra-test
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-test"
@@ -26,6 +28,8 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
+    depends_on:
+      - raycudabaseextra
   
   - name: ray-llmbaseextra-test
     label: "wanda: ray.py{{matrix}}.llm.base-extra-test"
@@ -41,8 +45,10 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
       REQUIREMENTS_FILE: "requirements_llm_byod_{{matrix.python}}.txt"
+    depends_on:
+      - ray-llmbaseextra
 
-  - name: ray-mlbaseextra-test
+  - name: ray-mlcudabaseextra-test
     label: "wanda: ray.py{{matrix}}.ml.base-extra-test"
     wanda: ci/docker/ray.cuda.base-extra-test.wanda.yaml
     matrix:
@@ -56,6 +62,8 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
       REQUIREMENTS_FILE: "requirements_ml_byod_{{matrix.python}}.txt"
+    depends_on:
+      - ray-mlcudabaseextra
 
   - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
     key: anyscalebuild
@@ -69,8 +77,8 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - raycudabaseextra
-      - raycpubaseextra
+      - raycpubaseextra-test
+      - raycudabaseextra-test
     matrix:
       setup:
         python:
@@ -94,7 +102,7 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - ray-llmbaseextra
+      - ray-llmbaseextra-test
     matrix:
       - "3.11"
 
@@ -109,7 +117,7 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - ray-mlcudabaseextra
+      - ray-mlcudabaseextra-test
     matrix:
       # This list should be kept in sync with the list of supported Python in
       # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
