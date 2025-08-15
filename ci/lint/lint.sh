@@ -99,8 +99,6 @@ test_coverage() {
 }
 
 api_annotations() {
-  python -m pip show setuptools || echo "setuptools not found"
-  python -m setuptools --version || true
   RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]" --config-settings editable_mode=compat
   ./ci/lint/check_api_annotations.py
 }
@@ -108,7 +106,7 @@ api_annotations() {
 api_policy_check() {
   # install ray and compile doc to generate API files
   make -C doc/ html
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]" --config-settings editable_mode=compat
 
   # validate the API files
   bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
