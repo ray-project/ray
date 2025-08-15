@@ -4,4 +4,5 @@
 
 set -exo pipefail
 
-pip3 install "sglang[all]==0.4.8"
+pip3 uninstall deep_gemm -y
+pip3 install "sglang[all]==0.4.5.post1"
