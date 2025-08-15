@@ -380,24 +380,54 @@ def test_exception_chain(ray_start_regular):
         assert isinstance(ex, RayTaskError)
 
 
-def test_baseexception_task(ray_start_regular):
+def test_baseexception_task(ray_start_regular_shared):
+    class MyBaseException(BaseException):
+        pass
+
     @ray.remote
     def task():
-        raise BaseException("abc")
+        raise MyBaseException("abc")
 
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
+    with pytest.raises(MyBaseException):
         ray.get(task.remote())
 
 
-def test_baseexception_actor(ray_start_regular):
+def test_baseexception_actor_task(ray_start_regular_shared):
+    class MyBaseException(BaseException):
+        pass
+
     @ray.remote
     class Actor:
         def f(self):
-            raise BaseException("abc")
+            raise MyBaseException("abc")
 
-    with pytest.raises(ActorDiedError):
-        a = Actor.remote()
+        async def async_f(self):
+            raise MyBaseException("abc")
+
+    a = Actor.remote()
+    with pytest.raises(MyBaseException):
         ray.get(a.f.remote())
+
+    a = Actor.remote()
+    with pytest.raises(MyBaseException):
+        ray.get(a.async_f.remote())
+
+
+def test_baseexception_actor_creation(ray_start_regular_shared):
+    class MyBaseException(BaseException):
+        pass
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            raise MyBaseException("abc")
+
+    a = Actor.remote()
+    try:
+        ray.get(a.__ray_ready__.remote())
+        raise Exception("abc")
+    except ActorDiedError as e:
+        assert "MyBaseException" in str(e)
 
 
 @pytest.mark.skip("This test does not work yet.")
