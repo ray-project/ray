@@ -21,11 +21,11 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
-#include "ray/common/status.h"
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/util/process.h"
 #include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
 
 using MessageType = ray::protocol::MessageType;
