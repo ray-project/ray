@@ -653,6 +653,13 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
+                                     rpc::events::AddEventsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  // TODO(can-anyscale): Implement this.
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 std::string GcsTaskManager::DebugString() {
   std::ostringstream ss;
   auto counters = stats_counter_.GetAll();

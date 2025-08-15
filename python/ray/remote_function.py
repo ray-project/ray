@@ -8,13 +8,13 @@ from typing import Optional
 
 import ray._common.signature
 from ray import Language, cross_language
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
@@ -332,7 +332,7 @@ class RemoteFunction:
             # Only need to record on the driver side
             # since workers are created via tasks or actors
             # launched from the driver.
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 

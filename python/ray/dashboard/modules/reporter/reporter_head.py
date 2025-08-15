@@ -13,6 +13,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID, NodeID
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._common.network_utils import build_address
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
@@ -22,7 +23,7 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
-from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
+from ray._common.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
@@ -253,7 +254,7 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
@@ -351,7 +352,7 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -361,7 +362,7 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            f"Sending CPU profiling request to {ip}:{grpc_port}, pid {pid}, for {task_id} with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}"
         )
 
         reply = await reporter_stub.CpuProfiling(
@@ -428,11 +429,11 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node at IP {ip}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
-            f"Sending stack trace request to {ip}:{grpc_port}, pid {pid}, with native={native}"
+            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
         pid = int(pid)
         reply = await reporter_stub.GetTraceback(
@@ -474,7 +475,7 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node at IP {ip}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         pid = int(pid)
         duration_s = int(req.query.get("duration", 5))
@@ -485,7 +486,7 @@ class ReportHead(SubprocessModule):
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
-            f"Sending CPU profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
@@ -546,13 +547,13 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node at IP {ip}, pid {pid}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         # Profile for num_iterations training steps (calls to optimizer.step())
         num_iterations = int(req.query.get("num_iterations", 4))
 
         logger.info(
-            f"Sending GPU profiling request to {ip}:{grpc_port}, pid {pid}. "
+            f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
             f"Profiling for {num_iterations} training steps."
         )
 
@@ -659,7 +660,7 @@ class ReportHead(SubprocessModule):
             _, ip, _, grpc_port = addrs
 
         assert pid is not None
-        ip_port = f"{ip}:{grpc_port}"
+        ip_port = build_address(ip, grpc_port)
 
         duration_s = int(req.query.get("duration", 10))
 
@@ -672,7 +673,7 @@ class ReportHead(SubprocessModule):
         reporter_stub = self._make_stub(ip_port)
 
         logger.info(
-            f"Retrieving memory profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
+            f"Retrieving memory profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
 
         reply = await reporter_stub.MemoryProfiling(

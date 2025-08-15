@@ -1,0 +1,42 @@
+diff --git BUILD.boost BUILD.boost
+--- a/BUILD.boost
++++ b/BUILD.boost
+@@ -2736,3 +2736,38 @@
+         ":variant2",
+     ],
+ )
++
++filegroup(
++    name = "boost_ray_hdrs",
++    srcs = glob([
++        "boost/%s/**/*" % lib
++        for lib in [
++            "archive",
++            "assert",
++            "bind",
++            "callable_traits",
++            "concept",
++            "config",
++            "container",
++            "container_hash",
++            "core",
++            "detail",
++            "dll",
++            "exception",
++            "filesystem",
++            "functional",
++            "io",
++            "iterator",
++            "lexical_cast",
++            "move",
++            "mpl",
++            "optional",
++            "parameter",
++            "preprocessor",
++            "system",
++            "type_traits",
++            "utility",
++        ]
++    ] + ["boost/*.hpp"]),
++    visibility = ["//visibility:public"],
++)

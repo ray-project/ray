@@ -95,7 +95,7 @@ struct Mocker {
       const std::string &name = "",
       const std::string &ray_namespace = "") {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
+    owner_address.set_node_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -113,7 +113,7 @@ struct Mocker {
       const std::string &name = "",
       const std::string &ray_namespace = "test") {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
+    owner_address.set_node_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -225,7 +225,7 @@ struct Mocker {
     rpc::Address address;
     address.set_ip_address("127.0.0.1");
     address.set_port(1234);
-    address.set_raylet_id(UniqueID::FromRandom().Binary());
+    address.set_node_id(UniqueID::FromRandom().Binary());
     address.set_worker_id(UniqueID::FromRandom().Binary());
     job_table_data->mutable_driver_address()->CopyFrom(address);
     job_table_data->set_driver_pid(5667L);
@@ -271,7 +271,7 @@ struct Mocker {
     } else {
       rpc::Address dummy_address;
       dummy_address.set_port(1234);
-      dummy_address.set_raylet_id(NodeID::FromRandom().Binary());
+      dummy_address.set_node_id(NodeID::FromRandom().Binary());
       dummy_address.set_ip_address("123.456.7.8");
       dummy_address.set_worker_id(WorkerID::FromRandom().Binary());
       job_table_data->mutable_driver_address()->CopyFrom(dummy_address);
@@ -327,7 +327,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &resource_demands,
       int64_t num_ready_queued,
       int64_t num_infeasible,
-      int64_t num_backlog) {
+      int64_t num_backlog,
+      const std::vector<ray::rpc::LabelSelector> &label_selectors = {}) {
     rpc::ResourceDemand resource_demand;
     for (const auto &resource : resource_demands) {
       (*resource_demand.mutable_shape())[resource.first] = resource.second;
@@ -335,6 +336,9 @@ struct Mocker {
     resource_demand.set_num_ready_requests_queued(num_ready_queued);
     resource_demand.set_num_infeasible_requests_queued(num_infeasible);
     resource_demand.set_backlog_size(num_backlog);
+    for (const auto &selector : label_selectors) {
+      *resource_demand.add_label_selectors() = selector;
+    }
     return resource_demand;
   }
 

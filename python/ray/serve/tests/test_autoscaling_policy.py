@@ -180,6 +180,10 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
         tlog("Queued and ongoing requests dropped to 0.")
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
     @pytest.mark.parametrize("use_generator", [True, False])
     def test_replicas_die(self, serve_instance_with_signal, use_generator):
         """If replicas die while requests are still executing, that
@@ -407,8 +411,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -435,7 +439,9 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("scaling_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
+@mock.patch(
+    "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 1
+)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance_with_signal,
     scaling_factor,
@@ -553,7 +559,7 @@ def test_cold_start_time(serve_instance):
     result = handle.remote().result()
     cold_start_time = time.time() - start
     if sys.platform == "win32":
-        timeout = 5  # Windows has a longer tail.
+        timeout = 10  # Windows has a longer tail.
     else:
         timeout = 3
     assert cold_start_time < timeout
@@ -592,8 +598,8 @@ def test_e2e_bursty(serve_instance_with_signal):
         def __init__(self):
             logging.getLogger("ray.serve").setLevel(logging.ERROR)
 
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -630,7 +636,9 @@ def test_e2e_bursty(serve_instance_with_signal):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
+@mock.patch(
+    "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 1
+)
 def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
@@ -654,8 +662,8 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -1039,9 +1047,9 @@ import ray
 import os
 
 @serve.deployment
-def g():
+async def g():
     signal = ray.get_actor("signal123")
-    ray.get(signal.wait.remote())
+    await signal.wait.remote()
     return os.getpid()
 
 

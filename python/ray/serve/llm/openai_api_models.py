@@ -72,14 +72,7 @@ class CompletionResponse(_CompletionResponse):
     pass
 
 
-@PublicAPI(stability="alpha")
-class EmbeddingRequest(_EmbeddingRequest):
-    """EmbeddingRequest is the request body for the embedding API.
-
-    This model is compatible with vLLM's OpenAI API models.
-    """
-
-    pass
+EmbeddingRequest = _EmbeddingRequest
 
 
 @PublicAPI(stability="alpha")

@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -279,7 +279,7 @@ class MockReplicaActorWrapper:
     def check_stopped(self) -> bool:
         return self.done_stopping
 
-    def force_stop(self):
+    def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
     def check_health(self):

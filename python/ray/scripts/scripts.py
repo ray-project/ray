@@ -32,12 +32,13 @@ from ray._private.label_utils import (
     parse_node_labels_string,
 )
 from ray._private.utils import (
-    check_ray_client_dependencies_installed,
+    get_ray_client_dependency_error,
     parse_resources_json,
 )
+from ray._common.network_utils import parse_address, build_address
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
-import ray._private.usage.usage_constants as usage_constant
+from ray._common.usage import usage_lib
+import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -65,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
@@ -196,7 +197,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = parse_address(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -337,7 +338,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = parse_address(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -788,7 +789,7 @@ def start(
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
@@ -856,8 +857,7 @@ def start(
             }
 
         if (
-            no_monitor  # KubeRay sets this flag when autoscaler is enabled.
-            and usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
+            usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
             and "RAY_CLOUD_INSTANCE_ID" in os.environ  # required by autoscaler v2.
             and "RAY_NODE_TYPE_NAME" in os.environ  # required by autoscaler v2.
         ):
@@ -921,7 +921,7 @@ def start(
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{ray_params.node_ip_address}:{port}"
+            default_address = build_address(ray_params.node_ip_address, port)
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if (
                 default_address == bootstrap_address
@@ -983,7 +983,7 @@ def start(
                 cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "  RAY_API_SERVER_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),
@@ -2648,6 +2648,22 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@cli.command(hidden=True)
+def sanity_check():
+    """Run a sanity check to check that the Ray installation works.
+
+    This is not a public API and is intended to be used by Ray developers only.
+    """
+
+    @ray.remote
+    def get_version() -> str:
+        return ray.__version__
+
+    v = ray.get(get_version.remote())
+    assert v == ray.__version__
+    cli_logger.success(f"Success! Ray version: {v}")
+
+
 @click.group(name="metrics")
 def metrics_group():
     pass
@@ -2705,6 +2721,7 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (

@@ -37,6 +37,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
+#include "ray/util/string_utils.h"
 
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,

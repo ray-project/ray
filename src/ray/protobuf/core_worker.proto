@@ -62,7 +62,7 @@ message ActorHandle {
   string ray_namespace = 11;
 
   // Whether the actor supports out of order execution.
-  bool execute_out_of_order = 12;
+  bool allow_out_of_order_execution = 12;
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
@@ -421,6 +421,12 @@ message NumPendingTasksReply {
   int64 num_pending_tasks = 1;
 }
 
+message FreeActorObjectRequest {
+  bytes object_id = 1;
+}
+
+message FreeActorObjectReply {}
+
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
@@ -478,8 +484,9 @@ service CoreWorkerService {
       returns (ActorCallArgWaitCompleteReply);
 
   // A worker asks the object's owner worker about the object's current status.
-  // Failure: TODO, Needs better failure behavior, currently assumes owner is dead and
-  // object is lost.
+  // This RPC assumes the ref won't be removed in the middle of execution and it's the
+  // caller's responsibility to guarantee that.
+  // Failure: Retries, it's idempotent.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 
   // From GCS actor manager to the actor's owner.
@@ -577,6 +584,9 @@ service CoreWorkerService {
   // Failure: Logs a warning on failure, gcs request can be retried by dashboard or state
   // API user.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+
+  // Free GPU object from in-actor GPU object store.
+  rpc FreeActorObject(FreeActorObjectRequest) returns (FreeActorObjectReply);
 
   // Registers a mutable object reader for compiled graphs.
   // Failure: TODO: Needs failure behavior.

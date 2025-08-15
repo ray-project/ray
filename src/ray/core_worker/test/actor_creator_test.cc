@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/common/test_util.h"
+#include "ray/util/path_utils.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
 
@@ -51,9 +52,8 @@ TEST_F(ActorCreatorTest, IsRegister) {
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(task_spec, ::testing::_, ::testing::_))
-      .WillOnce(
-          ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
-  ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, nullptr).ok());
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&cb)));
+  actor_creator->AsyncRegisterActor(task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   cb(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
@@ -65,14 +65,13 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
-      .WillRepeatedly(
-          ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
+      .WillRepeatedly(::testing::DoAll(::testing::SaveArg<1>(&cb)));
   int cnt = 0;
   auto per_finish_cb = [&cnt](Status status) {
     ASSERT_TRUE(status.ok());
     cnt++;
   };
-  ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, per_finish_cb).ok());
+  actor_creator->AsyncRegisterActor(task_spec, per_finish_cb);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   for (int i = 0; i < 100; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
@@ -93,8 +92,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);

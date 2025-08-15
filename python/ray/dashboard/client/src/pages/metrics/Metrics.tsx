@@ -201,6 +201,14 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Node Memory by Component",
         pathParams: "theme=light&panelId=34",
       },
+      {
+        title: "Node GPU by Component",
+        pathParams: "orgId=1&theme=light&panelId=45",
+      },
+      {
+        title: "Node GPU Memory by Component",
+        pathParams: "orgId=1&theme=light&panelId=46",
+      },
     ],
   },
 ];
@@ -212,10 +220,6 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
       {
         title: "Bytes Spilled",
         pathParams: "theme=light&panelId=1",
-      },
-      {
-        title: "Bytes Allocated",
-        pathParams: "theme=light&panelId=2",
       },
       {
         title: "Bytes Freed",
@@ -321,20 +325,8 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=37",
       },
       {
-        title: "(p50) Task Completion Time",
-        pathParams: "theme=light&panelId=40",
-      },
-      {
-        title: "(p75) Task Completion Time",
-        pathParams: "theme=light&panelId=41",
-      },
-      {
-        title: "(p99) Task Completion Time",
-        pathParams: "theme=light&panelId=44",
-      },
-      {
-        title: "(p100) Task Completion Time",
-        pathParams: "theme=light&panelId=45",
+        title: "Task Completion Time",
+        pathParams: "theme=light&panelId=38",
       },
     ],
   },

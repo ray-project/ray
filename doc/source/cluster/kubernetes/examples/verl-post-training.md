@@ -108,7 +108,7 @@ Additionally, you can follow the next step to check the PPO job logs to see how 
 
 ```sh
 # Port forward the Ray dashboard to your local machine's port 8265.
-kubectl port-forward verl-cluster-head 8265:8265
+kubectl port-forward $HEAD_POD 8265:8265
 ```
 
 Open `127.0.0.1:8265` in your browser to view the Ray dashboard and check whether all GPUs are in use.

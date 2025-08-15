@@ -29,10 +29,6 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
-// clang-format off
-#include "mock/ray/gcs/gcs_client/accessor.h"
-// clang-format on
-
 namespace ray {
 
 using ::testing::_;
@@ -95,12 +91,17 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   int batch_sent = 0;
 };
 
+class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
+ public:
+  bool IsNodeDead(const NodeID &node_id) const override { return false; }
+};
+
 class MockGcsClient : public gcs::GcsClient {
  public:
   MockGcsClient(gcs::GcsClientOptions options,
-                gcs::MockNodeInfoAccessor *node_info_accessor)
+                std::unique_ptr<MockGcsClientNodeAccessor> node_info_accessor)
       : gcs::GcsClient(options) {
-    node_accessor_.reset(node_info_accessor);
+    node_accessor_ = std::move(node_info_accessor);
   }
 
   gcs::NodeInfoAccessor &Nodes() {
@@ -108,9 +109,11 @@ class MockGcsClient : public gcs::GcsClient {
     return *node_accessor_;
   }
 
-  MOCK_METHOD2(Connect, Status(instrumented_io_context &io_service, int64_t timeout_ms));
+  Status Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
+    return Status::OK();
+  }
 
-  MOCK_METHOD0(Disconnect, void());
+  void Disconnect() {}
 };
 
 class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
@@ -121,8 +124,8 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
                  ClusterID::Nil(),
                  /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
-        node_info_accessor_(new gcs::MockNodeInfoAccessor()),
-        gcs_client_mock_(new MockGcsClient(options_, node_info_accessor_)),
+        gcs_client_mock_(
+            new MockGcsClient(options_, std::make_unique<MockGcsClientNodeAccessor>())),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }) {
@@ -152,7 +155,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     ray::ObjectInfo info;
     info.object_id = id;
     info.data_size = 12;
-    info.owner_raylet_id = NodeID::FromRandom();
+    info.owner_node_id = NodeID::FromRandom();
     info.owner_ip_address = "124.2.3.4";
     info.owner_port = 6739;
     info.owner_worker_id = worker_id;
@@ -195,7 +198,6 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   int64_t max_batch_size = 20;
   instrumented_io_context io_service_;
   gcs::GcsClientOptions options_;
-  gcs::MockNodeInfoAccessor *node_info_accessor_;
   std::shared_ptr<gcs::GcsClient> gcs_client_mock_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;

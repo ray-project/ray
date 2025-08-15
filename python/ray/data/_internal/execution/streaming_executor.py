@@ -1,4 +1,5 @@
 import logging
+import math
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -8,6 +9,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -17,7 +19,10 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ReservationOpResourceAllocator,
+    ResourceManager,
+)
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
@@ -33,8 +38,9 @@ from ray.data._internal.logging import (
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.util.metrics import Gauge
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +98,39 @@ class StreamingExecutor(Executor, threading.Thread):
         self._data_context.set_dataset_logger_id(
             register_dataset_logger(self._dataset_id)
         )
+
+        self._sched_loop_duration_s = Gauge(
+            "data_sched_loop_duration_s",
+            description="Duration of the scheduling loop in seconds",
+            tag_keys=("dataset",),
+        )
+
+        self._cpu_budget_gauge: Gauge = Gauge(
+            "data_cpu_budget",
+            "Budget (CPU) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._gpu_budget_gauge: Gauge = Gauge(
+            "data_gpu_budget",
+            "Budget (GPU) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._memory_budget_gauge: Gauge = Gauge(
+            "data_memory_budget",
+            "Budget (Memory) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._osm_budget_gauge: Gauge = Gauge(
+            "data_object_store_memory_budget",
+            "Budget (Object Store Memory) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._max_bytes_to_read_gauge: Gauge = Gauge(
+            "data_max_bytes_to_read",
+            description="Maximum bytes to read from streaming generator buffer.",
+            tag_keys=("dataset", "operator"),
+        )
+
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -212,6 +251,8 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
+            # Reset the scheduling loop duration gauge.
+            self._sched_loop_duration_s.set(0, tags={"dataset": self._dataset_id})
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping
@@ -277,13 +318,19 @@ class StreamingExecutor(Executor, threading.Thread):
         try:
             # Run scheduling loop until complete.
             while True:
-                t_start = time.process_time()
-                # use process_time to avoid timing ray.wait in _scheduling_loop_step
+                # Use `perf_counter` rather than `process_time` to ensure we include
+                # time spent on IO, like RPCs to Ray Core.
+                t_start = time.perf_counter()
                 continue_sched = self._scheduling_loop_step(self._topology)
+
+                sched_loop_duration = time.perf_counter() - t_start
+
+                self.update_metrics(sched_loop_duration)
                 if self._initial_stats:
                     self._initial_stats.streaming_exec_schedule_s.add(
-                        time.process_time() - t_start
+                        sched_loop_duration
                     )
+
                 for callback in get_execution_callbacks(self._data_context):
                     callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
@@ -295,6 +342,48 @@ class StreamingExecutor(Executor, threading.Thread):
             # Mark state of outputting operator as finished
             _, state = self._output_node
             state.mark_finished(exc)
+
+    def update_metrics(self, sched_loop_duration: int):
+        self._sched_loop_duration_s.set(
+            sched_loop_duration, tags={"dataset": self._dataset_id}
+        )
+        for i, op in enumerate(self._topology):
+            tags = {
+                "dataset": self._dataset_id,
+                "operator": self._get_operator_id(op, i),
+            }
+            self._update_budget_metrics(op, tags)
+            self._update_max_bytes_to_read_metric(op, tags)
+
+    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
+        budget = self._resource_manager.get_budget(op)
+        if budget is not None:
+            # Convert inf to -1 to represent unlimited budget in metrics
+            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
+            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
+            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
+            object_store_memory_budget = (
+                -1
+                if math.isinf(budget.object_store_memory)
+                else budget.object_store_memory
+            )
+            self._cpu_budget_gauge.set(cpu_budget, tags=tags)
+            self._gpu_budget_gauge.set(gpu_budget, tags=tags)
+            self._memory_budget_gauge.set(memory_budget, tags=tags)
+            self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
+
+    def _update_max_bytes_to_read_metric(
+        self, op: PhysicalOperator, tags: Dict[str, str]
+    ):
+        if self._resource_manager.op_resource_allocator_enabled():
+            ora = self._resource_manager.op_resource_allocator
+            assert isinstance(ora, ReservationOpResourceAllocator)
+            if op in ora._output_budgets:
+                max_bytes_to_read = ora._output_budgets[op]
+                if math.isinf(max_bytes_to_read):
+                    # Convert inf to -1 to represent unlimited bytes to read
+                    max_bytes_to_read = -1
+                self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -460,7 +549,9 @@ class StreamingExecutor(Executor, threading.Thread):
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
             "total_rows": last_op.num_output_rows_total(),
-            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
+            "end_time": time.time()
+            if state in (DatasetState.FINISHED.name, DatasetState.FAILED.name)
+            else None,
             "operators": {
                 f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
