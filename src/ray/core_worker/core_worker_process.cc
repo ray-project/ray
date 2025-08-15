@@ -424,8 +424,23 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        RAY_CHECK_OK(
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
+
+        auto status =
+            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+        if (!status.ok()) {
+          // During shutdown, plasma store connections can be closed causing IOError.
+          // Tolerate only IOError during shutdown to avoid masking real errors.
+          if (status.IsIOError() && core_worker->IsShuttingDown()) {
+            // Double-check shutdown state - this handles the race where shutdown
+            // began after our first check but before the plasma operation.
+            RAY_LOG(WARNING) << "Failed to put error object " << object_id
+                             << " in plasma store during shutdown: " << status.ToString();
+            return Status::OK();
+          } else {
+            return status;
+          }
+        }
+        return Status::OK();
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
