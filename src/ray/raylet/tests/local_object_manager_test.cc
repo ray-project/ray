@@ -31,7 +31,7 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/raylet/test/util.h"
+#include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/worker/core_worker_client.h"

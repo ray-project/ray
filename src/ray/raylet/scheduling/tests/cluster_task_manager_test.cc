@@ -34,7 +34,7 @@
 #include "ray/common/test_util.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/test/util.h"
+#include "ray/raylet/tests/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
 

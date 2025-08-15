@@ -19,7 +19,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet/test/util.h"
+#include "ray/raylet/tests/util.h"
 
 namespace ray {
 

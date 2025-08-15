@@ -36,7 +36,7 @@
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
-#include "ray/raylet/test/util.h"
+#include "ray/raylet/tests/util.h"
 
 namespace ray::raylet {
 using ::testing::_;

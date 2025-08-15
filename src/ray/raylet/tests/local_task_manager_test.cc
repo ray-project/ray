@@ -32,7 +32,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/test/util.h"
+#include "ray/raylet/tests/util.h"
 
 namespace ray::raylet {
 
