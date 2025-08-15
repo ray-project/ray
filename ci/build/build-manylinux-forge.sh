@@ -22,7 +22,7 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
 fi
 
 # Install ray java dependencies.
-if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1" ]]; then
   sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
   java -version
   JAVA_BIN="$(readlink -f "$(command -v java)")"

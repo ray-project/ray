@@ -9,6 +9,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -37,7 +38,7 @@ from ray.data._internal.logging import (
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
 
@@ -548,7 +549,9 @@ class StreamingExecutor(Executor, threading.Thread):
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
             "total_rows": last_op.num_output_rows_total(),
-            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
+            "end_time": time.time()
+            if state in (DatasetState.FINISHED.name, DatasetState.FAILED.name)
+            else None,
             "operators": {
                 f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
