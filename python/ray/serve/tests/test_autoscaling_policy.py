@@ -411,8 +411,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -598,8 +598,8 @@ def test_e2e_bursty(serve_instance_with_signal):
         def __init__(self):
             logging.getLogger("ray.serve").setLevel(logging.ERROR)
 
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -662,8 +662,8 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -1047,9 +1047,9 @@ import ray
 import os
 
 @serve.deployment
-def g():
+async def g():
     signal = ray.get_actor("signal123")
-    ray.get(signal.wait.remote())
+    await signal.wait.remote()
     return os.getpid()
 
 
