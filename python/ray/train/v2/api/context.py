@@ -222,8 +222,8 @@ class TrainContext(ABC):
         pass
 
 
-class TrainContextWithRayTrainController(TrainContext):
-    """Implementation of TrainContext for jobs launched with ray train controller."""
+class DistributedTrainContext(TrainContext):
+    """Implementation of TrainContext for distributed jobs."""
 
     def get_experiment_name(self) -> str:
         return get_internal_train_context().get_experiment_name()
@@ -247,11 +247,8 @@ class TrainContextWithRayTrainController(TrainContext):
         return get_internal_train_context().get_storage()
 
 
-class TrainContextWithoutRayTrainController(TrainContext):
-    """Implementation of TrainContext for jobs launched without ray train controller.
-
-    This is more for testing purposes.
-    """
+class LocalModeTrainContext(TrainContext):
+    """Implementation of TrainContext for local mode."""
 
     def __init__(
         self,

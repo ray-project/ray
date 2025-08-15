@@ -8,8 +8,8 @@ from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
 from ray.train.v2.api.context import (
+    DistributedTrainContext,
     TrainContext as ExternalTrainContext,
-    TrainContextWithRayTrainController,
 )
 
 
@@ -75,13 +75,11 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def is_running_with_ray_train_controller(self) -> bool:
+    def is_running_in_distributed_mode(self) -> bool:
         pass
 
 
-class TrainFnUtilsWithRayTrainController(TrainFnUtils):
-    """TrainFnUtils for jobs launched with ray train controller."""
-
+class DistributedTrainFnUtils(TrainFnUtils):
     def report(
         self,
         metrics: Dict[str, Any],
@@ -105,9 +103,9 @@ class TrainFnUtilsWithRayTrainController(TrainFnUtils):
         return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> ExternalTrainContext:
-        return TrainContextWithRayTrainController()
+        return DistributedTrainContext()
 
-    def is_running_with_ray_train_controller(self) -> bool:
+    def is_running_in_distributed_mode(self) -> bool:
         return True
 
 

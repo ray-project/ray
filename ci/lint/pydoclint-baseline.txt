@@ -1976,7 +1976,7 @@ python/ray/train/torch/torch_predictor.py
 --------------------
 python/ray/train/torch/torch_trainer.py
     DOC104: Method `TorchTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `TorchTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, torch_config, scaling_config, run_config, datasets, dataset_config, metadata, resume_from_checkpoint, running_without_ray_train_controller
+    DOC105: Method `TorchTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, torch_config, scaling_config, run_config, datasets, dataset_config, metadata, resume_from_checkpoint
 --------------------
 python/ray/train/torch/train_loop_utils.py
     DOC201: Function `get_device` does not have a return section in docstring

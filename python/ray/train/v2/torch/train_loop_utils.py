@@ -43,9 +43,10 @@ def get_device() -> torch.device:
 
 
 def get_devices() -> List[torch.device]:
-    if get_train_fn_utils().is_running_with_ray_train_controller():
+    if get_train_fn_utils().is_running_in_distributed_mode():
         return get_devices_v1()
     else:
+        # Local mode, we defer to torch.cuda
         if torch.cuda.is_available():
             return [torch.device(f"cuda:{torch.cuda.current_device()}")]
         else:

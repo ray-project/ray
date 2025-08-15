@@ -11,16 +11,16 @@ from ray.train.v2._internal.execution.train_fn_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.train.v2.api.context import (
+    LocalModeTrainContext,
     TrainContext as ExternalTrainContext,
-    TrainContextWithoutRayTrainController,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class LocalModeTrainFnUtils(TrainFnUtils):
-    """TrainFnUtils for jobs launched without ray train controller.
-    This is more for testing purposes, and some functionality is missing.
+    """TrainFnUtils for local mode.
+    The training function will run in the same process.
     """
 
     def __init__(
@@ -30,7 +30,7 @@ class LocalModeTrainFnUtils(TrainFnUtils):
         local_rank: int,
         dataset_shards: Optional[Dict[str, DataIterator]] = None,
     ):
-        self._context = TrainContextWithoutRayTrainController(
+        self._context = LocalModeTrainContext(
             experiment_name=experiment_name,
             local_world_size=local_world_size,
             local_rank=local_rank,
@@ -58,7 +58,7 @@ class LocalModeTrainFnUtils(TrainFnUtils):
     def get_context(self) -> ExternalTrainContext:
         return self._context
 
-    def is_running_with_ray_train_controller(self) -> bool:
+    def is_running_in_distributed_mode(self) -> bool:
         return False
 
     def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
