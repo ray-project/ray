@@ -25,7 +25,7 @@
 #include <vector>
 
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
-#include "fakes/ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/fake_raylet_ipc_client.h"
 #include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"

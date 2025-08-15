@@ -14,42 +14,13 @@
 
 #pragma once
 
-#include <memory>
-#include <mutex>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
-#include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/buffer.h"
-#include "ray/common/status.h"
-#include "ray/common/status_or.h"
-#include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/ipc/raylet_ipc_client_interface.h"
-#include "ray/util/process.h"
-#include "src/ray/protobuf/common.pb.h"
-
-using MessageType = ray::protocol::MessageType;
 
 namespace ray {
 namespace ipc {
 
-class RayletIpcClient : public RayletIpcClientInterface {
+class FakeRayletIpcClient : public RayletIpcClientInterface {
  public:
-  /// Connect to the Raylet over a local socket.
-  ///
-  /// \param io_service The IO service used for interacting with the socket.
-  /// \param address The address of the socket that the Raylet is listening on.
-  /// \param num_retries The number of times to retry connecting before giving up.
-  /// \param timeout The time to wait between retries.
-  RayletIpcClient(instrumented_io_context &io_service,
-                  const std::string &address,
-                  int num_retries,
-                  int64_t timeout);
-
   ray::Status RegisterClient(const WorkerID &worker_id,
                              rpc::WorkerType worker_type,
                              const JobID &job_id,
@@ -59,67 +30,63 @@ class RayletIpcClient : public RayletIpcClientInterface {
                              const std::string &serialized_job_config,
                              const StartupToken &startup_token,
                              NodeID *node_id,
-                             int *assigned_port) override;
+                             int *assigned_port) override {
+    return Status::OK();
+  }
 
   ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
                          const std::string &exit_detail,
                          const std::shared_ptr<LocalMemoryBuffer>
-                             &creation_task_exception_pb_bytes) override;
+                             &creation_task_exception_pb_bytes) override {
+    return Status::OK();
+  }
 
-  Status AnnounceWorkerPortForWorker(int port) override;
+  Status AnnounceWorkerPortForWorker(int port) override { return Status::OK(); }
 
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override;
+  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override {
+    return Status::OK();
+  }
 
-  ray::Status ActorCreationTaskDone() override;
+  ray::Status ActorCreationTaskDone() override { return Status::OK(); }
 
   ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                              const std::vector<rpc::Address> &owner_addresses) override;
+                              const std::vector<rpc::Address> &owner_addresses) override {
+    return Status::OK();
+  }
 
   ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
-      int64_t timeout_milliseconds) override;
+      int64_t timeout_milliseconds) override {
+    return absl::flat_hash_set<ObjectID>();
+  }
 
-  ray::Status CancelGetRequest() override;
+  ray::Status CancelGetRequest() override { return Status::OK(); }
 
-  ray::Status NotifyDirectCallTaskBlocked() override;
+  ray::Status NotifyDirectCallTaskBlocked() override { return Status::OK(); }
 
-  ray::Status NotifyDirectCallTaskUnblocked() override;
+  ray::Status NotifyDirectCallTaskUnblocked() override { return Status::OK(); }
 
   ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag) override;
+                                   int64_t tag) override {
+    return Status::OK();
+  }
 
   ray::Status PushError(const ray::JobID &job_id,
                         const std::string &type,
                         const std::string &error_message,
-                        double timestamp) override;
+                        double timestamp) override {
+    return Status::OK();
+  }
 
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
-                          bool local_only) override;
+                          bool local_only) override {
+    return Status::OK();
+  }
 
   void SubscribePlasmaReady(const ObjectID &object_id,
-                            const rpc::Address &owner_address) override;
-
- private:
-  /// Write a message to the Raylet asynchronously.
-  ray::Status WriteMessage(MessageType type,
-                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
-  /// Write a message to the Raylet and synchronously wait for the response.
-  ray::Status AtomicRequestReply(MessageType request_type,
-                                 MessageType reply_type,
-                                 std::vector<uint8_t> *reply_message,
-                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
-  /// Protects read operations on the socket.
-  std::mutex mutex_;
-
-  /// Protects write operations on the socket.
-  std::mutex write_mutex_;
-
-  /// The local socket connection to the Raylet.
-  std::shared_ptr<ServerConnection> conn_;
+                            const rpc::Address &owner_address) override {}
 };
 
 }  // namespace ipc
