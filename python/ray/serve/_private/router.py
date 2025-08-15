@@ -650,29 +650,36 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
-        r = await self.request_router._choose_replica_for_request(pr)
-
-        # If the queue len cache is disabled or we're sending a request to Java,
-        # then directly send the query and hand the response back. The replica will
-        # never reject requests in this code path.
-        if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
-            result, _ = await r.send_request(pr, with_rejection=False)
-            return result, r.replica_id
+        is_retry = False
 
         while True:
-            result = None
+            replica_result = None
             try:
-                result, queue_info = await r.send_request(pr, with_rejection=True)
+                r = await self.request_router._choose_replica_for_request(
+                    pr, is_retry=is_retry
+                )
+
+                # If the queue len cache is disabled or we're sending a request to Java,
+                # then directly send the query and hand the response back. The replica will
+                # never reject requests in this code path.
+                if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
+                    replica_result = r.try_send_request(pr, with_rejection=False)
+                    return replica_result, r.replica_id
+
+                replica_result = r.try_send_request(pr, with_rejection=True)
+                queue_info = await replica_result.get_rejection_response()
                 self.request_router.on_new_queue_len_info(r.replica_id, queue_info)
                 if queue_info.accepted:
-                    self.request_router.on_request_routed(pr, r.replica_id, result)
-                    return result, r.replica_id
+                    self.request_router.on_request_routed(
+                        pr, r.replica_id, replica_result
+                    )
+                    return replica_result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
                 # but I'm adding it defensively.
-                if result is not None:
-                    result.cancel()
+                if replica_result is not None:
+                    replica_result.cancel()
 
                 raise
             except ActorDiedError:
@@ -697,7 +704,7 @@ class AsyncioRouter:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
+            is_retry = True
 
     async def assign_request(
         self,
