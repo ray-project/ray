@@ -149,12 +149,14 @@ def count_parquet_rows(dataset_path: str) -> int:
 
 
 def main(args):
+    start_time = time.time()
     ds = ray.data.read_parquet(
         args.source_directory,
         include_paths=True,
     )
+    metadata_fetching_s = time.time() - start_time
     # Record start time after metadata fetching
-    start_time_without_metadata_fetching = time.time()
+    start_time_wo_metadata_fetching = time.time()
     if args.smoke_test:
         ds = ds.limit(100)
     ds = ds.flat_map(
@@ -174,18 +176,21 @@ def main(args):
         concurrency=args.embed_concurrency,
         num_gpus=args.num_gpus,
     )
-    start = time.time()
     ds.write_parquet(WRITE_PATH, num_rows_per_file=5_000)
-    duration = time.time() - start
-    count = count_parquet_rows(WRITE_PATH)
-    throughput = count / duration if duration > 0 else 0.0
+    runtime_s = time.time() - start_time
+    num_rows = count_parquet_rows(WRITE_PATH)
+    throughput_rows_s = num_rows / runtime_s
+
+    # FIXME: remove this after testing:
+    ds_count_start = time.time()
+    _count = ds.count()
+    ds_count_runtime_s = time.time() - ds_count_start
+    print(f"ds.count() runtime: {ds_count_runtime_s}s")
 
     # Compute metrics for time and throughput without metadata fetch
-    total_time_s_wo_metadata_fetch = time.time() - start_time_without_metadata_fetching
+    runtime_s_wo_metadata_fetch = time.time() - start_time_wo_metadata_fetching
     throughput_rows_s_wo_metadata_fetch = (
-        count / total_time_s_wo_metadata_fetch
-        if total_time_s_wo_metadata_fetch > 0
-        else 0.0
+        num_rows / runtime_s_wo_metadata_fetch
     )
 
     # Report chaos testing node failures
@@ -195,14 +200,14 @@ def main(args):
         print(f"Total chaos killed: {dead_nodes}")
 
     return {
-        BenchmarkMetric.RUNTIME: duration,
-        BenchmarkMetric.NUM_ROWS: count,
-        BenchmarkMetric.THROUGHPUT: throughput,
+        BenchmarkMetric.RUNTIME: runtime_s,
+        BenchmarkMetric.NUM_ROWS: num_rows,
+        BenchmarkMetric.THROUGHPUT: throughput_rows_s,
         "source_directory": args.source_directory,
         "model_name": args.model_name,
         "chunk_method": args.chunk_method,
-        "start_time_without_metadata_fetching": start_time_without_metadata_fetching,
-        "total_time_s_wo_metadata_fetch": total_time_s_wo_metadata_fetch,
+        "metadata_fetching_s": metadata_fetching_s,
+        "runtime_s_wo_metadata_fetch": runtime_s_wo_metadata_fetch,
         "throughput_rows_s_wo_metadata_fetch": throughput_rows_s_wo_metadata_fetch,
         "chaos_test": args.chaos_test,
     }
