@@ -24,7 +24,7 @@
 
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
-#include "ray/gcs/store_client/test/store_client_test_base.h"
+#include "ray/gcs/store_client/tests/store_client_test_base.h"
 #include "ray/util/path_utils.h"
 
 using namespace std::chrono_literals;  // NOLINT
