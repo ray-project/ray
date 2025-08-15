@@ -120,71 +120,101 @@ class LimitPushdownRule(Rule):
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
 
-        Similar to the original algorithm but more conservative in what we push through.
-        Now also supports setting per-block limits on Read operators for I/O optimization.
+        Creates entirely new operators instead of mutating existing ones.
         """
-        limit_op_copy = copy.copy(limit_op)
-
         # Traverse up the DAG until we reach the first operator that meets
         # one of the stopping conditions
-        new_input_into_limit = limit_op.input_dependency
-        ops_between_new_input_and_limit: List[LogicalOperator] = []
+        current_op = limit_op.input_dependency
+        ops_to_recreate: List[LogicalOperator] = []
 
         while (
-            isinstance(new_input_into_limit, AbstractOneToOne)
-            and not new_input_into_limit.can_modify_num_rows()
-            and not isinstance(new_input_into_limit, MapBatches)
-            # We should push past MapBatches, but MapBatches can modify the row count TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
+            isinstance(current_op, AbstractOneToOne)
+            and not current_op.can_modify_num_rows()
+            and not isinstance(current_op, MapBatches)
+            # We should push past MapBatches, but MapBatches can modify the row count
+            # TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
         ):
-            new_input_into_limit_copy = copy.copy(new_input_into_limit)
-            ops_between_new_input_and_limit.append(new_input_into_limit_copy)
-            new_input_into_limit = new_input_into_limit.input_dependency
-
-        # Special case: if we reached a Read operator, enable per-block limiting
-        # but still keep the limit operator for exact control
-        if isinstance(new_input_into_limit, Read):
-            # Apply per-block limiting to the Read operator as an optimization
-            read_op_with_limit = copy.copy(new_input_into_limit)
-            read_op_with_limit.set_per_block_limit(limit_op._limit)
-
-            # Always keep the limit operator, just update its input to the read op with per-block limit
-            # This maintains backward compatibility while adding the I/O optimization
-            limit_op_copy._input_dependencies = [read_op_with_limit]
-            read_op_with_limit._output_dependencies = [limit_op_copy]
-
-            # Wire through any operations between read and limit
-            current_op = limit_op_copy
-            for next_op in reversed(ops_between_new_input_and_limit):
-                current_op._output_dependencies = [next_op]
-                next_op._input_dependencies = [current_op]
-                current_op = next_op
-
-            # Link up to downstream operations
-            last_op = current_op
-            for downstream_op in limit_op.output_dependencies:
-                downstream_op._input_dependencies = [last_op]
-            last_op._output_dependencies = limit_op.output_dependencies
-            return last_op
+            ops_to_recreate.append(current_op)
+            current_op = current_op.input_dependency
 
         # If we couldn't push through any operators, return original
-        if not ops_between_new_input_and_limit:
+        if not ops_to_recreate:
             return limit_op
 
-        # Link the Limit operator and its newly designated input op from above.
-        limit_op_copy._input_dependencies = [new_input_into_limit]
-        new_input_into_limit._output_dependencies = [limit_op_copy]
+        # Determine where to place the limit
+        if isinstance(current_op, Read):
+            # Special case: if we reached a Read operator, enable per-block limiting
+            new_read_op = self._create_read_with_per_block_limit(
+                current_op, limit_op._limit
+            )
+            limit_input = new_read_op
+        else:
+            # Place limit at the deepest compatible position
+            limit_input = current_op
 
-        # Wire limit_op_copy to the first operator that should come after it
-        # (which is the last one we added to the list). Going from up upstream to downstream.
-        current_op = limit_op_copy
-        for next_op in reversed(ops_between_new_input_and_limit):
-            current_op._output_dependencies = [next_op]
-            next_op._input_dependencies = [current_op]
-            current_op = next_op
+        # Create the limit and recreate the chain
+        return self._create_operator_chain(
+            limit_input, limit_op._limit, ops_to_recreate
+        )
 
-        # Link up all operations from last downstream op to post old limit location (further downstream)
-        last_op = current_op
-        for downstream_op in limit_op.output_dependencies:
-            downstream_op._input_dependencies = [last_op]
-        last_op._output_dependencies = limit_op.output_dependencies
-        return last_op
+    def _create_operator_chain(
+        self,
+        limit_input: LogicalOperator,
+        limit: int,
+        ops_to_recreate: List[LogicalOperator],
+    ) -> LogicalOperator:
+        """Create a chain: limit_input -> Limit -> recreated operators."""
+        new_limit = Limit(limit_input, limit)
+        result_op = new_limit
+
+        # Recreate the intermediate operators in reverse order (bottom to top)
+        for op_to_recreate in reversed(ops_to_recreate):
+            result_op = self._recreate_operator_with_new_input(
+                op_to_recreate, result_op
+            )
+
+        return result_op
+
+    def _create_read_with_per_block_limit(
+        self, original_read: Read, limit: int
+    ) -> Read:
+        """Create a new Read operator with per-block limit set."""
+        new_read_op = Read(
+            datasource=original_read._datasource,
+            datasource_or_legacy_reader=original_read._datasource_or_legacy_reader,
+            parallelism=original_read._parallelism,
+            mem_size=original_read._mem_size,
+            num_outputs=original_read._num_outputs,
+            ray_remote_args=original_read._ray_remote_args,
+            concurrency=original_read._concurrency,
+        )
+
+        new_read_op.set_per_block_limit(limit)
+
+        # Copy any other state that might have been set
+        if (
+            hasattr(original_read, "_detected_parallelism")
+            and original_read._detected_parallelism is not None
+        ):
+            new_read_op.set_detected_parallelism(original_read._detected_parallelism)
+
+        return new_read_op
+
+    def _recreate_operator_with_new_input(
+        self, original_op: LogicalOperator, new_input: LogicalOperator
+    ) -> LogicalOperator:
+        """Create a new operator of the same type as original_op but with new_input as its input."""
+
+        if isinstance(original_op, Limit):
+            return Limit(new_input, original_op._limit)
+
+        try:
+            # Use copy and replace input dependencies approach
+            new_op = copy.copy(original_op)
+            new_op._input_dependencies = [new_input]
+            new_op._output_dependencies = []
+            return new_op
+
+        except Exception:
+            # Fallback: return original if recreation fails
+            return original_op
