@@ -38,6 +38,8 @@
 namespace ray {
 namespace core {
 
+using std::literals::operator""sv;
+
 class ActorManager;
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
@@ -180,7 +182,8 @@ class TaskManager : public TaskManagerInterface {
       worker::TaskEventBuffer &task_event_buffer,
       std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
           client_factory,
-      std::shared_ptr<gcs::GcsClient> gcs_client)
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      ray::stats::Gauge &ray_metric_tasks)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -190,16 +193,17 @@ class TaskManager : public TaskManagerInterface {
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
         get_actor_rpc_client_callback_(std::move(client_factory)),
-        gcs_client_(std::move(gcs_client)) {
+        gcs_client_(std::move(gcs_client)),
+        ray_metric_tasks_(ray_metric_tasks) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-              ray::stats::STATS_tasks.Record(
+              ray_metric_tasks_.Record(
                   task_counter_.Get(key),
-                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
-                   {"Name", std::get<0>(key)},
-                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
-                   {"Source", "owner"}});
+                  {{"State"sv, rpc::TaskStatus_Name(std::get<1>(key))},
+                   {"Name"sv, std::get<0>(key)},
+                   {"IsRetry"sv, std::get<2>(key) ? "1" : "0"},
+                   {"Source"sv, "owner"}});
             });
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -794,6 +798,9 @@ class TaskManager : public TaskManagerInterface {
       get_actor_rpc_client_callback_;
 
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  /// Metrics
+  ray::stats::Gauge &ray_metric_tasks_;
 
   friend class TaskManagerTest;
 };

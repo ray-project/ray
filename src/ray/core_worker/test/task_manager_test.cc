@@ -31,6 +31,7 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_metric.h"
 
 namespace ray {
 namespace core {
@@ -178,7 +179,8 @@ class TaskManagerTest : public ::testing::Test {
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
             },
-            mock_gcs_client_) {}
+            mock_gcs_client_,
+            ray_metric_tasks_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -225,6 +227,7 @@ class TaskManagerTest : public ::testing::Test {
   uint32_t last_delay_ms_ = 0;
   bool last_object_recovery_ = false;
   std::unordered_set<ObjectID> stored_in_plasma;
+  ray::stats::Gauge ray_metric_tasks_{ray::core::GetTaskMetric()};
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {

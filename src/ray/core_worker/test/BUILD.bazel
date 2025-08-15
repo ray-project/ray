@@ -78,6 +78,7 @@ ray_cc_test(
         "//src/ray/core_worker:reference_count",
         "//src/ray/core_worker:task_event_buffer",
         "//src/ray/core_worker:task_manager",
+        "//src/ray/core_worker:task_metric",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
