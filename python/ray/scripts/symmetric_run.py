@@ -77,16 +77,16 @@ def is_port_open(host: str, port: int, timeout: int = 5) -> bool:
         return False
 
 
-def check_head_node_ready(head_ip, head_port, timeout=CLUSTER_WAIT_TIMEOUT):
+def check_head_node_ready(gcs_ip, gcs_port, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if is_port_open(head_ip, head_port):
+        if is_port_open(gcs_ip, gcs_port):
             click.echo("Ray cluster is ready!", err=True)
             return True
         time.sleep(5)
 
     click.echo(
-        f"Timeout: Ray cluster at {head_ip}:{head_port} not ready after {timeout}s",
+        f"Timeout: Ray cluster at {gcs_ip}:{gcs_port} not ready after {timeout}s",
         err=True,
     )
     return False
@@ -217,11 +217,11 @@ def update_ray_start_cmd(
     default=None,
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
-@click.argument("execute-on-head", nargs=-1, type=click.UNPROCESSED)
+@click.argument("entrypoint-on-head", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(
     address: str,
     wait_for_nnodes: int,
-    execute_on_head: Tuple[str],
+    entrypoint_on_head: Tuple[str],
     num_cpus: int,
     num_gpus: int,
     disable_usage_stats: bool,
@@ -243,12 +243,12 @@ def symmetric_run(
     # 1. Parse address and check if we are on the head node.
     try:
         parsed_address = urlparse(f"//{address}")
-        head_ip = parsed_address.hostname
-        head_port = parsed_address.port
+        gcs_ip = parsed_address.hostname
+        gcs_port = parsed_address.port
     except Exception:
         raise click.ClickException(f"Invalid address format: {address}")
 
-    if not head_ip or not head_port:
+    if not gcs_ip or not gcs_port:
         raise click.ClickException(
             f"Invalid address: {address}. Must be in format <host>:<port>"
         )
@@ -256,11 +256,11 @@ def symmetric_run(
     try:
         # AF_UNSPEC allows resolving both IPv4 and IPv6
         addrinfo = socket.getaddrinfo(
-            head_ip, head_port, socket.AF_UNSPEC, socket.SOCK_STREAM
+            gcs_ip, gcs_port, socket.AF_UNSPEC, socket.SOCK_STREAM
         )
-        resolved_head_ip = addrinfo[0][4][0]
+        resolved_gcs_ip = addrinfo[0][4][0]
     except socket.gaierror:
-        raise click.ClickException(f"Could not resolve hostname: {head_ip}")
+        raise click.ClickException(f"Could not resolve hostname: {gcs_ip}")
 
     my_ips = []
     for iface, addrs in psutil.net_if_addrs().items():
@@ -277,7 +277,7 @@ def symmetric_run(
         # Ban localhost ips if we are running on a single node.
         my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
 
-    is_head = resolved_head_ip in my_ips
+    is_head = resolved_gcs_ip in my_ips
 
     result = None
     # 2. Start Ray and run commands.
@@ -291,8 +291,8 @@ def symmetric_run(
                 "ray",
                 "start",
                 "--head",
-                f"--node-ip-address={resolved_head_ip}",
-                f"--port={head_port}",
+                f"--node-ip-address={resolved_gcs_ip}",
+                f"--port={gcs_port}",
             ]
 
             ray_start_cmd = update_ray_start_cmd(
@@ -320,13 +320,13 @@ def symmetric_run(
                 )
 
             # Run the user command if provided.
-            if execute_on_head:
+            if entrypoint_on_head:
                 click.echo(
-                    f"Running command on head node: {' '.join(execute_on_head)}",
+                    f"Running command on head node: {' '.join(entrypoint_on_head)}",
                     err=True,
                 )
                 click.echo("=======================", err=True)
-                result = subprocess.run(execute_on_head)
+                result = subprocess.run(entrypoint_on_head)
                 click.echo("=======================", err=True)
         else:
             # On a worker node, start Ray and connect to the head.
@@ -334,7 +334,7 @@ def symmetric_run(
                 f"On worker node. Connecting to Ray cluster at {address}...", err=True
             )
 
-            if not check_head_node_ready(head_ip, head_port):
+            if not check_head_node_ready(gcs_ip, gcs_port):
                 raise click.ClickException("Timed out waiting for head node to start.")
 
             # Build the ray start command for worker nodes with all parameters
