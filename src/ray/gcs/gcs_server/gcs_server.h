@@ -129,9 +129,6 @@ class GcsServer {
   }
 
  protected:
-  /// Generate the redis client options
-  RedisClientOptions GetRedisClientOptions() const;
-
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
