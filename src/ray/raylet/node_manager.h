@@ -143,14 +143,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::RayletClientPool &raylet_client_pool,
       pubsub::SubscriberInterface &core_worker_subscriber,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      ILocalTaskManager &local_task_manager,
+      LocalTaskManagerInterface &local_task_manager,
       ClusterTaskManagerInterface &cluster_task_manager,
       IObjectDirectory &object_directory,
       ObjectManagerInterface &object_manager,
       LocalObjectManagerInterface &local_object_manager,
       DependencyManager &dependency_manager,
       WorkerPoolInterface &worker_pool,
-      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
       plasma::PlasmaClientInterface &store_client,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
@@ -286,8 +286,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Warning: this does NOT release the worker's resources, or put the leased worker
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
   // resources well.
-  void ReleaseWorker(const WorkerID &worker_id) {
-    leased_workers_.erase(worker_id);
+  void ReleaseWorker(LeaseID lease_id) {
+    if (leased_workers_[lease_id]) {
+      // NOTE: since the leaseID passed to ReleaseWorker is retrieved from the worker, if
+      // we pass by const reference it will modify the parameter causing the erase to fail
+      leased_workers_[lease_id]->AssignLeaseId(LeaseID::Nil());
+    }
+    leased_workers_.erase(lease_id);
     SetIdleIfLeaseEmpty();
   }
 
@@ -358,7 +363,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker that finished the task.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker);
+  bool FinishAssignedLease(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
@@ -555,12 +560,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                         rpc::ReportWorkerBacklogReply *reply,
                                         rpc::SendReplyCallback send_reply_callback,
                                         WorkerPoolInterface &worker_pool,
-                                        ILocalTaskManager &local_task_manager);
+                                        LocalTaskManagerInterface &local_task_manager);
 
-  /// Handle a `ReturnWorker` request.
-  void HandleReturnWorker(rpc::ReturnWorkerRequest request,
-                          rpc::ReturnWorkerReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReturnWorkerLease` request.
+  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
+                               rpc::ReturnWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedActorWorkers` request.
   // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
@@ -708,7 +713,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
-  void SetTaskFailureReason(const TaskID &task_id,
+  void SetTaskFailureReason(const LeaseID &lease_id,
                             const rpc::RayErrorInfo &failure_reason,
                             bool should_retry);
 
@@ -795,11 +800,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
-  /// Map of workers leased out to clients.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
+  /// Map of workers to their lease ids.
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Optional extra information about why the task failed.
-  absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_;
+  absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> task_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.
@@ -832,7 +837,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   ClusterResourceScheduler &cluster_resource_scheduler_;
-  ILocalTaskManager &local_task_manager_;
+  LocalTaskManagerInterface &local_task_manager_;
   ClusterTaskManagerInterface &cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;

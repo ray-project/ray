@@ -32,7 +32,7 @@ class ClusterTaskManager;
 class SchedulerStats {
  public:
   explicit SchedulerStats(const ClusterTaskManager &cluster_task_manager,
-                          const ILocalTaskManager &local_task_manager);
+                          const LocalTaskManagerInterface &local_task_manager);
 
   // Report metrics doesn't recompute the stats.
   void RecordMetrics();
@@ -48,7 +48,7 @@ class SchedulerStats {
   void ComputeStats();
 
   const ClusterTaskManager &cluster_task_manager_;
-  const ILocalTaskManager &local_task_manager_;
+  const LocalTaskManagerInterface &local_task_manager_;
 
   /// Number of tasks that are spilled to other
   /// nodes because it cannot be scheduled locally.

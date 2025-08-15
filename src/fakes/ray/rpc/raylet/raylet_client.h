@@ -33,11 +33,11 @@ class FakeRayletClient : public RayletClientInterface {
       const int64_t backlog_size = -1,
       const bool is_selected_based_on_locality = false) override {}
 
-  ray::Status ReturnWorker(int worker_port,
-                           const WorkerID &worker_id,
-                           bool disconnect_worker,
-                           const std::string &disconnect_worker_error_detail,
-                           bool worker_exiting) override {
+  ray::Status ReturnWorkerLease(int worker_port,
+                                const LeaseID &lease_id,
+                                bool disconnect_worker,
+                                const std::string &disconnect_worker_error_detail,
+                                bool worker_exiting) override {
     return Status::OK();
   }
 
@@ -51,7 +51,7 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {}
 
   void PrepareBundleResources(
@@ -95,7 +95,7 @@ class FakeRayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
   void GetTaskFailureCause(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback) override {}
 
   void GetSystemConfig(

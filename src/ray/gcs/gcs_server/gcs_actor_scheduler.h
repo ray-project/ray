@@ -74,7 +74,7 @@ class GcsActorSchedulerInterface {
   /// \param actor_id ID of an actor.
   virtual void CancelOnLeasing(const NodeID &node_id,
                                const ActorID &actor_id,
-                               const TaskID &task_id) = 0;
+                               const LeaseID &lease_id) = 0;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
@@ -170,7 +170,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor_id ID of an actor.
   void CancelOnLeasing(const NodeID &node_id,
                        const ActorID &actor_id,
-                       const TaskID &task_id) override;
+                       const LeaseID &lease_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///

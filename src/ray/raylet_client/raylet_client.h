@@ -62,6 +62,7 @@ class RayletClientInterface {
   ///                         but no spillback.
   /// \param callback: The callback to call when the request finishes.
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
+  /// \param lease_id Unique lease ID for this worker lease request.
   virtual void RequestWorkerLease(
       const rpc::TaskSpec &task_spec,
       bool grant_or_reject,
@@ -75,11 +76,11 @@ class RayletClientInterface {
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \param worker_exiting Whether the worker is exiting and cannot be reused.
   /// \return ray::Status
-  virtual ray::Status ReturnWorker(int worker_port,
-                                   const WorkerID &worker_id,
-                                   bool disconnect_worker,
-                                   const std::string &disconnect_worker_error_detail,
-                                   bool worker_exiting) = 0;
+  virtual ray::Status ReturnWorkerLease(int worker_port,
+                                        const LeaseID &lease_id,
+                                        bool disconnect_worker,
+                                        const std::string &disconnect_worker_error_detail,
+                                        bool worker_exiting) = 0;
 
   /// Request the raylet to prestart workers. In `request` we can set the worker's owner,
   /// runtime env info and number of workers.
@@ -97,7 +98,7 @@ class RayletClientInterface {
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
 
   virtual void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
 
   /// Report the backlog size of a given worker and a given scheduling class to the
@@ -109,7 +110,7 @@ class RayletClientInterface {
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
   virtual void GetTaskFailureCause(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
   /// Request a raylet to prepare resources of given bundles for atomic placement group
@@ -246,18 +247,18 @@ class RayletClient : public RayletClientInterface {
       const int64_t backlog_size,
       const bool is_selected_based_on_locality) override;
 
-  ray::Status ReturnWorker(int worker_port,
-                           const WorkerID &worker_id,
-                           bool disconnect_worker,
-                           const std::string &disconnect_worker_error_detail,
-                           bool worker_exiting) override;
+  ray::Status ReturnWorkerLease(int worker_port,
+                                const LeaseID &lease_id,
+                                bool disconnect_worker,
+                                const std::string &disconnect_worker_error_detail,
+                                bool worker_exiting) override;
 
   void PrestartWorkers(
       const ray::rpc::PrestartWorkersRequest &request,
       const ray::rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override;
 
   void GetTaskFailureCause(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override;
 
@@ -285,7 +286,7 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override;
 
   void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
   void PrepareBundleResources(

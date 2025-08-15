@@ -201,7 +201,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<RayletClientInterface> raylet_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
-      const TaskID &task_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const LeaseID &lease_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// This function takes care of returning a worker to the Raylet.
   /// \param[in] addr The address of the worker.
@@ -209,11 +209,11 @@ class NormalTaskSubmitter {
   /// \param[in] error_detail The reason why it was errored.
   /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::Address &addr,
-                    bool was_error,
-                    const std::string &error_detail,
-                    bool worker_exiting,
-                    const SchedulingKey &scheduling_key)
+  void ReturnWorkerLease(const rpc::Address &addr,
+                         bool was_error,
+                         const std::string &error_detail,
+                         bool worker_exiting,
+                         const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.
@@ -291,7 +291,7 @@ class NormalTaskSubmitter {
     int64_t lease_expiration_time;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
-    TaskID task_id;
+    LeaseID lease_id;
     bool is_busy = false;
   };
 
@@ -301,7 +301,8 @@ class NormalTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
+    absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
+
     TaskSpecification resource_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.

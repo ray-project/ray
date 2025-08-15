@@ -32,11 +32,11 @@ SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<SchedulingClass,
                               std::deque<std::shared_ptr<internal::Work>>>
         &infeasible_tasks,
-    const ILocalTaskManager &local_task_manager)
+    const LocalTaskManagerInterface &local_task_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       tasks_to_schedule_(tasks_to_schedule),
-      tasks_to_dispatch_(local_task_manager.GetTaskToDispatch()),
+      tasks_to_dispatch_(local_task_manager.GetLeaseToDispatch()),
       infeasible_tasks_(infeasible_tasks),
       backlog_tracker_(local_task_manager.GetBackLogTracker()) {}
 

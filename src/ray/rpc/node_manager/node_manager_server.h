@@ -38,7 +38,7 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)            \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrestartWorkers)               \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorkerLease)             \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers)     \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)             \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                  \
@@ -97,9 +97,9 @@ class NodeManagerServiceHandler {
                                          ReportWorkerBacklogReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReturnWorker(ReturnWorkerRequest request,
-                                  ReturnWorkerReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReturnWorkerLease(ReturnWorkerLeaseRequest request,
+                                       ReturnWorkerLeaseReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest request,
                                                ReleaseUnusedActorWorkersReply *reply,
