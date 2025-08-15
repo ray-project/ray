@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
+from ray.train.v2.api.report_config import CheckpointUploadMode
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -14,6 +15,7 @@ def report(
     metrics: Dict[str, Any],
     checkpoint: Optional[Checkpoint] = None,
     checkpoint_dir_name: Optional[str] = None,
+    checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -86,10 +88,15 @@ def report(
             If provided, it must be unique across all checkpoints per worker to avoid
             naming collisions. Consider including identifiers such as the epoch or batch
             index in the name.
+        checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+            If not provided, the checkpoint will be uploaded synchronously.
     """
 
     get_train_fn_utils().report(
-        metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
+        metrics=metrics,
+        checkpoint=checkpoint,
+        checkpoint_dir_name=checkpoint_dir_name,
+        checkpoint_upload_mode=checkpoint_upload_mode,
     )
 
 
