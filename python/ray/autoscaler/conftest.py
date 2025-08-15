@@ -31,7 +31,9 @@ sys.modules["azure.mgmt"] = MOCK_AZURE.mgmt
 sys.modules["azure.mgmt.compute"] = MOCK_AZURE.mgmt.compute
 sys.modules["azure.mgmt.resource"] = MOCK_AZURE.mgmt.resource
 sys.modules["azure.mgmt.resource.resources"] = MOCK_AZURE.mgmt.resource.resources
-sys.modules["azure.mgmt.resource.resources.models"] = MOCK_AZURE.mgmt.resource.resources.models
+sys.modules[
+    "azure.mgmt.resource.resources.models"
+] = MOCK_AZURE.mgmt.resource.resources.models
 sys.modules["azure.mgmt.network"] = MOCK_AZURE.mgmt.network
 sys.modules["azure.common"] = MOCK_AZURE.common
 sys.modules["azure.common.credentials"] = MOCK_AZURE.common.credentials
