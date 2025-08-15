@@ -12,7 +12,7 @@ ray_cc_test(
         "no_tsan",
     ],
     deps = [
-        "//src/ray/common/test:testing",
+        "//src/ray/common/tests:testing",
         "//src/ray/util",
         "//src/ray/util/internal:stream_redirection_handle",
         "@com_google_googletest//:gtest_main",

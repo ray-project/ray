@@ -13,3 +13,34 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "stats_test",
+    size = "small",
+    srcs = ["stats_test.cc"],
+    tags = [
+        "no_tsan",
+        "stats",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/stats:stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "metric_exporter_grpc_test",
+    size = "small",
+    srcs = [
+        "metric_exporter_grpc_test.cc",
+    ],
+    tags = [
+        "stats",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/stats:stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
