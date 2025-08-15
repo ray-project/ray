@@ -19,17 +19,20 @@ import gymnasium as gym
 from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
     from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+    from ray.rllib.offline.offline_data import OfflineData
     from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
+    from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
@@ -160,6 +163,9 @@ EnvActionType = Any
 # Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
 # instances. Might be an empty dict.
 EnvInfoDict = dict
+
+# Represents a data source object.
+DataSourceType = Union["OfflineData", "EpisodeReplayBuffer", "Dataset"]
 
 # Represents a File object
 FileType = Any
