@@ -1,3 +1,4 @@
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import threading
 
@@ -257,12 +258,19 @@ class GPUObjectManager:
                     f"Receiver actor {dst_actor} not found in communicator. "
                     "Please make sure the sender and receiver are in the same communicator."
                 )
+            obj_id = obj_ref.hex()
             if src_rank == dst_rank:
                 # If the source and destination ranks are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
+                if src_actor == dst_actor:
+                    warnings.warn(
+                        f"GPU object ref {obj_id} is being passed back to the same actor {src_actor} and will be treated as a mutable tensor. "
+                        "If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "
+                        "will receive the updated version instead of the original.",
+                        UserWarning,
+                    )
                 continue
-            obj_id = obj_ref.hex()
             self._send_object(communicator.name, src_actor, obj_id, dst_rank)
             self._recv_object(
                 communicator.name, dst_actor, obj_id, src_rank, tensor_meta
