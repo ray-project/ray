@@ -171,10 +171,10 @@ class Node:
                 # subsequent restarts of the head node.
                 maybe_key = self.check_persisted_session_name()
                 if maybe_key is None:
-                    # date including microsecond
-                    date_str = datetime.datetime.today().strftime(
-                        "%Y-%m-%d_%H-%M-%S_%f"
-                    )
+                    # date including the first 3 digits of the microsecond
+                    date_str = datetime.datetime.today().strftime("%y%m%d_%H%M%S_%f")[
+                        :17
+                    ]
                     self._session_name = f"session_{date_str}_{os.getpid()}"
                 else:
                     self._session_name = ray._common.utils.decode(maybe_key)
