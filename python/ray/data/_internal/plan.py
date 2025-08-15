@@ -170,7 +170,7 @@ class ExecutionPlan:
         plan_str = ""
         plan_max_depth = 0
         if not self.has_computed_output():
-            # generate_logical_plan_string(self._logical_plan.dag)
+            # using dataset as source here, so don't generate source operator in generate_plan_string
             plan_str, plan_max_depth = self.generate_plan_string(
                 self._logical_plan.dag, including_source=False
             )
