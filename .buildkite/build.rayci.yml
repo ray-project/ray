@@ -19,17 +19,6 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: debug wheel"
-    tags:
-      - linux_wheels
-      - oss
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
-    depends_on:
-      - manylinux
-      - forge
-
   - label: ":tapioca: build: jar"
     key: java_wheels
     tags:
@@ -67,7 +56,8 @@ steps:
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cu12.8.1-cudnn --platform cpu
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
         --image-type ray --upload
     depends_on:
       - manylinux

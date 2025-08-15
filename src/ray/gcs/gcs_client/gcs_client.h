@@ -87,7 +87,7 @@ class GcsClientOptions {
   std::string gcs_address_;
   int gcs_port_ = 0;
   ClusterID cluster_id_;
-  bool should_fetch_cluster_id_;
+  bool should_fetch_cluster_id_ = false;
 };
 
 /// \class GcsClient

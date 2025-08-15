@@ -6,7 +6,7 @@ diff -u bazel/grpc_deps.bzl
                  "https://github.com/madler/zlib/archive/04f42ceca40f73e2978b50e93806c2a18c1281fc.tar.gz",
              ],
 +            patches = [
-+                "@com_github_ray_project_ray//thirdparty/patches:zlib-fdopen.patch",
++                "@io_ray//thirdparty/patches:zlib-fdopen.patch",
 +            ]
          )
  

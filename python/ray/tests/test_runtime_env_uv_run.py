@@ -1,36 +1,18 @@
 import json
 import os
 from pathlib import Path
-import platform
-import stat
 import subprocess
 import sys
-import tarfile
 import tempfile
-from urllib import request
 
 import pytest
+from uv import find_uv_bin
 
 import ray
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-
-
-@pytest.fixture(scope="function")
-def with_uv():
-    arch = "aarch64" if platform.machine() in ["aarch64", "arm64"] else "x86_64"
-    system = "unknown-linux-gnu" if platform.system() == "Linux" else "apple-darwin"
-    name = f"uv-{arch}-{system}"
-    url = f"https://github.com/astral-sh/uv/releases/download/0.5.27/{name}.tar.gz"
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        with request.urlopen(request.Request(url), timeout=15.0) as response:
-            with tarfile.open(fileobj=response, mode="r|*") as tar:
-                tar.extractall(tmp_dir)
-        uv = Path(tmp_dir) / name / "uv"
-        uv.chmod(uv.stat().st_mode | stat.S_IEXEC)
-        yield uv
 
 
 PYPROJECT_TOML = """
@@ -58,11 +40,9 @@ def tmp_working_dir():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_simple(shutdown_only, with_uv):
-    uv = with_uv
-
+def test_uv_run_simple(shutdown_only):
     runtime_env = {
-        "py_executable": f"{uv} run --with emoji --no-project",
+        "py_executable": f"{find_uv_bin()} run --with emoji --no-project",
     }
     ray.init(runtime_env=runtime_env)
 
@@ -76,15 +56,14 @@ def test_uv_run_simple(shutdown_only, with_uv):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
-    uv = with_uv
+def test_uv_run_pyproject(shutdown_only, tmp_working_dir):
     tmp_dir = tmp_working_dir
 
     ray.init(
         runtime_env={
             "working_dir": tmp_dir,
             # We want to run in the system environment so the current installation of Ray can be found here
-            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {uv} run --python-preference=only-system",
+            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {find_uv_bin()} run --python-preference=only-system",
         }
     )
 
@@ -98,8 +77,7 @@ def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
-    uv = with_uv
+def test_uv_run_editable(shutdown_only, tmp_working_dir):
     tmp_dir = tmp_working_dir
 
     subprocess.run(
@@ -113,7 +91,7 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
     )
 
     subprocess.run(
-        [uv, "add", "--editable", "./emoji_copy"],
+        [find_uv_bin(), "add", "--editable", "./emoji_copy"],
         cwd=tmp_dir,
     )
 
@@ -133,7 +111,7 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
         runtime_env={
             "working_dir": tmp_dir,
             # We want to run in the system environment so the current installation of Ray can be found here
-            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {uv} run --python-preference=only-system",
+            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {find_uv_bin()} run --python-preference=only-system",
         }
     )
 
@@ -147,11 +125,9 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_runtime_env_hook(with_uv):
+def test_uv_run_runtime_env_hook():
 
     import ray._private.runtime_env.uv_runtime_env_hook
-
-    uv = with_uv
 
     def check_uv_run(
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
@@ -171,25 +147,28 @@ def test_uv_run_runtime_env_hook(with_uv):
     script = ray._private.runtime_env.uv_runtime_env_hook.__file__
 
     check_uv_run(
-        cmd=[uv, "run", "--no-project", script],
+        cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.getcwd(),
         },
     )
     check_uv_run(
-        cmd=[uv, "run", "--no-project", "--directory", "/tmp", script],
+        cmd=[find_uv_bin(), "run", "--no-project", "--directory", "/tmp", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.path.realpath("/tmp"),
         },
     )
     check_uv_run(
-        [uv, "run", "--no-project", script],
+        [find_uv_bin(), "run", "--no-project", script],
         {"working_dir": "/some/path"},
-        {"py_executable": f"{uv} run --no-project", "working_dir": "/some/path"},
+        {
+            "py_executable": f"{find_uv_bin()} run --no-project",
+            "working_dir": "/some/path",
+        },
     )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -200,9 +179,12 @@ def test_uv_run_runtime_env_hook(with_uv):
             file.write('version = "0.1"\n')
             file.write('dependencies = ["psutil"]\n')
         check_uv_run(
-            cmd=[uv, "run", script],
+            cmd=[find_uv_bin(), "run", script],
             runtime_env={},
-            expected_output={"py_executable": f"{uv} run", "working_dir": f"{tmp_dir}"},
+            expected_output={
+                "py_executable": f"{find_uv_bin()} run",
+                "working_dir": f"{tmp_dir}",
+            },
             subprocess_kwargs={"cwd": tmp_dir},
         )
 
@@ -213,10 +195,10 @@ def test_uv_run_runtime_env_hook(with_uv):
         with open(requirements, "w") as file:
             file.write("psutil\n")
         check_uv_run(
-            cmd=[uv, "run", "--with-requirements", requirements, script],
+            cmd=[find_uv_bin(), "run", "--with-requirements", requirements, script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{uv} run --with-requirements {requirements}",
+                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements}",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -232,7 +214,7 @@ def test_uv_run_runtime_env_hook(with_uv):
             file.write('version = "0.1"\n')
             file.write('dependencies = ["psutil"]\n')
         check_uv_run(
-            cmd=[uv, "run", script],
+            cmd=[find_uv_bin(), "run", script],
             runtime_env={},
             expected_output=None,
             subprocess_kwargs={"cwd": tmp_dir / "cwd"},
@@ -247,7 +229,7 @@ def test_uv_run_runtime_env_hook(with_uv):
             file.write("psutil\n")
         check_uv_run(
             cmd=[
-                uv,
+                find_uv_bin(),
                 "run",
                 "--with-requirements",
                 tmp_dir / "requirements.txt",
@@ -263,7 +245,7 @@ def test_uv_run_runtime_env_hook(with_uv):
     # when combined with the 'pip' or 'uv' environment.
     for runtime_env in [{"uv": ["emoji"]}, {"pip": ["emoji"]}]:
         check_uv_run(
-            cmd=[uv, "run", "--no-project", script],
+            cmd=[find_uv_bin(), "run", "--no-project", script],
             runtime_env=runtime_env,
             expected_output=None,
             expected_error="You are using the 'pip' or 'uv' runtime environments together with 'uv run'.",
@@ -275,10 +257,10 @@ def test_uv_run_runtime_env_hook(with_uv):
     # Check in the case that there is one more level of subprocess indirection between
     # the "uv run" process and the process that checks the environment
     check_uv_run(
-        cmd=[uv, "run", "--no-project", script],
+        cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -288,10 +270,10 @@ def test_uv_run_runtime_env_hook(with_uv):
 
     # Check in the case that the script is started with multiprocessing spawn
     check_uv_run(
-        cmd=[uv, "run", "--no-project", script],
+        cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -302,7 +284,7 @@ def test_uv_run_runtime_env_hook(with_uv):
     # Check in the case that a module is used for "uv run" (-m or --module)
     check_uv_run(
         cmd=[
-            uv,
+            find_uv_bin(),
             "run",
             "--no-project",
             "-m",
@@ -310,7 +292,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.getcwd(),
         },
     )
@@ -319,7 +301,7 @@ def test_uv_run_runtime_env_hook(with_uv):
     # an argument immediately behind it
     check_uv_run(
         cmd=[
-            uv,
+            find_uv_bin(),
             "run",
             "--no-project",
             "-m",
@@ -328,7 +310,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.getcwd(),
         },
     )
@@ -385,10 +367,9 @@ def test_uv_run_parser():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
+def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
 
-    uv = with_uv
-    tmp_out_dir = Path(temp_dir)
+    tmp_dir = Path(temp_dir)
 
     script = f"""
 import json
@@ -400,39 +381,41 @@ def f():
     import emoji
     return {{"working_dir_files": os.listdir(os.getcwd())}}
 
-with open("{tmp_out_dir / "output.txt"}", "w") as out:
+with open("{tmp_dir / "output.txt"}", "w") as out:
     json.dump(ray.get(f.remote()), out)
 """
 
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+    working_dir = tmp_dir / "working_dir"
+    working_dir.mkdir(parents=True, exist_ok=True)
+
+    script_file = working_dir / "script.py"
+    with open(script_file, "w") as f:
         f.write(script)
         f.close()
-        subprocess.run(
-            [
-                uv,
-                "run",
-                # We want to run in the system environment so the current installation of Ray can be found here
-                "--python-preference=only-system",
-                "--with",
-                "emoji",
-                "--no-project",
-                f.name,
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={
-                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook",
-                "PYTHONPATH": ":".join(sys.path),
-                "PATH": os.environ["PATH"],
-            },
-            cwd=os.path.dirname(uv),
-            check=True,
-        )
-        with open(tmp_out_dir / "output.txt") as f:
-            assert json.load(f) == {
-                "working_dir_files": os.listdir(os.path.dirname(uv))
-            }
+
+    subprocess.run(
+        [
+            find_uv_bin(),
+            "run",
+            # We want to run in the system environment so the current installation of Ray can be found here
+            "--python-preference=only-system",
+            "--with",
+            "emoji",
+            "--no-project",
+            str(script_file),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            "PYTHONPATH": ":".join(sys.path),
+            "PATH": os.environ["PATH"],
+        },
+        cwd=working_dir,
+        check=True,
+    )
+    with open(tmp_dir / "output.txt") as f:
+        assert json.load(f) == {"working_dir_files": os.listdir(working_dir)}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
@@ -440,23 +423,19 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     "ray_start_cluster_head_with_env_vars",
     [
         {
-            "env_vars": {
-                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook"
-            },
             "include_dashboard": True,
         }
     ],
     indirect=True,
 )
 def test_uv_run_runtime_env_hook_e2e_job(
-    ray_start_cluster_head_with_env_vars, with_uv, temp_dir
+    ray_start_cluster_head_with_env_vars, temp_dir
 ):
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = format_web_url(cluster.webui_url)
 
-    uv = with_uv
-    tmp_out_dir = Path(temp_dir)
+    tmp_dir = Path(temp_dir)
 
     script = f"""
 import json
@@ -468,52 +447,54 @@ def f():
     import emoji
     return {{"working_dir_files": os.listdir(os.getcwd())}}
 
-with open("{tmp_out_dir / "output.txt"}", "w") as out:
+with open("{tmp_dir / "output.txt"}", "w") as out:
     json.dump(ray.get(f.remote()), out)
 """
 
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".py", delete=False
-    ) as f, tempfile.NamedTemporaryFile("w", delete=False) as requirements:
+    working_dir = tmp_dir / "working_dir"
+    working_dir.mkdir(parents=True, exist_ok=True)
+
+    script_file = working_dir / "script.py"
+    with open(script_file, "w") as f:
         f.write(script)
         f.close()
-        requirements.write("emoji\n")
-        requirements.close()
-        # Test job submission
-        runtime_env_json = (
-            '{"env_vars": {"PYTHONPATH": "'
-            + ":".join(sys.path)
-            + '"}, "working_dir": "."}'
-        )
-        subprocess.run(
-            [
-                "ray",
-                "job",
-                "submit",
-                "--runtime-env-json",
-                runtime_env_json,
-                "--",
-                uv,
-                "run",
-                "--with-requirements",
-                requirements.name,
-                "--no-project",
-                f.name,
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={
-                "PATH": os.environ["PATH"],
-                "RAY_ADDRESS": webui_url,
-            },
-            cwd=os.path.dirname(uv),
-            check=True,
-        )
-        with open(tmp_out_dir / "output.txt") as f:
-            assert json.load(f) == {
-                "working_dir_files": os.listdir(os.path.dirname(uv))
-            }
+
+    requirements_file = working_dir / "requirements.txt"
+    with open(requirements_file, "w") as f:
+        f.write("emoji\n")
+        f.close()
+
+    # Test job submission
+    runtime_env_json = (
+        '{"env_vars": {"PYTHONPATH": "' + ":".join(sys.path) + '"}, "working_dir": "."}'
+    )
+    subprocess.run(
+        [
+            "ray",
+            "job",
+            "submit",
+            "--runtime-env-json",
+            runtime_env_json,
+            "--",
+            find_uv_bin(),
+            "run",
+            "--with-requirements",
+            str(requirements_file),
+            "--no-project",
+            str(script_file),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            "PATH": os.environ["PATH"],
+            "RAY_ADDRESS": webui_url,
+        },
+        cwd=working_dir,
+        check=True,
+    )
+    with open(tmp_dir / "output.txt") as f:
+        assert json.load(f) == {"working_dir_files": os.listdir(working_dir)}
 
 
 if __name__ == "__main__":

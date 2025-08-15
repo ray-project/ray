@@ -18,6 +18,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
+from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,9 @@ class SparkNodeProvider(NodeProvider):
         # to launch spark jobs, ray worker nodes are launched by spark task in
         # spark jobs.
         spark_job_server_port = self.provider_config["spark_job_server_port"]
-        self.spark_job_server_url = f"http://{self.ray_head_ip}:{spark_job_server_port}"
+        self.spark_job_server_url = (
+            f"http://{build_address(self.ray_head_ip, spark_job_server_port)}"
+        )
         self.ray_head_port = self.provider_config["ray_head_port"]
         # The unique id for the Ray on spark cluster.
         self.cluster_id = self.provider_config["cluster_unique_id"]
@@ -190,7 +193,7 @@ class SparkNodeProvider(NodeProvider):
                     "spark_job_group_desc": (
                         "This job group is for spark job which runs the Ray "
                         f"cluster worker node {node_id} connecting to ray "
-                        f"head node {self.ray_head_ip}:{self.ray_head_port}"
+                        f"head node {build_address(self.ray_head_ip, self.ray_head_port)}"
                     ),
                     "using_stage_scheduling": conf["using_stage_scheduling"],
                     "ray_head_ip": self.ray_head_ip,

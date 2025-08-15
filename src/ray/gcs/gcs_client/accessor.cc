@@ -671,24 +671,17 @@ const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &NodeInfoAccessor::GetAll() 
   return node_cache_;
 }
 
-Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
-                                       std::vector<rpc::GcsNodeInfo> &nodes) {
-  RAY_LOG(DEBUG) << "Getting information of all nodes.";
-  rpc::GetAllNodeInfoRequest request;
-  rpc::GetAllNodeInfoReply reply;
-  RAY_RETURN_NOT_OK(
-      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
-  nodes = VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
-  return Status::OK();
-}
-
-StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilters(
+StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
     int64_t timeout_ms,
-    rpc::GcsNodeInfo::GcsNodeState state_filter,
-    rpc::GetAllNodeInfoRequest::NodeSelector node_selector) {
+    std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
+    std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector) {
   rpc::GetAllNodeInfoRequest request;
-  *request.add_node_selectors() = std::move(node_selector);
-  request.set_state_filter(state_filter);
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
+  }
+  if (node_selector.has_value()) {
+    *request.add_node_selectors() = std::move(node_selector.value());
+  }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(
       client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
@@ -880,19 +873,13 @@ void TaskInfoAccessor::AsyncGetTaskEvents(
 ErrorInfoAccessor::ErrorInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-void ErrorInfoAccessor::AsyncReportJobError(
-    const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  auto job_id = JobID::FromBinary(data_ptr->job_id());
+void ErrorInfoAccessor::AsyncReportJobError(rpc::ErrorTableData data) {
+  auto job_id = JobID::FromBinary(data.job_id());
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
   rpc::ReportJobErrorRequest request;
-  request.mutable_job_error()->CopyFrom(*data_ptr);
+  *request.mutable_job_error() = std::move(data);
   client_impl_->GetGcsRpcClient().ReportJobError(
-      request,
-      [job_id, callback](const Status &status, rpc::ReportJobErrorReply &&reply) {
-        if (callback) {
-          callback(status);
-        }
+      request, [job_id](const Status &status, rpc::ReportJobErrorReply &&reply) {
         RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
       });
 }

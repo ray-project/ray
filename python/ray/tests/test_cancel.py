@@ -15,7 +15,6 @@ from ray.exceptions import (
     RayTaskError,
     GetTimeoutError,
     WorkerCrashedError,
-    ObjectLostError,
 )
 from ray.types import ObjectRef
 from ray._private.utils import DeferSigint
@@ -26,7 +25,7 @@ from ray.util.state import list_tasks
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
+        return (RayTaskError, TaskCancelledError, WorkerCrashedError)
     else:
         return TaskCancelledError
 
@@ -424,14 +423,24 @@ def test_fast(shutdown_only, use_force):
 
 
 @pytest.mark.parametrize("use_force", [True, False])
-def test_remote_cancel(ray_start_regular, use_force):
+def test_remote_cancel(ray_start_cluster, use_force):
+    # NOTE: We need to use a cluster with 2 nodes to test the remote cancel.
+    # Otherwise both wait_for and remote_wait will be scheduled on the same worker
+    # process and the cancel on wait_for will also kill remote_wait. This is because
+    # remote_wait also makes a remote call and returns instantly meaning it can
+    # be reused from the worker pool for wait_for.
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"worker1": 1})
+    cluster.add_node(num_cpus=1, resources={"worker2": 1})
     signaler = SignalActor.remote()
 
-    @ray.remote
+    @ray.remote(num_cpus=1, resources={"worker1": 1})
     def wait_for(y):
         return ray.get(y[0])
 
-    @ray.remote
+    @ray.remote(num_cpus=1, resources={"worker2": 1})
     def remote_wait(sg):
         return [wait_for.remote([sg[0]])]
 
@@ -439,7 +448,6 @@ def test_remote_cancel(ray_start_regular, use_force):
 
     outer = remote_wait.remote([sig])
     inner = ray.get(outer)[0]
-
     with pytest.raises(GetTimeoutError):
         ray.get(inner, timeout=1)
 

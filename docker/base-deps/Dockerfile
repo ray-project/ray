@@ -5,8 +5,6 @@
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
-# FROM directive resets ARG
-ARG BASE_IMAGE
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
@@ -15,7 +13,6 @@ ENV LANG=C.UTF-8
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
-ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -67,9 +64,19 @@ RUN <<EOF
 
 set -euo pipefail
 
+# Determine the architecture of the host
+if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
+    exit 1
+fi
+
 # Install miniforge
 wget --quiet \
-    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
+    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${ARCH}.sh" \
     -O /tmp/miniforge.sh
 
 /bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
@@ -114,15 +121,11 @@ uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
     -c $HOME/requirements_compiled.txt \
     "${PIP_PKGS[@]}"
 
-# To avoid the following error on Jenkins:
-# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-uv pip uninstall --system dask
-
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
 
 # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then
+if [[ ! -d /usr/local/cuda ]]; then
     sudo apt-get autoremove -y g++
 fi
 

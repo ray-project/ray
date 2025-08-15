@@ -126,6 +126,7 @@ MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = (2) * (2**30)
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_API_SERVER_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
@@ -577,20 +578,9 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "l
 # Defaults to False to use pynvml to collect usage.
 RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
 
-# Whether enable OpenTelemetry as the metrics collection backend on the driver
-# component. This flag is only used during the migration of the  metric collection
-# backend from OpenCensus to OpenTelemetry. It will be removed in the future.
-RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
-    "RAY_experimental_enable_open_telemetry_on_agent", False
-)
-
-# Whether enable OpenTelemetry as the metrics collection backend on the core
-# components (core workers, gcs server, raylet, etc.). This flag is only used during
-# the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
-# It will be removed in the future.
-RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
-    "RAY_experimental_enable_open_telemetry_on_core", False
-)
+# Whether enable OpenTelemetry as the metrics collection backend. The default is
+# using OpenCensus.
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
 
 # How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
 #

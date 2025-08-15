@@ -83,7 +83,6 @@ struct CoreWorkerOptions {
         interactive(false),
         node_ip_address(""),
         node_manager_port(0),
-        raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
@@ -135,8 +134,6 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
-  /// IP address of the raylet.
-  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
@@ -203,7 +200,7 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
-  /// Session name (Cluster ID) of the cluster.
+  /// The current Ray session name.
   std::string session_name;
   std::string entrypoint;
   int64_t worker_launch_time_ms;

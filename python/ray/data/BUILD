@@ -214,9 +214,9 @@ py_test(
 )
 
 py_test(
-    name = "test_arrow_block_scaling",
+    name = "test_jumbo_arrow_block",
     size = "large",
-    srcs = ["tests/test_arrow_block_scaling.py"],
+    srcs = ["tests/test_jumbo_arrow_block.py"],
     tags = [
         "data_non_parallel",
         "exclusive",

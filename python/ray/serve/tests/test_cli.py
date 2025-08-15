@@ -345,13 +345,20 @@ def test_cli_without_config_deploy(serve_instance):
     serve.run(fn.bind())
 
     def check_cli():
-        info_response = subprocess.check_output(["serve", "config"])
+        info_response = subprocess.check_output(["serve", "config"]).decode("utf-8")
+        config_response_for_absent_app = subprocess.check_output(
+            ["serve", "config", "-n", "absent_app"]
+        ).decode("utf-8")
         status_response = subprocess.check_output(["serve", "status"])
         fetched_status = yaml.safe_load(status_response)["applications"][
             SERVE_DEFAULT_APP_NAME
         ]
 
-        assert len(info_response) == 0
+        assert info_response == "No configuration was found.\n"
+        assert (
+            config_response_for_absent_app
+            == 'No config has been deployed for application "absent_app".\n'
+        )
         assert fetched_status["status"] == "RUNNING"
         assert fetched_status["deployments"]["fn"]["status"] == "HEALTHY"
         return True

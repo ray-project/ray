@@ -172,7 +172,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// TODO: Implement the function
   void CancelInfeasibleRequests() const;
 
-  // Ray cluster session name.
+  // The current Ray session name.
   const std::string session_name_;
 
   /// Gcs node manager that provides node status information.

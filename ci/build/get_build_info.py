@@ -10,9 +10,9 @@ $ python get_build_info.py
 }
 """
 
+import json
 import os
 import platform
-import json
 
 
 def gha_get_self_url():

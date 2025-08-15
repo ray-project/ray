@@ -165,7 +165,9 @@ parser.add_argument(
     action="store_true",
     help="True if Ray debugger is made available externally.",
 )
-parser.add_argument("--session-name", required=False, help="The current session name")
+parser.add_argument(
+    "--session-name", required=False, help="The current Ray session name"
+)
 parser.add_argument(
     "--webui",
     required=False,
@@ -218,12 +220,8 @@ if __name__ == "__main__":
     # for asyncio
     try_install_uvloop()
 
-    raylet_ip_address = args.raylet_ip_address
-    if raylet_ip_address is None:
-        raylet_ip_address = args.node_ip_address
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
-        raylet_ip_address=raylet_ip_address,
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_username=args.redis_username,

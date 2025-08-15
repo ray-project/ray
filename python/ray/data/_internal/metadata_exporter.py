@@ -1,10 +1,9 @@
 """Metadata exporter API for Ray Data datasets."""
 
-import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence
 
 import ray
@@ -13,6 +12,7 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -60,11 +60,17 @@ class Operator:
         sub_stages: List of sub-stages contained within this operator.
         args: User-specified arguments associated with the operator, which may
             include configuration settings, options, or other relevant data for the operator.
+        execution_start_time: The timestamp when the operator execution begins.
+        execution_end_time: The timestamp when the operator execution ends.
+        state: The state of the operator.
     """
 
     name: str
     id: str
     uuid: str
+    execution_start_time: Optional[float]
+    execution_end_time: Optional[float]
+    state: str
     input_dependencies: List[str] = field(default_factory=list)
     sub_stages: List[SubStage] = field(default_factory=list)
     args: Dict[str, Any] = field(default_factory=dict)
@@ -108,6 +114,9 @@ class Topology:
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
                 args=sanitize_for_struct(op._get_logical_args()),
+                execution_start_time=None,
+                execution_end_time=None,
+                state=DatasetState.PENDING.name,
             )
 
             # Add sub-stages if they exist
@@ -131,8 +140,11 @@ class DatasetMetadata:
         job_id: The ID of the job running this dataset.
         topology: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
-        start_time: The timestamp when the dataset execution started.
+        start_time: The timestamp when the dataset is registered.
         data_context: The DataContext attached to the dataset.
+        execution_start_time: The timestamp when the dataset execution starts.
+        execution_end_time: The timestamp when the dataset execution ends.
+        state: The state of the dataset.
     """
 
     job_id: str
@@ -140,32 +152,41 @@ class DatasetMetadata:
     dataset_id: str
     start_time: float
     data_context: DataContext
+    execution_start_time: Optional[float]
+    execution_end_time: Optional[float]
+    state: str
 
 
-def _add_ellipsis(s, truncate_length):
+def _add_ellipsis(s: str, truncate_length: int) -> str:
     if len(s) > truncate_length:
         return s[:truncate_length] + "..."
     return s
 
 
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
+    """Prepares the obj for Struct Protobuf format by recursively
+    going through dictionaries, lists, etc...
+
+    - Dataclasses will be converted to dicts
+    - Dictionary keys will be converted to strings
+    - Lists, tuples, sets, bytes, bytearrays will be converted to lists
+    """
     if isinstance(obj, Mapping):
-        return {k: sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
-    elif isinstance(obj, (int, float, bool)) or obj is None:
-        return obj
+        # protobuf Struct key names must be strings.
+        return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, str):
         return _add_ellipsis(obj, truncate_length)
-    elif isinstance(obj, Sequence):
-        return [sanitize_for_struct(v, truncate_length) for v in obj]
+    elif isinstance(obj, (Sequence, set)):
+        # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
+        return [sanitize_for_struct(v, truncate_length=truncate_length) for v in obj]
     else:
-        # Convert unhandled types to string
         try:
-            return _add_ellipsis(json.dumps(obj), truncate_length)
-        except (TypeError, OverflowError):
-            try:
-                return _add_ellipsis(str(obj), truncate_length)
-            except Exception:
-                return UNKNOWN
+            if is_dataclass(obj):
+                return sanitize_for_struct(asdict(obj), truncate_length)
+            return _add_ellipsis(str(obj), truncate_length)
+        except Exception:
+            unk_name = f"{UNKNOWN}: {type(obj).__name__}"
+            return _add_ellipsis(unk_name, truncate_length)
 
 
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
@@ -178,7 +199,6 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     Returns:
         The protobuf message representing the dataset metadata.
     """
-    from dataclasses import asdict
 
     from google.protobuf.struct_pb2 import Struct
 
@@ -202,6 +222,9 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
             id=op.id,
             uuid=op.uuid,
             args=args,
+            execution_start_time=op.execution_start_time,
+            execution_end_time=op.execution_end_time,
+            state=ProtoOperator.OperatorState.Value(op.state),
         )
 
         # Add input dependencies
@@ -221,12 +244,15 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Populate the data metadata proto
     data_context = Struct()
-    data_context.update(sanitize_for_struct(asdict(dataset_metadata.data_context)))
+    data_context.update(sanitize_for_struct(dataset_metadata.data_context))
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,
         start_time=dataset_metadata.start_time,
         data_context=data_context,
+        execution_start_time=dataset_metadata.execution_start_time,
+        execution_end_time=dataset_metadata.execution_end_time,
+        state=ProtoDatasetMetadata.DatasetState.Value(dataset_metadata.state),
     )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
 

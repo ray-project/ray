@@ -23,27 +23,26 @@
 
 namespace ray::gcs {
 
-std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
-    const std::string &error_type,
-    const std::string &error_msg,
-    absl::Time timestamp,
-    const JobID &job_id) {
+rpc::ErrorTableData CreateErrorTableData(const std::string &error_type,
+                                         const std::string &error_msg,
+                                         absl::Time timestamp,
+                                         const JobID &job_id) {
   uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
-  auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
-  error_info_ptr->set_type(error_type);
+  rpc::ErrorTableData error_info;
+  error_info.set_type(error_type);
   if (error_msg.length() > max_error_msg_size_bytes) {
     std::string formatted_error_message = absl::StrFormat(
         "The message size exceeds %d bytes. Find the full log from the log files. Here "
         "is abstract: %s",
         max_error_msg_size_bytes,
         std::string_view{error_msg}.substr(0, max_error_msg_size_bytes));
-    error_info_ptr->set_error_message(std::move(formatted_error_message));
+    error_info.set_error_message(std::move(formatted_error_message));
   } else {
-    error_info_ptr->set_error_message(error_msg);
+    error_info.set_error_message(error_msg);
   }
-  error_info_ptr->set_timestamp(absl::ToUnixMillis(timestamp));
-  error_info_ptr->set_job_id(job_id.Binary());
-  return error_info_ptr;
+  error_info.set_timestamp(absl::ToUnixMillis(timestamp));
+  error_info.set_job_id(job_id.Binary());
+  return error_info;
 }
 
 }  // namespace ray::gcs

@@ -594,8 +594,12 @@ TEST_F(EventTest, TestRayCheckAbort) {
                    "FATAL",
                    "RAY_FATAL_CHECK_FAILED",
                    "NULL");
-  EXPECT_THAT(ele_1.message(),
-              testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
+  EXPECT_THAT(
+      ele_1.message(),
+      testing::HasSubstr(
+          "An unexpected system state has occurred. You have likely discovered a bug in "
+          "Ray. Please report this issue at https://github.com/ray-project/ray/issues "
+          "and we'll work with you to fix it. Check failed: 1 < 0 incorrect test case"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
 }

@@ -54,66 +54,6 @@ Compare a standard Hugging Face Transformers script with its Ray Train equivalen
 
 .. tab-set::
 
-    .. tab-item:: Hugging Face Transformers
-
-        .. This snippet isn't tested because it doesn't use any Ray code.
-
-        .. testcode::
-            :skipif: True
-
-            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
-
-            import numpy as np
-            import evaluate
-            from datasets import load_dataset
-            from transformers import (
-                Trainer,
-                TrainingArguments,
-                AutoTokenizer,
-                AutoModelForSequenceClassification,
-            )
-
-            # Datasets
-            dataset = load_dataset("yelp_review_full")
-            tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-
-            def tokenize_function(examples):
-                return tokenizer(examples["text"], padding="max_length", truncation=True)
-
-            small_train_dataset = dataset["train"].select(range(100)).map(tokenize_function, batched=True)
-            small_eval_dataset = dataset["test"].select(range(100)).map(tokenize_function, batched=True)
-
-            # Model
-            model = AutoModelForSequenceClassification.from_pretrained(
-                "bert-base-cased", num_labels=5
-            )
-
-            # Metrics
-            metric = evaluate.load("accuracy")
-
-            def compute_metrics(eval_pred):
-                logits, labels = eval_pred
-                predictions = np.argmax(logits, axis=-1)
-                return metric.compute(predictions=predictions, references=labels)
-
-            # Hugging Face Trainer
-            training_args = TrainingArguments(
-                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
-            )
-
-            trainer = Trainer(
-                model=model,
-                args=training_args,
-                train_dataset=small_train_dataset,
-                eval_dataset=small_eval_dataset,
-                compute_metrics=compute_metrics,
-            )
-
-            # Start Training
-            trainer.train()
-
-
-
     .. tab-item:: Hugging Face Transformers + Ray Train
 
         .. code-block:: python
@@ -214,6 +154,65 @@ Compare a standard Hugging Face Transformers script with its Ray Train equivalen
                     ray.train.huggingface.transformers.RayTrainReportCallback.CHECKPOINT_NAME,
                 )
                 model = AutoModelForSequenceClassification.from_pretrained(checkpoint_path)
+
+
+    .. tab-item:: Hugging Face Transformers
+
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
+
+            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
+
+            import numpy as np
+            import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer,
+                AutoModelForSequenceClassification,
+            )
+
+            # Datasets
+            dataset = load_dataset("yelp_review_full")
+            tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+
+            def tokenize_function(examples):
+                return tokenizer(examples["text"], padding="max_length", truncation=True)
+
+            small_train_dataset = dataset["train"].select(range(100)).map(tokenize_function, batched=True)
+            small_eval_dataset = dataset["test"].select(range(100)).map(tokenize_function, batched=True)
+
+            # Model
+            model = AutoModelForSequenceClassification.from_pretrained(
+                "bert-base-cased", num_labels=5
+            )
+
+            # Metrics
+            metric = evaluate.load("accuracy")
+
+            def compute_metrics(eval_pred):
+                logits, labels = eval_pred
+                predictions = np.argmax(logits, axis=-1)
+                return metric.compute(predictions=predictions, references=labels)
+
+            # Hugging Face Trainer
+            training_args = TrainingArguments(
+                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+            )
+
+            trainer = Trainer(
+                model=model,
+                args=training_args,
+                train_dataset=small_train_dataset,
+                eval_dataset=small_eval_dataset,
+                compute_metrics=compute_metrics,
+            )
+
+            # Start Training
+            trainer.train()
 
 
 Set up a training function

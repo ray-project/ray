@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray._common.network_utils import build_address
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -659,7 +660,7 @@ class ServeController:
                 return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
                 return (
-                    f"http://{http_config.host}:{http_config.port}"
+                    f"http://{build_address(http_config.host, http_config.port)}"
                     f"{http_config.root_path}"
                 )
         return http_config.root_url

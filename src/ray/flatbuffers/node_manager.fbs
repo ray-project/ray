@@ -103,7 +103,7 @@ table RegisterClientRequest {
 table RegisterClientReply {
   success: bool;
   failure_reason: string;
-  raylet_id: string;
+  node_id: string;
   port: int;
 }
 
@@ -122,7 +122,7 @@ table AnnounceWorkerPortReply {
 
 // Mimics the Address protobuf.
 table Address {
-  raylet_id: string;
+  node_id: string;
   ip_address: string;
   port: int;
   // Optional unique id for the worker.

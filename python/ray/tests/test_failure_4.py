@@ -21,6 +21,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     kill_raylet,
 )
+from ray._common.network_utils import build_address
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
     gcs_service_pb2,
@@ -353,10 +354,10 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
 
     # Kill a raylet gracefully.
     def kill_raylet(ip, port, graceful=True):
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        print(f"Sending a shutdown request to {ip}:{port}")
+        print(f"Sending a shutdown request to {build_address(ip, port)}")
         try:
             stub.ShutdownRaylet(
                 node_manager_pb2.ShutdownRayletRequest(graceful=graceful)

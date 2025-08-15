@@ -2,8 +2,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.builder import DEFAULT_PYTHON_VERSION
+from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.utils import ci_init
 
 
@@ -14,7 +14,7 @@ class RayCITestBase(unittest.TestCase):
             os.environ,
             {
                 "RAYCI_CHECKOUT_DIR": "/ray",
-                "RAYCI_BUILD_ID": "123",
+                "RAYCI_BUILD_ID": "a1b2c3d4",
                 "RAYCI_WORK_REPO": "rayproject/citemp",
                 "BUILDKITE_COMMIT": "123456",
                 "BUILDKITE_BRANCH": "master",

@@ -267,7 +267,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         -1,
                                         is_reconstructable,
                                         /*add_local_ref=*/true,
-                                        /*pinned_at_raylet_id=*/std::optional<NodeID>(),
+                                        /*pinned_at_node_id=*/std::optional<NodeID>(),
                                         /*tensor_transport=*/spec.TensorTransport());
     }
 
@@ -535,7 +535,7 @@ size_t TaskManager::NumPendingTasks() const {
 
 bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
                                    const rpc::ReturnObject &return_object,
-                                   const NodeID &worker_raylet_id,
+                                   const NodeID &worker_node_id,
                                    bool store_in_plasma) {
   bool direct_return = false;
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
@@ -548,7 +548,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // NOTE(swang): We need to add the location of the object before marking
     // it as local in the in-memory store so that the data locality policy
     // will choose the right raylet for any queued dependent tasks.
-    reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_raylet_id);
+    reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_node_id);
     // Mark it as in plasma with a dummy object.
     in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   } else {
@@ -815,7 +815,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     HandleTaskReturn(object_id,
                      return_object,
-                     NodeID::FromBinary(request.worker_addr().raylet_id()),
+                     NodeID::FromBinary(request.worker_addr().node_id()),
                      /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
   }
 
@@ -902,7 +902,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
       if (!HandleTaskReturn(object_id,
                             return_object,
-                            NodeID::FromBinary(worker_addr.raylet_id()),
+                            NodeID::FromBinary(worker_addr.node_id()),
                             store_in_plasma_ids.contains(object_id))) {
         if (first_execution) {
           dynamic_returns_in_plasma.push_back(object_id);
@@ -915,7 +915,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     if (HandleTaskReturn(object_id,
                          return_object,
-                         NodeID::FromBinary(worker_addr.raylet_id()),
+                         NodeID::FromBinary(worker_addr.node_id()),
                          store_in_plasma_ids.contains(object_id))) {
       direct_return_ids.push_back(object_id);
     }
@@ -1042,7 +1042,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
                            return_object,
-                           NodeID::FromBinary(worker_addr.raylet_id()),
+                           NodeID::FromBinary(worker_addr.node_id()),
                            store_in_plasma_ids.contains(generator_return_id));
         }
       }

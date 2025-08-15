@@ -13,10 +13,10 @@ from ray.data._internal.issue_detection.issue_detector import IssueDetector
 @dataclass
 class IssueDetectorsConfiguration:
     hanging_detector_config: HangingExecutionIssueDetectorConfig = field(
-        default=HangingExecutionIssueDetectorConfig
+        default_factory=HangingExecutionIssueDetectorConfig
     )
     high_memory_detector_config: HighMemoryIssueDetectorConfig = field(
-        default=HighMemoryIssueDetectorConfig
+        default_factory=HighMemoryIssueDetectorConfig
     )
     detectors: List[Type[IssueDetector]] = field(
         default_factory=lambda: [HangingExecutionIssueDetector, HighMemoryIssueDetector]

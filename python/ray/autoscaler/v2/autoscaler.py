@@ -55,7 +55,7 @@ class Autoscaler:
     ) -> None:
         """
         Args:
-            session_name: The name of the ray session.
+            session_name: The current Ray session name.
             config_reader: The config reader.
             gcs_client: The GCS client.
             event_logger: The event logger for emitting cluster events.

@@ -17,6 +17,7 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
+from ray._common.network_utils import build_address
 from ray._common.test_utils import (
     async_wait_for_condition,
 )
@@ -1187,7 +1188,7 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
     port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
-    monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
+    monkeypatch.setenv("RAY_ADDRESS", f"http://{build_address(ip, port)}")
     print_ray_address_cmd = (
         'python -c"' "import os;" "import ray;" "ray.init();" "print('SUCCESS!');" '"'
     )

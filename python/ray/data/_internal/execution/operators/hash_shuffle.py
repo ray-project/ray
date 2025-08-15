@@ -469,6 +469,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             data_context=data_context,
         )
 
+        # We track the running usage total because iterating
+        # and summing over all shuffling tasks can be expensive
+        # if the # of shuffling tasks is large
+        self._shuffling_resource_usage = ExecutionResources.zero()
+
         self._input_block_transformer = input_block_transformer
 
         self._next_shuffle_tasks_idx: int = 0
@@ -585,6 +590,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             def _on_partitioning_done(cur_shuffle_task_idx: int):
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
+                self._shuffling_resource_usage = (
+                    self._shuffling_resource_usage.subtract(
+                        task.get_requested_resource_bundle()
+                    )
+                )
                 # Fetch input block and resulting partition shards block metadata and
                 # handle obtained metadata
                 #
@@ -614,16 +624,22 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 self.shuffle_bar.update(i=input_block_metadata.num_rows)
 
             # TODO update metrics
-            self._shuffling_tasks[input_index][cur_shuffle_task_idx] = MetadataOpTask(
+            task = self._shuffling_tasks[input_index][
+                cur_shuffle_task_idx
+            ] = MetadataOpTask(
                 task_index=cur_shuffle_task_idx,
                 object_ref=input_block_partition_shards_metadata_tuple_ref,
                 task_done_callback=functools.partial(
                     _on_partitioning_done, cur_shuffle_task_idx
                 ),
-                task_resource_bundle=(
-                    ExecutionResources.from_resource_dict(shuffle_task_resource_bundle)
+                task_resource_bundle=ExecutionResources.from_resource_dict(
+                    shuffle_task_resource_bundle
                 ),
             )
+            if task.get_requested_resource_bundle() is not None:
+                self._shuffling_resource_usage = self._shuffling_resource_usage.add(
+                    task.get_requested_resource_bundle()
+                )
 
             #  Update Shuffle Metrics on task submission
             self.shuffle_metrics.on_task_submitted(
@@ -634,7 +650,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             )
 
             # Update Shuffle progress bar
-            self.shuffle_bar.update(total=self.shuffle_metrics.num_row_inputs_received)
+            _, _, num_rows = estimate_total_num_of_blocks(
+                cur_shuffle_task_idx + 1,
+                self.upstream_op_num_outputs(),
+                self.shuffle_metrics,
+                total_num_tasks=None,
+            )
+            self.shuffle_bar.update(total=num_rows)
 
     def has_next(self) -> bool:
         self._try_finalize()
@@ -850,19 +872,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #     `base_resource_usage` method)
         #   - Active shuffling tasks
         #   - Active finalizing tasks (actor tasks)
-        base_usage = self.base_resource_usage()
-
-        shuffling_tasks = self._get_active_shuffling_tasks()
-        shuffling_tasks_cpus_used = sum(
-            [t.get_requested_resource_bundle().cpu for t in shuffling_tasks]
-        )
+        base_usage = self.base_resource_usage
+        running_usage = self._shuffling_resource_usage
 
         # TODO add memory to resources being tracked
-        return ExecutionResources(
-            cpu=base_usage.cpu + shuffling_tasks_cpus_used,
-            gpu=0,
-        )
+        return base_usage.add(running_usage)
 
+    @property
     def base_resource_usage(self) -> ExecutionResources:
         # TODO add memory to resources being tracked
         return ExecutionResources(

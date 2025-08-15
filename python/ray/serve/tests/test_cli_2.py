@@ -139,16 +139,18 @@ def test_shutdown(ray_start_stop):
 
         # `serve config` and `serve status` should print messages indicating
         # nothing is deployed
-        def serve_config_empty():
-            config_response = subprocess.check_output(["serve", "config"])
-            return len(config_response) == 0
+        def serve_config_empty_warning():
+            config_response = subprocess.check_output(["serve", "config"]).decode(
+                "utf-8"
+            )
+            return config_response == "No configuration was found.\n"
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
             status = yaml.safe_load(status_response)
             return len(status["applications"]) == 0
 
-        wait_for_condition(serve_config_empty)
+        wait_for_condition(serve_config_empty_warning)
         wait_for_condition(serve_status_empty)
         print("`serve config` and `serve status` print empty responses.\n")
 

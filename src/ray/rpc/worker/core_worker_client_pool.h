@@ -40,7 +40,7 @@ class CoreWorkerClientPool {
       : core_worker_client_factory_(std::move(client_factory)){};
 
   /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
-  /// core worker and node manager.
+  /// core worker.
   static std::function<void()> GetDefaultUnavailableTimeoutCallback(
       gcs::GcsClient *gcs_client,
       rpc::CoreWorkerClientPool *worker_client_pool,

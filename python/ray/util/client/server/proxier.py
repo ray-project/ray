@@ -28,6 +28,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
+from ray._common.network_utils import build_address
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -201,7 +202,7 @@ class ProxyManager:
                 port=port,
                 process_handle_future=futures.Future(),
                 channel=ray._private.utils.init_grpc_channel(
-                    f"127.0.0.1:{port}", options=GRPC_OPTIONS
+                    build_address("127.0.0.1", port), options=GRPC_OPTIONS
                 ),
             )
             self.servers[client_id] = server

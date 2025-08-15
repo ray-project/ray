@@ -40,7 +40,7 @@ using flatbuffers::uoffset_t;
 inline constexpr std::string_view kDebugString = "debug_string";
 inline constexpr std::string_view kObjectId = "object_id";
 inline constexpr std::string_view kObjectIds = "object_ids";
-inline constexpr std::string_view kOwnerRayletId = "owner_raylet_id";
+inline constexpr std::string_view kOwnerNodeId = "owner_node_id";
 inline constexpr std::string_view kOwnerIpAddress = "owner_ip_address";
 inline constexpr std::string_view kOnwerWorkerId = "owner_worker_id";
 
@@ -222,7 +222,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
   auto message =
       fb::CreatePlasmaCreateRequest(fbb,
                                     fbb.CreateString(object_id.Binary()),
-                                    fbb.CreateString(owner_address.raylet_id()),
+                                    fbb.CreateString(owner_address.node_id()),
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
@@ -249,8 +249,8 @@ void ReadCreateRequest(const uint8_t *data,
   VerifyNotNullPtr(message->object_id(), kObjectId, MessageType::PlasmaCreateRequest);
   object_info->object_id = ObjectID::FromBinary(message->object_id()->str());
   VerifyNotNullPtr(
-      message->owner_raylet_id(), kOwnerRayletId, MessageType::PlasmaCreateRequest);
-  object_info->owner_raylet_id = NodeID::FromBinary(message->owner_raylet_id()->str());
+      message->owner_node_id(), kOwnerNodeId, MessageType::PlasmaCreateRequest);
+  object_info->owner_node_id = NodeID::FromBinary(message->owner_node_id()->str());
   VerifyNotNullPtr(
       message->owner_ip_address(), kOwnerIpAddress, MessageType::PlasmaCreateRequest);
   object_info->owner_ip_address = message->owner_ip_address()->str();

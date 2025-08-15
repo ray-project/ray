@@ -2,6 +2,7 @@ import sys
 
 import pytest
 
+from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
     _calculate_desired_num_replicas,
@@ -218,15 +219,27 @@ class TestReplicaQueueLengthPolicy:
             upscale_smoothing_factor=10 if use_upscale_smoothing_factor else None,
             upscaling_factor=10 if use_upscaling_factor else None,
         )
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            curr_target_num_replicas=0,
+        ctx = AutoscalingContext(
+            target_num_replicas=0,
             total_num_requests=1,
-            num_running_replicas=0,
+            current_num_replicas=0,
             config=config,
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state={},
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # 1 * 10
         assert new_num_replicas == 10
@@ -236,15 +249,7 @@ class TestReplicaQueueLengthPolicy:
         if use_upscaling_factor:
             config.upscaling_factor = 0.5
 
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            curr_target_num_replicas=0,
-            total_num_requests=1,
-            num_running_replicas=0,
-            config=config,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state={},
-        )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # math.ceil(1 * 0.5)
         assert new_num_replicas == 1
@@ -271,15 +276,27 @@ class TestReplicaQueueLengthPolicy:
             upscale_delay_s=0,
             downscale_delay_s=0,
         )
-        new_num_replicas = replica_queue_length_autoscaling_policy(
+        ctx = AutoscalingContext(
             config=config,
             total_num_requests=0,
-            num_running_replicas=5,
-            curr_target_num_replicas=5,
+            current_num_replicas=5,
+            target_num_replicas=5,
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
 
         assert new_num_replicas == 0
 
@@ -292,17 +309,12 @@ class TestReplicaQueueLengthPolicy:
             config.downscaling_factor = 0.2
 
         # policy_manager = AutoscalingPolicyManager(config)
+        ctx.total_num_requests = 0
         num_replicas = 5
         for _ in range(5):
-            num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=0,
-                num_running_replicas=num_replicas,
-                curr_target_num_replicas=num_replicas,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            ctx.current_num_replicas = num_replicas
+            ctx.target_num_replicas = num_replicas
+            num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
 
         assert num_replicas == 0
 
@@ -328,164 +340,113 @@ class TestReplicaQueueLengthPolicy:
 
         overload_requests = 100
 
-        # Scale up when there are 0 replicas and current_handle_queued_queries > 0
-        new_num_replicas = replica_queue_length_autoscaling_policy(
+        ctx = AutoscalingContext(
             config=config,
             total_num_requests=1,
-            num_running_replicas=0,
-            curr_target_num_replicas=0,
+            current_num_replicas=0,
+            target_num_replicas=0,
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
+
+        # Scale up when there are 0 replicas and current_handle_queued_queries > 0
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 1
+
+        ctx.total_num_requests = overload_requests
+        ctx.current_num_replicas = 1
+        ctx.target_num_replicas = 1
 
         # We should scale up only after enough consecutive scale-up decisions.
         for i in range(upscale_wait_periods):
-            new_num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=overload_requests,
-                num_running_replicas=1,
-                curr_target_num_replicas=1,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 1, i
 
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            total_num_requests=overload_requests,
-            num_running_replicas=1,
-            curr_target_num_replicas=1,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 2
 
         no_requests = 0
 
+        ctx.total_num_requests = no_requests
+        ctx.current_num_replicas = 2
+        ctx.target_num_replicas = 2
+
         # We should scale down only after enough consecutive scale-down decisions.
         for i in range(downscale_wait_periods):
-            new_num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=no_requests,
-                num_running_replicas=2,
-                curr_target_num_replicas=2,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 2, i
 
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            total_num_requests=no_requests,
-            num_running_replicas=2,
-            curr_target_num_replicas=2,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 0
 
         # Get some scale-up decisions, but not enough to trigger a scale up.
+        ctx.total_num_requests = overload_requests
+        ctx.current_num_replicas = 1
+        ctx.target_num_replicas = 1
+
         for i in range(int(upscale_wait_periods / 2)):
-            new_num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=overload_requests,
-                num_running_replicas=1,
-                curr_target_num_replicas=1,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 1, i
 
+        ctx.total_num_requests = 0
+        ctx.current_num_replicas = 1
+        ctx.target_num_replicas = 1
+
         # Interrupt with a scale-down decision.
-        replica_queue_length_autoscaling_policy(
-            config=config,
-            total_num_requests=0,
-            num_running_replicas=1,
-            curr_target_num_replicas=1,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # The counter should be reset, so it should require `upscale_wait_periods`
         # more periods before we actually scale up.
+
+        ctx.total_num_requests = overload_requests
+        ctx.current_num_replicas = 1
+        ctx.target_num_replicas = 1
+
         for i in range(upscale_wait_periods):
-            new_num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=overload_requests,
-                num_running_replicas=1,
-                curr_target_num_replicas=1,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 1, i
 
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            total_num_requests=overload_requests,
-            num_running_replicas=1,
-            curr_target_num_replicas=1,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 2
+
+        ctx.total_num_requests = no_requests
+        ctx.current_num_replicas = 2
+        ctx.target_num_replicas = 2
 
         # Get some scale-down decisions, but not enough to trigger a scale down.
         for i in range(int(downscale_wait_periods / 2)):
-            new_num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=no_requests,
-                num_running_replicas=2,
-                curr_target_num_replicas=2,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 2, i
 
+        ctx.total_num_requests = 200
+        ctx.current_num_replicas = 2
+        ctx.target_num_replicas = 2
+
         # Interrupt with a scale-up decision.
-        replica_queue_length_autoscaling_policy(
-            config=config,
-            total_num_requests=200,
-            num_running_replicas=2,
-            curr_target_num_replicas=2,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # The counter should be reset so it should require `downscale_wait_periods`
         # more periods before we actually scale down.
+        ctx.total_num_requests = no_requests
+        ctx.current_num_replicas = 2
+        ctx.target_num_replicas = 2
         for i in range(downscale_wait_periods):
-            new_num_replicas = replica_queue_length_autoscaling_policy(
-                config=config,
-                total_num_requests=no_requests,
-                num_running_replicas=2,
-                curr_target_num_replicas=2,
-                capacity_adjusted_min_replicas=min_replicas,
-                capacity_adjusted_max_replicas=max_replicas,
-                policy_state=policy_state,
-            )
+            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 2, i
 
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            total_num_requests=no_requests,
-            num_running_replicas=2,
-            curr_target_num_replicas=2,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 0
 
     def test_replicas_delayed_startup(self):
@@ -502,54 +463,53 @@ class TestReplicaQueueLengthPolicy:
         }
         config = AutoscalingConfig(**config)
 
-        # new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
-        new_num_replicas = replica_queue_length_autoscaling_policy(
+        ctx = AutoscalingContext(
             config=config,
-            curr_target_num_replicas=1,
+            target_num_replicas=1,
             total_num_requests=100,
-            num_running_replicas=1,
+            current_num_replicas=1,
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
+
+        # new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 100
 
         # New target is 100, but no new replicas finished spinning up during this
         # timestep.
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            curr_target_num_replicas=100,
-            total_num_requests=100,
-            num_running_replicas=1,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        ctx.total_num_requests = 100
+        ctx.current_num_replicas = 1
+        ctx.target_num_replicas = 100
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 100
 
         # Two new replicas spun up during this timestep.
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            curr_target_num_replicas=100,
-            total_num_requests=123,
-            num_running_replicas=3,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        ctx.total_num_requests = 123
+        ctx.current_num_replicas = 3
+        ctx.target_num_replicas = 100
+
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 123
 
         # A lot of queries got drained and a lot of replicas started up, but
         # new_num_replicas should not decrease, because of the downscale delay.
-        new_num_replicas = replica_queue_length_autoscaling_policy(
-            config=config,
-            curr_target_num_replicas=123,
-            total_num_requests=10,
-            num_running_replicas=4,
-            capacity_adjusted_min_replicas=min_replicas,
-            capacity_adjusted_max_replicas=max_replicas,
-            policy_state=policy_state,
-        )
+        ctx.total_num_requests = 10
+        ctx.current_num_replicas = 4
+        ctx.target_num_replicas = 123
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 123
 
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
@@ -578,32 +538,43 @@ class TestReplicaQueueLengthPolicy:
         underload_requests, overload_requests = 2 * 20, 100
         trials = 1000
 
+        ctx = AutoscalingContext(
+            config=config,
+            capacity_adjusted_min_replicas=min_replicas,
+            capacity_adjusted_max_replicas=max_replicas,
+            policy_state=policy_state,
+            target_num_replicas=None,
+            total_num_requests=None,
+            current_num_replicas=None,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+        )
+
         new_num_replicas = None
         for trial in range(trials):
             if trial % 2 == 0:
-                new_num_replicas = replica_queue_length_autoscaling_policy(
-                    config=config,
-                    total_num_requests=overload_requests,
-                    num_running_replicas=1,
-                    curr_target_num_replicas=1,
-                    capacity_adjusted_min_replicas=min_replicas,
-                    capacity_adjusted_max_replicas=max_replicas,
-                    policy_state=policy_state,
-                )
+                ctx.target_num_replicas = 1
+                ctx.total_num_requests = overload_requests
+                ctx.current_num_replicas = 1
+                new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
                 if delay_s > 0:
                     assert new_num_replicas == 1, trial
                 else:
                     assert new_num_replicas == 2, trial
             else:
-                new_num_replicas = replica_queue_length_autoscaling_policy(
-                    config=config,
-                    total_num_requests=underload_requests,
-                    num_running_replicas=2,
-                    curr_target_num_replicas=2,
-                    capacity_adjusted_min_replicas=min_replicas,
-                    capacity_adjusted_max_replicas=max_replicas,
-                    policy_state=policy_state,
-                )
+                ctx.target_num_replicas = 2
+                ctx.total_num_requests = underload_requests
+                ctx.current_num_replicas = 2
+                new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
                 if delay_s > 0:
                     assert new_num_replicas == 2, trial
                 else:
@@ -624,15 +595,28 @@ class TestReplicaQueueLengthPolicy:
             downscale_delay_s=0.0,
         )
 
-        new_num_replicas = replica_queue_length_autoscaling_policy(
+        ctx = AutoscalingContext(
             config=config,
             total_num_requests=ongoing_requests,
-            num_running_replicas=4,
-            curr_target_num_replicas=4,
+            current_num_replicas=4,
+            target_num_replicas=4,
             capacity_adjusted_min_replicas=min_replicas,
             capacity_adjusted_max_replicas=max_replicas,
             policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
+
+        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == ongoing_requests / target_requests
 
 

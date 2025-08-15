@@ -27,6 +27,7 @@ from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._common.network_utils import build_address
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -893,7 +894,7 @@ def main():
         args.address, args.redis_password, args.redis_username
     )
 
-    hostport = "%s:%d" % (args.host, args.port)
+    hostport = build_address(args.host, args.port)
     args_str = str(args)
     if args.redis_password:
         args_str = args_str.replace(args.redis_password, "****")

@@ -50,6 +50,16 @@ class RayError(Exception):
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
+                # Include a fallback string/stacktrace to aid debugging.
+                #  formatted_exception_string is set in to_bytes() above by calling
+                # traceback.format_exception() on the original exception. It contains
+                # the string representation and stack trace of the original error.
+                formatted = getattr(
+                    ray_exception,
+                    "formatted_exception_string",
+                    "No formatted exception string available.",
+                )
+                msg += f"\nOriginal exception (string repr):\n{formatted}"
                 raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)

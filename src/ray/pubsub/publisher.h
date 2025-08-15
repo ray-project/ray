@@ -21,7 +21,6 @@
 #include <memory>
 #include <queue>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,7 +30,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
@@ -55,7 +53,7 @@ class EntityState {
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, size_t msg_size);
+  bool Publish(const std::shared_ptr<rpc::PubMessage> &pub_message, size_t msg_size);
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -74,18 +72,20 @@ class EntityState {
  private:
   // Tracks inflight messages. The messages have shared ownership by
   // individual subscribers, and get deleted after no subscriber has
-  // the message in buffer.
-  std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
-  // Size of each inflight message.
-  std::queue<size_t> message_sizes_;
+  // the message in buffer. Also stores the size of the message so that we can keep track
+  // of total_size_.
+  std::queue<std::pair<std::weak_ptr<rpc::PubMessage>, size_t>> pending_messages_;
+
   // Protobuf messages fail to serialize if 2GB or larger. Cap published
   // message batches to this size to ensure that we can publish each message
   // batch. Individual messages larger than this limit will also be dropped.
   // TODO(swang): Pubsub clients should also ensure that they don't try to
   // publish messages larger than this.
   const size_t max_message_size_bytes_;
+
   // Set to -1 to disable buffering.
   const int64_t max_buffered_bytes_;
+
   // Total size of inflight messages.
   size_t total_size_ = 0;
 };
@@ -95,15 +95,11 @@ class EntityState {
 class SubscriptionIndex {
  public:
   explicit SubscriptionIndex(rpc::ChannelType channel_type);
-  ~SubscriptionIndex() = default;
-
-  SubscriptionIndex(SubscriptionIndex &&) noexcept = default;
-  SubscriptionIndex &operator=(SubscriptionIndex &&) noexcept = default;
 
   /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the entity key of the message,
   /// returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, size_t msg_size);
+  bool Publish(const std::shared_ptr<rpc::PubMessage> &pub_message, size_t msg_size);
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
@@ -153,11 +149,15 @@ class SubscriptionIndex {
 };
 
 struct LongPollConnection {
-  LongPollConnection(rpc::PubsubLongPollingReply *reply,
+  LongPollConnection(std::string *publisher_id,
+                     google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
                      rpc::SendReplyCallback send_reply_callback)
-      : reply(reply), send_reply_callback(send_reply_callback) {}
+      : publisher_id(publisher_id),
+        pub_messages(pub_messages),
+        send_reply_callback(std::move(send_reply_callback)) {}
 
-  rpc::PubsubLongPollingReply *reply;
+  std::string *publisher_id;
+  google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages;
   rpc::SendReplyCallback send_reply_callback;
 };
 
@@ -174,38 +174,34 @@ class SubscriberState {
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
         last_connection_update_time_ms_(get_time_ms_()),
-        publisher_id_(publisher_id) {}
+        publisher_id_binary_(publisher_id.Binary()) {}
 
   ~SubscriberState() {
     // Force a push to close the long-polling.
     // Otherwise, there will be a connection leak.
-    PublishIfPossible(true);
+    PublishIfPossible(/*force_noop=*/true);
   }
 
+  SubscriberState(const SubscriberState &) = delete;
+  SubscriberState &operator=(const SubscriberState &) = delete;
+
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
-  /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.
-  ///
-  /// \param reply pubsub long polling reply.
-  /// \param send_reply_callback A callback to reply to the long polling subscriber.
-  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
-                           rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+  /// memory.
+  void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback);
 
   /// Queue the pubsub message to publish to the subscriber.
-  ///
-  /// \param pub_message A message to publish.
-  /// \param try_publish If true, try publishing the object id if there is a connection.
-  ///     Currently only set to false in tests.
-  void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
-                    bool try_publish = true);
+  void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /// Publish all queued messages if possible.
   ///
   /// \param force_noop If true, reply to the subscriber with an empty message, regardless
   /// of whethere there is any queued message. This is for cases where the current poll
   /// might have been cancelled, or the subscriber might be dead.
-  /// \return True if it publishes. False otherwise.
-  bool PublishIfPossible(bool force_noop = false);
+  void PublishIfPossible(bool force_noop);
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
@@ -235,7 +231,7 @@ class SubscriberState {
   const int64_t publish_batch_size_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
-  PublisherID publisher_id_;
+  std::string publisher_id_binary_;
 };
 
 }  // namespace pub_internal
@@ -245,6 +241,17 @@ class SubscriberState {
 class PublisherInterface {
  public:
   virtual ~PublisherInterface() = default;
+
+  /// Handle a long poll request from `subscriber_id`.
+  ///
+  /// TODO(sang): Currently, we need to pass the callback for connection because we are
+  /// using long polling internally. This should be changed once the bidirectional grpc
+  /// streaming is supported.
+  virtual void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   /// Register the subscription.
   ///
@@ -330,48 +337,21 @@ class Publisher : public PublisherInterface {
                                           "Publisher.CheckDeadSubscribers");
   }
 
-  ~Publisher() override = default;
+  void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a long poll request from `subscriber_id`.
-  ///
-  /// TODO(sang): Currently, we need to pass the callback for connection because we are
-  /// using long polling internally. This should be changed once the bidirectional grpc
-  /// streaming is supported.
-  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
-                           rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
-
-  /// Register the subscription.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id that the subscriber is subscribing to.
-  /// \return True if the registration is new. False otherwise.
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
                             const std::optional<std::string> &key_id) override;
 
-  /// Publish the given object id to subscribers.
-  ///
-  /// \param pub_message The message to publish.
-  /// Required to contain channel_type and key_id fields.
   void Publish(rpc::PubMessage pub_message) override;
 
-  /// Publish to the subscriber that the given key id is not available anymore.
-  /// It will invoke the failure callback on the subscriber side.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param key_id The message id to publish.
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override;
 
-  /// Unregister subscription. It means the given object id won't be published to the
-  /// subscriber anymore.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id of the subscriber.
-  /// \return True if erased. False otherwise.
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const SubscriberID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
@@ -380,8 +360,7 @@ class Publisher : public PublisherInterface {
   /// to it anymore.
   ///
   /// \param subscriber_id The node id of the subscriber to unsubscribe.
-  /// \return True if erased. False otherwise.
-  bool UnregisterSubscriber(const SubscriberID &subscriber_id);
+  void UnregisterSubscriber(const SubscriberID &subscriber_id);
 
   /// Flushes all inflight pollings and unregisters all subscribers.
   void UnregisterAll();
@@ -424,6 +403,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
+  friend class FakePublisher;
 
   /// Testing only.
   Publisher() : publish_batch_size_(-1) {}
@@ -435,7 +415,7 @@ class Publisher : public PublisherInterface {
   /// Private fields
   ///
 
-  int UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
+  void UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
@@ -484,7 +464,6 @@ class Publisher : public PublisherInterface {
   int64_t next_sequence_id_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// A unique identifier identifies the publisher_id.
-  /// TODO(scv119) add docs about the semantics.
   const PublisherID publisher_id_;
 };
 

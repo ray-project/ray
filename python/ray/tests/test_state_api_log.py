@@ -90,7 +90,7 @@ async def generate_actor_data(id, node_id, worker_id):
         pid=1234,
         class_name="class",
         address=Address(
-            raylet_id=node_id.binary(),
+            node_id=node_id.binary(),
             ip_address="127.0.0.1",
             port=1234,
             worker_id=worker_id,

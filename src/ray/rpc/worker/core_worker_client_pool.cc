@@ -30,7 +30,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     rpc::RayletClientPool *raylet_client_pool,
     const rpc::Address &addr) {
   return [addr, gcs_client, worker_client_pool, raylet_client_pool]() {
-    const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+    const NodeID node_id = NodeID::FromBinary(addr.node_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
 
     auto check_worker_alive = [raylet_client_pool,
@@ -122,7 +122,7 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   RemoveIdleClients();
 
   CoreWorkerClientEntry entry;
-  auto node_id = NodeID::FromBinary(addr_proto.raylet_id());
+  auto node_id = NodeID::FromBinary(addr_proto.node_id());
   auto worker_id = WorkerID::FromBinary(addr_proto.worker_id());
   auto it = worker_client_map_.find(worker_id);
   if (it != worker_client_map_.end()) {

@@ -86,6 +86,14 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
 
   /// Tracks the number of occurences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
+
+  /// Ray metrics
+  ray::stats::Count ray_metric_unintentional_worker_failures_{
+      /*name=*/"unintentional_worker_failures_total",
+      /*description=*/
+      "Number of worker failures that are not intentional. For example, worker failures "
+      "due to system related errors.",
+      /*unit=*/""};
 };
 
 }  // namespace gcs

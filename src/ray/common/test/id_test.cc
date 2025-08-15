@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/task/task_spec.h"
@@ -35,9 +37,9 @@ void TestRandomObjectId() {
   ASSERT_EQ(random_object_id.ObjectIndex(), 0);
 }
 
-const static JobID kDefaultJobId = JobID::FromInt(199);
+static const JobID kDefaultJobId = JobID::FromInt(199);
 
-const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
+static const TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 TEST(JobIDTest, TestJobID) {
   uint32_t id = 100;
@@ -104,9 +106,9 @@ TEST(TaskIDTest, TestTaskIDForExecution) {
 }
 
 TEST(ObjectIDTest, TestObjectID) {
-  const static ActorID default_actor_id =
+  static const ActorID default_actor_id =
       ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
-  const static TaskID default_task_id =
+  static const TaskID default_task_id =
       TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, default_actor_id);
 
   {
