@@ -9,7 +9,7 @@ import torch
 from packaging.version import Version
 
 import ray
-from ray import train
+import ray.train as train
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
 from ray.util import PublicAPI
@@ -259,9 +259,14 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def __init__(self) -> None:
         super().__init__()
-        self.trial_name = train.get_context().get_trial_name()
+        job_id = ray.get_runtime_context().get_job_id()
+        experiment_name = train.get_context().get_experiment_name()
         self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
+
+        self.tmpdir_prefix = Path(
+            tempfile.gettempdir(),
+            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}",
+        ).as_posix()
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
 
