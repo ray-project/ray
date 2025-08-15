@@ -104,6 +104,9 @@ class LocalReplicaResult(ReplicaResult):
         "Converting DeploymentResponses to ObjectRefs is not supported "
         "in local testing mode."
     )
+    REJECTION_NOT_SUPPORTED_ERROR = RuntimeError(
+        "Request rejection is not supported in local testing mode."
+    )
 
     def __init__(
         self,
@@ -152,6 +155,10 @@ class LocalReplicaResult(ReplicaResult):
             return async_wrapper
         else:
             return wrapper
+
+    @_process_response
+    async def get_rejection_response(self):
+        raise self.REJECTION_NOT_SUPPORTED_ERROR
 
     @_process_response
     def get(self, timeout_s: Optional[float]):
