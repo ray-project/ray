@@ -19,9 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/flat_hash_map.h"
-
+#include "absl/container/flat_hash_set.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
