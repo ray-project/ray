@@ -609,6 +609,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
+#include "ray/common/id_def.h"  // NOLINT
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
