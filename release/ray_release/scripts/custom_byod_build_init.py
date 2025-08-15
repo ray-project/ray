@@ -26,10 +26,6 @@ RELEASE_BYOD_DIR = (
 )
 
 DEFAULT_INSTALL_COMMANDS = [
-    "pip3 install --user -U pip",
-    "pip3 install --user -r release/requirements_buildkite.txt",
-    "pip3 install --user --no-deps -e release/",
-    "pip3 install --user awscli",
     "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
 ]
 
@@ -75,7 +71,6 @@ def main(
     init_global_config(global_config_file)
     settings = get_pipeline_settings()
 
-    tmpdir = None
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
@@ -91,9 +86,6 @@ def main(
             "'New build', leave the commit at HEAD, and only specify the commit "
             "in the dialog that asks for the Ray wheels."
         ) from e
-
-    if tmpdir:
-        shutil.rmtree(tmpdir, ignore_errors=True)
 
     filtered_tests = filter_tests(
         test_collection,

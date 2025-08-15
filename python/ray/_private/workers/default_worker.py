@@ -44,13 +44,6 @@ parser.add_argument(
     "--node-manager-port", required=True, type=int, help="the port of the worker's node"
 )
 parser.add_argument(
-    "--raylet-ip-address",
-    required=False,
-    type=str,
-    default=None,
-    help="the ip address of the worker's raylet",
-)
-parser.add_argument(
     "--redis-address", required=True, type=str, help="the address to use for Redis"
 )
 parser.add_argument(

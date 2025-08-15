@@ -1,10 +1,9 @@
 import os
 import tempfile
+import sys
+import pytest
 
-from ray_release.scripts.custom_byod_build_init import (
-    create_custom_build_yaml,
-    DEFAULT_INSTALL_COMMANDS,
-)
+from ray_release.scripts.custom_byod_build_init import create_custom_build_yaml
 
 
 def test_create_custom_build_yaml():
@@ -26,7 +25,11 @@ def test_create_custom_build_yaml():
             os.path.join(tmpdir, "custom_byod_build.rayci.yml"), custom_byod_images
         )
         with open(os.path.join(tmpdir, "custom_byod_build.rayci.yml"), "r") as f, open(
-            os.path.join(os.path.dirname(__file__), "custom_byod_build_expected_yaml"),
+            os.path.join(os.path.dirname(__file__), "custom_byod_build_expected.yaml"),
             "r",
         ) as expected:
             assert f.read() == expected.read()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
