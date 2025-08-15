@@ -20,7 +20,7 @@
 #include <thread>
 #include <vector>
 
-#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"

@@ -18,7 +18,7 @@
 
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/test/gcs_table_storage_test_base.h"
+#include "ray/gcs/gcs_server/tests/gcs_table_storage_test_base.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 
 namespace ray {
