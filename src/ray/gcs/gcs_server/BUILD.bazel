@@ -19,10 +19,10 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/gcs:gcs_callback",
-        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
-        "//src/ray/gcs/store_client:gcs_observable_store_client",
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client:gcs_store_client",
         "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

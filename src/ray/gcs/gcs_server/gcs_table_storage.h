@@ -19,9 +19,10 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/store_client/observable_store_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
+
+#include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -208,7 +209,7 @@ class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
 
 class GcsTableStorage {
  public:
-  explicit GcsTableStorage(std::unique_ptr<StoreClient> store_client)
+  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
       : store_client_(std::move(store_client)) {
     job_table_ = std::make_unique<GcsJobTable>(store_client_);
     actor_table_ = std::make_unique<GcsActorTable>(store_client_);
@@ -256,7 +257,7 @@ class GcsTableStorage {
   }
 
  protected:
-  std::unique_ptr<StoreClient> store_client_;
+  std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
   std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
