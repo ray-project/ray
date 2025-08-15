@@ -1,11 +1,21 @@
 import logging
+import time
 from typing import Optional
 
 from ray import serve
+from ray.experimental.internal_kv import (
+    _internal_kv_exists,
+    _internal_kv_get,
+    _internal_kv_put,
+)
 from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
+)
+from ray.llm._internal.serve.deployments.data_parallel.utils import (
+    get_ip,
+    get_open_port,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.serve.deployment import Application
@@ -30,9 +40,40 @@ class DPServer(LLMServer):
         replica_ctx = serve.get_replica_context()
         self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx)
         logger.info(f"DP rank: {self.dp_rank}")
+        (
+            self.dp_address_key,
+            self.dp_rpc_port_key,
+        ) = await self.dp_rank_assigner.get_dp_metadata_keys.remote()
+        if self.dp_rank == 0:
+            self.dp_address = get_ip()
+            self.dp_rpc_port = get_open_port()
+            _internal_kv_put(self.dp_address_key, str(self.dp_address))
+            _internal_kv_put(self.dp_rpc_port_key, str(self.dp_rpc_port))
+            logger.info(
+                f"DP rank {self.dp_rank} has set DP master ip: {self.dp_address}, port: {self.dp_rpc_port}"
+            )
+        else:
+            timeout = 20
+            while timeout > 0:
+                if _internal_kv_exists(self.dp_address_key) and _internal_kv_exists(
+                    self.dp_rpc_port_key
+                ):
+                    break
+                logger.info(
+                    f"DP rank {self.dp_rank} is waiting for DP master to be set"
+                )
+                time.sleep(1)
+                timeout -= 1
+            self.dp_address = _internal_kv_get(self.dp_address_key).decode()
+            self.dp_rpc_port = _internal_kv_get(self.dp_rpc_port_key).decode()
+            logger.info(
+                f"DP rank {self.dp_rank} has got DP master ip: {self.dp_address}, port: {self.dp_rpc_port}"
+            )
 
         # override the engine_kwargs to assign the DP rank.
         llm_config.engine_kwargs["data_parallel_rank"] = self.dp_rank
+        llm_config.engine_kwargs["data_parallel_address"] = self.dp_address
+        llm_config.engine_kwargs["data_parallel_rpc_port"] = self.dp_rpc_port
 
         await super().__init__(llm_config)
 
