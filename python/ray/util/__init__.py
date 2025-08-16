@@ -50,6 +50,58 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
         return [name for _, name in actors]
 
 
+class _ObjectRefWrapper:
+    """Utility class to implement ray.util.pass_by_reference.
+
+    When serialized, it wraps the ObjectRef in a tuple so it won't be passed by value.
+    When deserialized, it resolves itself to the wrapped reference.
+
+    *NOT* a public API.
+    """
+
+    def __init__(self, o: "ray.ObjectRef"):
+        self._o = o
+
+    def __reduce__(self):
+        return lambda o: o, (self._o,)
+
+
+@PublicAPI(stability="alpha")
+def pass_by_reference(object_ref: "ray.ObjectRef") -> _ObjectRefWrapper:
+    """Utility to pass the provided ObjectRef to another task by reference.
+
+    Normally, when you pass an ObjectRef to a downstream task, it will be automatically
+    resolved to its underlying value by Ray.
+
+    When you pass the result of this function instead, it will be resolved to the
+    ObjectRef directly.
+
+    This is an advanced utility. In most cases, you should pass the ObjectRef directly.
+
+    Args:
+        object_ref: The ObjectRef to pass by reference.
+
+    Returns:
+        A wrapper that can be used to pass an ObjectRef by reference.
+
+    Example:
+
+        .. code-block:: python
+
+            import ray
+
+            @ray.remote
+            def f(obj_ref: ray.ObjectRef) -> str:
+                # Normally, obj_ref would have been resolved to the string value,
+                # but because we used `pass_by_reference`, it wasn't.
+                return ray.get(obj_ref)
+
+            obj_ref = ray.put("Hello!")
+            assert ray.get(f.remote(ray.util.pass_by_reference(obj_ref))) == "Hello!"
+    """
+    return _ObjectRefWrapper(object_ref)
+
+
 __all__ = [
     "accelerators",
     "ActorPool",
@@ -75,4 +127,5 @@ __all__ = [
     "register_serializer",
     "deregister_serializer",
     "list_named_actors",
+    "pass_by_reference",
 ]
