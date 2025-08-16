@@ -80,16 +80,14 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
-    def shutdown_cached_handles(self, _skip_asyncio_check: bool = False):
+    def shutdown_cached_handles(self):
         """Shuts down all cached handles.
 
         Remove the reference to the cached handles so that they can be
         garbage collected.
         """
         for cache_key in list(self.handle_cache):
-            self.handle_cache[cache_key].shutdown(
-                _skip_asyncio_check=_skip_asyncio_check
-            )
+            self.handle_cache[cache_key].shutdown()
             del self.handle_cache[cache_key]
 
     def shutdown(self, timeout_s: float = 30.0) -> None:
