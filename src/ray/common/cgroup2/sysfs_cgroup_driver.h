@@ -79,10 +79,9 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
       cgroup /sys/fs/cgroup cgroup rw,nosuid,nodev,noexec,relatime,nsdelegate
       cgroup2 /sys/fs/cgroup/unified/ cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate
 
-    @return OK if no errors
     @return Status::Invalid if cgroupv2 is not enabled correctly.
   */
-  Status CheckCgroupv2Enabled() override;
+  StatusSet<StatusT::Invalid> CheckCgroupv2Enabled() override;
 
   /**
     Checks to see if the cgroup_path is mounted in the cgroupv2 filesystem
@@ -95,13 +94,16 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @see The kernel documentation for CGROUP2_SUPER_MAGIC
     https://www.kernel.org/doc/html/v5.4/admin-guide/cgroup-v2.html#mounting
 
-    @return Status::OK if no errors are encounted.
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2.
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::InvalidArgument if the cgroup is not using cgroupv2.
    */
-  Status CheckCgroup(const std::string &cgroup_path) override;
+  StatusSet<StatusT::Invalid,
+            StatusT::NotFound,
+            StatusT::PermissionDenied,
+            StatusT::InvalidArgument>
+  CheckCgroup(const std::string &cgroup_path) override;
 
   /**
     To create a cgroup using the cgroupv2 vfs, the current user needs to read, write, and
@@ -113,13 +115,16 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
     @param cgroup_path the absolute path of the cgroup directory to create.
 
-    @return Status::OK if no errors are encounted.
     @return Status::NotFound if an ancestor cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
     @return Status::AlreadyExists if the cgroup already exists.
     */
-  Status CreateCgroup(const std::string &cgroup_path) override;
+  StatusSet<StatusT::Invalid,
+            StatusT::NotFound,
+            StatusT::PermissionDenied,
+            StatusT::AlreadyExists>
+  CreateCgroup(const std::string &cgroup_path) override;
 
   /**
     Parses the cgroup.controllers file which has a space separated list of all controllers
@@ -129,7 +134,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
       https://docs.kernel.org/admin-guide/cgroup-v2.html#enabling-and-disabling.
 
     @param cgroup_path absolute path of the cgroup.
-    @return Status::OK with a set of controllers if successful.
+    @return A set of controllers if successful.
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
@@ -147,7 +152,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
       https://docs.kernel.org/admin-guide/cgroup-v2.html#enabling-and-disabling.
 
     @param cgroup_path absolute path of the cgroup.
-    @return Status::OK with a set of controllers if successful.
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
@@ -166,7 +170,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @see The cgroup.procs section for more information
       https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
 
-    @return Status::OK with if successful.
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
@@ -174,7 +177,8 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return Status::Invalid if files could not be opened, read from, or written to
     correctly.
     */
-  Status MoveAllProcesses(const std::string &from, const std::string &to) override;
+  StatusSet<StatusT::Invalid, StatusT::NotFound, StatusT::PermissionDenied>
+  MoveAllProcesses(const std::string &from, const std::string &to) override;
 
   /**
     Enables a controller by writing to the cgroup.subtree_control file. This can
@@ -191,16 +195,19 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @param controller name of the controller i.e. "cpu" or "memory" from
     @ref CgroupDriverInterface::supported_controllers_ "supported controllers".
 
-    @return Status::OK if successful
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, if the controller
-    is not available i.e not enabled on the parent.
-    @return Status::Invalid if cannot open or write to cgroup.subtree_control.
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::InvalidArgument if the cgroup is not using cgroupv2, if the
+    controller is not available i.e not enabled on the parent.
+    @return StatusT::Invalid if cannot open or write to cgroup.subtree_control.
     */
-  Status EnableController(const std::string &cgroup_path,
-                          const std::string &controller) override;
+  StatusSet<StatusT::Invalid,
+            StatusT::NotFound,
+            StatusT::PermissionDenied,
+            StatusT::InvalidArgument>
+  EnableController(const std::string &cgroup_path,
+                   const std::string &controller) override;
 
   /**
     Disables a controller by writing to the cgroup.subtree_control file. This can
@@ -213,33 +220,39 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @param controller name of the controller i.e. "cpu" or "memory" from
     @ref CgroupDriverInterface::supported_controllers_ "supported controllers".
 
-    @return Status::OK if successful.
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, if the controller
-    is not available i.e not enabled on the parent.
-    @return Status::Invalid if cannot open or write to cgroup.subtree_control.
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::InvalidArgument if the cgroup is not using cgroupv2, if the
+    controller is not available i.e not enabled on the parent.
+    @return StatusT::Invalid if cannot open or write to cgroup.subtree_control.
     */
-  Status DisableController(const std::string &cgroup_path,
-                           const std::string &controller) override;
+  StatusSet<StatusT::Invalid,
+            StatusT::NotFound,
+            StatusT::PermissionDenied,
+            StatusT::InvalidArgument>
+  DisableController(const std::string &cgroup_path,
+                    const std::string &controller) override;
 
   /**
     Adds a constraint to the respective cgroup file. See
     @ref CgroupDriverInterface::supported_constraints_ "supported constraints" and valid
     values.
 
-    @return Status::OK if no errors are encounted.
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, the constraint
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::InvalidArgument if the cgroup is not using cgroupv2, the constraint
     is not supported in ray, the constraint value is out of range, or if cannot write
     to the relevant constraint file.
    */
-  Status AddConstraint(const std::string &cgroup,
-                       const std::string &constraint,
-                       const std::string &constraint_value) override;
+  StatusSet<StatusT::Invalid,
+            StatusT::NotFound,
+            StatusT::PermissionDenied,
+            StatusT::InvalidArgument>
+  AddConstraint(const std::string &cgroup,
+                const std::string &constraint,
+                const std::string &constraint_value) override;
 
  private:
   /**
@@ -249,7 +262,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return Status::OK with a list of controllers in the file.
     @return Status::InvalidArgument if failed to read file or file was malformed.
    */
-  StatusOr<std::unordered_set<std::string>> ReadControllerFile(
+  static StatusOr<std::unordered_set<std::string>> ReadControllerFile(
       const std::string &controller_file_path);
 
   // Used for unit testing through the constructor.

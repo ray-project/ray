@@ -47,10 +47,10 @@ class CgroupDriverInterface {
     @see K8S documentation on how to enable cgroupv2 and check if it's enabled correctly:
     https://kubernetes.io/docs/concepts/architecture/cgroups/#linux-distribution-cgroup-v2-support
 
-    @return Status::OK if successful,
-    @return Status::Invalid if cgroupv2 is not enabled correctly.
+    @return StatusT::OK if successful,
+    @return StatusT::Invalid if cgroupv2 is not enabled correctly.
     */
-  virtual Status CheckCgroupv2Enabled() = 0;
+  virtual StatusSet<StatusT::Invalid> CheckCgroupv2Enabled() = 0;
 
   /**
     Checks that the cgroup is valid. See return values for details of which
@@ -58,13 +58,17 @@ class CgroupDriverInterface {
 
     @param cgroup the absolute path of the cgroup.
 
-    @return Status::OK if no errors are encounted. Otherwise, one of the following errors
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2.
+    @return StatusT::OK if no errors are encounted. Otherwise, one of the following errors
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::InvalidArgument if the cgroup is not using cgroupv2.
    */
-  virtual Status CheckCgroup(const std::string &cgroup) = 0;
+  virtual StatusSet<StatusT::Invalid,
+                    StatusT::NotFound,
+                    StatusT::PermissionDenied,
+                    StatusT::InvalidArgument>
+  CheckCgroup(const std::string &cgroup) = 0;
 
   /**
     Creates a new cgroup at the specified path.
@@ -73,13 +77,17 @@ class CgroupDriverInterface {
 
     @param cgroup is an absolute path to the cgroup
 
-    @return Status::OK if no errors are encounted. Otherwise, one of the following errors
-    @return Status::NotFound if an ancestor cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::AlreadyExists if the cgroup already exists.
+    @return StatusT::OK if no errors are encounted. Otherwise, one of the following errors
+    @return StatusT::NotFound if an ancestor cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::AlreadyExists if the cgroup already exists.
    */
-  virtual Status CreateCgroup(const std::string &cgroup) = 0;
+  virtual StatusSet<StatusT::Invalid,
+                    StatusT::NotFound,
+                    StatusT::PermissionDenied,
+                    StatusT::AlreadyExists>
+  CreateCgroup(const std::string &cgroup) = 0;
 
   /**
     Move all processes from one cgroup to another. The process must have read, write, and
@@ -91,14 +99,15 @@ class CgroupDriverInterface {
     @param from the absolute path of the cgroup to migrate processes out of.
     @param to the absolute path of the cgroup to migrate processes into.
 
-    @return Status::OK if no errors are encounted. Otherwise, one of the following errors
-    @return Status::NotFound if to or from don't exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions.
-    @return Status::Invalid if any errors occur while reading from and writing to
+    @return StatusT::OK if no errors are encounted. Otherwise, one of the following errors
+    @return StatusT::NotFound if to or from don't exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions.
+    @return StatusT::Invalid if any errors occur while reading from and writing to
     cgroups.
    */
-  virtual Status MoveAllProcesses(const std::string &from, const std::string &to) = 0;
+  virtual StatusSet<StatusT::Invalid, StatusT::NotFound, StatusT::PermissionDenied>
+  MoveAllProcesses(const std::string &from, const std::string &to) = 0;
 
   /**
     Enables an available controller on a cgroup. A controller can be enabled if the
@@ -111,16 +120,18 @@ class CgroupDriverInterface {
     @see No Internal Process Constraint for more details:
     https://docs.kernel.org/admin-guide/cgroup-v2.html#no-internal-process-constraint
 
-    @return Status::OK if successful, otherwise one of the following
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions for the cgroup.
-    @return Status::InvalidArgument if the controller is not available or if cgroup is not
-    a cgroupv2.
-    @return Status::Invalid for all other failures.
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions for the cgroup.
+    @return StatusT::InvalidArgument if the controller is not available or if cgroup is
+    not a cgroupv2.
+    @return StatusT::Invalid for all other failures.
    */
-  virtual Status EnableController(const std::string &cgroup,
-                                  const std::string &controller) = 0;
+  virtual StatusSet<StatusT::Invalid,
+                    StatusT::NotFound,
+                    StatusT::PermissionDenied,
+                    StatusT::InvalidArgument>
+  EnableController(const std::string &cgroup, const std::string &controller) = 0;
 
   /**
     Disables an enabled controller in a cgroup. A controller can be disabled if the
@@ -129,15 +140,17 @@ class CgroupDriverInterface {
     @param cgroup is an absolute path to the cgroup.
     @param controller is the name of the controller (e.g. "cpu" and not "-cpu")
 
-    @return Status::OK if successful, otherwise one of the following
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions for the cgroup.
-    @return Status::InvalidArgument if the controller is not enabled
-    or if cgroup is not a cgroupv2. Status::Invalid for all other failures.
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions for the cgroup.
+    @return StatusT::InvalidArgument if the controller is not enabled
+    or if cgroup is not a cgroupv2. StatusT::Invalid for all other failures.
    */
-  virtual Status DisableController(const std::string &cgroup,
-                                   const std::string &controller) = 0;
+  virtual StatusSet<StatusT::Invalid,
+                    StatusT::NotFound,
+                    StatusT::PermissionDenied,
+                    StatusT::InvalidArgument>
+  DisableController(const std::string &cgroup, const std::string &controller) = 0;
   /**
     Adds a resource constraint to the cgroup. To add a constraint
     1) the cgroup must have the relevant controller enabled e.g. memory.min cannot be
@@ -149,16 +162,19 @@ class CgroupDriverInterface {
     @param constraint the name of the constraint.
     @param value the value of the constraint.
 
-    @return Status::OK if successful, otherwise one of the following
-    @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
-    permissions for the cgroup.
-    @return Status::InvalidArgument if the cgroup is not valid or constraint is not
+    @return StatusT::NotFound if the cgroup does not exist.
+    @return StatusT::PermissionDenied if current user doesn't have read, write, and
+    execute permissions for the cgroup.
+    @return StatusT::InvalidArgument if the cgroup is not valid or constraint is not
     supported or the value not correct.
    */
-  virtual Status AddConstraint(const std::string &cgroup,
-                               const std::string &constraint,
-                               const std::string &value) = 0;
+  virtual StatusSet<StatusT::Invalid,
+                    StatusT::NotFound,
+                    StatusT::PermissionDenied,
+                    StatusT::InvalidArgument>
+  AddConstraint(const std::string &cgroup,
+                const std::string &constraint,
+                const std::string &value) = 0;
   /**
     Returns a list of controllers that can be enabled on the given cgroup based on
     what is enabled on the parent cgroup.
@@ -197,10 +213,11 @@ class CgroupDriverInterface {
   };
 
  protected:
-  const std::unordered_map<std::string, Constraint> supported_constraints_ = {
+  static const std::unordered_map<std::string, Constraint> supported_constraints_ = {
       {"cpu.weight", {{1, 10000}, "cpu"}},
       {"memory.min", {{0, std::numeric_limits<size_t>::max()}, "memory"}},
   };
-  const std::unordered_set<std::string> supported_controllers_ = {"cpu", "memory"};
+  static const std::unordered_set<std::string> supported_controllers_ = {"cpu", "memory"};
 };
+
 }  // namespace ray
