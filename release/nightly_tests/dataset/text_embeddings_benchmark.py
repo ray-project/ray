@@ -179,16 +179,12 @@ def main(args):
     ds.write_parquet(WRITE_PATH, num_rows_per_file=5_000)
     end_time = time.time()
     runtime_s = end_time - start_time
-    count_start = time.time()
     num_rows = ray.data.read_parquet(WRITE_PATH).count()
-    print(f"count runtime: {time.time() - count_start}s")  # FIXME: remove this after testing
     throughput_rows_s = num_rows / runtime_s
 
     # Compute metrics for time and throughput without metadata fetch
     runtime_s_wo_metadata_fetch = end_time - metadata_fetch_end
-    throughput_rows_s_wo_metadata_fetch = (
-        num_rows / runtime_s_wo_metadata_fetch
-    )
+    throughput_rows_s_wo_metadata_fetch = num_rows / runtime_s_wo_metadata_fetch
 
     # Report chaos testing node failures
     if args.chaos_test:
