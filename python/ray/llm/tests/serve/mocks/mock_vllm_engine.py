@@ -51,6 +51,11 @@ class MockVLLMEngine(LLMEngine):
         if not self.started:
             raise RuntimeError("Engine not started")
 
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
     async def chat(
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
