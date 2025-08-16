@@ -88,7 +88,7 @@ DEFINE_string(stderr_filepath, "", "The filepath to dump raylet stderr.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
-DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
+DEFINE_int64(object_store_memory, -1, "The maximum memory of the object store in bytes.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
@@ -109,7 +109,7 @@ DEFINE_string(plasma_directory,
               "The shared memory directory of the object store.");
 #endif
 DEFINE_string(fallback_directory, "", "The directory for fallback allocation files.");
-DEFINE_bool(huge_pages, false, "Enable huge pages.");
+DEFINE_bool(huge_pages, false, "Use hugepages for the Plasma Store.");
 DEFINE_string(labels,
               "",
               "Define the key-value format of node labels, which is a serialized JSON.");
@@ -455,6 +455,23 @@ int main(int argc, char *argv[]) {
     node_manager_config.ray_debugger_external = ray_debugger_external;
     node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
 
+    // Checking object store configuration for invalid values.
+    if (object_store_memory <= 0) {
+      RAY_LOG(FATAL)
+          << "Cannot start raylet with object_store_memory < 0. Please specify "
+          << "object_store_memory in bytes.";
+    }
+    if (store_socket_name.empty()) {
+      RAY_LOG(FATAL)
+          << "Cannot start raylet without specifying a store_socket_name for the "
+          << "Plasma Store.";
+    }
+
+    if (huge_pages && plasma_directory.empty()) {
+      RAY_LOG(FATAL) << "Cannot start raylet with hugepages enabled and no "
+                     << "plasma_directory specified.";
+    }
+
     // Configuration for the object manager.
     ray::ObjectManagerConfig object_manager_config;
     object_manager_config.object_manager_address = node_ip_address;
@@ -467,9 +484,7 @@ int main(int argc, char *argv[]) {
         RayConfig::instance().object_manager_pull_timeout_ms();
     object_manager_config.push_timeout_ms =
         RayConfig::instance().object_manager_push_timeout_ms();
-    if (object_store_memory <= 0) {
-      RAY_LOG(FATAL) << "Object store memory should be set.";
-    }
+
     object_manager_config.object_store_memory = object_store_memory;
     object_manager_config.max_bytes_in_flight =
         RayConfig::instance().object_manager_max_bytes_in_flight();
