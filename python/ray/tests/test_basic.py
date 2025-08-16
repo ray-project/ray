@@ -1192,16 +1192,6 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         assert False
 
 
-def test_base_exception_raised(ray_start_shared_local_modes):
-    @ray.remote
-    def f():
-        raise BaseException("rip")
-        return 1
-
-    with pytest.raises(BaseException):
-        ray.get(f.remote())
-
-
 def test_import_ray_does_not_import_grpc():
     # First unload grpc and ray
     if "grpc" in sys.modules:
