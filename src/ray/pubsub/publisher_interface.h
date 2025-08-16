@@ -84,6 +84,5 @@ class PublisherInterface {
                                       const std::optional<std::string> &key_id) = 0;
 };
 
-
 }  // namespace pubsub
 }  // namespace ray

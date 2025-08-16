@@ -36,7 +36,6 @@ using SubscriptionItemCallback = std::function<void(rpc::PubMessage &&)>;
 using SubscriptionFailureCallback =
     std::function<void(const std::string &, const Status &)>;
 
-
 /// Interface for the pubsub client.
 class SubscriberInterface {
  public:
