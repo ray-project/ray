@@ -212,6 +212,8 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Track whether execution has been started for lazy operators
+        self._execution_started = True  # True by default for immediate-start operators
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -433,7 +435,15 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
+
+        # Only start operators that can start immediately
+        # Others will be started lazily when they become eligible
+        if not op.can_start_immediately():
+            # Mark as not started yet for lazy starting
+            op_state._execution_started = False
+
         op.start(options)
+
         return op_state
 
     setup_state(dag)
@@ -598,6 +608,7 @@ def update_operator_states(topology: Topology) -> None:
 def get_eligible_operators(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
+    execution_options: ExecutionOptions,
     *,
     ensure_liveness: bool,
 ) -> List[PhysicalOperator]:
@@ -620,6 +631,15 @@ def get_eligible_operators(
     eligible_ops: List[PhysicalOperator] = []
 
     for op, state in topology.items():
+        # Check if this operator needs to start execution
+        if (
+            not state._execution_started
+            and op.should_start_execution()
+            and _is_stage_eligible_to_run(op, topology)
+        ):
+            state._execution_started = True
+            op.start_execution(execution_options)
+
         # Operator is considered being in task-submission back-pressure if any
         # back-pressure policy is violated
         in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
@@ -663,10 +683,44 @@ def get_eligible_operators(
     return eligible_ops
 
 
+def _is_stage_eligible_to_run(op: PhysicalOperator, topology: Topology) -> bool:
+    """Determine if a stage is eligible to run.
+
+    A stage is eligible to run when all of the following are true:
+    1. All of its `AllToAllOperator` input dependencies have completed.
+    2. If it has any non-`AllToAllOperator` input dependencies, at least one of them
+       has started producing outputs.
+    An operator with no input dependencies is always eligible.
+    """
+    from ray.data._internal.execution.operators.base_physical_operator import (
+        AllToAllOperator,
+    )
+
+    if not op.input_dependencies:
+        # Input operators can always start
+        return True
+
+    has_streaming_deps = False
+    any_streaming_dep_has_output = False
+    for dep in op.input_dependencies:
+        dep_state = topology[dep]
+
+        if isinstance(dep, AllToAllOperator) and not dep.completed():
+            return False
+        else:
+            has_streaming_deps = True
+            # For streaming operators, check if they've started producing outputs
+            if len(dep_state.output_queue) > 0 or dep_state.num_completed_tasks > 0:
+                any_streaming_dep_has_output = True
+
+    return not has_streaming_deps or any_streaming_dep_has_output
+
+
 def select_operator_to_run(
     topology: Topology,
     resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
+    execution_options: ExecutionOptions,  # Add this parameter
     ensure_liveness: bool,
 ) -> Optional[PhysicalOperator]:
     """Select next operator to launch new tasks.
@@ -685,6 +739,7 @@ def select_operator_to_run(
     eligible_ops = get_eligible_operators(
         topology,
         backpressure_policies,
+        execution_options,  # Pass execution options
         ensure_liveness=ensure_liveness,
     )
 

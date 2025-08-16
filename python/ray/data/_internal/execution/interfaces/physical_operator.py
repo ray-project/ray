@@ -443,6 +443,40 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
+    def can_start_immediately(self) -> bool:
+        """Return whether this operator can start immediately during topology setup.
+
+        Most operators can start immediately, but some (like actor operators) should
+        wait until their stage becomes eligible for execution.
+
+        Returns:
+            True if the operator can start immediately, False if it should wait
+            until its stage is eligible to run.
+        """
+        return True
+
+    def should_start_execution(self) -> bool:
+        """Return whether this operator should start its execution-related resources.
+
+        This is called when the operator becomes eligible to run. For actor operators,
+        this is when actors should be launched.
+
+        Returns:
+            True if execution resources should be started now.
+        """
+        return True
+
+    def start_execution(self, options: ExecutionOptions) -> None:
+        """Start execution-related resources for this operator.
+
+        This is called when the operator first becomes eligible to run.
+        For actor operators, this is where actors should be launched.
+
+        Args:
+            options: The global options used for the overall execution.
+        """
+        pass
+
     def should_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
