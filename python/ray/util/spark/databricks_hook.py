@@ -96,6 +96,20 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
 
+        ray_metrics_monitor = ray_cluster_handler.ray_metrics_monitor
+        if ray_metrics_monitor is not None:
+            import mlflow
+            mlflow_exp_id = mlflow.tracking.fluent._get_experiment_id()
+            mlflow_run_id = mlflow.active_run().info.run_id
+            link_url = f"/ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics"
+            get_databricks_display_html_function()(f"""
+              <div style="margin-top: 16px;margin-bottom: 16px">
+                  <a href="{link_url}">
+                      View Ray system metrics in a new tab
+                  </a>
+              </div>
+            """)
+
         if self.is_global:
             # Disable auto shutdown if
             # 1) autoscaling enabled
@@ -176,6 +190,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
+        from ray.util.spark.cluster_init import _ray_system_metrics_logging_enabled
         conf = {
             **super().custom_environment_variables(),
             # Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
@@ -214,6 +229,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "<a href='https://docs.databricks.com/en/dev-tools/auth/"
                 "oauth-m2m.html'>Databricks OAuth</a>."
             )
+
+            if _ray_system_metrics_logging_enabled():
+                raise RuntimeError(
+                    "Ray system metrics logging is enabled, but it requires MLflow "
+                    "credential configurations: " + warn_msg
+                )
+
             get_databricks_display_html_function()(
                 f"<b style='color:red;'>{warn_msg}<br></b>"
             )
