@@ -5,6 +5,8 @@ if [ -z "$PYTHON_VERSION" ]; then
     echo "Usage: $0 <python-version>"
     exit 1
 fi
+which python
+which python3
 mkdir -p dist
 export SKIP_BAZEL_BUILD=1
 export RAY_DISABLE_EXTRA_CPP=1

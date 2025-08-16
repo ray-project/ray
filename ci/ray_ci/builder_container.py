@@ -57,7 +57,10 @@ class BuilderContainer(LinuxContainer):
         if os.environ.get("RAYCI_DISABLE_JAVA", "") == "true":
             cmds += ["export RAY_INSTALL_JAVA=0"]
         if os.environ.get("BUILD_PLACEHOLDER_WHEEL", "") == "true":
-            cmds += ["export PLACEHOLDER_WHEEL=1"]
+            cmds += [
+                "export PLACEHOLDER_WHEEL=1",
+                "./ci/build/test-linux-placeholder-wheel.sh",
+            ]
 
         cmds += [
             "./ci/build/build-manylinux-ray.sh",

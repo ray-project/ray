@@ -7,6 +7,7 @@ set -e
 set -x
 
 which python
+which python3
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
 echo "ROOT_DIR: $ROOT_DIR"
@@ -24,7 +25,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
 
   PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
-  PYTHON_EXE="opt/python/$PY_MM/bin/python$PY_MM"
+  PYTHON_EXE="/opt/python/$PY_MM/bin/python$PY_MM"
   PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
   # Find the appropriate wheel by grepping for the Python version.
