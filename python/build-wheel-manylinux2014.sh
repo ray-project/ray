@@ -24,6 +24,19 @@ if [ "$EUID" -eq 0 ]; then
 
 fi
 
+# Build dashboard
+bash ./ci/build/build-dashboard.sh
+
+# Extract prebuilt dashboard into expected location, only if it exists
+if [[ -f /ray/dashboard_build.tar.gz ]]; then
+  echo "Extracting dashboard_build.tar.gz..."
+  mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
+  tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
+else
+  echo "ERROR: dashboard_build.tar.gz not found. Aborting." >&2
+  exit 1
+fi
+
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 # Python version key, interpreter version code
@@ -37,7 +50,6 @@ PYTHON_VERSIONS=(
 
 # Setup runtime environment
 ./ci/build/build-manylinux-forge.sh
-source "$HOME"/.nvm/nvm.sh
 
 # Compile ray
 ./ci/build/build-manylinux-ray.sh
