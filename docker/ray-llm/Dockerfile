@@ -76,7 +76,7 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
         --no-questions
 )
 
-UCX_VERSION="1.18.1"
+UCX_VERSION="1.19.0"
 (
     echo "Installing UCX ${UCX_VERSION}"
     cd "${TEMP_DIR}"
@@ -109,7 +109,7 @@ UCX_VERSION="1.18.1"
 )
 
 # Keep in sync with llm-requirements.txt
-NIXL_VERSION="0.3.1"
+NIXL_VERSION="0.4.1"
 (
     echo "Installing NIXL ${NIXL_VERSION}"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
