@@ -1,4 +1,5 @@
 import threading
+from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from ray.data import DataIterator
@@ -6,17 +7,21 @@ from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
-from ray.train.v2.api.context import TrainContext as ExternalTrainContext
+from ray.train.v2.api.context import (
+    DistributedTrainContext,
+    TrainContext as ExternalTrainContext,
+)
 
 
-class TrainFnUtils:
+class TrainFnUtils(ABC):
     """Utility class providing an abstraction layer between user-facing APIs
-        and :class:`~ray.train.v2._internal.execution.context.TrainContext`.
+        and :class:`~ray.train.v2.api.context.TrainContext`.
 
     It should be set before the users' training function is called, like training workers initialization.
     This class can be patched if new user APIs behaviors is wanted.
     """
 
+    @abstractmethod
     def report(
         self,
         metrics: Dict[str, Any],
@@ -33,20 +38,20 @@ class TrainFnUtils:
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
         """
-        return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name
-        )
+        pass
 
-    def get_checkpoint(self):
+    @abstractmethod
+    def get_checkpoint(self) -> Optional[Checkpoint]:
         """Get the latest checkpoint to resume training from.
 
         Returns:
             The latest checkpoint if available, None otherwise.
         """
-        return get_internal_train_context().get_checkpoint()
+        pass
 
+    @abstractmethod
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
-        """Get the dataset shard for this worker.
+        """Get the dataset shard for this training process.
 
         This method is used by the public API function :func:`ray.train.get_dataset_shard`.
         Users should typically call ``ray.train.get_dataset_shard()`` instead of calling this method directly.
@@ -57,6 +62,38 @@ class TrainFnUtils:
         Returns:
             The DataIterator shard for this worker.
         """
+        pass
+
+    @abstractmethod
+    def get_context(self) -> ExternalTrainContext:
+        """Get the TrainContext for this training process.
+        Different implmentation of TrainFnUtils will return different TrainContext.
+
+        Returns:
+            The train context for this training process.
+        """
+        pass
+
+    @abstractmethod
+    def is_running_in_distributed_mode(self) -> bool:
+        pass
+
+
+class DistributedTrainFnUtils(TrainFnUtils):
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ) -> None:
+        return get_internal_train_context().report(
+            metrics, checkpoint, checkpoint_dir_name
+        )
+
+    def get_checkpoint(self):
+        return get_internal_train_context().get_checkpoint()
+
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
         from ray.train.v2._internal.callbacks.datasets import DatasetShardMetadata
 
         dataset_info = DatasetShardMetadata(
@@ -66,7 +103,10 @@ class TrainFnUtils:
         return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> ExternalTrainContext:
-        return ExternalTrainContext()
+        return DistributedTrainContext()
+
+    def is_running_in_distributed_mode(self) -> bool:
+        return True
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None

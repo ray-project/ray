@@ -49,6 +49,24 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     trainer.fit()
 
 
+def test_torch_linear_local_mode(ray_start_4_cpus):
+    def train_func(config):
+        result = linear_train_func(config)
+        assert len(result) == epochs
+        assert result[-1]["loss"] < result[0]["loss"]
+
+    epochs = 3
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config=config,
+        scaling_config=ScalingConfig(num_workers=0),
+    )
+    result = trainer.fit()
+    assert result.metrics is not None
+    assert result.metrics["loss"] is not None
+
+
 if __name__ == "__main__":
     import sys
 
