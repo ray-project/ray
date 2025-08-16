@@ -16,7 +16,6 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
-from ray.train.v2._internal.constants import RUN_CONTROLLER_AS_ACTOR_ENV_VAR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.trainable.trainable import Trainable
@@ -64,17 +63,6 @@ class FunctionTrainable(Trainable):
             checkpoint=None,
         )
         self._last_training_result: Optional[_TrainingResult] = None
-
-        # NOTE: This environment variable is used to disable the
-        # spawning a new actor for Ray Train drivers being launched
-        # within Tune functions.
-        # There are 2 reasons for this:
-        # 1. Ray Tune already spawns an actor, so we can run the Ray Train
-        #    driver directly in the same actor.
-        # 2. This allows `ray.tune.report` to be called within Ray Train driver
-        #    callbacks, since it needs to be called on the same process as the
-        #    Tune FunctionTrainable actor.
-        os.environ[RUN_CONTROLLER_AS_ACTOR_ENV_VAR] = "0"
 
     def _trainable_func(self, config: Dict[str, Any]):
         """Subclasses can override this to set the trainable func."""

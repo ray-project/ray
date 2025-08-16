@@ -64,10 +64,6 @@ def train_driver_fn(config: dict):
     trainer.fit()
 
 
-# Launch a single Train run.
-train_driver_fn({"num_workers": 4, "train_loop_config": {"lr": 1e-3}})
-
-
 # Launch a sweep of hyperparameters with Ray Tune.
 tuner = ray.tune.Tuner(
     train_driver_fn,
