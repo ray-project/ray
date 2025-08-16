@@ -131,23 +131,6 @@ class Embedder:
         return batch
 
 
-def count_parquet_rows(dataset_path: str) -> int:
-    """
-    Count the number of rows in a parquet file without reading the data into memory.
-
-    https://stackoverflow.com/a/79118602/4212158
-    """
-    import pyarrow.dataset as ds
-
-    dataset = ds.dataset(dataset_path, format="parquet")
-    row_count = sum(
-        row_group.num_rows
-        for fragment in dataset.get_fragments()
-        for row_group in fragment.row_groups
-    )
-    return row_count
-
-
 def main(args):
     start_time = time.time()
     ds = ray.data.read_parquet(
