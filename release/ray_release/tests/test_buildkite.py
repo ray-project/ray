@@ -429,6 +429,38 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ),
         ]
 
+        # Test filter by prefix alone
+        filtered = self._filter_names_smoke(
+            tests, frequency=Frequency.ANY, test_name_prefix_filter="test"
+        )
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", False),
+                ("test_2", False),
+                ("test_3", False),
+                ("test_4.kuberay", False),
+            ],
+        )
+
+        # Test filter by prefix and regex together
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_name_prefix_filter="test",
+            test_attr_regex_filters={"name": "other.*"},
+        )
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", False),
+                ("test_2", True),
+                ("other_2", False),
+                ("test_3", False),
+                ("test_4.kuberay", False),
+            ],
+        )
+
         filtered = self._filter_names_smoke(tests, frequency=Frequency.ANY)
         self.assertSequenceEqual(
             filtered,
