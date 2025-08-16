@@ -34,6 +34,10 @@ class MockPublisher : public Publisher {
                const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
+  MOCK_METHOD(std::string,
+              DebugString,
+              (),
+              (override));
 };
 
 }  // namespace pubsub

@@ -300,6 +300,8 @@ class Publisher : public PublisherInterface {
                               const SubscriberID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
 
+  std::string DebugString() const override;
+
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.
   ///
@@ -327,8 +329,6 @@ class Publisher : public PublisherInterface {
   /// happen due to reference counting). We might want to optimize this by
   /// having a timer per subscriber.
   void CheckDeadSubscribers();
-
-  std::string DebugString() const;
 
  private:
   ///

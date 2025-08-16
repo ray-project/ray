@@ -283,6 +283,8 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override {}
 
+  std::string DebugString() const override { return ""; }
+
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;

@@ -117,7 +117,6 @@ class SubscriberInterface {
                                           const rpc::Address &publisher_address,
                                           const std::string &key_id) const = 0;
 
-  /// Return the statistics string for the subscriber.
   virtual std::string DebugString() const = 0;
 
   virtual ~SubscriberInterface() {}
@@ -135,6 +134,8 @@ class SubscriberClientInterface {
   virtual void PubsubCommandBatch(
       const rpc::PubsubCommandBatchRequest &request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
+
+  virtual std::string DebugString() const = 0;
 
   virtual ~SubscriberClientInterface() = default;
 };

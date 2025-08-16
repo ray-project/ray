@@ -82,6 +82,8 @@ class PublisherInterface {
   virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const SubscriberID &subscriber_id,
                                       const std::optional<std::string> &key_id) = 0;
+
+  virtual std::string DebugString() const  = 0;
 };
 
 }  // namespace pubsub
