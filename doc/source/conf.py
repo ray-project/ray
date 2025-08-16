@@ -620,6 +620,14 @@ autosummary_filename_map = {
 
 autodoc_mock_imports = [
     "aiohttp",
+    "azure.common",
+    "azure.core",
+    "azure.identity",
+    "azure.keyvault",
+    "azure.keyvault.secrets",
+    "azure.mgmt.compute",
+    "azure.mgmt.network",
+    "azure.mgmt.resource",
     "async_timeout",
     "backoff",
     "cachetools",
@@ -639,6 +647,8 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "msrest",
+    "msrestazure",
     "nevergrad",
     "numpy",
     "pandas",
