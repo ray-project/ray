@@ -19,7 +19,7 @@ from langchain_text_splitters import (
 from benchmark import Benchmark, BenchmarkMetric
 
 # Subset of the data so that benchmark completes in ~20 minutes.
-SOURCE_DIRECTORY_S3 = "s3://air-example-data/common-pile-mirror/arxiv_papers/arxiv_papers-train-00001-of-00042.parquet"
+DEFAULT_SOURCE_DIRECTORY_S3 = "s3://air-example-data/common-pile-mirror/arxiv_papers/arxiv_papers-train-00001-of-00042.parquet"
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}/"
 
@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument(
         "--source-directory",
         type=str,
-        default=SOURCE_DIRECTORY_S3,
+        default=DEFAULT_SOURCE_DIRECTORY_S3,
         help="S3 URI of source documents",
     )
     parser.add_argument(
