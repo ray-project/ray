@@ -497,7 +497,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
+  gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
 }
 
 void GcsJobManager::RecordMetrics() {
