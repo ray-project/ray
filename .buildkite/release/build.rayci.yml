@@ -10,6 +10,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
+      REQUIREMENTS_FILE: "requirements_byod_{{matrix}}.txt"
     depends_on:
       - raycpubaseextra
   
@@ -28,6 +29,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
+      REQUIREMENTS_FILE: "requirements_byod_{{matrix.python}}.txt"
     depends_on:
       - raycudabaseextra
   
