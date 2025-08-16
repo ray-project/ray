@@ -1551,5 +1551,75 @@ def test_configure_map_task_memory_rule(
     assert remote_args.get("memory") == expected_memory
 
 
+def test_limit_pushdown_map_per_block_limit_applied(ray_start_regular_shared_2_cpus):
+    """Test that per-block limits are actually applied during map execution."""
+
+    # Create a global counter using Ray
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+        def get(self):
+            return self.value
+
+    counter = Counter.remote()
+
+    def track_processing(row):
+        # Record that this row was processed
+        ray.get(counter.increment.remote())
+        return row
+
+    # Create dataset with limit pushed through map
+    ds = ray.data.range(1000, override_num_blocks=10).map(track_processing).limit(50)
+
+    # Execute and get results
+    result = ds.take_all()
+
+    # Verify correct results
+    expected = [{"id": i} for i in range(50)]
+    assert result == expected
+
+    # Check how many rows were actually processed
+    processed_count = ray.get(counter.get.remote())
+
+    # With per-block limits, we should process fewer rows than the total dataset
+    # but at least the number we need for the final result
+    assert (
+        processed_count >= 50
+    ), f"Expected at least 50 rows processed, got {processed_count}"
+    assert (
+        processed_count < 1000
+    ), f"Expected fewer than 1000 rows processed, got {processed_count}"
+
+    print(f"Processed {processed_count} rows to get {len(result)} results")
+
+
+def test_limit_pushdown_preserves_map_behavior(ray_start_regular_shared_2_cpus):
+    """Test that adding per-block limits doesn't change the logical result."""
+
+    def add_one(row):
+        row["id"] += 1
+        return row
+
+    # Compare with and without limit pushdown
+    ds_with_limit = ray.data.range(100).map(add_one).limit(10)
+    ds_without_limit = ray.data.range(100).limit(10).map(add_one)
+
+    result_with = ds_with_limit.take_all()
+    result_without = ds_without_limit.take_all()
+
+    # Results should be identical
+    assert result_with == result_without
+
+    # Both should have the expected transformation applied
+    expected = [{"id": i + 1} for i in range(10)]
+    assert result_with == expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
