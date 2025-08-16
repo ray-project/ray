@@ -438,13 +438,11 @@ def build_streaming_topology(
 
         # Only start operators that can start immediately
         # Others will be started lazily when they become eligible
-        if op.can_start_immediately():
-            op.start(options)
-        else:
+        if not op.can_start_immediately():
             # Mark as not started yet for lazy starting
             op_state._execution_started = False
-            # Still call start() for basic initialization, but not actor launching
-            op.start(options)
+
+        op.start(options)
 
         return op_state
 
@@ -707,9 +705,8 @@ def _is_stage_eligible_to_run(op: PhysicalOperator, topology: Topology) -> bool:
     for dep in op.input_dependencies:
         dep_state = topology[dep]
 
-        if isinstance(dep, AllToAllOperator):
-            if not dep.completed():
-                return False
+        if isinstance(dep, AllToAllOperator) and not dep.completed():
+            return False
         else:
             has_streaming_deps = True
             # For streaming operators, check if they've started producing outputs
