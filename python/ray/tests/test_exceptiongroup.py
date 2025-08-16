@@ -21,7 +21,7 @@ def test_baseexceptiongroup_task(ray_start_regular):
     def task():
         raise baseexceptiongroup
 
-    with pytest.raises(BaseExceptionGroup):  # noqa: F821
+    with pytest.raises(ray.exceptions.RayTaskError):  # noqa: F821
         ray.get(task.remote())
 
 
@@ -35,7 +35,7 @@ def test_baseexceptiongroup_actor(ray_start_regular):
         def f(self):
             raise baseexceptiongroup
 
-    with pytest.raises(BaseExceptionGroup):  # noqa: F821
+    with pytest.raises(ray.exceptions.RayTaskError):  # noqa: F821
         a = Actor.remote()
         ray.get(a.f.remote())
 
