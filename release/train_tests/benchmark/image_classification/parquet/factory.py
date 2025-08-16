@@ -40,38 +40,35 @@ class ImageClassificationParquetRayDataLoaderFactory(
         super().__init__(benchmark_config)
         self._data_dirs = data_dirs
 
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def get_ray_datasets(self, dataset_key: DatasetKey) -> ray.data.Dataset:
         """Get Ray datasets for training and validation.
 
         Returns:
-            Dictionary containing:
-                - "train": Training dataset with random transforms
-                - "val": Validation dataset without transforms
+            Ray dataset
         """
-        # Create training dataset with image decoding and transforms
-        train_ds = (
-            ray.data.read_parquet(
-                self._data_dirs[DatasetKey.TRAIN],
-                columns=["image", "label"],
-            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_training_rows)
-        )
+        if dataset_key == DatasetKey.TRAIN:
+            # Create training dataset with image decoding and transforms
+            ds = (
+                ray.data.read_parquet(
+                    self._data_dirs[DatasetKey.TRAIN],
+                    columns=["image", "label"],
+                ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+                # Add limit after map to enable operator fusion.
+                .limit(self.get_dataloader_config().limit_training_rows)
+            )
+        else:
+            assert dataset_key == DatasetKey.VALID, dataset_key
+            # Create validation dataset without random transforms
+            ds = (
+                ray.data.read_parquet(
+                    self._data_dirs[DatasetKey.TRAIN],
+                    columns=["image", "label"],
+                ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+                # Add limit after map to enable operator fusion.
+                .limit(self.get_dataloader_config().limit_validation_rows)
+            )
 
-        # Create validation dataset without random transforms
-        val_ds = (
-            ray.data.read_parquet(
-                self._data_dirs[DatasetKey.TRAIN],
-                columns=["image", "label"],
-            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_validation_rows)
-        )
-
-        return {
-            DatasetKey.TRAIN: train_ds,
-            DatasetKey.VALID: val_ds,
-        }
+        return ds
 
 
 class ImageClassificationParquetTorchDataLoaderFactory(

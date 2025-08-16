@@ -9,6 +9,7 @@ from ray._private.test_utils import safe_write_to_results_json
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
 
+from constants import DatasetKey
 from config import BenchmarkConfig, cli_to_config
 from benchmark_factory import BenchmarkFactory
 from ray_dataloader_factory import RayDataLoaderFactory
@@ -34,7 +35,10 @@ def train_fn_per_worker(config):
 
     runner.run()
 
-    metrics = runner.get_metrics(dataset_creation_time=config["dataset_creation_time"])
+    dataset_creation_times = config.get("dataset_creation_times")
+    metrics = runner.get_metrics(
+        dataset_creation_times=dataset_creation_times,
+    )
     if ray.train.get_context().get_world_rank() == 0:
         with open(METRICS_OUTPUT_PATH, "w") as f:
             json.dump(metrics, f)
@@ -61,20 +65,37 @@ def main():
         raise ValueError(f"Unknown task: {benchmark_config.task}")
 
     dataloader_factory = factory.get_dataloader_factory()
+    factory_setup_time = time.perf_counter()
+
     if isinstance(dataloader_factory, RayDataLoaderFactory):
-        datasets = dataloader_factory.get_ray_datasets()
+        train_creation_start_time = time.perf_counter()
+        train_dataset = dataloader_factory.get_ray_datasets(DatasetKey.TRAIN)
+        train_creation_time = time.perf_counter() - train_creation_start_time
+
+        val_creation_start_time = time.perf_counter()
+        val_dataset = dataloader_factory.get_ray_datasets(DatasetKey.VALID)
+        val_creation_time = time.perf_counter() - val_creation_start_time
+
+        datasets = {DatasetKey.TRAIN: train_dataset, DatasetKey.VALID: val_dataset}
+        dataset_creation_times = {
+            DatasetKey.TRAIN: train_creation_time + (factory_setup_time - start_time),
+            DatasetKey.VALID: val_creation_time + (factory_setup_time - start_time),
+        }
+
         data_config = dataloader_factory.get_ray_data_config()
     else:
         datasets = {}
+        dataset_creation_times = {
+            DatasetKey.TRAIN: factory_setup_time - start_time,
+            DatasetKey.VALID: factory_setup_time - start_time,
+        }
         data_config = None
-
-    dataset_creation_time = time.perf_counter() - start_time
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
         train_loop_config={
             "factory": factory,
-            "dataset_creation_time": dataset_creation_time,
+            "dataset_creation_times": dataset_creation_times,
         },
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
