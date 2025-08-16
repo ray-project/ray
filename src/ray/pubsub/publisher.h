@@ -29,15 +29,13 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
+#include "ray/pubsub/publisher_interface.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 
 namespace pubsub {
-
-using SubscriberID = UniqueID;
-using PublisherID = UniqueID;
 
 namespace pub_internal {
 
@@ -235,60 +233,6 @@ class SubscriberState {
 };
 
 }  // namespace pub_internal
-
-/// Publisher interface. Note that message ids are passed as a string to avoid templated
-/// definition which doesn't go well with virtual methods.
-class PublisherInterface {
- public:
-  virtual ~PublisherInterface() = default;
-
-  /// Handle a long poll request from `subscriber_id`.
-  ///
-  /// TODO(sang): Currently, we need to pass the callback for connection because we are
-  /// using long polling internally. This should be changed once the bidirectional grpc
-  /// streaming is supported.
-  virtual void ConnectToSubscriber(
-      const rpc::PubsubLongPollingRequest &request,
-      std::string *publisher_id,
-      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
-      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  /// Register the subscription.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
-  /// subscribing to all.
-  /// \return True if registration is new. False otherwise.
-  virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
-                                    const SubscriberID &subscriber_id,
-                                    const std::optional<std::string> &key_id) = 0;
-
-  /// Publish the given object id to subscribers.
-  ///
-  /// \param pub_message The message to publish.
-  /// Required to contain channel_type and key_id fields.
-  virtual void Publish(rpc::PubMessage pub_message) = 0;
-
-  /// Publish to the subscriber that the given key id is not available anymore.
-  /// It will invoke the failure callback on the subscriber side.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param key_id The message id to publish.
-  virtual void PublishFailure(const rpc::ChannelType channel_type,
-                              const std::string &key_id) = 0;
-
-  /// Unregister subscription. It means the given object id won't be published to the
-  /// subscriber anymore.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
-  /// \return True if erased. False otherwise.
-  virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                                      const SubscriberID &subscriber_id,
-                                      const std::optional<std::string> &key_id) = 0;
-};
 
 /// Protocol detail
 ///

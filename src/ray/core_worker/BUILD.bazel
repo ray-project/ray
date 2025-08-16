@@ -153,7 +153,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/pubsub:publisher",
+        "//src/ray/pubsub:publisher_interface",
         "//src/ray/pubsub:subscriber",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:grpc_server",

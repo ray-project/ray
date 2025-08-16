@@ -28,7 +28,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
-#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
