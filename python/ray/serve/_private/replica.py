@@ -514,11 +514,6 @@ class ReplicaMetricsManager:
             # TODO arcyleung: **external_metrics
         }
 
-        logger.info(
-            f"Adding metrics point, {all_metrics}",
-            extra={"log_to_stderr": False},
-        )
-
         # Add the collected metrics to the metrics store
         self._metrics_store.add_metrics_point(all_metrics, time.time())
 

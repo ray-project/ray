@@ -161,6 +161,7 @@ class RequestRouterConfig(BaseModel):
 
 
 @dataclass
+@PublicAPI(stability="alpha")
 class AutoscalingPolicyConfig:
     name: Union[str, Callable]
     timeout_s: float = 5.0
