@@ -188,14 +188,6 @@ def main(args):
         num_rows / runtime_s_wo_metadata_fetch
     )
 
-    # FIXME: remove this after testing:
-    ds_count_start = time.time()
-    _count = ds.count()
-    ds_count_runtime_s = time.time() - ds_count_start
-    print(f"ds.count() runtime: {ds_count_runtime_s}s")
-
-
-
     # Report chaos testing node failures
     if args.chaos_test:
         dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
