@@ -179,7 +179,9 @@ def main(args):
     ds.write_parquet(WRITE_PATH, num_rows_per_file=5_000)
     end_time = time.time()
     runtime_s = end_time - start_time
-    num_rows = count_parquet_rows(WRITE_PATH)
+    count_start = time.time()
+    num_rows = ray.data.read_parquet(WRITE_PATH).count()
+    print(f"count runtime: {time.time() - count_start}s")
     throughput_rows_s = num_rows / runtime_s
 
     # Compute metrics for time and throughput without metadata fetch
