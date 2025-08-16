@@ -13,7 +13,7 @@ steps:
       REQUIREMENTS_FILE: "requirements_byod_{{matrix}}.txt"
     depends_on:
       - raycpubaseextra
-  
+
   - name: raycudabaseextra-test
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-test"
     wanda: ci/docker/ray.cuda.base-extra-test.wanda.yaml
@@ -32,7 +32,7 @@ steps:
       REQUIREMENTS_FILE: "requirements_byod_{{matrix.python}}.txt"
     depends_on:
       - raycudabaseextra
-  
+
   - name: ray-llmbaseextra-test
     label: "wanda: ray.py{{matrix}}.llm.base-extra-test"
     wanda: ci/docker/ray.cuda.base-extra-test.wanda.yaml
