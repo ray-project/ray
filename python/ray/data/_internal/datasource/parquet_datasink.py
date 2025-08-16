@@ -283,7 +283,7 @@ class ParquetDatasink(_FileDatasink):
             format=FILE_FORMAT,
             existing_data_behavior=existing_data_behavior,
             partitioning_flavor="hive",
-            use_threads=True,
+            use_threads=False,  # Setting it to `False` to avoid running into thread contention issues at a node level.
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
