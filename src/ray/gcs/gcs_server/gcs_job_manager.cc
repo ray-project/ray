@@ -497,7 +497,10 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
+  Status st = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
+  if (!st.ok()) {
+    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
+  }
 }
 
 void GcsJobManager::RecordMetrics() {
