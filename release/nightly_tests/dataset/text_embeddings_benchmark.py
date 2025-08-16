@@ -181,7 +181,7 @@ def main(args):
     runtime_s = end_time - start_time
     count_start = time.time()
     num_rows = ray.data.read_parquet(WRITE_PATH).count()
-    print(f"count runtime: {time.time() - count_start}s")
+    print(f"count runtime: {time.time() - count_start}s")  # FIXME: remove this after testing
     throughput_rows_s = num_rows / runtime_s
 
     # Compute metrics for time and throughput without metadata fetch
