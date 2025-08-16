@@ -104,6 +104,10 @@ class _LLMServerBase(ABC):
         """
         ...
 
+    @abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
         return None
@@ -391,6 +395,19 @@ class LLMServer(_LLMServerBase):
             return await self.engine.check_health()
         except Exception as e:
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
+            raise e
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
             raise e
 
     async def llm_config(self) -> Optional[LLMConfig]:
