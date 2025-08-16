@@ -1,8 +1,9 @@
 import json
 import logging
 import warnings
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray import cloudpickle
 from ray._common.pydantic_compat import (
@@ -159,6 +160,14 @@ class RequestRouterConfig(BaseModel):
         return cloudpickle.loads(self._serialized_request_router_cls)
 
 
+@dataclass
+@PublicAPI(stability="alpha")
+class AutoscalingPolicyConfig:
+    name: Union[str, Callable]
+    timeout_s: float = 5.0
+    dry_run: bool = False
+
+
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
@@ -227,6 +236,14 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
     )
+
+    # New fields for custom autoscaling
+    agg_function: str = "mean"  # "mean", "min", "max", "sum" how to aggregate metrics within look_back_period_s
+    custom_policy: Optional[
+        AutoscalingPolicyConfig
+    ] = None  # this policy is deployment scoped
+    # List of []
+    prometheus_custom_metrics: Optional[List[Tuple[str, Optional[str]]]] = None
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
