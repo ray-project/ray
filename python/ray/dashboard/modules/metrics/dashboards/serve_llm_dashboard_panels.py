@@ -275,6 +275,22 @@ SERVE_LLM_GRAFANA_PANELS = [
         grid_pos=GridPos(12, 40, 12, 8),
     ),
     Panel(
+        id=28,
+        title="vLLM: Prefix Cache Hit Rate",
+        description="Percentage of prefix cache queries that resulted in a cache hit (GPU).",
+        unit="percentunit",
+        targets=[
+            Target(
+                expr='rate(ray_vllm:gpu_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]) / rate(ray_vllm:gpu_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])',
+                legend="GPU: {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(0, 48, 12, 8),
+    ),
+    Panel(
         id=14,
         title="Tokens Last 24 Hours",
         description="",
@@ -292,7 +308,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 48, 12, 8),
+        grid_pos=GridPos(0, 56, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -313,7 +329,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 48, 12, 8),
+        grid_pos=GridPos(12, 56, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -330,7 +346,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 56, 12, 8),
+        grid_pos=GridPos(0, 64, 12, 8),
         template=PanelTemplate.PIE_CHART,
     ),
     Panel(
@@ -347,7 +363,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 64, 12, 8),
+        grid_pos=GridPos(12, 64, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -364,7 +380,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 64, 12, 8),
+        grid_pos=GridPos(0, 72, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -381,7 +397,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 72, 12, 8),
+        grid_pos=GridPos(12, 72, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -398,7 +414,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 72, 12, 8),
+        grid_pos=GridPos(0, 80, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -415,7 +431,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 80, 12, 8),
+        grid_pos=GridPos(12, 80, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -432,7 +448,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 80, 12, 8),
+        grid_pos=GridPos(0, 88, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -453,7 +469,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 88, 12, 8),
+        grid_pos=GridPos(12, 88, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -474,7 +490,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 88, 12, 8),
+        grid_pos=GridPos(0, 96, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
 ]
