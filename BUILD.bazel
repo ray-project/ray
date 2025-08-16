@@ -252,6 +252,20 @@ pyx_library(
     ],
 )
 
+pyx_library(
+    name = "_network_utils",
+    srcs = [
+        "python/ray/_network_utils.pyx",
+    ],
+    cc_kwargs = dict(
+        copts = COPTS + PYX_COPTS,
+        features = ["compiler_param_file"],
+    ),
+    deps = [
+        "//src/ray/util:network_util",
+    ],
+)
+
 filegroup(
     name = "python_sources",
     srcs = glob([
@@ -316,6 +330,20 @@ pkg_files(
     renames = select({
         "@platforms//os:windows": {
             "python/ray/_raylet.so": "_raylet.pyd",
+        },
+        "//conditions:default": {},
+    }),
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "network_utils_so_files",
+    srcs = ["python/ray/_network_utils.so"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/",
+    renames = select({
+        "@platforms//os:windows": {
+            "python/ray/_network_utils.so": "_network_utils.pyd",
         },
         "//conditions:default": {},
     }),
@@ -389,6 +417,7 @@ pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
         ":gcs_server_files",
+        ":network_utils_so_files",
         ":raylet_files",
         ":raylet_so_files",
         ":redis_files",
