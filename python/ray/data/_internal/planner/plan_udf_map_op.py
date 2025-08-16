@@ -52,6 +52,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+from ray.data.operation_options import OperatorOptions
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,7 @@ def plan_streaming_repartition_op(
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
-        supports_fusion=False,
+        operator_options=OperatorOptions(disable_fusion=True),
     )
 
 
@@ -277,6 +278,7 @@ def plan_udf_map_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
+        operator_options=op._operator_options,
     )
 
 
