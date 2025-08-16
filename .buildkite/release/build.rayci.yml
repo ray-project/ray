@@ -39,7 +39,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
+          - "3.11"
         cuda:
           - "12.8.1-cudnn"
     env:
