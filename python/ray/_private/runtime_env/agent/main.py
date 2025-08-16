@@ -2,6 +2,8 @@ import argparse
 import logging
 import os
 import sys
+import time
+from typing import Optional
 
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
@@ -221,17 +223,43 @@ if __name__ == "__main__":
     runtime_env_agent_ip = (
         "127.0.0.1" if args.node_ip_address == "127.0.0.1" else "0.0.0.0"
     )
-    try:
-        web.run_app(
-            app,
-            host=runtime_env_agent_ip,
-            port=args.runtime_env_agent_port,
-            loop=loop,
-        )
-    except SystemExit as e:
-        agent._logger.info(f"SystemExit! {e}")
-        # We have to poke the task exception, or there's an error message
-        # "task exception was never retrieved".
-        if check_raylet_task is not None:
-            check_raylet_task.exception()
-        sys.exit(e.code)
+
+    last_exception: Optional[OSError] = None
+
+    # There can be a port conflict when starting the server. This raises an
+    # OSError. In CI testing, there are false positives when the port hasn't
+    # been freed from the previous test. Retries with exponential backoff
+    # can eliminate this.
+    max_retries: int = 5
+    base_delay: float = 0.1
+    started: bool = False
+
+    for attempt in range(max_retries + 1):
+        try:
+            web.run_app(
+                app,
+                host=runtime_env_agent_ip,
+                port=args.runtime_env_agent_port,
+                loop=loop,
+            )
+            started = True
+            break
+        except OSError as e:
+            last_exception = e
+            if attempt < max_retries:
+                delay = base_delay * (2**attempt)
+                agent._logger.warning(
+                    f"Failed to bind to port {args.runtime_env_agent_port} (attempt {attempt + 1}/"
+                    f"{max_retries + 1}). Retrying in {delay:.2f}s. Error: {e}"
+                )
+                time.sleep(delay)
+        except SystemExit as e:
+            agent._logger.info(f"SystemExit! {e}")
+            # We have to poke the task exception, or there's an error message
+            # "task exception was never retrieved".
+            if check_raylet_task is not None:
+                check_raylet_task.exception()
+            sys.exit(e.code)
+
+    if not started:
+        raise last_exception
