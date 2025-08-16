@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { Box, Theme } from "@mui/material";
 import React, { PropsWithChildren, useContext } from "react";
 import { IconType } from "react-icons/lib";
 import { Link, Outlet } from "react-router-dom";
@@ -26,7 +26,7 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
     <SideTabContext.Provider value={sideTabState}>
       <Box>
         <Box
-          sx={{
+          sx={(theme: Theme) => ({
             position: "fixed",
             height: "100%",
             width: 64,
@@ -36,9 +36,9 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
             alignItems: "center",
             paddingTop: 1,
             paddingBottom: 2,
-            background: "white",
-            borderRight: "1px solid #D2DCE6",
-          }}
+            background: theme.palette.background.paper,
+            borderRight: `1px solid ${theme.palette.divider}`,
+          })}
         >
           {children}
         </Box>
@@ -80,12 +80,12 @@ export const SideTab = ({ tabId, title, Icon }: SideTabProps) => {
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          color: isSelected ? "#036DCF" : "#5F6469",
-          backgroundColor: isSelected ? "#EBF3FB" : null,
+          color: isSelected ? "primary.main" : "text.secondary",
+          backgroundColor: isSelected ? "action.selected" : "transparent",
           borderRadius: "4px",
           marginTop: 1,
           "&:hover": {
-            backgroundColor: "#EBF3FB",
+            backgroundColor: "action.hover",
           },
         }}
       >
