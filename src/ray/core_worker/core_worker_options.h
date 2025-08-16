@@ -96,6 +96,7 @@ struct CoreWorkerOptions {
         get_lang_stack(nullptr),
         kill_main(nullptr),
         cancel_async_actor_task(nullptr),
+        actor_shutdown_callback(nullptr),
         is_local_mode(false),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
@@ -174,6 +175,8 @@ struct CoreWorkerOptions {
   // Should return a boolean indicating if the task was successfully cancelled or not.
   // If not, the client will retry.
   std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
+  /// Callback to shutdown actor instance before shutdown.
+  std::function<void()> actor_shutdown_callback;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
