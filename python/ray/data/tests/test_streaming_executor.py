@@ -259,7 +259,7 @@ def test_get_eligible_operators_to_run():
     )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
-        return get_eligible_operators(topo, [], ensure_liveness=ensure_liveness)
+        return get_eligible_operators(topo, [], opts, ensure_liveness=ensure_liveness)
 
     # Test empty.
     assert _get_eligible_ops_to_run(ensure_liveness=False) == []
@@ -297,7 +297,7 @@ def test_get_eligible_operators_to_run():
 
         def _get_eligible_ops_to_run_with_policy(ensure_liveness: bool):
             return get_eligible_operators(
-                topo, [test_policy], ensure_liveness=ensure_liveness
+                topo, [test_policy], opts, ensure_liveness=ensure_liveness
             )
 
         assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
@@ -389,7 +389,7 @@ def test_select_ops_to_run():
         topo, _ = build_streaming_topology(o4, opts)
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo, resource_manager, [], opts, ensure_liveness=ensure_liveness
         )
 
         assert selected is o4
@@ -400,7 +400,7 @@ def test_select_ops_to_run():
         topo, _ = build_streaming_topology(o3, opts)
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo, resource_manager, [], opts, ensure_liveness=ensure_liveness
         )
 
         assert selected is o1

@@ -688,10 +688,11 @@ def get_eligible_operators(
 def _is_stage_eligible_to_run(op: PhysicalOperator, topology: Topology) -> bool:
     """Determine if a stage is eligible to run.
 
-    A stage is eligible when:
-    1. It has at least one input dependency that has started producing outputs, OR
-    2. It's an input operator (no dependencies), OR
-    3. All its input dependencies are AllToAllOperators that have completed
+    A stage is eligible to run when all of the following are true:
+    1. All of its `AllToAllOperator` input dependencies have completed.
+    2. If it has any non-`AllToAllOperator` input dependencies, at least one of them
+       has started producing outputs.
+    An operator with no input dependencies is always eligible.
     """
     from ray.data._internal.execution.operators.base_physical_operator import (
         AllToAllOperator,
@@ -701,21 +702,21 @@ def _is_stage_eligible_to_run(op: PhysicalOperator, topology: Topology) -> bool:
         # Input operators can always start
         return True
 
+    has_streaming_deps = False
+    any_streaming_dep_has_output = False
     for dep in op.input_dependencies:
         dep_state = topology[dep]
 
-        # If any dependency is an AllToAllOperator, it must be completed
         if isinstance(dep, AllToAllOperator):
             if not dep.completed():
                 return False
         else:
+            has_streaming_deps = True
             # For streaming operators, check if they've started producing outputs
-            if len(dep_state.output_queue) == 0:
-                # Check if the dependency has completed at least one task
-                if dep_state.num_completed_tasks == 0:
-                    return False
+            if len(dep_state.output_queue) > 0 or dep_state.num_completed_tasks > 0:
+                any_streaming_dep_has_output = True
 
-    return True
+    return not has_streaming_deps or any_streaming_dep_has_output
 
 
 def select_operator_to_run(
