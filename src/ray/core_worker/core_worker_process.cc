@@ -355,7 +355,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
-      *reference_counter,
+      reference_counter,
       options.check_signals,
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
@@ -366,8 +366,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter.get(),
-      raylet_ipc_client,
+      *raylet_ipc_client,
+      // The memory store will delete objects immediately when they're put into the
+      // store if they have gone out of scope in the reference counter.
+      /*should_delete_object_on_put=*/
+      [reference_counter](const ObjectID &object_id) {
+        return !reference_counter->HasReference(object_id);
+      },
       options.check_signals,
       [this](const RayObject &obj) {
         auto core_worker = GetCoreWorker();
