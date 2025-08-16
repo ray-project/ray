@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Type, Union
+from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -219,7 +220,7 @@ class MARWILConfig(AlgorithmConfig):
         vf_coeff: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         **kwargs,
-    ) -> "MARWILConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -289,7 +290,7 @@ class MARWILConfig(AlgorithmConfig):
     def evaluation(
         self,
         **kwargs,
-    ) -> "MARWILConfig":
+    ) -> Self:
         """Sets the evaluation related configuration.
         Returns:
             This updated AlgorithmConfig object.
@@ -304,7 +305,7 @@ class MARWILConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
-    def offline_data(self, **kwargs) -> "MARWILConfig":
+    def offline_data(self, **kwargs) -> Self:
 
         super().offline_data(**kwargs)
 
@@ -414,7 +415,7 @@ class MARWILConfig(AlgorithmConfig):
 class MARWIL(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> MARWILConfig:
         return MARWILConfig()
 
     @classmethod
