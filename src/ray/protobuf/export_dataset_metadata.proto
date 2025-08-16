@@ -80,6 +80,14 @@ message Topology {
 
 // Top-level message containing full metadata about a Ray Data execution
 message ExportDatasetMetadata {
+  // Dashboard panel configuration for visualizing Dataset metrics
+  message DashboardPanelMetadata {
+    // Unique identifier for the panel
+    string id = 1;
+    // Display name of the panel
+    string title = 2;
+  }
+
   enum DatasetState {
     UNKNOWN = 0;
     RUNNING = 1;
@@ -111,4 +119,8 @@ message ExportDatasetMetadata {
 
   // The state of the dataset
   DatasetState state = 8;
+
+  // List of metric panels to render for each operator
+  // When rendering these panels, it is expected to filter the metrics by operator ID.
+  repeated DashboardPanelMetadata operator_panels = 9;
 }
