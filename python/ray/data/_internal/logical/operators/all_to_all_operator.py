@@ -153,10 +153,15 @@ class Sort(AbstractAllToAll):
         input_op: LogicalOperator,
         sort_key: SortKey,
         batch_format: Optional[str] = "default",
+        limit: Optional[int] = None,
     ):
         super().__init__(
             "Sort",
             input_op,
+            # If we are computing a global top-k we only need a single output
+            # partition, which guarantees we will not materialise more data than
+            # necessary.
+            num_outputs=1 if limit is not None else None,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
@@ -165,6 +170,7 @@ class Sort(AbstractAllToAll):
         )
         self._sort_key = sort_key
         self._batch_format = batch_format
+        self._limit = limit
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
