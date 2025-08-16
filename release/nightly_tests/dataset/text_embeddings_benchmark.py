@@ -56,7 +56,7 @@ def parse_args():
         "--chunk-overlap",
         type=int,
         default=100,
-        help="Chunk overlap for text splitting",
+        help="Number of overlapping boundary characters between text chunks.",
     )
     parser.add_argument(
         "--embed-batch-size",
