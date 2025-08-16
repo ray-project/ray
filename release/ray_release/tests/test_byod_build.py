@@ -59,7 +59,10 @@ def test_build_anyscale_custom_byod_image() -> None:
 
     with patch("ray_release.byod.build._image_exist", return_value=False), patch.dict(
         "os.environ",
-        {"BUILDKITE_COMMIT": "abc123", "BUILDKITE_BRANCH": "master"},
+        {
+            "BUILDKITE_COMMIT": "abc123",
+            "RAYCI_BUILD_ID": "a1b2c3d4",
+        },
     ), patch("subprocess.check_call", side_effect=_mock_check_call,), patch(
         "subprocess.check_output",
         return_value=b"abc123",
@@ -74,8 +77,8 @@ def test_build_anyscale_custom_byod_image() -> None:
             test.get_byod_post_build_script(),
         )
         assert "docker build --build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
-        "amazonaws.com/anyscale/ray:abc123-py37 -t 029272617770.dkr.ecr.us-west-2."
-        "amazonaws.com/anyscale/ray:abc123-py37-c3fc5fc6d84cea4d7ab885c6cdc966542e"
+        "amazonaws.com/anyscale/ray:a1b2c3d4-py37 -t 029272617770.dkr.ecr.us-west-2."
+        "amazonaws.com/anyscale/ray:a1b2c3d4-py37-c3fc5fc6d84cea4d7ab885c6cdc966542e"
         "f59e4c679b8c970f2f77b956bfd8fb" in " ".join(cmds[0])
 
 
@@ -92,7 +95,10 @@ def test_build_anyscale_base_byod_images() -> None:
         "ray_release.byod.build._download_dataplane_build_file", return_value=None
     ), patch(
         "os.environ",
-        {"BUILDKITE_COMMIT": "abc123", "BUILDKITE_BRANCH": "master"},
+        {
+            "BUILDKITE_COMMIT": "abc123",
+            "RAYCI_BUILD_ID": "a1b2c3d4",
+        },
     ), patch(
         "subprocess.check_call", return_value=None
     ), patch(
@@ -127,12 +133,12 @@ def test_build_anyscale_base_byod_images() -> None:
         aws_cr = global_config["byod_aws_cr"]
         gcp_cr = global_config["byod_gcp_cr"]
         assert images == [
-            f"{aws_cr}/anyscale/ray:abc123-py39-cpu",
-            f"{aws_cr}/anyscale/ray-ml:abc123-py39-gpu",
-            f"{aws_cr}/anyscale/ray:abc123-py39-cu121",
-            f"{aws_cr}/anyscale/ray:abc123-py39-cu116",
-            f"{aws_cr}/anyscale/ray:abc123-py311-cu118",
-            f"{gcp_cr}/anyscale/ray:abc123-py39-cpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
+            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py39-gpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu121",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu116",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
+            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
         ]
 
 
