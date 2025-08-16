@@ -767,6 +767,7 @@ class ReplicaBase(ABC):
         self,
         deployment_config: DeploymentConfig,
         rank: int,
+        route_prefix: Optional[str] = None,
     ):
         try:
             user_config_changed = (
@@ -779,7 +780,7 @@ class ReplicaBase(ABC):
 
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
-                self._version, deployment_config
+                self._version, deployment_config, route_prefix
             )
 
             self._metrics_manager.set_autoscaling_config(
@@ -801,6 +802,9 @@ class ReplicaBase(ABC):
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable, rank=rank
             )
+
+            self._route_prefix = self._version.route_prefix
+
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -1063,11 +1067,11 @@ class ReplicaActor:
         return await self._replica_impl.record_routing_stats()
 
     async def reconfigure(
-        self,
-        deployment_config,
-        rank: int,
+        self, deployment_config, rank: int, route_prefix: Optional[str] = None
     ) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config, rank=rank)
+        await self._replica_impl.reconfigure(
+            deployment_config, rank, route_prefix=route_prefix
+        )
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(

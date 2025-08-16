@@ -131,6 +131,7 @@ class DeploymentTargetState:
             placement_group_bundles=info.replica_config.placement_group_bundles,
             placement_group_strategy=info.replica_config.placement_group_strategy,
             max_replicas_per_node=info.replica_config.max_replicas_per_node,
+            route_prefix=info.route_prefix,
         )
 
         return cls(info, target_num_replicas, version, deleting)
@@ -618,7 +619,7 @@ class ActorReplicaWrapper:
                 deployment_config.user_config
             )
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                deployment_config, rank=rank
+                deployment_config, rank, version.route_prefix
             )
 
             # Setting updating=True because we want to transition to UPDATING state
@@ -2028,6 +2029,7 @@ class DeploymentState:
                 != deployment_info.deployment_config
                 or curr_deployment_info.replica_config.ray_actor_options
                 != deployment_info.replica_config.ray_actor_options
+                or curr_deployment_info.route_prefix != deployment_info.route_prefix
                 or deployment_info.version is None
                 or curr_deployment_info.version != deployment_info.version
             )

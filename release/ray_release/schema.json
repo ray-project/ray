@@ -36,7 +36,6 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
 						"weekly",
@@ -201,7 +200,6 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
 						"weekly",
