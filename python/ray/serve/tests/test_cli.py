@@ -326,7 +326,9 @@ def test_config_multi_app(serve_instance):
 
     # Config should be immediately ready
     info_response = subprocess.check_output(["serve", "config"])
-    fetched_configs = list(yaml.safe_load_all(info_response))
+    fetched_configs = list(
+        yaml.safe_load_all(remove_ansi_escape_sequences(info_response.decode()))
+    )
 
     assert config["applications"][0] == fetched_configs[0]
     assert config["applications"][1] == fetched_configs[1]
@@ -350,9 +352,9 @@ def test_cli_without_config_deploy(serve_instance):
             ["serve", "config", "-n", "absent_app"]
         ).decode("utf-8")
         status_response = subprocess.check_output(["serve", "status"])
-        fetched_status = yaml.safe_load(status_response)["applications"][
-            SERVE_DEFAULT_APP_NAME
-        ]
+        fetched_status = yaml.safe_load(
+            remove_ansi_escape_sequences(status_response.decode())
+        )["applications"][SERVE_DEFAULT_APP_NAME]
 
         assert info_response == "No configuration was found.\n"
         assert (
@@ -390,8 +392,12 @@ def test_config_with_deleting_app(serve_instance):
     def check_cli(expected_configs: List, expected_statuses: int):
         info_response = subprocess.check_output(["serve", "config"])
         status_response = subprocess.check_output(["serve", "status"])
-        fetched_configs = list(yaml.safe_load_all(info_response))
-        statuses = yaml.safe_load(status_response)
+        fetched_configs = list(
+            yaml.safe_load_all(remove_ansi_escape_sequences(info_response.decode()))
+        )
+        statuses = yaml.safe_load(
+            remove_ansi_escape_sequences(status_response.decode())
+        )
 
         return (
             len(
@@ -443,7 +449,9 @@ def test_status_basic(serve_instance):
 
     def num_live_deployments(app_name):
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = yaml.safe_load(status_response)
+        serve_status = yaml.safe_load(
+            remove_ansi_escape_sequences(status_response.decode())
+        )
         return len(serve_status["applications"][app_name]["deployments"])
 
     wait_for_condition(
@@ -452,7 +460,9 @@ def test_status_basic(serve_instance):
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:8265/"]
     )
-    serve_status = yaml.safe_load(status_response)
+    serve_status = yaml.safe_load(
+        remove_ansi_escape_sequences(status_response.decode())
+    )
     default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
 
     expected_deployments = {
@@ -481,7 +491,9 @@ def test_status_basic(serve_instance):
         status_response = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        proxy_status = yaml.safe_load(status_response)["proxies"]
+        proxy_status = yaml.safe_load(
+            remove_ansi_escape_sequences(status_response.decode())
+        )["proxies"]
         return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
 
     wait_for_condition(proxy_healthy)
@@ -501,7 +513,9 @@ def test_status_error_msg_format(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        cli_status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ][SERVE_DEFAULT_APP_NAME]
         api_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
         assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
@@ -531,6 +545,7 @@ def test_status_invalid_runtime_env(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
+        cli_output = remove_ansi_escape_sequences(cli_output.decode())
         cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
         assert "Failed to set up runtime environment" in cli_status["message"]
@@ -553,7 +568,9 @@ def test_status_syntax_error(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
         assert "Traceback (most recent call last)" in status["message"]
         assert "x = (1 + 2" in status["message"]
@@ -578,7 +595,9 @@ def test_status_constructor_error(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
 
         deployment_status = status["deployments"]["A"]
@@ -606,7 +625,9 @@ def test_status_constructor_retry_error(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOYING"
 
         deployment_status = status["deployments"]["A"]
@@ -634,7 +655,9 @@ def test_status_package_unavailable_in_controller(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
@@ -656,7 +679,9 @@ def test_max_replicas_per_node(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        status = yaml.safe_load(cli_output)["applications"]
+        status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ]
         assert (
             status["valid"]["status"] == "RUNNING"
             and status["invalid"]["status"] == "DEPLOY_FAILED"
@@ -680,7 +705,9 @@ def test_replica_placement_group_options(serve_instance):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:8265/"]
         )
-        status = yaml.safe_load(cli_output)["applications"]
+        status = yaml.safe_load(remove_ansi_escape_sequences(cli_output.decode()))[
+            "applications"
+        ]
         assert (
             status["valid"]["status"] == "RUNNING"
             and status["invalid_bundles"]["status"] == "DEPLOY_FAILED"
@@ -728,7 +755,10 @@ def test_status_multi_app(serve_instance):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        status = yaml.safe_load(status_response)["applications"]
+        status = yaml.safe_load(remove_ansi_escape_sequences(status_response.decode()))[
+            "applications"
+        ]
+
         return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
     wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
@@ -737,7 +767,9 @@ def test_status_multi_app(serve_instance):
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:8265/"]
     )
-    statuses = yaml.safe_load(status_response)["applications"]
+    statuses = yaml.safe_load(remove_ansi_escape_sequences(status_response.decode()))[
+        "applications"
+    ]
 
     expected_deployments_1 = {"f", "BasicDriver"}
     expected_deployments_2 = {
