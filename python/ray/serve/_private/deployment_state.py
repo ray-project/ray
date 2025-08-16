@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -1442,13 +1443,19 @@ class DeploymentRankManager:
     It maintains the rank system invariants and provides a clean interface for rank operations.
     """
 
-    def __init__(self):
+    def __init__(self, _fail_on_error: Optional[bool] = None):
         # Maps replica_id to assigned rank
         self._replica_ranks: Dict[str, int] = {}
         # Set of available ranks (initially empty, grows as target replicas change)
         self._available_ranks: Set[int] = set()
         # Next rank to assign (increments as new replicas are created)
         self._next_rank: int = 0
+        # Whether to fail on rank errors (for testing control)
+        self._fail_on_error = (
+            _fail_on_error
+            if _fail_on_error is not None
+            else RAY_SERVE_FAIL_ON_RANK_ERROR
+        )
 
     def assign_rank(self, replica_id: str) -> int:
         """Assign a rank to a new replica.
@@ -1485,9 +1492,11 @@ class DeploymentRankManager:
         Args:
             replica_id: The unique ID of the replica whose rank should be released
         """
-        if replica_id in self._replica_ranks:
-            rank = self._replica_ranks.pop(replica_id)
-            self._available_ranks.add(rank)
+        if replica_id not in self._replica_ranks:
+            raise RuntimeError(f"Replica {replica_id} has no rank assigned")
+
+        rank = self._replica_ranks.pop(replica_id)
+        self._available_ranks.add(rank)
 
     def recover_rank(self, replica_id: str, rank: int) -> None:
         """Recover a rank from a live replica during controller restart.
@@ -1568,7 +1577,12 @@ class DeploymentRankManager:
                 f"Found stale ranks for replicas: {stale_replica_ids}. "
                 "This should never happen. Please report this as a bug."
             )
-            raise RuntimeError("Controller rank system is in an invalid state.")
+            if self._fail_on_error:
+                raise RuntimeError("Controller rank system is in an invalid state.")
+            # TODO (abrar): handle this case by removing the stale ranks, but remove this when
+            # RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
+            for replica_id in stale_replica_ids:
+                self.release_rank(replica_id)
 
         # Verify system invariants - all active replicas must have ranks
         unranked_replica_ids = active_replica_ids - set(self._replica_ranks.keys())
@@ -1577,11 +1591,16 @@ class DeploymentRankManager:
                 f"Found active replicas without ranks: {unranked_replica_ids}. "
                 "This should never happen. Please report this as a bug."
             )
-            raise RuntimeError("Controller rank system is in an invalid state.")
+            if self._fail_on_error:
+                raise RuntimeError("Controller rank system is in an invalid state.")
+            # TODO (abrar): handle this case by assigning new ranks to the unranked replicas
+            # but remove this when RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
+            for replica_id in unranked_replica_ids:
+                self.assign_rank(replica_id)
 
         # Check for duplicate ranks - this should never happen
         rank_counts = {}
-        for replica_id, rank in self._replica_ranks.items():
+        for replica_id, rank in self._replica_ranks.copy().items():
             if replica_id in active_replica_ids:  # Only check active replicas
                 rank_counts[rank] = rank_counts.get(rank, 0) + 1
                 if rank_counts[rank] > 1:
@@ -1589,7 +1608,15 @@ class DeploymentRankManager:
                         f"Found duplicate rank {rank} assigned to multiple replicas. "
                         "This should never happen. Please report this as a bug."
                     )
-                    raise RuntimeError("Controller rank system is in an invalid state.")
+                    if self._fail_on_error:
+                        raise RuntimeError(
+                            "Controller rank system is in an invalid state."
+                        )
+                    # TODO (abrar): handle this case by releasing the rank of the replica with the duplicate rank
+                    # and assigning a new rank to the replica with the duplicate rank
+                    # but remove this when RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
+                    self._replica_ranks.pop(replica_id)
+                    self.assign_rank(replica_id)
 
         # Check if we need to reassign ranks for contiguity
         # Only force contiguity when at target replica count (e.g., after autoscaling down)
@@ -1628,7 +1655,7 @@ class DeploymentRankManager:
 
         for replica in active_replicas:
             replica_id = replica.replica_id.unique_id
-            current_rank = self._replica_ranks[replica_id]
+            current_rank = self.get_replica_rank(replica_id)
 
             if current_rank in target_ranks_set:
                 # This replica can keep its rank
@@ -1646,12 +1673,19 @@ class DeploymentRankManager:
             replica_id = replica.replica_id.unique_id
             new_rank = available_ranks[i]  # O(1) operation
 
+            # Store the old rank before updating
+            old_rank = self._replica_ranks[replica_id]
+
             logger.info(
-                f"Reassigning replica {replica_id}: rank {self._replica_ranks[replica_id]} -> {new_rank}"
+                f"Reassigning replica {replica_id}: rank {old_rank} -> {new_rank}"
             )
 
             # Update the rank mapping
             self._replica_ranks[replica_id] = new_rank
+            # Remove the newly assigned rank from available ranks
+            self._available_ranks.discard(new_rank)
+            # Add the old rank back to available ranks for reuse
+            self._available_ranks.add(old_rank)
 
         # Log the reassignment summary
         logger.info(
@@ -2702,9 +2736,21 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
-        active_replicas = self._replicas.get()
+        active_replicas = self._replicas.get(
+            states=[
+                ReplicaState.UPDATING,
+                ReplicaState.RUNNING,
+                ReplicaState.PENDING_MIGRATION,
+                ReplicaState.STOPPING,
+                ReplicaState.STARTING,
+                # Recovering is not included because unlike starting, recovering
+                # replicas dont have their rank assigned in deployment rank manager
+                # when they are constructed.
+            ]
+        )
         if (
-            not self._has_outdated_version_replicas()
+            active_replicas
+            and not self._has_outdated_version_replicas()
             and len(active_replicas) == self._target_state.target_num_replicas
         ):
             if active_replicas:
@@ -2715,8 +2761,7 @@ class DeploymentState:
                 )
 
                 # Reconfigure replicas that had their ranks reassigned
-                if replicas_to_reconfigure:
-                    self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+                self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
 
     def _has_outdated_version_replicas(self) -> bool:
         """Check if there are any replicas with outdated versions.
