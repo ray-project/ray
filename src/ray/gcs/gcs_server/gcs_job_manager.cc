@@ -465,7 +465,7 @@ void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
     reply->set_job_id(job_id);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  RAY_CHECK_OK(gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_}));
+  gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_});
 }
 
 std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
@@ -497,7 +497,10 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
+  Status st = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
+  if (!st.ok()) {
+    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
+  }
 }
 
 void GcsJobManager::RecordMetrics() {
