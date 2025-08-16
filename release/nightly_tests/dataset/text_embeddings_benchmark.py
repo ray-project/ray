@@ -154,11 +154,11 @@ def main(args):
         args.source_directory,
         include_paths=True,
     )
-    metadata_fetching_s = time.time() - start_time
-    # Record start time after metadata fetching
-    start_time_wo_metadata_fetching = time.time()
+    metadata_fetch_end = time.time()
+    metadata_fetching_s = metadata_fetch_end - start_time
     if args.smoke_test:
         ds = ds.limit(100)
+
     ds = ds.flat_map(
         Chunker(
             method=args.chunk_method,
@@ -177,9 +177,16 @@ def main(args):
         num_gpus=args.num_gpus,
     )
     ds.write_parquet(WRITE_PATH, num_rows_per_file=5_000)
-    runtime_s = time.time() - start_time
+    end_time = time.time()
+    runtime_s = end_time - start_time
     num_rows = count_parquet_rows(WRITE_PATH)
     throughput_rows_s = num_rows / runtime_s
+
+    # Compute metrics for time and throughput without metadata fetch
+    runtime_s_wo_metadata_fetch = end_time - metadata_fetch_end
+    throughput_rows_s_wo_metadata_fetch = (
+        num_rows / runtime_s_wo_metadata_fetch
+    )
 
     # FIXME: remove this after testing:
     ds_count_start = time.time()
@@ -187,11 +194,7 @@ def main(args):
     ds_count_runtime_s = time.time() - ds_count_start
     print(f"ds.count() runtime: {ds_count_runtime_s}s")
 
-    # Compute metrics for time and throughput without metadata fetch
-    runtime_s_wo_metadata_fetch = time.time() - start_time_wo_metadata_fetching
-    throughput_rows_s_wo_metadata_fetch = (
-        num_rows / runtime_s_wo_metadata_fetch
-    )
+
 
     # Report chaos testing node failures
     if args.chaos_test:
