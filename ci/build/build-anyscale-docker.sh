@@ -9,6 +9,5 @@ ECR="$3"
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin "$ECR"
 
-docker pull "$SOURCE_IMAGE"
 docker tag "$SOURCE_IMAGE" "$DEST_IMAGE"
 docker push "$DEST_IMAGE"
