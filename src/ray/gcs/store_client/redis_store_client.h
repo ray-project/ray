@@ -232,7 +232,7 @@ class RedisStoreClient : public StoreClient {
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
       const std::vector<RedisConcurrencyKey> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status DeleteByKeys(const std::string &table_name,
+  void DeleteByKeys(const std::string &table_name,
                       const std::vector<std::string> &keys,
                       Postable<void(int64_t)> callback);
 

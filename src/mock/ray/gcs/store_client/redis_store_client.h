@@ -21,7 +21,7 @@ class MockStoreClient : public StoreClient {
               AsyncPut,
               (const std::string &table_name,
                const std::string &key,
-               const std::string &data,
+               std::string data,
                bool overwrite,
                Postable<void(bool)> callback),
               (override));
