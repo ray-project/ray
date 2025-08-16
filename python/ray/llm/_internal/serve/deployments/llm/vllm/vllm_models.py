@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
+import ray
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.common.utils.import_utils import try_import
@@ -194,12 +195,20 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
+        dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
+
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
         else:
             bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
+        if dp_rank is not None:
+            # For data parallel, we put the placement group on the same node
+            # as the driver. This is needed to pass ray_utils._verify_bundles()
+            # validation in vLLM.
+            node_ip = ray.util.get_node_ip_address()
+            bundle["node:" + node_ip] = 0.001
         bundles = [bundle for _ in range(self.num_devices)]
 
         return bundles
@@ -238,6 +247,7 @@ class VLLMEngineConfig(BaseModelExtended):
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
         """
+        dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         pg = get_current_placement_group()
         if pg:
             logger.debug(
@@ -245,6 +255,10 @@ class VLLMEngineConfig(BaseModelExtended):
                 pg.id,
                 placement_group_table(pg),
             )
+            if dp_rank is not None:
+                raise NotImplementedError(
+                    "Data parallel is not supported with VLLMEngine already in a placement group"
+                )
         else:
             if not ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT:
                 raise RuntimeError(
@@ -252,8 +266,12 @@ class VLLMEngineConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
+            name = "" if dp_rank is None else f"dp_{dp_rank}"
+
             pg = placement_group(
-                self.placement_bundles, strategy=self.placement_strategy
+                bundles=self.placement_bundles,
+                strategy=self.placement_strategy,
+                name=name,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")

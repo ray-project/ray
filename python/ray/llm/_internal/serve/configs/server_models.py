@@ -139,15 +139,15 @@ EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 class LLMConfig(BaseModelExtended):
 
     runtime_env: Optional[Dict[str, Any]] = Field(
-        None,
+        default=None,
         description=(
             "The runtime_env to use for the model deployment replica "
             "and the engine workers."
         ),
     )
 
-    model_loading_config: ModelLoadingConfig = Field(
-        description="The settings for how to download and expose the model."
+    model_loading_config: Union[Dict[str, Any], ModelLoadingConfig] = Field(
+        description="The settings for how to download and expose the model. Validated against ModelLoadingConfig."
     )
 
     llm_engine: str = Field(
@@ -177,8 +177,9 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[LoraConfig] = Field(
-        default=None, description="Settings for LoRA adapter."
+    lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
+        default=None,
+        description="Settings for LoRA adapter. Validated against LoraConfig.",
     )
 
     deployment_config: Dict[str, Any] = Field(
@@ -190,7 +191,7 @@ class LLMConfig(BaseModelExtended):
             `autoscaling_config`, `max_queued_requests`, `user_config`,
             `health_check_period_s`, `health_check_timeout_s`,
             `graceful_shutdown_wait_loop_s`, `graceful_shutdown_timeout_s`,
-            `logging_config`.
+            `logging_config`, `request_router_config`.
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
@@ -209,7 +210,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        False,
+        default=False,
         description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
     )
 
@@ -223,8 +224,16 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        try:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            self._supports_vision = hasattr(hf_config, "vision_config")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                f"Original error: {repr(e)}"
+            ) from e
 
     def _set_model_architecture(
         self,
@@ -236,9 +245,23 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures") and hf_config.architectures:
-                self._model_architecture = hf_config.architectures[0]
+            try:
+                hf_config = transformers.PretrainedConfig.from_pretrained(
+                    model_id_or_path
+                )
+                if (
+                    hf_config
+                    and hasattr(hf_config, "architectures")
+                    and hf_config.architectures
+                ):
+                    self._model_architecture = hf_config.architectures[0]
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                    f"Original error: {repr(e)}"
+                ) from e
 
         if model_architecture:
             self._model_architecture = model_architecture
@@ -309,6 +332,36 @@ class LLMConfig(BaseModelExtended):
             raise ValueError(f"Invalid deployment config: {value}") from e
 
         return value
+
+    @field_validator("model_loading_config")
+    def validate_model_loading_config(
+        cls, value: Union[Dict[str, Any], ModelLoadingConfig]
+    ) -> ModelLoadingConfig:
+        """Validates the model loading config dictionary."""
+        if isinstance(value, ModelLoadingConfig):
+            return value
+
+        try:
+            model_loading_config = ModelLoadingConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid model_loading_config: {value}") from e
+
+        return model_loading_config
+
+    @field_validator("lora_config")
+    def validate_lora_config(
+        cls, value: Optional[Union[Dict[str, Any], LoraConfig]]
+    ) -> Optional[LoraConfig]:
+        """Validates the lora config dictionary."""
+        if value is None or isinstance(value, LoraConfig):
+            return value
+
+        try:
+            lora_config = LoraConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid lora_config: {value}") from e
+
+        return lora_config
 
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
