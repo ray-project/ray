@@ -111,11 +111,13 @@ class CloudModelDownloader(CloudModelAccessor):
     def get_model(
         self,
         tokenizer_only: bool,
+        runai_streamer: bool=False,
     ) -> str:
         """Gets a model from cloud storage and stores it locally.
 
         Args:
             tokenizer_only: whether to download only the tokenizer files.
+            runai_streamer: whether to use streamer to stream model weights into memory.
 
         Returns: file path of model if downloaded, else the model id.
         """
@@ -135,10 +137,13 @@ class CloudModelDownloader(CloudModelAccessor):
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
                 try:
+                    if runai_streamer:
+                        logger.info("Using RunAI streamer, skipping download of safetensor files.")
                     CloudFileSystem.download_model(
                         destination_path=path,
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
+                        runai_streamer=runai_streamer
                     )
                     logger.info(
                         "Finished downloading %s for %s from %s storage",
@@ -222,6 +227,7 @@ def download_model_files(
     mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
     download_extra_files: bool = True,
+    runai_streamer: bool = False
 ) -> Optional[str]:
     """
     Download the model files from the cloud storage. We support two ways to specify
@@ -241,6 +247,7 @@ def download_model_files(
         mirror_config: Config for downloading model from cloud storage.
         download_model: What parts of the model to download.
         download_extra_files: Whether to download extra files specified in the mirror config.
+        runai_streamer: Whether we are using RunAI streamer to stream model weights directly to memory.
 
     Returns:
         The local path to the downloaded model, or the original model ID
@@ -282,7 +289,8 @@ def download_model_files(
 
     if download_model != NodeModelDownloadable.NONE:
         model_path_or_id = downloader.get_model(
-            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY
+            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY,
+            runai_streamer=runai_streamer
         )
 
     if download_extra_files:
