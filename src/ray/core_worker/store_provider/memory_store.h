@@ -26,7 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -58,7 +58,7 @@ class CoreWorkerMemoryStore {
   /// \param object_allocator Used to override the object allocator.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      ipc::RayletIpcClient &raylet_ipc_client,
+      ipc::RayletIpcClientInterface &raylet_ipc_client,
       std::function<bool(const ObjectID)> should_delete_object_on_put = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
@@ -204,6 +204,9 @@ class CoreWorkerMemoryStore {
   /// Called to check if a given object should be deleted immediately when it's put
   /// into the store.
   std::function<bool(const ObjectID)> should_delete_object_on_put_;
+
+  // Used to notify worker blocked / unblocked on get calls.
+  ipc::RayletIpcClientInterface &raylet_ipc_client_;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
