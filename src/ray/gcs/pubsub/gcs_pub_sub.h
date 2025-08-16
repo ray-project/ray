@@ -22,8 +22,8 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -38,13 +38,13 @@ class GcsPublisher {
   /// Initializes GcsPublisher with GCS based publishers.
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
-  explicit GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+  explicit GcsPublisher(std::unique_ptr<pubsub::PublisherInterface> publisher)
       : publisher_(std::move(publisher)) {
     RAY_CHECK(publisher_);
   }
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
-  pubsub::Publisher &GetPublisher() const { return *publisher_; }
+  pubsub::PublisherInterface &GetPublisher() const { return *publisher_; }
 
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
@@ -71,7 +71,7 @@ class GcsPublisher {
   std::string DebugString() const;
 
  private:
-  const std::unique_ptr<pubsub::Publisher> publisher_;
+  const std::unique_ptr<pubsub::PublisherInterface> publisher_;
 };
 
 /// \class GcsSubscriber
@@ -81,7 +81,7 @@ class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with GCS based GcsSubscribers.
   // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
-  GcsSubscriber(rpc::Address gcs_address, std::unique_ptr<pubsub::Subscriber> subscriber)
+  GcsSubscriber(rpc::Address gcs_address, std::unique_ptr<pubsub::SubscriberInterface> subscriber)
       : gcs_address_(std::move(gcs_address)), subscriber_(std::move(subscriber)) {}
 
   /// Subscribe*() member functions below would be incrementally converted to use the GCS

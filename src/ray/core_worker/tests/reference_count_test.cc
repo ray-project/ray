@@ -28,8 +28,8 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
 namespace core {
@@ -282,6 +282,8 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
       std::string *publisher_id,
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override {}
+
+  std::string DebugString() const override { return ""; }
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
