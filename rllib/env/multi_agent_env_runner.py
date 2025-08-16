@@ -12,6 +12,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_METRICS_LOGGER,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
 )
@@ -721,6 +722,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Update weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
+
+        # Update all metrics logger states.
+        if COMPONENT_METRICS_LOGGER in state:
+            self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
         # Update lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
