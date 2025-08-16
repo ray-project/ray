@@ -7,6 +7,7 @@ from ray.llm._internal.batch.processor import (
     ProcessorConfig as _ProcessorConfig,
     SGLangEngineProcessorConfig as _SGLangEngineProcessorConfig,
     vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
+    ServeDeploymentProcessorConfig as _ServeDeploymentProcessorConfig,
 )
 from ray.util.annotations import PublicAPI
 
@@ -245,6 +246,95 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
+class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
+    """The configuration for the serve deployment processor.
+
+    This processor enables sharing LLM engines across multiple processors and is compatible with
+    both vLLM and SGLang engines, depending on the underlying serve deployment.
+
+    Args:
+        llm_config: The LLM config used to build the serve deployment.
+        name_prefix: The name prefix of the serve application to use.
+        app_name: The name of the serve application to use.
+        method: The method to invoke on the serve deployment.
+        batch_size: The batch size to send to the serve deployment. Large batch sizes are
+            likely to saturate the compute resources and could achieve higher throughput.
+            On the other hand, small batch sizes are more fault-tolerant and could
+            reduce bubbles in the data pipeline. You can tune the batch size to balance
+            the throughput and fault-tolerance based on your use case.
+        accelerator_type: The accelerator type used by the serve deployment stage in a processor.
+            Default to None, meaning that only the CPU will be used.
+        concurrency: The number of workers for data parallelism. Default to 1.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray import serve
+            from ray.serve.llm import LLMConfig, ModelLoadingConfig
+            from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
+
+            llm_config = LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id="facebook/opt-1.3b",
+                    model_source="facebook/opt-1.3b",
+                ),
+                accelerator_type="A10G",
+                deployment_config=dict(
+                    name="facebook",
+                    autoscaling_config=dict(
+                        min_replicas=1,
+                        max_replicas=1,
+                    ),
+                ),
+                engine_kwargs=dict(
+                    enable_prefix_caching=True,
+                    enable_chunked_prefill=True,
+                    max_num_batched_tokens=4096,
+                ),
+            )
+
+            APP_NAME = "facebook"
+
+            llm_app = build_llm_deployment(llm_config, name_prefix="chat_completions")
+            app = serve.run(llm_app, name=APP_NAME)
+
+            config=ServeDeploymentProcessorConfig(
+                llm_config=llm_config,
+                app_name=APP_NAME,
+                method="completions",
+                batch_size=1,
+                concurrency=1,
+            )
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: CompletionRequest(
+                    model="facebook/opt-1.3b",
+                    prompt=row["prompt"],
+                    stream=False
+                ),
+                postprocess=lambda row: dict(
+                    resp=row["choices"][0]["text"],
+                ),
+            )
+
+            # The processor requires specific input columns, which depend on
+            # your processor config. You can use the following API to check
+            # the required input columns:
+            processor.log_input_column_names()
+
+            ds = ray.data.range(300)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -324,5 +414,6 @@ __all__ = [
     "HttpRequestProcessorConfig",
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
+    "ServeDeploymentProcessorConfig",
     "build_llm_processor",
 ]

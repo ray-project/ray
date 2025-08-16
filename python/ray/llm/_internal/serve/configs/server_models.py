@@ -196,6 +196,11 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
+    deployment_name: Optional[str] = Field(
+        default=None,
+        description="The name of the deployment. If not specified, the deployment name will be inferred from the model ID.",
+    )
+
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "
@@ -510,6 +515,7 @@ class LLMConfig(BaseModelExtended):
         if name_prefix:
             deployment_config["name"] = name_prefix + deployment_config["name"]
 
+        self.deployment_name = deployment_config["name"]
         return deployment_config
 
     def setup_engine_backend(self):
