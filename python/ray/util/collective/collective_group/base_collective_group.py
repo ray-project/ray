@@ -14,6 +14,10 @@ from ray.util.collective.types import (
 )
 
 
+def get_master_address_metadata_key(group_name: str):
+    return f"collective_group_master_address_{group_name}"
+
+
 class BaseGroup(metaclass=ABCMeta):
     def __init__(self, world_size, rank, group_name):
         """Init the process group with basic information.
