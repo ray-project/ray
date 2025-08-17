@@ -299,7 +299,7 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='(sum(ray_component_rss_mb{{instance=~"$Instance",{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (Component))',
+                expr='(sum(ray_component_rss_mb{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (Component)) - (sum(ray_component_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (Component))',
                 legend="{{Component}}",
             ),
             Target(
@@ -331,11 +331,11 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}}) by (Component)",
+                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}} * 1024 * 1024) by (Component)",
                 legend="{{Component}}",
             ),
             Target(
-                expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}))*1024*1024',
+                expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 1024 * 1024',
                 legend="MAX",
             ),
         ],
