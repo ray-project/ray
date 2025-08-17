@@ -365,6 +365,26 @@ def _check_call_windows(main, argv, capture_stdout=False, capture_stderr=False):
     return stream.buffer.getvalue()
 
 
+def capture_function_output(func: callable, *args, **kwargs) -> str:
+    """Helper function to capture the printed output of a function call.
+
+    Args:
+        func: A callable that takes no arguments.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+
+    Returns:
+        The captured output as a string.
+    """
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    output = StringIO()
+    with redirect_stdout(output):
+        func(*args, **kwargs)
+    return output.getvalue()
+
+
 def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows

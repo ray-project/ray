@@ -535,47 +535,38 @@ def test_dataset_repr(ray_start_regular_shared):
     )
 
 
-def capture_function_output(func, *args, **kwargs):
-    """Helper function to capture the printed output of any function call"""
-    from contextlib import redirect_stdout
-    from io import StringIO
-
-    output = StringIO()
-    with redirect_stdout(output):
-        func(*args, **kwargs)
-    return output.getvalue()
-
-
 def test_dataset_explain(ray_start_regular_shared):
+    from ray._private.test_utils import capture_function_output
+
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map(lambda x: x)
 
     result = capture_function_output(lambda: ds.explain())
-    assert result == (
+    assert result.rstrip() == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
         "+- ReadRange\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadRange->Map(<lambda>)]\n"
-        "+- InputDataBuffer[Input]\n"
+        "+- InputDataBuffer[Input]"
     )
 
     ds = ds.filter(lambda x: x["id"] > 0)
     result = capture_function_output(lambda: ds.explain())
 
-    assert result == (
+    assert result.rstrip() == (
         "-------- Logical Plan --------\n"
         "Filter(<lambda>)\n"
         "+- Map(<lambda>)\n"
         "   +- ReadRange\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)]\n"
-        "+- InputDataBuffer[Input]\n"
+        "+- InputDataBuffer[Input]"
     )
     ds = ds.random_shuffle().map(lambda x: x)
     result = capture_function_output(lambda: ds.explain())
 
-    assert result == (
+    assert result.rstrip() == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
         "+- RandomShuffle\n"
@@ -585,7 +576,7 @@ def test_dataset_explain(ray_start_regular_shared):
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[Map(<lambda>)]\n"
         "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
-        "   +- InputDataBuffer[Input]\n"
+        "   +- InputDataBuffer[Input]"
     )
 
 
