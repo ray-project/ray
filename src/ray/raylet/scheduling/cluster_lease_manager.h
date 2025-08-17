@@ -19,13 +19,12 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
-#include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_task_manager_interface.h"
+#include "ray/raylet/scheduling/local_lease_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
 
@@ -38,10 +37,10 @@ namespace raylet {
 ///    lease.
 ///     * Step 2 should occur any time the state of the cluster is
 ///       changed, or a new lease is queued.
-/// 3. For leases that's infeasable, put them into infeasible queue and reports
-///    it to gcs, where the auto scaler will be notified and start new node
+/// 3. For leases that are infeasible, put them into infeasible queue and report
+///    it to gcs, where the auto scaler will be notified and start a new node
 ///    to accommodate the requirement.
-class ClusterTaskManager : public ClusterTaskManagerInterface {
+class ClusterLeaseManager : public ClusterLeaseManagerInterface {
  public:
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
@@ -49,14 +48,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param announce_infeasible_lease: Callback that informs the user if a lease
   ///                                  is infeasible.
-  /// \param local_task_manager: Manages local leases.
+  /// \param local_lease_manager: Manages local leases.
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  ClusterTaskManager(
+  ClusterLeaseManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
-      std::function<void(const RayTask &)> announce_infeasible_lease,
-      LocalTaskManagerInterface &local_task_manager,
+      std::function<void(const RayLease &)> announce_infeasible_lease,
+      LocalLeaseManagerInterface &local_lease_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
       });
@@ -69,7 +68,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleLease(RayTask lease,
+  void QueueAndScheduleLease(RayLease lease,
                              bool grant_or_reject,
                              bool is_selected_based_on_locality,
                              rpc::RequestWorkerLeaseReply *reply,
@@ -138,11 +137,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in,out] num_pending_leases: Number of pending leases.
   /// \return An example lease that is deadlocking if any leases are pending resource
   /// acquisition.
-  const RayTask *AnyPendingLeasesForResourceAcquisition(
+  const RayLease *AnyPendingLeasesForResourceAcquisition(
       int *num_pending_actor_creation, int *num_pending_leases) const override;
 
-  // Schedule and dispatch leases.
-  void ScheduleAndDispatchLeases() override;
+  // Schedule and grant leases.
+  void ScheduleAndGrantLeases() override;
 
   /// Record the internal metrics.
   void RecordMetrics() const override;
@@ -197,9 +196,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
   /// Function to announce infeasible lease to GCS.
-  std::function<void(const RayTask &)> announce_infeasible_lease_;
+  std::function<void(const RayLease &)> announce_infeasible_lease_;
 
-  LocalTaskManagerInterface &local_task_manager_;
+  LocalLeaseManagerInterface &local_lease_manager_;
 
   /// Queue of lease requests that are waiting for resources to become available.
   /// Leases move from scheduled -> dispatch | waiting.
@@ -218,8 +217,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::function<int64_t()> get_time_ms_;
 
   friend class SchedulerStats;
-  friend class ClusterTaskManagerTest;
-  FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
+  friend class ClusterLeaseManagerTest;
+  FRIEND_TEST(ClusterLeaseManagerTest, FeasibleToNonFeasible);
 };
 }  // namespace raylet
 }  // namespace ray

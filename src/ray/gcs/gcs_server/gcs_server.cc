@@ -229,7 +229,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsNodeManager(gcs_init_data);
 
   // Init cluster task manager.
-  InitClusterTaskManager();
+  InitClusterLeaseManager();
 
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
@@ -368,13 +368,13 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(cluster_resource_scheduler_ && cluster_task_manager_);
+  RAY_CHECK(cluster_resource_scheduler_ && cluster_lease_manager_);
   gcs_resource_manager_ = std::make_unique<GcsResourceManager>(
       io_context_provider_.GetDefaultIOContext(),
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
       kGCSNodeID,
-      cluster_task_manager_.get());
+      cluster_lease_manager_.get());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -438,9 +438,9 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_local_node_with_raylet=*/false);
 }
 
-void GcsServer::InitClusterTaskManager() {
+void GcsServer::InitClusterLeaseManager() {
   RAY_CHECK(cluster_resource_scheduler_);
-  cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
+  cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
       kGCSNodeID,
       *cluster_resource_scheduler_,
       /*get_node_info=*/
@@ -449,7 +449,7 @@ void GcsServer::InitClusterTaskManager() {
         return node.has_value() ? node.value().get() : nullptr;
       },
       /*announce_infeasible_task=*/nullptr,
-      /*local_task_manager=*/local_task_manager_);
+      /*local_lease_manager=*/local_lease_manager_);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -487,12 +487,12 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
-  RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
+  RAY_CHECK(gcs_resource_manager_ && cluster_lease_manager_);
   scheduler = std::make_unique<GcsActorScheduler>(
       io_context_provider_.GetDefaultIOContext(),
       gcs_table_storage_->ActorTable(),
       *gcs_node_manager_,
-      *cluster_task_manager_,
+      *cluster_lease_manager_,
       schedule_failure_handler,
       schedule_success_handler,
       raylet_client_pool_,
@@ -768,7 +768,7 @@ void GcsServer::InstallEventListeners() {
           RAY_CHECK(channel != nullptr);
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
-        cluster_task_manager_->ScheduleAndDispatchLeases();
+        cluster_lease_manager_->ScheduleAndGrantLeases();
       });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -825,7 +825,7 @@ void GcsServer::InstallEventListeners() {
             // Because resources have been changed, we need to try to schedule the
             // pending placement groups and actors.
             gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchLeases();
+            cluster_lease_manager_->ScheduleAndGrantLeases();
           },
           "GcsServer.SchedulePendingActors");
     });
@@ -836,7 +836,7 @@ void GcsServer::InstallEventListeners() {
             // Because some placement group resources have been committed or deleted, we
             // need to try to schedule the pending placement groups and actors.
             gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchLeases();
+            cluster_lease_manager_->ScheduleAndGrantLeases();
           },
           "GcsServer.SchedulePendingPGActors");
     });
@@ -897,7 +897,7 @@ void GcsServer::PrintAsioStats() {
 }
 
 void GcsServer::TryGlobalGC() {
-  if (cluster_task_manager_->GetPendingQueueSize() == 0) {
+  if (cluster_lease_manager_->GetPendingQueueSize() == 0) {
     task_pending_schedule_detected_ = 0;
     return;
   }

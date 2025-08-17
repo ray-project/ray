@@ -12,48 +12,86 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/task/lease_spec.h"
+#include "ray/common/lease/lease_spec.h"
+
+#include "ray/common/common_protocol.h"
+#include "ray/common/function_descriptor.h"
+#include "ray/common/runtime_env_common.h"
 
 namespace ray {
 
-LeaseSpec::LeaseSpec(const TaskSpecification &task_spec)
-    : job_id_(task_spec.JobId()),
-      lease_id_(task_spec.LeaseId()),
-      caller_address_(task_spec.CallerAddress()),
-      type_(task_spec.GetMessage().type()),
-      actor_creation_id_(task_spec.ActorCreationId()),
-      is_detached_actor_(task_spec.IsDetachedActor()),
-      root_detached_actor_id_(task_spec.RootDetachedActorId()),
-      sched_cls_id_(task_spec.GetSchedulingClass()),
-      required_resources_(task_spec.GetRequiredResources()),
-      required_placement_resources_(task_spec.GetRequiredPlacementResources()),
-      scheduling_strategy_(task_spec.GetSchedulingStrategy()),
-      label_selector_(task_spec.GetLabelSelector()),
-      depth_(task_spec.GetDepth()),
-      runtime_env_hash_(task_spec.GetRuntimeEnvHash()),
-      dependencies_(task_spec.GetDependencies()) {}
+LeaseSpecification::LeaseSpecification(rpc::LeaseSpec &&lease_spec)
+    : MessageWrapper(std::move(lease_spec)) {
+  ComputeResources();
+}
 
-bool LeaseSpec::IsNodeAffinitySchedulingStrategy() const {
-  return scheduling_strategy_.scheduling_strategy_case() ==
+LeaseSpecification::LeaseSpecification(const rpc::LeaseSpec &message)
+    : MessageWrapper(message) {
+  ComputeResources();
+}
+
+LeaseSpecification::LeaseSpecification(std::shared_ptr<rpc::LeaseSpec> message)
+    : MessageWrapper(std::move(message)) {
+  ComputeResources();
+}
+
+LeaseID LeaseSpecification::LeaseId() const {
+  if (message_->lease_id().empty()) {
+    return LeaseID::Nil();
+  }
+  return LeaseID::FromBinary(message_->lease_id());
+}
+
+JobID LeaseSpecification::JobId() const {
+  if (message_->job_id().empty()) {
+    return JobID::Nil();
+  }
+  return JobID::FromBinary(message_->job_id());
+}
+
+const rpc::Address &LeaseSpecification::CallerAddress() const {
+  return message_->caller_address();
+}
+
+bool LeaseSpecification::IsDriverTask() const {
+  return message_->type() == TaskType::DRIVER_TASK;
+}
+
+Language LeaseSpecification::GetLanguage() const { return message_->language(); }
+
+bool LeaseSpecification::IsNormalTask() const {
+  return message_->type() == TaskType::NORMAL_TASK;
+}
+
+bool LeaseSpecification::IsActorCreationTask() const {
+  return message_->type() == TaskType::ACTOR_CREATION_TASK;
+}
+
+bool LeaseSpecification::IsActorTask() const {
+  return message_->type() == TaskType::ACTOR_TASK;
+}
+
+bool LeaseSpecification::IsNodeAffinitySchedulingStrategy() const {
+  return GetSchedulingStrategy().scheduling_strategy_case() ==
          rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy;
 }
 
-NodeID LeaseSpec::GetNodeAffinitySchedulingStrategyNodeId() const {
+NodeID LeaseSpecification::GetNodeAffinitySchedulingStrategyNodeId() const {
   if (!IsNodeAffinitySchedulingStrategy()) {
     return NodeID::Nil();
   }
   return NodeID::FromBinary(
-      scheduling_strategy_.node_affinity_scheduling_strategy().node_id());
+      GetSchedulingStrategy().node_affinity_scheduling_strategy().node_id());
 }
 
-bool LeaseSpec::GetNodeAffinitySchedulingStrategySoft() const {
+bool LeaseSpecification::GetNodeAffinitySchedulingStrategySoft() const {
   if (!IsNodeAffinitySchedulingStrategy()) {
     return false;
   }
-  return scheduling_strategy_.node_affinity_scheduling_strategy().soft();
+  return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
 }
 
-std::vector<ObjectID> LeaseSpec::GetDependencyIds() const {
+std::vector<ObjectID> LeaseSpecification::GetDependencyIds() const {
   std::vector<ObjectID> ids;
   ids.reserve(dependencies_.size());
   for (const auto &ref : dependencies_) {
@@ -62,28 +100,235 @@ std::vector<ObjectID> LeaseSpec::GetDependencyIds() const {
   return ids;
 }
 
-WorkerID LeaseSpec::CallerWorkerId() const {
-  if (caller_address_.worker_id().empty()) {
+std::vector<rpc::ObjectReference> LeaseSpecification::GetDependencies() const {
+  return dependencies_;
+}
+
+WorkerID LeaseSpecification::CallerWorkerId() const {
+  if (message_->caller_address().worker_id().empty()) {
     return WorkerID::Nil();
   }
-  return WorkerID::FromBinary(caller_address_.worker_id());
+  return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
-NodeID LeaseSpec::CallerNodeId() const {
-  if (caller_address_.raylet_id().empty()) {
+NodeID LeaseSpecification::CallerNodeId() const {
+  if (message_->caller_address().node_id().empty()) {
     return NodeID::Nil();
   }
-  return NodeID::FromBinary(caller_address_.raylet_id());
+  return NodeID::FromBinary(message_->caller_address().node_id());
 }
 
-const BundleID LeaseSpec::PlacementGroupBundleId() const {
-  if (scheduling_strategy_.scheduling_strategy_case() !=
+const BundleID LeaseSpecification::PlacementGroupBundleId() const {
+  if (GetSchedulingStrategy().scheduling_strategy_case() !=
       rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
     return std::make_pair(PlacementGroupID::Nil(), -1);
   }
-  const auto &pg = scheduling_strategy_.placement_group_scheduling_strategy();
+  const auto &pg = GetSchedulingStrategy().placement_group_scheduling_strategy();
   return std::make_pair(PlacementGroupID::FromBinary(pg.placement_group_id()),
                         pg.placement_group_bundle_index());
+}
+
+int64_t LeaseSpecification::MaxActorRestarts() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->max_actor_restarts();
+}
+
+int32_t LeaseSpecification::MaxRetries() const { return message_->max_retries(); }
+
+bool LeaseSpecification::IsRetriable() const {
+  if (IsActorTask()) {
+    return false;
+  }
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
+    return false;
+  }
+  return true;
+}
+
+uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
+
+bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
+
+std::string LeaseSpecification::GetTaskName() const { return message_->task_name(); }
+
+TaskID LeaseSpecification::ParentTaskId() const {
+  if (message_->parent_task_id().empty()) {
+    return TaskID::Nil();
+  }
+  return TaskID::FromBinary(message_->parent_task_id());
+}
+
+ActorID LeaseSpecification::ActorId() const {
+  if (message_->actor_id().empty()) {
+    return ActorID::Nil();
+  }
+  return ActorID::FromBinary(message_->actor_id());
+}
+
+ActorID LeaseSpecification::RootDetachedActorId() const {
+  if (message_->root_detached_actor_id().empty() /* e.g., empty proto default */) {
+    return ActorID::Nil();
+  }
+  return ActorID::FromBinary(message_->root_detached_actor_id());
+}
+
+bool LeaseSpecification::IsDetachedActor() const { return message_->is_detached_actor(); }
+
+int LeaseSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
+
+std::string LeaseSpecification::DebugString() const {
+  std::ostringstream stream;
+  stream << "Type=" << TaskType_Name(message_->type())
+         << ", Language=" << Language_Name(message_->language());
+
+  if (required_resources_ != nullptr) {
+    stream << ", Resources: {";
+
+    // Print resource description.
+    for (auto entry : GetRequiredResources().GetResourceMap()) {
+      stream << entry.first << ": " << entry.second << ", ";
+    }
+    stream << "}";
+  }
+
+  if (IsActorCreationTask()) {
+    // Print actor creation task spec.
+    stream << ", actor_creation_task_spec={actor_id=" << ActorId()
+           << ", max_restarts=" << MaxActorRestarts()
+           << ", is_detached=" << IsDetachedActor() << "}";
+  } else if (IsActorTask()) {
+    // Print actor task spec.
+    stream << ", actor_id=" << ActorId();
+  }
+
+  // Print non-sensitive runtime env info.
+  if (HasRuntimeEnv()) {
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
+  }
+
+  return stream.str();
+}
+
+bool LeaseSpecification::HasRuntimeEnv() const {
+  return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
+}
+
+const std::string &LeaseSpecification::SerializedRuntimeEnv() const {
+  return message_->runtime_env_info().serialized_runtime_env();
+}
+
+const rpc::RuntimeEnvInfo &LeaseSpecification::RuntimeEnvInfo() const {
+  return message_->runtime_env_info();
+}
+
+int64_t LeaseSpecification::GetDepth() const { return message_->depth(); }
+
+const rpc::SchedulingStrategy &LeaseSpecification::GetSchedulingStrategy() const {
+  return message_->scheduling_strategy();
+}
+
+const ResourceSet &LeaseSpecification::GetRequiredResources() const {
+  return *required_resources_;
+}
+
+const ResourceSet &LeaseSpecification::GetRequiredPlacementResources() const {
+  return *required_placement_resources_;
+}
+
+const LabelSelector &LeaseSpecification::GetLabelSelector() const {
+  return *label_selector_;
+}
+
+ray::FunctionDescriptor LeaseSpecification::FunctionDescriptor() const {
+  return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
+}
+
+void LeaseSpecification::ComputeResources() {
+  auto &required_resources = message_->required_resources();
+
+  if (required_resources.empty()) {
+    // A static nil object is used here to avoid allocating the empty object every time.
+    required_resources_ = ResourceSet::Nil();
+  } else {
+    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+  }
+
+  auto &required_placement_resources = message_->required_placement_resources().empty()
+                                           ? required_resources
+                                           : message_->required_placement_resources();
+
+  if (required_placement_resources.empty()) {
+    required_placement_resources_ = ResourceSet::Nil();
+  } else {
+    required_placement_resources_.reset(
+        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+  }
+
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
+
+  // Copy dependencies from message
+  dependencies_.reserve(message_->dependencies_size());
+  for (int i = 0; i < message_->dependencies_size(); ++i) {
+    dependencies_.push_back(message_->dependencies(i));
+  }
+
+  if (!IsActorTask()) {
+    // There is no need to compute `SchedulingClass` for actor tasks since
+    // the actor tasks need not be scheduled.
+    const bool is_actor_creation_task = IsActorCreationTask();
+    const bool should_report_placement_resources =
+        RayConfig::instance().report_actor_placement_resources();
+    const auto &resource_set =
+        (is_actor_creation_task && should_report_placement_resources)
+            ? GetRequiredPlacementResources()
+            : GetRequiredResources();
+    auto depth = GetDepth();
+    auto label_selector = GetLabelSelector();
+    const auto &function_descriptor = FunctionDescriptor();
+    auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                    label_selector,
+                                                    function_descriptor,
+                                                    depth,
+                                                    GetSchedulingStrategy());
+    // Map the scheduling class descriptor to an integer for performance.
+    sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
+  }
+
+  runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
+}
+
+std::vector<std::string> LeaseSpecification::DynamicWorkerOptionsOrEmpty() const {
+  if (!IsActorCreationTask()) {
+    return {};
+  }
+  return VectorFromProtobuf(message_->dynamic_worker_options());
+}
+
+std::vector<std::string> LeaseSpecification::DynamicWorkerOptions() const {
+  RAY_CHECK(IsActorCreationTask());
+  return VectorFromProtobuf(message_->dynamic_worker_options());
+}
+
+const rpc::RuntimeEnvConfig &LeaseSpecification::RuntimeEnvConfig() const {
+  return message_->runtime_env_info().runtime_env_config();
+}
+
+bool LeaseSpecification::IsSpreadSchedulingStrategy() const {
+  return message_->scheduling_strategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
+}
+
+SchedulingClass LeaseSpecification::GetSchedulingClass() const {
+  if (!IsActorTask()) {
+    // Actor task doesn't have scheudling id, so we don't need to check this.
+    RAY_CHECK_GT(sched_cls_id_, 0);
+  }
+  return sched_cls_id_;
 }
 
 }  // namespace ray

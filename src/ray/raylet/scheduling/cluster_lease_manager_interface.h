@@ -17,17 +17,18 @@
 #include <memory>
 #include <string>
 
+#include "ray/raylet/scheduling/internal.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace raylet {
-class ClusterTaskManagerInterface {
+class ClusterLeaseManagerInterface {
  public:
-  virtual ~ClusterTaskManagerInterface() = default;
+  virtual ~ClusterLeaseManagerInterface() = default;
 
   // Schedule and dispatch leases.
-  virtual void ScheduleAndDispatchLeases() = 0;
+  virtual void ScheduleAndGrantLeases() = 0;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
@@ -83,7 +84,7 @@ class ClusterTaskManagerInterface {
   /// \param predicate: A function that returns true if a lease needs to be cancelled.
   /// \param failure_type: The reason for cancellation.
   /// \param scheduling_failure_message: The reason message for cancellation.
-  /// \return True if any task was successfully cancelled.
+  /// \return True if any lease was successfully cancelled.
   virtual bool CancelLeases(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -96,19 +97,19 @@ class ClusterTaskManagerInterface {
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleLease(RayTask lease,
+  virtual void QueueAndScheduleLease(RayLease lease,
                                      bool grant_or_reject,
                                      bool is_selected_based_on_locality,
                                      rpc::RequestWorkerLeaseReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) = 0;
 
-  /// Return with an exemplar if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any leases are pending resource acquisition.
   ///
   /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
   /// \param[in] num_pending_leases Number of pending leases.
   /// \return An example lease that is deadlocking if any leases are pending resource
   /// acquisition.
-  virtual const RayTask *AnyPendingLeasesForResourceAcquisition(
+  virtual const RayLease *AnyPendingLeasesForResourceAcquisition(
       int *num_pending_actor_creation, int *num_pending_leases) const = 0;
 
   /// The helper to dump the debug state of the cluster lease manater.

@@ -29,7 +29,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
@@ -38,7 +38,7 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-using raylet::ClusterTaskManager;
+using raylet::ClusterLeaseManager;
 namespace gcs {
 
 class GcsActor;
@@ -119,7 +119,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param cluster_task_manager The task manager that queues and schedules actor.
+  /// \param cluster_lease_manager The task manager that queues and schedules actor.
   /// creation tasks.
   /// \param schedule_failure_handler Invoked when there are no available
   /// nodes to schedule actors.
@@ -132,7 +132,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      ClusterTaskManager &cluster_task_manager_,
+      ClusterLeaseManager &cluster_lease_manager_,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       rpc::RayletClientPool &raylet_client_pool,
@@ -144,7 +144,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
 
   /// Schedule the specified actor.
   /// If there is no available nodes then the actor would be queued in the
-  /// `cluster_task_manager_`.
+  /// `cluster_lease_manager_`.
   ///
   /// \param actor to be scheduled.
   void Schedule(std::shared_ptr<GcsActor> actor) override;
@@ -381,7 +381,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// The cluster task manager.
-  ClusterTaskManager &cluster_task_manager_;
+  ClusterLeaseManager &cluster_lease_manager_;
   /// The handler to handle the scheduling failures.
   GcsActorSchedulerFailureCallback schedule_failure_handler_;
   /// The handler to handle the successful scheduling.

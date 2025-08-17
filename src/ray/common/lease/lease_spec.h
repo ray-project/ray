@@ -14,92 +14,121 @@
 
 #pragma once
 
+#include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
 // LeaseSpec captures only the subset of TaskSpec used by the raylet for
-// leasing, scheduling, dependency resolution, and cancellation. It mirrors the
-// names/signatures used at raylet call sites so it can be substituted anywhere
-// TaskSpecification is read in raylet.
-class LeaseSpec {
+// leasing, scheduling, dependency resolution, and cancellation.
+class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
  public:
-  explicit LeaseSpec(const TaskSpecification &task_spec);
+  /// Construct an empty task specification. This should not be used directly.
+  LeaseSpecification() { ComputeResources(); }
+
+  explicit LeaseSpecification(rpc::LeaseSpec &&lease_spec);
+  explicit LeaseSpecification(const rpc::LeaseSpec &message);
+  explicit LeaseSpecification(std::shared_ptr<rpc::LeaseSpec> message);
 
   // Identity/provenance
-  LeaseID LeaseId() const { return lease_id_; }
-  JobID JobId() const { return job_id_; }
+  LeaseID LeaseId() const;
+  JobID JobId() const;
 
   // Scheduling class and inputs raylet consumes
-  const SchedulingClass GetSchedulingClass() const { return sched_cls_id_; }
-  const ResourceSet &GetRequiredResources() const { return required_resources_; }
-  const ResourceSet &GetRequiredPlacementResources() const {
-    return required_placement_resources_;
-  }
-  const LabelSelector &GetLabelSelector() const { return label_selector_; }
-  const rpc::SchedulingStrategy &GetSchedulingStrategy() const {
-    return scheduling_strategy_;
-  }
+  const ResourceSet &GetRequiredResources() const;
+  const ResourceSet &GetRequiredPlacementResources() const;
+  const LabelSelector &GetLabelSelector() const;
+  const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
   bool IsNodeAffinitySchedulingStrategy() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
   bool GetNodeAffinitySchedulingStrategySoft() const;
-  int64_t GetDepth() const { return depth_; }
 
   // Dependencies interface
   std::vector<ObjectID> GetDependencyIds() const;
-  std::vector<rpc::ObjectReference> GetDependencies() const { return dependencies_; }
+  std::vector<rpc::ObjectReference> GetDependencies() const;
 
   // Task/actor type helpers used by raylet
-  bool IsNormalTask() const { return type_ == rpc::TaskType::NORMAL_TASK; }
-  bool IsActorCreationTask() const { return type_ == rpc::TaskType::ACTOR_CREATION_TASK; }
-  bool IsActorTask() const { return type_ == rpc::TaskType::ACTOR_TASK; }
-  ActorID ActorCreationId() const { return actor_creation_id_; }
+  bool IsNormalTask() const;
+  bool IsActorCreationTask() const;
+  bool IsActorTask() const;
+  ActorID ActorId() const;
 
   // Ownership and lifetime
-  const rpc::Address &CallerAddress() const { return caller_address_; }
+  const rpc::Address &CallerAddress() const;
   WorkerID CallerWorkerId() const;
   NodeID CallerNodeId() const;
-  bool IsDetachedActor() const { return is_detached_actor_; }
-  ActorID RootDetachedActorId() const { return root_detached_actor_id_; }
-
-  // Worker pool matching
-  int GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
   // Placement group bundle where applicable
   const BundleID PlacementGroupBundleId() const;
 
- private:
-  // Identity / provenance
-  JobID job_id_;
-  LeaseID lease_id_;
-  rpc::Address caller_address_;
+  // Retriable
+  bool IsRetriable() const;
+  int64_t MaxActorRestarts() const;
+  int32_t MaxRetries() const;
+  TaskID ParentTaskId() const;
+  bool IsDetachedActor() const;
+  std::string DebugString() const;
 
-  // Task kind / actor creation
-  rpc::TaskType type_ = rpc::TaskType::NORMAL_TASK;
-  ActorID actor_creation_id_;
-  bool is_detached_actor_ = false;
-  ActorID root_detached_actor_id_;
+  // Worker pool matching
+  int GetRuntimeEnvHash() const;
+  Language GetLanguage() const;
+  bool HasRuntimeEnv() const;
+  const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
+  const std::string &SerializedRuntimeEnv() const;
+
+  // Additional getters used by raylet
+  int64_t GetDepth() const;
+  ActorID RootDetachedActorId() const;
+  bool IsDriverTask() const;
+  ray::FunctionDescriptor FunctionDescriptor() const;
+  uint64_t AttemptNumber() const;
+  bool IsRetry() const;
+  std::string GetTaskName() const;
+  std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
+  std::vector<std::string> DynamicWorkerOptions() const;
+  const rpc::RuntimeEnvConfig &RuntimeEnvConfig() const;
+  bool IsSpreadSchedulingStrategy() const;
+  SchedulingClass GetSchedulingClass() const;
+
+ private:
+  // Helper method to compute cached resources and dependencies
+  void ComputeResources();
+
+  SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
   // Scheduling
   SchedulingClass sched_cls_id_ = 0;
-  ResourceSet required_resources_;
-  ResourceSet required_placement_resources_;
-  rpc::SchedulingStrategy scheduling_strategy_;
-  LabelSelector label_selector_;
-  int64_t depth_ = 0;
-
-  // Runtime env
-  int runtime_env_hash_ = 0;
+  std::shared_ptr<ResourceSet> required_resources_;
+  std::shared_ptr<ResourceSet> required_placement_resources_;
+  std::shared_ptr<LabelSelector> label_selector_;
 
   // Dependencies
   std::vector<rpc::ObjectReference> dependencies_;
+
+  // Runtime environment hash
+  int runtime_env_hash_ = 0;
+
+  /// Below static fields could be mutated in `ComputeResources` concurrently due to
+  /// multi-threading, we need a mutex to protect it.
+  static absl::Mutex mutex_;
+  /// Keep global static id mappings for SchedulingClass for performance.
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+      ABSL_GUARDED_BY(mutex_);
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+      ABSL_GUARDED_BY(mutex_);
+  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

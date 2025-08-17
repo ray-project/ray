@@ -23,12 +23,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/task/task.h"
-#include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_task_manager_interface.h"
+#include "ray/raylet/scheduling/local_lease_manager_interface.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 
@@ -39,14 +39,14 @@ namespace raylet {
 /// cluster_lease_manager (the distributed scheduler) and does the following
 /// steps:
 /// 1. Pulling lease dependencies, add the lease into waiting queue.
-/// 2. Once lease's dependencies are all pulled locally, the lease be added into
-///    dispatch queue.
-/// 3. For all leases in dispatch queue, we schedule them by first acquiring
-///    local resources (including pinning the objects in memory and deduct
-///    cpu/gpu and other resources from local reosource manager)) .
+/// 2. Once lease's dependencies are all pulled locally, the lease is added into
+///    the grant queue.
+/// 3. For all leases in the grant queue, we schedule them by first acquiring
+///    local resources (including pinning the objects in memory and deducting
+///    cpu/gpu and other resources from the local resource manager).
 ///    If a lease failed to acquire resources in step 3, we will try to
-///    spill it to an different remote node.
-/// 4. If all resources are acquired, we start a worker and returns the worker
+///    spill it to a different remote node.
+/// 4. If all resources are acquired, we start a worker and return the worker
 ///    address to the client once worker starts up.
 /// 5. When a worker finishes executing its task(s), the requester will return
 ///    it and we should release the resources in our view of the node's state.
@@ -57,13 +57,13 @@ namespace raylet {
 /// as it should return the request to the distributed scheduler if
 /// resource accusition failed, or a lease has arguments pending resolution for too long
 /// time.
-class LocalTaskManager : public LocalTaskManagerInterface {
+class LocalLeaseManager : public LocalLeaseManagerInterface {
  public:
   /// Create a local lease manager.
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
-  /// \param lease_dependency_manager_ Used to fetch lease's dependencies.
+  /// \param lease_lease_dependency_manager_ Used to fetch lease's dependencies.
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
@@ -75,10 +75,10 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   ///                                   on the number of leases that can run per
   ///                                   scheduling class. If set to 0, there is no
   ///                                   cap. If it's a large number, the cap is hard.
-  LocalTaskManager(
+  LocalLeaseManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      LeaseDependencyManagerInterface &lease_dependency_manager,
+      LeaseDependencyManagerInterface &lease_lease_dependency_manager,
       internal::NodeInfoGetter get_node_info,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -95,12 +95,12 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override;
 
   // Schedule and dispatch leases.
-  void ScheduleAndDispatchLeases() override;
+  void ScheduleAndGrantLeases() override;
 
   /// Move leases from waiting to ready for dispatch. Called when a lease's
   /// dependencies are resolved.
   ///
-  /// \param ready_ids: The leases which are now ready to be dispatched.
+  /// \param ready_ids: The leases which are now ready to be granted.
   void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override;
 
   /// Return the finished lease and release the worker resources.
@@ -109,7 +109,7 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   ///
   /// \param worker: The worker which was running the lease.
   /// \param lease: Output parameter.
-  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayTask *lease) override;
+  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override;
 
   /// Attempt to cancel all queued tasks that match the predicate.
   ///
@@ -128,7 +128,7 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   /// \param[in,out] num_pending_leases: Number of pending leases.
   /// \return An example lease that is deadlocking if any leases are pending resource
   /// acquisition.
-  const RayTask *AnyPendingLeasesForResourceAcquisition(
+  const RayLease *AnyPendingLeasesForResourceAcquisition(
       int *num_pending_actor_creation, int *num_pending_leases) const override;
 
   /// Call once a lease finishes (i.e. a worker is returned).
@@ -167,8 +167,8 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetLeaseToDispatch() const override {
-    return leases_to_dispatch_;
+      &GetLeasesToGrant() const override {
+    return leases_to_grant_;
   }
 
   const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
@@ -189,7 +189,7 @@ class LocalTaskManager : public LocalTaskManagerInterface {
  private:
   struct SchedulingClassInfo;
 
-  void RemoveFromRunningLeasesIfExists(const RayTask &lease);
+  void RemoveFromRunningLeasesIfExists(const RayLease &lease);
 
   /// Handle the popped worker from worker pool.
   bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
@@ -201,21 +201,21 @@ class LocalTaskManager : public LocalTaskManagerInterface {
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  /// Cancels a lease in leases_to_dispatch_. Does not remove it from leases_to_dispatch_.
-  void CancelLeaseToDispatch(
+  /// Cancels a lease in leases_to_grant_. Does not remove it from leases_to_grant_.
+  void CancelLeaseToGrant(
       const std::shared_ptr<internal::Work> &work,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "");
 
-  /// Attempts to dispatch all leases which are ready to run. A lease
-  /// will be dispatched if it is on `leases_to_dispatch_` and there are still
+  /// Attempts to grant all leases which are ready to run. A lease
+  /// will be granted if it is on `leases_to_grant_` and there are still
   /// available resources on the node.
   ///
   /// If there are not enough resources locally, up to one lease per resource
   /// shape (the lease at the head of the queue) will get spilled back to a
   /// different node.
-  void DispatchScheduledLeasesToWorkers();
+  void GrantScheduledLeasesToWorkers();
 
   /// Helper method when the current node does not have the available resources to run a
   /// lease.
@@ -244,11 +244,11 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   /// data structure.
   void RecomputeDebugStats() const;
 
-  void Dispatch(
+  void Grant(
       std::shared_ptr<WorkerInterface> worker,
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
-      const RayTask &lease,
+      const RayLease &lease,
       rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
@@ -258,15 +258,16 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   // returns false if there are missing args (due to eviction) or if there is
   // not enough memory available to dispatch the lease, due to other executing
   // tasks' arguments.
-  bool PinLeaseArgsIfMemoryAvailable(const TaskSpecification &spec, bool *args_missing);
+  bool PinLeaseArgsIfMemoryAvailable(const LeaseSpecification &lease_spec,
+                                     bool *args_missing);
 
   // Helper functions to pin and release an executing lease's args.
-  void PinLeaseArgs(const TaskSpecification &spec,
+  void PinLeaseArgs(const LeaseSpecification &lease_spec,
                     std::vector<std::unique_ptr<RayObject>> args);
   void ReleaseLeaseArgs(const LeaseID &lease_id);
 
  private:
-  /// Determine whether a lease should be immediately dispatched,
+  /// Determine whether a lease should be immediately granted,
   /// or placed on a wait queue.
   void WaitForLeaseArgsRequests(std::shared_ptr<internal::Work> work);
 
@@ -275,19 +276,19 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   /// Responsible for resource tracking/view of the cluster.
   ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make lease dependencies to be local.
-  LeaseDependencyManagerInterface &lease_dependency_manager_;
+  LeaseDependencyManagerInterface &lease_lease_dependency_manager_;
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
 
   const int max_resource_shapes_per_load_report_;
 
   /// Tracking information about the currently granted leases in a scheduling
-  /// class. This information is used to place a cap on the number of running
+  /// class. This information is used to place a cap on the number of
   /// granted leases per scheduling class.
   struct SchedulingClassInfo {
     explicit SchedulingClassInfo(int64_t cap)
         : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
-    /// Track the running lease ids in this scheduling class.
+    /// Track the granted lease ids in this scheduling class.
     ///
     /// TODO(hjiang): Store cgroup manager along with lease id as the value for map.
     absl::flat_hash_set<LeaseID> granted_leases;
@@ -303,29 +304,29 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, SchedulingClassInfo> info_by_sched_cls_;
 
   /// Queue of lease requests that should be scheduled onto workers.
-  /// Leases move from scheduled | waiting -> dispatch.
-  /// Leases can also move from dispatch -> waiting if one of their arguments is
+  /// Leases move from scheduled | waiting -> grant.
+  /// Leases can also move from grant -> waiting if one of their arguments is
   /// evicted.
   /// All leases in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the lease
   /// is still queued.
   /// Note that if a queue exists, it should be guaranteed to be non-empty.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      leases_to_dispatch_;
+      leases_to_grant_;
 
   /// Leases waiting for arguments to be transferred locally.
-  /// Leases move from waiting -> dispatch.
-  /// Leases can also move from dispatch -> waiting if one of their arguments is
+  /// Leases move from waiting -> grant.
+  /// Leases can also move from grant -> waiting if one of their arguments is
   /// evicted.
   /// All leases in this map that have dependencies should be registered with
-  /// the dependency manager, so that they can be moved to dispatch once their
+  /// the dependency manager, so that they can be moved to grant once their
   /// dependencies are local.
 
   /// We keep these in a queue so that leases can be spilled back from the end
   /// of the queue. This is to try to prioritize spilling leases whose
   /// dependencies may not be fetched locally yet.
 
-  /// Note that because leases can also move from dispatch -> waiting, the order
+  /// Note that because leases can also move from grant -> waiting, the order
   /// in this queue may not match the order in which we initially received the
   /// leases. This also means that the PullManager may request dependencies for
   /// these leases in a different order than the waiting lease queue.
@@ -386,11 +387,11 @@ class LocalTaskManager : public LocalTaskManagerInterface {
   size_t num_unschedulable_lease_spilled_ = 0;
 
   friend class SchedulerResourceReporter;
-  friend class ClusterTaskManagerTest;
+  friend class ClusterLeaseManagerTest;
   friend class SchedulerStats;
-  friend class LocalTaskManagerTest;
-  FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
-  FRIEND_TEST(LocalTaskManagerTest, TestTaskDispatchingOrder);
+  friend class LocalLeaseManagerTest;
+  FRIEND_TEST(ClusterLeaseManagerTest, FeasibleToNonFeasible);
+  FRIEND_TEST(LocalLeaseManagerTest, TestLeaseDispatchingOrder);
 };
 }  // namespace raylet
 }  // namespace ray

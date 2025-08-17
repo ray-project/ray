@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/lease/lease_spec.h"
+#include "ray/common/lease/lease_spec_builder.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -63,8 +65,25 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    scheduling_key_entry.task_queue.push_back(task_spec);
-    scheduling_key_entry.resource_spec = std::move(task_spec);
+    LeaseSpecBuilder builder;
+    const auto &message = task_spec.GetMessage();
+    builder.BuildCommonLeaseSpec(JobID::FromBinary(message.job_id()),
+                                 message.caller_address(),
+                                 message.required_resources(),
+                                 message.required_placement_resources(),
+                                 message.scheduling_strategy(),
+                                 message.label_selector(),
+                                 message.depth(),
+                                 task_spec.GetDependencies(),
+                                 message.language(),
+                                 message.runtime_env_info(),
+                                 TaskID::FromBinary(message.parent_task_id()),
+                                 message.function_descriptor(),
+                                 message.name(),
+                                 message.attempt_number());
+    builder.SetNormalLeaseSpec(message.max_retries());
+    scheduling_key_entry.resource_spec = std::move(builder).ConsumeAndBuild();
+    scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
       // There are idle workers, so we don't need more
@@ -231,7 +250,7 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
-  absl::flat_hash_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
+  absl::flat_hash_map<SchedulingClass, std::pair<LeaseSpecification, int64_t>> backlogs;
   for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
     const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
     if (backlogs.find(scheduling_class) == backlogs.end()) {
@@ -299,24 +318,23 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     return;
   }
 
-  // Generate a LeaseID using the current worker ID
   const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_);
-
-  auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
+  rpc::LeaseSpec resource_spec_msg = scheduling_key_entry.resource_spec.GetMessage();
   resource_spec_msg.set_lease_id(lease_id.Binary());
-  const TaskSpecification resource_spec = TaskSpecification(std::move(resource_spec_msg));
+  const LeaseSpecification resource_spec =
+      LeaseSpecification(std::move(resource_spec_msg));
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
     std::tie(best_node_address, is_selected_based_on_locality) =
-        lease_policy_->GetBestNodeForTask(resource_spec);
+        lease_policy_->GetBestNodeForLease(resource_spec);
     raylet_address = &best_node_address;
   }
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
-  const std::string task_name = resource_spec.GetName();
+  const std::string task_name = resource_spec.GetTaskName();
   RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for task "
                  << task_name;

@@ -29,7 +29,7 @@
 // clang-format on
 
 namespace ray {
-using raylet::NoopLocalTaskManager;
+using raylet::NoopLocalLeaseManager;
 namespace gcs {
 
 class GcsActorSchedulerTest : public ::testing::Test {
@@ -62,8 +62,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
-    local_task_manager_ = std::make_unique<raylet::NoopLocalTaskManager>();
-    cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
+    local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
+    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         local_node_id_,
         *cluster_resource_scheduler_,
         /*get_node_info=*/
@@ -72,7 +72,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_task=*/nullptr,
-        /*local_task_manager=*/*local_task_manager_);
+        /*local_lease_manager=*/*local_lease_manager_);
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_context_->GetIoService(),
         cluster_resource_scheduler_->GetClusterResourceManager(),
@@ -84,7 +84,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         io_context_->GetIoService(),
         *gcs_actor_table_,
         *gcs_node_manager_,
-        *cluster_task_manager_,
+        *cluster_lease_manager_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -161,9 +161,9 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::unique_ptr<raylet::LocalTaskManagerInterface> local_task_manager_;
+  std::unique_ptr<raylet::LocalLeaseManagerInterface> local_lease_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  std::shared_ptr<ClusterLeaseManager> cluster_lease_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
@@ -677,7 +677,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleFailedWithZeroNodeByG
   // are no available nodes.
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(1, cluster_task_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(1, cluster_lease_manager_->GetInfeasibleQueueSize());
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
@@ -699,7 +699,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNotEnoughClusterResources) {
   // are not enough cluster resources.
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(1, cluster_task_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(1, cluster_lease_manager_->GetInfeasibleQueueSize());
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
@@ -712,7 +712,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleAndDestroyOneActor) {
   scheduling::NodeID scheduling_node_id(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
   const auto &cluster_resource_manager =
-      cluster_task_manager_->GetClusterResourceScheduler().GetClusterResourceManager();
+      cluster_lease_manager_->GetClusterResourceScheduler().GetClusterResourceManager();
   auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
   ASSERT_TRUE(resource_view_before_scheduling.contains(scheduling_node_id));
 
@@ -740,8 +740,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleAndDestroyOneActor) {
   // Reply the actor creation request, then the actor should be scheduled successfully.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -879,8 +879,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenLeasingByGcs
   // Reply the actor creation request, then the actor should be scheduled successfully.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -926,8 +926,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenCreatingByGc
   // Reply the actor creation request, then the actor should be scheduled successfully.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -975,8 +975,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenLeasingByGcs) {
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestLeasingCancelledWhenLeasingByGcs) {
@@ -1015,8 +1015,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestLeasingCancelledWhenLeasingBy
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs) {
@@ -1064,8 +1064,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs) 
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestWorkerFailedWhenCreatingByGcs) {
@@ -1109,8 +1109,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestWorkerFailedWhenCreatingByGcs
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
@@ -1164,8 +1164,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
 
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
+  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
   ASSERT_EQ(2, success_actors_.size());
 }
 

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/local_task_manager.h"
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -28,9 +26,10 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 
@@ -306,18 +305,18 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
 }  // namespace
 
-class LocalTaskManagerTest : public ::testing::Test {
+class LocalLeaseManagerTest : public ::testing::Test {
  public:
-  explicit LocalTaskManagerTest(double num_cpus = 3.0)
+  explicit LocalLeaseManagerTest(double num_cpus = 3.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
         object_manager_(),
-        dependency_manager_(object_manager_),
-        local_task_manager_(std::make_shared<LocalTaskManager>(
+        lease_dependency_manager_(object_manager_),
+        local_lease_manager_(std::make_shared<LocalLeaseManager>(
             id_,
             *scheduler_,
-            dependency_manager_,
+            lease_dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {
@@ -370,11 +369,11 @@ class LocalTaskManagerTest : public ::testing::Test {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockObjectManager object_manager_;
-  DependencyManager dependency_manager_;
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  LeaseDependencyManager lease_dependency_manager_;
+  std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };
 
-TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
+TEST_F(LocalLeaseManagerTest, TestTaskDispatchingOrder) {
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
@@ -390,13 +389,13 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_f2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   rpc::RequestWorkerLeaseReply reply;
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
       task_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_task_manager_->ScheduleAndDispatchTasks();
+  local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
       task_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_task_manager_->ScheduleAndDispatchTasks();
+  local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
   // Second batch of tasks: [f, f, f, g]
@@ -404,24 +403,24 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f4 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_f5 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_g1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "g");
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
       task_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
       task_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
       task_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
       task_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_task_manager_->ScheduleAndDispatchTasks();
+  local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
-  auto tasks_to_dispatch_ = local_task_manager_->GetTaskToDispatch();
+  auto leases_to_grant_ = local_lease_manager_->GetLeasesToGrant();
   // Only task f in queue now as g is dispatched.
-  ASSERT_EQ(tasks_to_dispatch_.size(), 1);
+  ASSERT_EQ(leases_to_grant_.size(), 1);
 }
 
-TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
+TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
   // Note that ideally it shouldn't be possible for an infeasible task to
-  // be in the local task manager when ScheduleAndDispatchTasks happens.
+  // be in the local task manager when ScheduleAndGrantLeases happens.
   // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
 
   std::shared_ptr<MockWorker> worker1 =
@@ -446,10 +445,10 @@ TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
   int num_callbacks_called = 0;
   auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
   rpc::RequestWorkerLeaseReply reply1;
-  local_task_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
+  local_lease_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
       task1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
   rpc::RequestWorkerLeaseReply reply2;
-  local_task_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
+  local_lease_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
       task2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
 
   // Node no longer has cpu.
@@ -457,7 +456,7 @@ TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
       scheduling::ResourceID::CPU());
 
   // Simulate arg becoming local.
-  local_task_manager_->TasksUnblocked(
+  local_lease_manager_->TasksUnblocked(
       {task1.GetTaskSpecification().TaskId(), task2.GetTaskSpecification().TaskId()});
 
   // Assert that the the correct rpc replies were sent back and the dispatch map is empty.
@@ -466,7 +465,7 @@ TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
   ASSERT_EQ(reply2.failure_type(),
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   ASSERT_EQ(num_callbacks_called, 2);
-  ASSERT_EQ(local_task_manager_->GetTaskToDispatch().size(), 0);
+  ASSERT_EQ(local_lease_manager_->GetLeasesToGrant().size(), 0);
 }
 
 int main(int argc, char **argv) {

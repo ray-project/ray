@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/dependency_manager.h"
-
 #include <list>
 #include <string>
 #include <unordered_set>
@@ -25,6 +23,7 @@
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/raylet/lease_dependency_manager.h"
 
 namespace ray {
 
@@ -67,23 +66,25 @@ class CustomMockObjectManager : public MockObjectManager {
   std::unordered_set<uint64_t> active_task_requests;
 };
 
-class DependencyManagerTest : public ::testing::Test {
+class LeaseDependencyManagerTest : public ::testing::Test {
  public:
-  DependencyManagerTest()
-      : object_manager_mock_(), dependency_manager_(object_manager_mock_) {}
+  LeaseDependencyManagerTest()
+      : object_manager_mock_(), lease_dependency_manager_(object_manager_mock_) {}
 
   int64_t NumWaiting(const std::string &task_name) {
-    return dependency_manager_.waiting_tasks_counter_.Get({task_name, false});
+    return lease_dependency_manager_.waiting_tasks_counter_.Get({task_name, false});
   }
 
-  int64_t NumWaitingTotal() { return dependency_manager_.waiting_tasks_counter_.Total(); }
+  int64_t NumWaitingTotal() {
+    return lease_dependency_manager_.waiting_tasks_counter_.Total();
+  }
 
   void AssertNoLeaks() {
-    ASSERT_TRUE(dependency_manager_.required_objects_.empty());
-    ASSERT_TRUE(dependency_manager_.queued_task_requests_.empty());
-    ASSERT_TRUE(dependency_manager_.get_requests_.empty());
-    ASSERT_TRUE(dependency_manager_.wait_requests_.empty());
-    ASSERT_EQ(dependency_manager_.waiting_tasks_counter_.Total(), 0);
+    ASSERT_TRUE(lease_dependency_manager_.required_objects_.empty());
+    ASSERT_TRUE(lease_dependency_manager_.queued_task_requests_.empty());
+    ASSERT_TRUE(lease_dependency_manager_.get_requests_.empty());
+    ASSERT_TRUE(lease_dependency_manager_.wait_requests_.empty());
+    ASSERT_EQ(lease_dependency_manager_.waiting_tasks_counter_.Total(), 0);
     // All pull requests are canceled.
     ASSERT_TRUE(object_manager_mock_.active_task_requests.empty());
     ASSERT_TRUE(object_manager_mock_.active_get_requests.empty());
@@ -91,12 +92,12 @@ class DependencyManagerTest : public ::testing::Test {
   }
 
   CustomMockObjectManager object_manager_mock_;
-  DependencyManager dependency_manager_;
+  LeaseDependencyManager lease_dependency_manager_;
 };
 
 /// Test requesting the dependencies for a task. The dependency manager should
 /// return the task ID as ready once all of its arguments are local.
-TEST_F(DependencyManagerTest, TestSimpleTask) {
+TEST_F(LeaseDependencyManagerTest, TestSimpleTask) {
   // Create a task with 3 arguments.
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
@@ -104,7 +105,7 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
     arguments.push_back(ObjectID::FromRandom());
   }
   TaskID task_id = RandomTaskId();
-  bool ready = dependency_manager_.RequestTaskDependencies(
+  bool ready = lease_dependency_manager_.RequestTaskDependencies(
       task_id, ObjectIdsToRefs(arguments), {"foo", false});
   ASSERT_FALSE(ready);
   ASSERT_EQ(NumWaiting("bar"), 0);
@@ -113,12 +114,12 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
 
   // For each argument, tell the task dependency manager that the argument is
   // local. All arguments should be canceled as they become available locally.
-  auto ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[0]);
+  auto ready_task_ids = lease_dependency_manager_.HandleObjectLocal(arguments[0]);
   ASSERT_TRUE(ready_task_ids.empty());
-  ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[1]);
+  ready_task_ids = lease_dependency_manager_.HandleObjectLocal(arguments[1]);
   ASSERT_TRUE(ready_task_ids.empty());
   // The task is ready to run.
-  ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[2]);
+  ready_task_ids = lease_dependency_manager_.HandleObjectLocal(arguments[2]);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
   ASSERT_EQ(NumWaiting("bar"), 0);
@@ -126,13 +127,13 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
   ASSERT_EQ(NumWaitingTotal(), 0);
 
   // Remove the task.
-  dependency_manager_.RemoveTaskDependencies(task_id);
+  lease_dependency_manager_.RemoveTaskDependencies(task_id);
   AssertNoLeaks();
 }
 
 /// Test multiple tasks that depend on the same object. The dependency manager
 /// should return all task IDs as ready once the object is local.
-TEST_F(DependencyManagerTest, TestMultipleTasks) {
+TEST_F(LeaseDependencyManagerTest, TestMultipleTasks) {
   // Create 3 tasks that are dependent on the same object.
   ObjectID argument_id = ObjectID::FromRandom();
   std::vector<TaskID> dependent_tasks;
@@ -140,7 +141,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
   for (int i = 0; i < num_dependent_tasks; i++) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
-    bool ready = dependency_manager_.RequestTaskDependencies(
+    bool ready = lease_dependency_manager_.RequestTaskDependencies(
         task_id, ObjectIdsToRefs({argument_id}), {"foo", false});
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each task.
@@ -151,7 +152,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
   ASSERT_EQ(NumWaitingTotal(), 3);
 
   // Tell the task dependency manager that the object is local.
-  auto ready_task_ids = dependency_manager_.HandleObjectLocal(argument_id);
+  auto ready_task_ids = lease_dependency_manager_.HandleObjectLocal(argument_id);
   // Check that all tasks are now ready to run.
   std::unordered_set<TaskID> added_tasks(dependent_tasks.begin(), dependent_tasks.end());
   for (auto &id : ready_task_ids) {
@@ -160,7 +161,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
   ASSERT_TRUE(added_tasks.empty());
 
   for (auto &id : dependent_tasks) {
-    dependency_manager_.RemoveTaskDependencies(id);
+    lease_dependency_manager_.RemoveTaskDependencies(id);
   }
   AssertNoLeaks();
 }
@@ -168,7 +169,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
 /// Test task with multiple dependencies. The dependency manager should return
 /// the task ID as ready once all dependencies are local. If a dependency is
 /// later evicted, the dependency manager should return the task ID as waiting.
-TEST_F(DependencyManagerTest, TestTaskArgEviction) {
+TEST_F(LeaseDependencyManagerTest, TestTaskArgEviction) {
   // Add a task with 3 arguments.
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
@@ -176,7 +177,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
     arguments.push_back(ObjectID::FromRandom());
   }
   TaskID task_id = RandomTaskId();
-  bool ready = dependency_manager_.RequestTaskDependencies(
+  bool ready = lease_dependency_manager_.RequestTaskDependencies(
       task_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
 
@@ -184,7 +185,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
   // available.
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
-    ready_tasks = dependency_manager_.HandleObjectLocal(arguments[i]);
+    ready_tasks = lease_dependency_manager_.HandleObjectLocal(arguments[i]);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), task_id);
@@ -197,7 +198,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
   // considered remote.
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> waiting_tasks;
-    waiting_tasks = dependency_manager_.HandleObjectMissing(arguments[i]);
+    waiting_tasks = lease_dependency_manager_.HandleObjectMissing(arguments[i]);
     if (i == 0) {
       // The first eviction should cause the task to go back to the waiting
       // state.
@@ -214,7 +215,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
   // again.
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
-    ready_tasks = dependency_manager_.HandleObjectLocal(arguments[i]);
+    ready_tasks = lease_dependency_manager_.HandleObjectLocal(arguments[i]);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), task_id);
@@ -223,13 +224,13 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
     }
   }
 
-  dependency_manager_.RemoveTaskDependencies(task_id);
+  lease_dependency_manager_.RemoveTaskDependencies(task_id);
   AssertNoLeaks();
 }
 
 /// Test `ray.get`. Worker calls ray.get on {oid1}, then {oid1, oid2}, then
 /// {oid1, oid2, oid3}.
-TEST_F(DependencyManagerTest, TestGet) {
+TEST_F(LeaseDependencyManagerTest, TestGet) {
   WorkerID worker_id = WorkerID::FromRandom();
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
@@ -241,7 +242,8 @@ TEST_F(DependencyManagerTest, TestGet) {
     // duplicates of previous subscription calls. Each argument should only be
     // requested from the node manager once.
     auto prev_pull_reqs = object_manager_mock_.active_get_requests;
-    dependency_manager_.StartOrUpdateGetRequest(worker_id, ObjectIdsToRefs(arguments));
+    lease_dependency_manager_.StartOrUpdateGetRequest(worker_id,
+                                                      ObjectIdsToRefs(arguments));
     // Previous pull request for this get should be canceled upon each new
     // bundle.
     ASSERT_EQ(object_manager_mock_.active_get_requests.size(), 1);
@@ -250,17 +252,18 @@ TEST_F(DependencyManagerTest, TestGet) {
 
   // Nothing happens if the same bundle is requested.
   auto prev_pull_reqs = object_manager_mock_.active_get_requests;
-  dependency_manager_.StartOrUpdateGetRequest(worker_id, ObjectIdsToRefs(arguments));
+  lease_dependency_manager_.StartOrUpdateGetRequest(worker_id,
+                                                    ObjectIdsToRefs(arguments));
   ASSERT_EQ(object_manager_mock_.active_get_requests, prev_pull_reqs);
 
   // Cancel the pull request once the worker cancels the `ray.get`.
-  dependency_manager_.CancelGetRequest(worker_id);
+  lease_dependency_manager_.CancelGetRequest(worker_id);
   AssertNoLeaks();
 }
 
 /// Test that when one of the objects becomes local after a `ray.wait` call,
 /// all requests to remote nodes associated with the object are canceled.
-TEST_F(DependencyManagerTest, TestWait) {
+TEST_F(LeaseDependencyManagerTest, TestWait) {
   // Generate a random worker and objects to wait on.
   WorkerID worker_id = WorkerID::FromRandom();
   int num_objects = 3;
@@ -268,16 +271,16 @@ TEST_F(DependencyManagerTest, TestWait) {
   for (int i = 0; i < num_objects; i++) {
     oids.push_back(ObjectID::FromRandom());
   }
-  dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
+  lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
   ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects);
 
   for (int i = 0; i < num_objects; i++) {
     // Object is local.
-    auto ready_task_ids = dependency_manager_.HandleObjectLocal(oids[i]);
+    auto ready_task_ids = lease_dependency_manager_.HandleObjectLocal(oids[i]);
 
     // Local object gets evicted. The `ray.wait` call should not be
     // reactivated.
-    auto waiting_task_ids = dependency_manager_.HandleObjectMissing(oids[i]);
+    auto waiting_task_ids = lease_dependency_manager_.HandleObjectMissing(oids[i]);
     ASSERT_TRUE(waiting_task_ids.empty());
     ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects - i - 1);
   }
@@ -287,7 +290,7 @@ TEST_F(DependencyManagerTest, TestWait) {
 /// Test that when no objects are locally available, a `ray.wait` call makes
 /// the correct requests to remote nodes and correctly cancels the requests
 /// when the `ray.wait` call is canceled.
-TEST_F(DependencyManagerTest, TestWaitThenCancel) {
+TEST_F(LeaseDependencyManagerTest, TestWaitThenCancel) {
   // Generate a random worker and objects to wait on.
   WorkerID worker_id = WorkerID::FromRandom();
   int num_objects = 3;
@@ -296,21 +299,21 @@ TEST_F(DependencyManagerTest, TestWaitThenCancel) {
     oids.push_back(ObjectID::FromRandom());
   }
   // Simulate a worker calling `ray.wait` on some objects.
-  dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
+  lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
   ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects);
   // Check that it's okay to call `ray.wait` on the same objects again. No new
   // calls should be made to try and make the objects local.
-  dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
+  lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
   ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects);
   // Cancel the worker's `ray.wait`.
-  dependency_manager_.CancelWaitRequest(worker_id);
+  lease_dependency_manager_.CancelWaitRequest(worker_id);
   AssertNoLeaks();
 }
 
 /// Test that when one of the objects is already local at the time of the
 /// `ray.wait` call, the `ray.wait` call does not trigger any requests to
 /// remote nodes for that object.
-TEST_F(DependencyManagerTest, TestWaitObjectLocal) {
+TEST_F(LeaseDependencyManagerTest, TestWaitObjectLocal) {
   // Generate a random worker and objects to wait on.
   WorkerID worker_id = WorkerID::FromRandom();
   int num_objects = 3;
@@ -321,23 +324,23 @@ TEST_F(DependencyManagerTest, TestWaitObjectLocal) {
   // Simulate one of the objects becoming local. The later `ray.wait` call
   // should have no effect because the object is already local.
   const ObjectID local_object_id = std::move(oids.back());
-  auto ready_task_ids = dependency_manager_.HandleObjectLocal(local_object_id);
+  auto ready_task_ids = lease_dependency_manager_.HandleObjectLocal(local_object_id);
   ASSERT_TRUE(ready_task_ids.empty());
-  dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
+  lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
   ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects - 1);
   // Simulate the local object getting evicted. The `ray.wait` call should not
   // be reactivated.
-  auto waiting_task_ids = dependency_manager_.HandleObjectMissing(local_object_id);
+  auto waiting_task_ids = lease_dependency_manager_.HandleObjectMissing(local_object_id);
   ASSERT_TRUE(waiting_task_ids.empty());
   ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects - 1);
   // Cancel the worker's `ray.wait`.
-  dependency_manager_.CancelWaitRequest(worker_id);
+  lease_dependency_manager_.CancelWaitRequest(worker_id);
   AssertNoLeaks();
 }
 
 /// Test requesting the dependencies for a task. The dependency manager should
 /// return the task ID as ready once all of its unique arguments are local.
-TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
+TEST_F(LeaseDependencyManagerTest, TestDuplicateTaskArgs) {
   // Create a task with 3 arguments.
   int num_arguments = 3;
   auto obj_id = ObjectID::FromRandom();
@@ -346,36 +349,36 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
     arguments.push_back(obj_id);
   }
   TaskID task_id = RandomTaskId();
-  bool ready = dependency_manager_.RequestTaskDependencies(
+  bool ready = lease_dependency_manager_.RequestTaskDependencies(
       task_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
 
-  auto ready_task_ids = dependency_manager_.HandleObjectLocal(obj_id);
+  auto ready_task_ids = lease_dependency_manager_.HandleObjectLocal(obj_id);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
-  dependency_manager_.RemoveTaskDependencies(task_id);
+  lease_dependency_manager_.RemoveTaskDependencies(task_id);
 
   TaskID task_id2 = RandomTaskId();
-  ready = dependency_manager_.RequestTaskDependencies(
+  ready = lease_dependency_manager_.RequestTaskDependencies(
       task_id2, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_TRUE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
-  dependency_manager_.RemoveTaskDependencies(task_id2);
+  lease_dependency_manager_.RemoveTaskDependencies(task_id2);
 
   AssertNoLeaks();
 }
 
 /// Test that RemoveTaskDependencies is called before objects
 /// becoming local (e.g. the task is cancelled).
-TEST_F(DependencyManagerTest, TestRemoveTaskDependenciesBeforeLocal) {
+TEST_F(LeaseDependencyManagerTest, TestRemoveTaskDependenciesBeforeLocal) {
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(ObjectID::FromRandom());
   }
   TaskID task_id = RandomTaskId();
-  bool ready = dependency_manager_.RequestTaskDependencies(
+  bool ready = lease_dependency_manager_.RequestTaskDependencies(
       task_id, ObjectIdsToRefs(arguments), {"foo", false});
   ASSERT_FALSE(ready);
   ASSERT_EQ(NumWaiting("bar"), 0);
@@ -383,7 +386,7 @@ TEST_F(DependencyManagerTest, TestRemoveTaskDependenciesBeforeLocal) {
   ASSERT_EQ(NumWaitingTotal(), 1);
 
   // The task is cancelled
-  dependency_manager_.RemoveTaskDependencies(task_id);
+  lease_dependency_manager_.RemoveTaskDependencies(task_id);
   ASSERT_EQ(NumWaiting("foo"), 0);
   ASSERT_EQ(NumWaitingTotal(), 0);
   AssertNoLeaks();

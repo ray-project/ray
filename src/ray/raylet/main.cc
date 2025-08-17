@@ -41,7 +41,7 @@
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "scheduling/cluster_task_manager.h"
+#include "scheduling/cluster_lease_manager.h"
 
 using json = nlohmann::json;
 
@@ -267,11 +267,11 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::LocalObjectManagerInterface> local_object_manager;
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
-  /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
+  /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
-  std::unique_ptr<ray::raylet::LocalTaskManagerInterface> local_task_manager;
-  std::unique_ptr<ray::raylet::ClusterTaskManagerInterface> cluster_task_manager;
+  std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
+  std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
   std::unique_ptr<ray::pubsub::SubscriberInterface> core_worker_subscriber;
@@ -282,7 +282,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::ObjectManagerInterface> object_manager;
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
-  std::unique_ptr<ray::raylet::DependencyManager> dependency_manager;
+  std::unique_ptr<ray::raylet::LeaseDependencyManager> lease_dependency_manager;
   /// Map of workers leased out to clients.
   absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
@@ -525,7 +525,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.worker_commands,
         node_manager_config.native_library_path,
         /*starting_worker_timeout_callback=*/
-        [&] { cluster_task_manager->ScheduleAndDispatchLeases(); },
+        [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
         node_manager_config.enable_resource_isolation);
@@ -663,8 +663,8 @@ int main(int argc, char *argv[]) {
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get());
 
-    dependency_manager =
-        std::make_unique<ray::raylet::DependencyManager>(*object_manager);
+    lease_dependency_manager =
+        std::make_unique<ray::raylet::LeaseDependencyManager>(*object_manager);
 
     cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
         main_service,
@@ -698,12 +698,12 @@ int main(int argc, char *argv[]) {
     auto get_node_info_func = [&](const NodeID &node_id) {
       return gcs_client->Nodes().Get(node_id);
     };
-    auto announce_infeasible_task = [](const ray::RayTask &task) {
+    auto announce_infeasible_task = [](const ray::RayLease &lease) {
       /// Publish the infeasible task error to GCS so that drivers can subscribe to it
       /// and print.
       bool suppress_warning = false;
 
-      if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
+      if (!lease.GetLeaseSpecification().PlacementGroupBundleId().first.IsNil()) {
         // If the task is part of a placement group, do nothing. If necessary, the
         // infeasible warning should come from the placement group scheduling, not the
         // task scheduling.
@@ -714,9 +714,9 @@ int main(int argc, char *argv[]) {
       if (!suppress_warning) {
         std::ostringstream error_message;
         error_message
-            << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
+            << "The lease with ID " << lease.GetLeaseSpecification().LeaseId()
             << " cannot be scheduled right now. It requires "
-            << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
+            << lease.GetLeaseSpecification().GetRequiredPlacementResources().DebugString()
             << " for placement, however the cluster currently cannot provide the "
                "requested "
                "resources. The required resources may be added as autoscaling takes "
@@ -745,10 +745,10 @@ int main(int argc, char *argv[]) {
       max_task_args_memory = 0;
     }
 
-    local_task_manager = std::make_unique<ray::raylet::LocalTaskManager>(
+    local_lease_manager = std::make_unique<ray::raylet::LocalLeaseManager>(
         raylet_node_id,
         *cluster_resource_scheduler,
-        *dependency_manager,
+        *lease_dependency_manager,
         get_node_info_func,
         *worker_pool,
         leased_workers,
@@ -758,12 +758,12 @@ int main(int argc, char *argv[]) {
         },
         max_task_args_memory);
 
-    cluster_task_manager =
-        std::make_unique<ray::raylet::ClusterTaskManager>(raylet_node_id,
-                                                          *cluster_resource_scheduler,
-                                                          get_node_info_func,
-                                                          announce_infeasible_task,
-                                                          *local_task_manager);
+    cluster_lease_manager =
+        std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
+                                                           *cluster_resource_scheduler,
+                                                           get_node_info_func,
+                                                           announce_infeasible_task,
+                                                           *local_lease_manager);
 
     auto raylet_client_factory = [&](const NodeID &node_id) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
@@ -785,12 +785,12 @@ int main(int argc, char *argv[]) {
         *raylet_client_pool,
         *core_worker_subscriber,
         *cluster_resource_scheduler,
-        *local_task_manager,
-        *cluster_task_manager,
+        *local_lease_manager,
+        *cluster_lease_manager,
         *object_directory,
         *object_manager,
         *local_object_manager,
-        *dependency_manager,
+        *lease_dependency_manager,
         *worker_pool,
         leased_workers,
         *plasma_client,

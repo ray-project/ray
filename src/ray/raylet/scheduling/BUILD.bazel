@@ -16,9 +16,9 @@ ray_cc_library(
     deps = [
         ":affinity_with_bundle_scheduling_policy",
         ":bundle_scheduling_policy",
+        ":cluster_lease_manager",
         ":cluster_resource_manager",
         ":cluster_resource_scheduler",
-        ":cluster_task_manager",
         ":composite_scheduling_policy",
         ":hybrid_scheduling_policy",
         ":local_resource_manager",
@@ -33,6 +33,7 @@ ray_cc_library(
     name = "scheduler_internal",
     hdrs = ["internal.h"],
     deps = [
+        "//src/ray/common:lease_common",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:node_manager_cc_proto",
@@ -72,21 +73,22 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "cluster_task_manager",
+    name = "cluster_lease_manager",
     srcs = [
-        "cluster_task_manager.cc",
+        "cluster_lease_manager.cc",
         "scheduler_stats.cc",
     ],
     hdrs = [
-        "cluster_task_manager.h",
+        "cluster_lease_manager.h",
         "scheduler_stats.h",
     ],
     deps = [
+        ":cluster_lease_manager_interface",
         ":cluster_resource_scheduler",
-        ":cluster_task_manager_interface",
-        ":local_task_manager_interface",
+        ":local_lease_manager_interface",
         ":scheduler_internal",
         ":scheduler_resource_reporter",
+        "//src/ray/common:lease_common",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
@@ -97,8 +99,8 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "cluster_task_manager_interface",
-    hdrs = ["cluster_task_manager_interface.h"],
+    name = "cluster_lease_manager_interface",
+    hdrs = ["cluster_lease_manager_interface.h"],
     deps = [
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/rpc:server_call",
@@ -106,8 +108,8 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "local_task_manager_interface",
-    hdrs = ["local_task_manager_interface.h"],
+    name = "local_lease_manager_interface",
+    hdrs = ["local_lease_manager_interface.h"],
     deps = [
         ":scheduler_internal",
         "//src/ray/common:task_common",
@@ -138,7 +140,7 @@ ray_cc_library(
     srcs = ["scheduler_resource_reporter.cc"],
     hdrs = ["scheduler_resource_reporter.h"],
     deps = [
-        ":local_task_manager_interface",
+        ":local_lease_manager_interface",
         ":scheduler_internal",
         "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
@@ -345,20 +347,20 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "cluster_task_manager_test",
+    name = "cluster_lease_manager_test",
     size = "small",
     srcs = [
-        "cluster_task_manager_test.cc",
+        "cluster_lease_manager_test.cc",
     ],
     tags = ["team:core"],
     deps = [
+        ":cluster_lease_manager",
         ":cluster_resource_scheduler",
-        ":cluster_task_manager",
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
-        "//src/ray/raylet:local_task_manager",
+        "//src/ray/raylet:local_lease_manager",
         "//src/ray/raylet/test:util",
         "@com_google_googletest//:gtest_main",
     ],

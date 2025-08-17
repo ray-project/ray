@@ -15,16 +15,16 @@
 #pragma once
 
 #include "gmock/gmock.h"
-#include "ray/raylet/scheduling/local_task_manager_interface.h"
+#include "ray/raylet/scheduling/local_lease_manager_interface.h"
 
 namespace ray::raylet {
-class MockLocalTaskManager : public LocalTaskManagerInterface {
+class MockLocalLeaseManager : public LocalLeaseManagerInterface {
  public:
   MOCK_METHOD(void,
               QueueAndScheduleLease,
               (std::shared_ptr<internal::Work> work),
               (override));
-  MOCK_METHOD(void, ScheduleAndDispatchLeases, (), (override));
+  MOCK_METHOD(void, ScheduleAndGrantLeases, (), (override));
   MOCK_METHOD(bool,
               CancelLeases,
               (std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
@@ -48,13 +48,13 @@ class MockLocalTaskManager : public LocalTaskManagerInterface {
                int64_t backlog_size),
               (override));
   MOCK_METHOD(void, ClearWorkerBacklog, (const WorkerID &worker_id), (override));
-  MOCK_METHOD(const RayTask *,
-              AnyPendingTasksForResourceAcquisition,
-              (int *num_pending_actor_creation, int *num_pending_tasks),
+  MOCK_METHOD(const RayLease *,
+              AnyPendingLeasesForResourceAcquisition,
+              (int *num_pending_actor_creation, int *num_pending_leases),
               (const, override));
   MOCK_METHOD(void,
               LeaseFinished,
-              (std::shared_ptr<WorkerInterface> worker, RayTask *lease),
+              (std::shared_ptr<WorkerInterface> worker, RayLease *lease),
               (override));
   MOCK_METHOD(void, LeasesUnblocked, (const std::vector<LeaseID> &ready_ids), (override));
   MOCK_METHOD(void,

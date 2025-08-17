@@ -31,7 +31,7 @@
 using namespace ::testing;  // NOLINT
 
 namespace ray {
-using raylet::NoopLocalTaskManager;
+using raylet::NoopLocalLeaseManager;
 namespace gcs {
 struct MockCallback {
   MOCK_METHOD(void, Call, ((std::shared_ptr<GcsActor>)));
@@ -57,8 +57,8 @@ class GcsActorSchedulerMockTest : public Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
-    local_task_manager_ = std::make_unique<raylet::NoopLocalTaskManager>();
-    cluster_task_manager = std::make_unique<ClusterTaskManager>(
+    local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
+    cluster_lease_manager = std::make_unique<ClusterLeaseManager>(
         local_node_id,
         *cluster_resource_scheduler,
         /*get_node_info=*/
@@ -67,7 +67,7 @@ class GcsActorSchedulerMockTest : public Test {
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_task=*/nullptr,
-        /*local_task_manager=*/*local_task_manager_);
+        /*local_lease_manager=*/*local_lease_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
@@ -76,7 +76,7 @@ class GcsActorSchedulerMockTest : public Test {
         io_context,
         *actor_table,
         *gcs_node_manager,
-        *cluster_task_manager,
+        *cluster_lease_manager,
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
@@ -94,8 +94,8 @@ class GcsActorSchedulerMockTest : public Test {
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
   std::unique_ptr<GcsNodeManager> gcs_node_manager;
-  std::unique_ptr<raylet::LocalTaskManagerInterface> local_task_manager_;
-  std::unique_ptr<ClusterTaskManager> cluster_task_manager;
+  std::unique_ptr<raylet::LocalLeaseManagerInterface> local_lease_manager_;
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;

@@ -27,7 +27,7 @@ class FakeRayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::LeaseSpec &task_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1,

@@ -41,8 +41,8 @@ message ReportWorkerBacklogReply {}
 
 // Request a worker from the raylet with the specified resources.
 message RequestWorkerLeaseRequest {
-  // TaskSpec containing the requested resources.
-  TaskSpec resource_spec = 1;
+  // LeaseSpec containing the requested resources.
+  LeaseSpec resource_spec = 1;
   // Worker's backlog size for this spec's shape.
   int64 backlog_size = 2;
   // If it's true, either grant the lease if the task is

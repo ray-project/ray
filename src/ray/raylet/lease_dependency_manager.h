@@ -24,7 +24,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task.h"
+#include "ray/common/lease/lease.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -46,7 +46,7 @@ class LeaseDependencyManagerInterface {
   virtual ~LeaseDependencyManagerInterface(){};
 };
 
-/// \class DependencyManager
+/// \class LeaseDependencyManager
 ///
 /// Responsible for managing object dependencies for local workers calling
 /// `ray.get` or `ray.wait` and arguments of queued tasks. The caller can
@@ -54,10 +54,10 @@ class LeaseDependencyManagerInterface {
 /// determine which object dependencies are remote and will request that these
 /// objects be made available locally, either via the object manager or by
 /// storing an error if the object is lost.
-class DependencyManager : public LeaseDependencyManagerInterface {
+class LeaseDependencyManager : public LeaseDependencyManagerInterface {
  public:
   /// Create a lease dependency manager.
-  explicit DependencyManager(ObjectManagerInterface &object_manager)
+  explicit LeaseDependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
     waiting_leases_counter_.SetOnChangeCallback(
         [this](std::pair<std::string, bool> key) mutable {
@@ -73,20 +73,20 @@ class DependencyManager : public LeaseDependencyManagerInterface {
               {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
                {"Name", key.first},
                {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+               {"Source", "lease_dependency_manager"}});
           ray::stats::STATS_tasks.Record(
               num_total - num_inactive,
               {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
                {"Name", key.first},
                {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+               {"Source", "lease_dependency_manager"}});
           ray::stats::STATS_tasks.Record(
               num_inactive,
               {{"State",
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
                {"Name", key.first},
                {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+               {"Source", "lease_dependency_manager"}});
         });
   }
 
@@ -316,7 +316,7 @@ class DependencyManager : public LeaseDependencyManagerInterface {
   /// total will be less than or equal to the size of queued_lease_requests_.
   CounterMap<TaskMetricsKey> waiting_leases_counter_;
 
-  friend class DependencyManagerTest;
+  friend class LeaseDependencyManagerTest;
 };
 
 }  // namespace raylet

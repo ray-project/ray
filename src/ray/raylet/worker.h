@@ -23,9 +23,9 @@
 #include "absl/time/time.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/id.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -68,16 +68,15 @@ class WorkerInterface {
   virtual int AssignedPort() const = 0;
   virtual void SetAssignedPort(int port) = 0;
   virtual void AssignLeaseId(const LeaseID &lease_id) = 0;
-  virtual void AssignTaskId(const TaskID &task_id) = 0;
-  virtual const TaskID &GetAssignedTaskId() const = 0;
-  virtual const LeaseID &GetAssignedLeaseId() const = 0;
+  virtual const LeaseID &GetGrantedLeaseId() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
+  virtual const RayLease &GetAssignedLease() const = 0;
   virtual std::optional<bool> GetIsGpu() const = 0;
   virtual std::optional<bool> GetIsActorWorker() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
-  virtual const std::string GetTaskOrActorIdAsDebugString() const = 0;
+  virtual const std::string GetLeaseIdAsDebugString() const = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
@@ -102,9 +101,9 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual RayTask &GetAssignedTask() = 0;
+  virtual RayLease &GetGrantedLease() = 0;
 
-  virtual void SetAssignedTask(const RayTask &assigned_task) = 0;
+  virtual void SetAssignedLease(const RayLease &assigned_lease) = 0;
 
   virtual bool IsRegistered() = 0;
 
@@ -114,7 +113,7 @@ class WorkerInterface {
   virtual bool IsAvailableForScheduling() const = 0;
 
   /// Time when the last task was assigned to this worker.
-  virtual absl::Time GetAssignedTaskTime() const = 0;
+  virtual absl::Time GetGrantedLeaseTime() const = 0;
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
@@ -182,18 +181,16 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   int AssignedPort() const;
   void SetAssignedPort(int port);
   void AssignLeaseId(const LeaseID &lease_id);
-  void AssignTaskId(const TaskID &task_id);
-  const TaskID &GetAssignedTaskId() const;
-  const LeaseID &GetAssignedLeaseId() const;
+  const LeaseID &GetGrantedLeaseId() const;
   const JobID &GetAssignedJobId() const;
+  const RayLease &GetAssignedLease() const;
   std::optional<bool> GetIsGpu() const;
   std::optional<bool> GetIsActorWorker() const;
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
-  // Creates the debug string for the ID of the task or actor depending on which is
-  // running.
-  const std::string GetTaskOrActorIdAsDebugString() const;
+  // Creates the debug string for the ID of the lease and the actor ID if it exists.
+  const std::string GetLeaseIdAsDebugString() const;
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
   void SetOwnerAddress(const rpc::Address &address);
@@ -229,29 +226,29 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  RayTask &GetAssignedTask() { return assigned_task_; };
+  RayLease &GetGrantedLease() { return assigned_lease_; };
 
-  void SetAssignedTask(const RayTask &assigned_task) {
-    const auto &task_spec = assigned_task.GetTaskSpecification();
-    SetJobId(task_spec.JobId());
-    SetBundleId(task_spec.PlacementGroupBundleId());
-    SetOwnerAddress(task_spec.CallerAddress());
-    AssignLeaseId(task_spec.LeaseId());
-    AssignTaskId(task_spec.TaskId());
-    SetIsGpu(task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
-    RAY_CHECK(!task_spec.IsActorTask());
-    SetIsActorWorker(task_spec.IsActorCreationTask());
-    assigned_task_ = assigned_task;
-    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
+  void SetAssignedLease(const RayLease &assigned_lease) {
+    const auto &lease_spec = assigned_lease.GetLeaseSpecification();
+    SetJobId(lease_spec.JobId());
+    SetBundleId(lease_spec.PlacementGroupBundleId());
+    SetOwnerAddress(lease_spec.CallerAddress());
+    AssignLeaseId(lease_spec.LeaseId());
+    SetIsGpu(lease_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
+    RAY_CHECK(!lease_spec.IsActorTask());
+    SetIsActorWorker(lease_spec.IsActorCreationTask());
+    assigned_lease_ = assigned_lease;
+    root_detached_actor_id_ =
+        assigned_lease.GetLeaseSpecification().RootDetachedActorId();
   }
 
-  absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
+  absl::Time GetGrantedLeaseTime() const { return lease_assign_time_; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
   bool IsAvailableForScheduling() const {
     return !IsDead()                        // Not dead
-           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !GetGrantedLeaseId().IsNil()  // No assigned lease
            && !IsBlocked()                  // Not blocked
            && GetActorId().IsNil();         // No assigned actor
   }
@@ -289,11 +286,9 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   int port_;
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;
-  /// The worker's currently assigned task.
-  TaskID assigned_task_id_;
-  /// The lease id of the worker's currently assigned task.
+  /// The lease id of the worker's currently assigned lease.
   LeaseID lease_id_;
-  /// Job ID for the worker's current assigned task.
+  /// Job ID for the worker's current assigned lease.
   JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
@@ -301,7 +296,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
-  /// Root detached actor ID for the worker's last assigned task.
+  /// Root detached actor ID for the worker's last assigned lease.
   ActorID root_detached_actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
@@ -320,19 +315,19 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// currently holds the lease on this worker, if any.
   rpc::Address owner_address_;
   /// The capacity of each resource instance allocated to this worker in order
-  /// to satisfy the resource requests of the task is currently running.
+  /// to satisfy the resource requests of the granted lease.
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// RayTask being assigned to this worker.
-  RayTask assigned_task_;
-  /// Time when the last task was assigned to this worker.
-  absl::Time task_assign_time_;
-  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU task
+  /// RayLease being assigned to this worker.
+  RayLease assigned_lease_;
+  /// Time when the last lease was assigned to this worker.
+  absl::Time lease_assign_time_;
+  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU lease
   /// it can't switch to the other type.
   std::optional<bool> is_gpu_ = std::nullopt;
-  /// Whether this worker can hold an actor. Once it holds an actor or a normal task, it
+  /// Whether this worker can hold an actor. Once it holds an actor or a normal lease, it
   /// can't switch to the other type.
   std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.

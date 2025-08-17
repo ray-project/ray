@@ -29,13 +29,13 @@
 #include "mock/ray/object_manager/object_manager.h"
 #include "mock/ray/object_manager/plasma/client.h"
 #include "mock/ray/pubsub/subscriber.h"
-#include "mock/ray/raylet/local_task_manager.h"
+#include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/test/util.h"
 
 namespace ray::raylet {
@@ -262,7 +262,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
   {
     // Worker backlog report from a disconnected worker should be ignored.
     MockWorkerPool worker_pool;
-    MockLocalTaskManager local_task_manager;
+    MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
     EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
@@ -271,8 +271,8 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(nullptr));
-    EXPECT_CALL(local_task_manager, ClearWorkerBacklog(_)).Times(0);
-    EXPECT_CALL(local_task_manager, SetWorkerBacklog(_, _, _)).Times(0);
+    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(_)).Times(0);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_, _, _)).Times(0);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -283,13 +283,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
-        local_task_manager);
+        local_lease_manager);
   }
 
   {
     // Worker backlog report from a connected driver should be recorded.
     MockWorkerPool worker_pool;
-    MockLocalTaskManager local_task_manager;
+    MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
     std::shared_ptr<MockWorker> driver = std::make_shared<MockWorker>(worker_id, 10);
@@ -313,11 +313,11 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(driver));
-    EXPECT_CALL(local_task_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_task_manager,
+    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
+    EXPECT_CALL(local_lease_manager,
                 SetWorkerBacklog(task_spec_1.GetSchedulingClass(), worker_id, 1))
         .Times(1);
-    EXPECT_CALL(local_task_manager,
+    EXPECT_CALL(local_lease_manager,
                 SetWorkerBacklog(task_spec_2.GetSchedulingClass(), worker_id, 3))
         .Times(1);
 
@@ -327,13 +327,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
-        local_task_manager);
+        local_lease_manager);
   }
 
   {
     // Worker backlog report from a connected worker should be recorded.
     MockWorkerPool worker_pool;
-    MockLocalTaskManager local_task_manager;
+    MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
     std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(worker_id, 10);
@@ -356,11 +356,11 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         .WillOnce(Return(worker));
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id)).Times(0);
 
-    EXPECT_CALL(local_task_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_task_manager,
+    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
+    EXPECT_CALL(local_lease_manager,
                 SetWorkerBacklog(task_spec_1.GetSchedulingClass(), worker_id, 1))
         .Times(1);
-    EXPECT_CALL(local_task_manager,
+    EXPECT_CALL(local_lease_manager,
                 SetWorkerBacklog(task_spec_2.GetSchedulingClass(), worker_id, 3))
         .Times(1);
 
@@ -370,7 +370,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
-        local_task_manager);
+        local_lease_manager);
   }
 }
 
@@ -418,7 +418,8 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-    dependency_manager_ = std::make_unique<DependencyManager>(*mock_object_manager_);
+    lease_dependency_manager_ =
+        std::make_unique<LeaseDependencyManager>(*mock_object_manager_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
@@ -458,10 +459,10 @@ class NodeManagerTest : public ::testing::Test {
         static_cast<float>(mock_object_manager_->GetMemoryCapacity()) *
         RayConfig::instance().max_task_args_memory_fraction());
 
-    local_task_manager_ = std::make_unique<LocalTaskManager>(
+    local_lease_manager_ = std::make_unique<LocalLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
-        *dependency_manager_,
+        *lease_dependency_manager_,
         get_node_info_func,
         mock_worker_pool_,
         leased_workers_,
@@ -471,12 +472,12 @@ class NodeManagerTest : public ::testing::Test {
         },
         max_task_args_memory);
 
-    cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
+    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
         get_node_info_func,
         [](const ray::RayTask &task) {},
-        *local_task_manager_);
+        *local_lease_manager_);
 
     node_manager_ = std::make_unique<NodeManager>(io_service_,
                                                   raylet_node_id_,
@@ -488,12 +489,12 @@ class NodeManagerTest : public ::testing::Test {
                                                   raylet_client_pool_,
                                                   *core_worker_subscriber_,
                                                   *cluster_resource_scheduler_,
-                                                  *local_task_manager_,
-                                                  *cluster_task_manager_,
+                                                  *local_lease_manager_,
+                                                  *cluster_lease_manager_,
                                                   *mock_object_directory_,
                                                   *mock_object_manager_,
                                                   *local_object_manager_,
-                                                  *dependency_manager_,
+                                                  *lease_dependency_manager_,
                                                   mock_worker_pool_,
                                                   leased_workers_,
                                                   *mock_store_client_,
@@ -510,10 +511,10 @@ class NodeManagerTest : public ::testing::Test {
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::MockSubscriber> core_worker_subscriber_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::unique_ptr<LocalTaskManager> local_task_manager_;
-  std::unique_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
+  std::unique_ptr<LocalLeaseManager> local_lease_manager_;
+  std::unique_ptr<ClusterLeaseManagerInterface> cluster_lease_manager_;
   std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
-  std::unique_ptr<DependencyManager> dependency_manager_;
+  std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;

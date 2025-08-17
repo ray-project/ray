@@ -19,7 +19,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/task/task.h"
+#include "ray/common/lease/lease.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
@@ -28,25 +28,25 @@ namespace raylet {
 // Forward declaration
 class WorkerInterface;
 
-/// Manages the lifetime of a task on the local node. It receives request from
-/// cluster_task_manager and tries to execute the task locally.
-/// Read raylet/local_task_manager.h for more information.
-class LocalTaskManagerInterface {
+/// Manages the lifetime of a lease on the local node. It receives request from
+/// cluster_lease_manager and tries to execute the lease locally.
+/// Read raylet/local_lease_manager.h for more information.
+class LocalLeaseManagerInterface {
  public:
-  virtual ~LocalTaskManagerInterface() = default;
+  virtual ~LocalLeaseManagerInterface() = default;
 
-  /// Queue task and schedule.
+  /// Queue lease and schedule.
   virtual void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) = 0;
 
-  // Schedule and dispatch tasks.
-  virtual void ScheduleAndDispatchLeases() = 0;
+  // Schedule and grant leases.
+  virtual void ScheduleAndGrantLeases() = 0;
 
-  /// Attempt to cancel all queued tasks that match the predicate.
+  /// Attempt to cancel all queued leases that match the predicate.
   ///
-  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param predicate: A function that returns true if a lease needs to be cancelled.
   /// \param failure_type: The reason for cancellation.
   /// \param scheduling_failure_message: The reason message for cancellation.
-  /// \return True if any task was successfully cancelled.
+  /// \return True if any lease was successfully cancelled.
   virtual bool CancelLeases(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -54,7 +54,7 @@ class LocalTaskManagerInterface {
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
-      &GetLeaseToDispatch() const = 0;
+      &GetLeasesToGrant() const = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     absl::flat_hash_map<WorkerID, int64_t>>
@@ -66,12 +66,13 @@ class LocalTaskManagerInterface {
 
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
-  virtual const RayTask *AnyPendingLeasesForResourceAcquisition(
+  virtual const RayLease *AnyPendingLeasesForResourceAcquisition(
       int *num_pending_actor_creation, int *num_pending_leases) const = 0;
 
   virtual void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) = 0;
 
-  virtual void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayTask *lease) = 0;
+  virtual void LeaseFinished(std::shared_ptr<WorkerInterface> worker,
+                             RayLease *lease) = 0;
 
   virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 
@@ -92,12 +93,12 @@ class LocalTaskManagerInterface {
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
 };
 
-/// A noop local task manager. It is a no-op class. We need this because there's no
-/// "LocalTaskManager" when the `ClusterTaskManager` is used within GCS. In the long term,
-/// we should make `ClusterTaskManager` not aware of `LocalTaskManager`.
-class NoopLocalTaskManager : public LocalTaskManagerInterface {
+/// A noop local lease manager. It is a no-op class. We need this because there's no
+/// "LocalLeaseManager" when the `ClusterLeaseManager` is used within GCS. In the long
+/// term, we should make `ClusterLeaseManager` not aware of `LocalLeaseManager`.
+class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
  public:
-  NoopLocalTaskManager() = default;
+  NoopLocalLeaseManager() = default;
 
   /// Queue lease and schedule.
   void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override {
@@ -105,8 +106,8 @@ class NoopLocalTaskManager : public LocalTaskManagerInterface {
         << "This function should never be called by gcs' local task manager.";
   }
 
-  // Schedule and dispatch leases.
-  void ScheduleAndDispatchLeases() override {}
+  // Schedule and grant leases.
+  void ScheduleAndGrantLeases() override {}
 
   bool CancelLeases(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
@@ -116,11 +117,11 @@ class NoopLocalTaskManager : public LocalTaskManagerInterface {
   }
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetLeaseToDispatch() const override {
+      &GetLeasesToGrant() const override {
     static const absl::flat_hash_map<SchedulingClass,
                                      std::deque<std::shared_ptr<internal::Work>>>
-        leases_to_dispatch;
-    return leases_to_dispatch;
+        leases_to_grant;
+    return leases_to_grant;
   }
 
   const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
@@ -137,14 +138,14 @@ class NoopLocalTaskManager : public LocalTaskManagerInterface {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
-  const RayTask *AnyPendingLeasesForResourceAcquisition(
+  const RayLease *AnyPendingLeasesForResourceAcquisition(
       int *num_pending_actor_creation, int *num_pending_leases) const override {
     return nullptr;
   }
 
   void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override {}
 
-  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayTask *lease) override {}
+  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override {}
 
   void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override {}
 

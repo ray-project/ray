@@ -43,7 +43,7 @@
 #include "ray/ipc/client_connection.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -119,12 +119,12 @@ NodeManager::NodeManager(
     rpc::RayletClientPool &raylet_client_pool,
     pubsub::SubscriberInterface &core_worker_subscriber,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    LocalTaskManagerInterface &local_task_manager,
-    ClusterTaskManagerInterface &cluster_task_manager,
+    LocalLeaseManagerInterface &local_lease_manager,
+    ClusterLeaseManagerInterface &cluster_lease_manager,
     IObjectDirectory &object_directory,
     ObjectManagerInterface &object_manager,
     LocalObjectManagerInterface &local_object_manager,
-    DependencyManager &dependency_manager,
+    LeaseDependencyManager &lease_dependency_manager,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     plasma::PlasmaClientInterface &store_client,
@@ -148,10 +148,10 @@ NodeManager::NodeManager(
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
-      dependency_manager_(dependency_manager),
+      lease_dependency_manager_(lease_dependency_manager),
       wait_manager_(/*is_object_local*/
                     [this](const ObjectID &object_id) {
-                      return dependency_manager_.CheckObjectLocal(object_id);
+                      return lease_dependency_manager_.CheckObjectLocal(object_id);
                     },
                     /*delay_executor*/
                     [this](std::function<void()> fn, int64_t delay_ms) {
@@ -169,8 +169,8 @@ NodeManager::NodeManager(
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      local_task_manager_(local_task_manager),
-      cluster_task_manager_(cluster_task_manager),
+      local_lease_manager_(local_lease_manager),
+      cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
@@ -188,9 +188,9 @@ NodeManager::NodeManager(
       std::make_unique<NewPlacementGroupResourceManager>(cluster_resource_scheduler_);
 
   periodical_runner_->RunFnPeriodically(
-      [this]() { cluster_task_manager_.ScheduleAndDispatchLeases(); },
+      [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
-      "NodeManager.ScheduleAndDispatchTasks");
+      "NodeManager.ScheduleAndGrantLeases");
 
   periodical_runner_->RunFnPeriodically(
       [this]() { CheckForUnexpectedWorkerDisconnects(); },
@@ -410,7 +410,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
-  cluster_task_manager_.ScheduleAndDispatchLeases();
+  cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
@@ -513,9 +513,10 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   // Cancel lease requests that are waiting for workers
   // to free the acquired pg bundle resources
   // so that pg bundle can be returned.
-  local_task_manager_.CancelLeases(
+  local_lease_manager_.CancelLeases(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->lease.GetLeaseSpecification().PlacementGroupBundleId();
         return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
                (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
@@ -541,7 +542,7 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   for (const auto &worker : workers_associated_with_unused_bundles) {
     RAY_LOG(DEBUG)
             .WithField(worker->GetBundleId().first)
-            .WithField(worker->GetAssignedLeaseId())
+            .WithField(worker->GetGrantedLeaseId())
             .WithField(worker->GetActorId())
             .WithField(worker->WorkerId())
         << "Destroying worker since its bundle was unused, bundle index: "
@@ -722,7 +723,7 @@ void NodeManager::WarnResourceDeadlock() {
     return;
   }
 
-  auto exemplar = cluster_task_manager_.AnyPendingLeasesForResourceAcquisition(
+  auto exemplar = cluster_lease_manager_.AnyPendingLeasesForResourceAcquisition(
       &pending_actor_creations, &pending_tasks);
   // Check if any tasks are blocked on resource acquisition.
   if (exemplar == nullptr) {
@@ -747,7 +748,7 @@ void NodeManager::WarnResourceDeadlock() {
     }
 
     RAY_LOG(WARNING)
-        << "The actor or task with ID " << exemplar->GetTaskSpecification().LeaseId()
+        << "The actor or task with ID " << exemplar->GetLeaseSpecification().LeaseId()
         << " cannot be scheduled right now. You can ignore this message if this "
         << "Ray cluster is expected to auto-scale or if you specified a "
         << "runtime_env for this actor or task, which may take time to install.  "
@@ -755,18 +756,18 @@ void NodeManager::WarnResourceDeadlock() {
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
         << "Required resources for this actor or task: "
-        << exemplar->GetTaskSpecification().GetRequiredPlacementResources().DebugString()
+        << exemplar->GetLeaseSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_.GetClusterResourceManager()
                .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()))
         << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
-    RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_.DebugStr();
+    RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_lease_manager_.DebugStr();
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
   // tasks are never be scheduled.
-  cluster_task_manager_.ScheduleAndDispatchLeases();
+  cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
@@ -794,7 +795,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
                   FixedPoint(resource_entry.second));
   }
   if (ResourceCreateUpdated(node_id, resources)) {
-    cluster_task_manager_.ScheduleAndDispatchLeases();
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
@@ -831,7 +832,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   failed_nodes_cache_.insert(node_id);
 
-  cluster_task_manager_.CancelAllLeasesOwnedBy(node_id);
+  cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
@@ -875,7 +876,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   RAY_LOG(DEBUG).WithField(worker_id) << "Worker failed";
   failed_workers_cache_.insert(worker_id);
 
-  cluster_task_manager_.CancelAllLeasesOwnedBy(worker_id);
+  cluster_lease_manager_.CancelAllLeasesOwnedBy(worker_id);
 
   for (const auto &[_, worker] : leased_workers_) {
     const auto owner_worker_id =
@@ -1158,7 +1159,7 @@ Status NodeManager::RegisterForNewWorker(
     // If the worker failed to register to Raylet, trigger task dispatching here to
     // allow new worker processes to be started (if capped by
     // maximum_startup_concurrency).
-    cluster_task_manager_.ScheduleAndDispatchLeases();
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
   return status;
 }
@@ -1275,8 +1276,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   bool worker_idle = true;
 
   // If the worker was assigned a task, mark it as finished.
-  if (!worker->GetAssignedLeaseId().IsNil()) {
-    worker_idle = FinishAssignedLease(worker);
+  if (!worker->GetGrantedLeaseId().IsNil()) {
+    worker_idle = ReturnGrantedLease(worker);
   }
 
   if (worker_idle) {
@@ -1284,7 +1285,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     worker_pool_.PushWorker(worker);
   }
 
-  cluster_task_manager_.ScheduleAndDispatchLeases();
+  cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
 void SendDisconnectClientReply(const WorkerID &worker_id,
@@ -1336,11 +1337,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
   // Clean up any open ray.get or ray.wait calls that the worker made.
-  dependency_manager_.CancelGetRequest(worker->WorkerId());
-  dependency_manager_.CancelWaitRequest(worker->WorkerId());
+  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
+  lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  ReleaseWorker(worker->GetAssignedLeaseId());
+  ReleaseWorker(worker->GetGrantedLeaseId());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
@@ -1361,15 +1362,15 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
-    const LeaseID &lease_id = worker->GetAssignedLeaseId();
+    const LeaseID &lease_id = worker->GetGrantedLeaseId();
     // If the worker was running a task or actor, clean up the task and push an
     // error to the driver, unless the worker is already dead.
     if ((!lease_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         // Return the resources that were being used by this worker.
-        RayTask task;
-        local_task_manager_.LeaseFinished(worker, &task);
+        RayLease lease;
+        local_lease_manager_.LeaseFinished(worker, &lease);
       }
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -1406,10 +1407,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     worker_pool_.DisconnectWorker(worker, disconnect_type);
 
     // Return the resources that were being used by this worker.
-    local_task_manager_.ReleaseWorkerResources(worker);
+    local_lease_manager_.ReleaseWorkerResources(worker);
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    cluster_task_manager_.ScheduleAndDispatchLeases();
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
@@ -1430,8 +1431,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     }
   }
 
-  local_task_manager_.ClearWorkerBacklog(worker->WorkerId());
-  cluster_task_manager_.CancelAllLeasesOwnedBy(worker->WorkerId());
+  local_lease_manager_.ClearWorkerBacklog(worker->WorkerId());
+  cluster_lease_manager_.CancelAllLeasesOwnedBy(worker->WorkerId());
 
   if (graceful) {
     // Graceful disconnects are initiated by a request from the worker and
@@ -1488,7 +1489,7 @@ void NodeManager::ProcessWaitRequestMessage(
 
   bool all_objects_local = true;
   for (auto const &object_id : object_ids) {
-    if (!dependency_manager_.CheckObjectLocal(object_id)) {
+    if (!lease_dependency_manager_.CheckObjectLocal(object_id)) {
       all_objects_local = false;
     }
   }
@@ -1603,7 +1604,7 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  cluster_task_manager_.FillResourceUsage(*resources_data);
+  cluster_lease_manager_.FillResourceUsage(*resources_data);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1618,7 +1619,7 @@ void NodeManager::HandleCancelTasksWithResourceShapes(
         ResourceSet(MapFromProtobuf(resource_shape.resource_shape())));
   }
 
-  cluster_task_manager_.CancelLeasesWithResourceShapes(target_resource_shapes);
+  cluster_lease_manager_.CancelLeasesWithResourceShapes(target_resource_shapes);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1626,7 +1627,7 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
                                             rpc::ReportWorkerBacklogReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   HandleReportWorkerBacklog(
-      request, reply, send_reply_callback, worker_pool_, local_task_manager_);
+      request, reply, send_reply_callback, worker_pool_, local_lease_manager_);
 }
 
 void NodeManager::HandleReportWorkerBacklog(
@@ -1634,7 +1635,7 @@ void NodeManager::HandleReportWorkerBacklog(
     rpc::ReportWorkerBacklogReply *reply,
     rpc::SendReplyCallback send_reply_callback,
     WorkerPoolInterface &worker_pool,
-    LocalTaskManagerInterface &local_task_manager) {
+    LocalLeaseManagerInterface &local_lease_manager) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   if (worker_pool.GetRegisteredWorker(worker_id) == nullptr &&
       worker_pool.GetRegisteredDriver(worker_id) == nullptr) {
@@ -1643,13 +1644,13 @@ void NodeManager::HandleReportWorkerBacklog(
     return;
   }
 
-  local_task_manager.ClearWorkerBacklog(worker_id);
+  local_lease_manager.ClearWorkerBacklog(worker_id);
   std::unordered_set<SchedulingClass> seen;
   for (const auto &backlog_report : request.backlog_reports()) {
     const TaskSpecification resource_spec(backlog_report.resource_spec());
     const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
     RAY_CHECK(seen.find(scheduling_class) == seen.end());
-    local_task_manager.SetWorkerBacklog(
+    local_lease_manager.SetWorkerBacklog(
         scheduling_class, worker_id, backlog_report.backlog_size());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1658,13 +1659,12 @@ void NodeManager::HandleReportWorkerBacklog(
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  request.mutable_resource_spec()->set_task_id(TaskID::Nil().Binary());
-  RayTask task{std::move(*request.mutable_resource_spec())};
+  RayLease lease{std::move(*request.mutable_resource_spec())};
   const auto caller_worker =
-      WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
+      WorkerID::FromBinary(lease.GetLeaseSpecification().CallerAddress().worker_id());
   const auto caller_node =
-      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().node_id());
-  if (!task.GetTaskSpecification().IsDetachedActor() &&
+      NodeID::FromBinary(lease.GetLeaseSpecification().CallerAddress().node_id());
+  if (!lease.GetLeaseSpecification().IsDetachedActor() &&
       (failed_workers_cache_.contains(caller_worker) ||
        failed_nodes_cache_.contains(caller_node))) {
     RAY_LOG(INFO).WithField(caller_worker).WithField(caller_node)
@@ -1677,15 +1677,15 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     return;
   };
 
-  const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
+  const bool is_actor_creation_task = lease.GetLeaseSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
 
   if (is_actor_creation_task) {
-    actor_id = task.GetTaskSpecification().ActorCreationId();
+    actor_id = lease.GetLeaseSpecification().ActorId();
   }
 
-  const auto &task_spec = task.GetTaskSpecification();
+  const auto &task_spec = lease.GetLeaseSpecification();
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
   auto send_reply_callback_wrapper =
@@ -1699,7 +1699,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
           // with normal task resource usages so GCS can fast update
           // its resource view of this raylet.
           if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-            auto normal_task_resources = local_task_manager_.CalcNormalLeaseResources();
+            auto normal_task_resources = local_lease_manager_.CalcNormalLeaseResources();
             RAY_LOG(DEBUG).WithField(actor_id)
                 << "Reject leasing as the raylet has no enough resources. "
                    "normal_task_resources = "
@@ -1718,11 +1718,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, success, failure);
       };
 
-  cluster_task_manager_.QueueAndScheduleLease(std::move(task),
-                                              request.grant_or_reject(),
-                                              request.is_selected_based_on_locality(),
-                                              reply,
-                                              std::move(send_reply_callback_wrapper));
+  cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
+                                               request.grant_or_reject(),
+                                               request.is_selected_based_on_locality(),
+                                               reply,
+                                               std::move(send_reply_callback_wrapper));
 }
 
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
@@ -1788,7 +1788,7 @@ void NodeManager::HandleCommitBundleResources(
   placement_group_resource_manager_->CommitBundles(bundle_specs);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
-  cluster_task_manager_.ScheduleAndDispatchLeases();
+  cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -1800,12 +1800,13 @@ void NodeManager::HandleCancelResourceReserve(
                  << bundle_spec.DebugString();
 
   // The PG bundle resource must be committed before a lease request asking for it
-  // can be added to local_task_manager and the only reason why we cancel
+  // can be added to local_lease_manager and the only reason why we cancel
   // a committed bundle is when the placement group is removed.
   // In the case of placement group removal, we should cancel all the lease requests.
-  local_task_manager_.CancelLeases(
+  local_lease_manager_.CancelLeases(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->lease.GetLeaseSpecification().PlacementGroupBundleId();
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
@@ -1830,7 +1831,7 @@ void NodeManager::HandleCancelResourceReserve(
         << "Destroying worker since its placement group was removed. Placement group id: "
         << worker->GetBundleId().first
         << ", bundle index: " << bundle_spec.BundleId().second
-        << ", lease id: " << worker->GetAssignedLeaseId()
+        << ", lease id: " << worker->GetGrantedLeaseId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
     const auto &message = stream.str();
@@ -1839,7 +1840,7 @@ void NodeManager::HandleCancelResourceReserve(
   }
 
   RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));
-  cluster_task_manager_.ScheduleAndDispatchLeases();
+  cluster_lease_manager_.ScheduleAndGrantLeases();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1868,7 +1869,7 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
         // unblock RPC by unblocking it immediately (unblock is idempotent).
         HandleDirectCallTaskUnblocked(worker);
       }
-      local_task_manager_.ReleaseWorkerResources(worker);
+      local_lease_manager_.ReleaseWorkerResources(worker);
       // If the worker is exiting, don't add it to our pool. The worker will cleanup
       // and terminate itself.
       if (!request.worker_exiting()) {
@@ -1982,7 +1983,7 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
-  bool canceled = cluster_task_manager_.CancelLease(lease_id);
+  bool canceled = cluster_lease_manager_.CancelLease(lease_id);
   // The task cancellation failed if we did not have the task queued, since
   // this means that we may not have received the task request yet. It is
   // successful if we did have the task queued, since we have now replied to
@@ -2036,27 +2037,27 @@ void NodeManager::MarkObjectsAsFailed(
 
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
-  if (!worker || worker->IsBlocked() || worker->GetAssignedLeaseId().IsNil()) {
+  if (!worker || worker->IsBlocked() || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
 
-  local_task_manager_.ReleaseCpuResourcesFromBlockedWorker(worker);
-  cluster_task_manager_.ScheduleAndDispatchLeases();
+  local_lease_manager_.ReleaseCpuResourcesFromBlockedWorker(worker);
+  cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
-  if (!worker || worker->GetAssignedLeaseId().IsNil()) {
+  if (!worker || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
 
   // First, always release task dependencies. This ensures we don't leak resources even
   // if we don't need to unblock the worker below.
-  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (worker->IsBlocked()) {
-    local_task_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
-    cluster_task_manager_.ScheduleAndDispatchLeases();
+    local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
 }
 
@@ -2072,9 +2073,9 @@ void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client
   // Start an async request to get or wait for the objects.
   // The objects will be fetched locally unless the get or wait request is canceled.
   if (is_get_request) {
-    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), object_refs);
+    lease_dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), object_refs);
   } else {
-    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
+    lease_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
   }
 }
 
@@ -2085,31 +2086,31 @@ void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &clie
   }
   RAY_CHECK(worker);
 
-  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 }
 
-bool NodeManager::FinishAssignedLease(const std::shared_ptr<WorkerInterface> &worker) {
-  LeaseID lease_id = worker->GetAssignedLeaseId();
+bool NodeManager::ReturnGrantedLease(const std::shared_ptr<WorkerInterface> &worker) {
+  LeaseID lease_id = worker->GetGrantedLeaseId();
   RAY_LOG(DEBUG).WithField(lease_id) << "Finished lease ";
 
-  RayTask task;
-  local_task_manager_.LeaseFinished(worker, &task);
+  RayLease lease;
+  local_lease_manager_.LeaseFinished(worker, &lease);
 
-  const auto &spec = task.GetTaskSpecification();  //
-  if ((spec.IsActorCreationTask())) {
+  const auto &lease_spec = lease.GetLeaseSpecification();  //
+  if ((lease_spec.IsActorCreationTask())) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
-    FinishAssignedActorCreationTask(worker, task);
+    ConvertWorkerToActor(worker, lease);
   } else {
     // If this was a non-actor task, then cancel any ray.wait calls that were
     // made during the task execution.
-    dependency_manager_.CancelWaitRequest(worker->WorkerId());
+    lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
-  if (!spec.IsActorCreationTask()) {
+  if (!lease_spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
@@ -2117,20 +2118,20 @@ bool NodeManager::FinishAssignedLease(const std::shared_ptr<WorkerInterface> &wo
     worker->SetOwnerAddress(rpc::Address());
   }
   // Actors will be assigned tasks via the core worker and therefore are not idle.
-  return !spec.IsActorCreationTask();
+  return !lease_spec.IsActorCreationTask();
 }
 
-void NodeManager::FinishAssignedActorCreationTask(
-    const std::shared_ptr<WorkerInterface> &worker, const RayTask &task) {
-  RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
-  const TaskSpecification task_spec = task.GetTaskSpecification();
-  ActorID actor_id = task_spec.ActorCreationId();
+void NodeManager::ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
+                                       const RayLease &lease) {
+  RAY_LOG(DEBUG) << "Converting worker to actor";
+  const LeaseSpecification lease_spec = lease.GetLeaseSpecification();
+  ActorID actor_id = lease_spec.ActorId();
 
   // This was an actor creation task. Convert the worker to an actor.
   worker->AssignActorId(actor_id);
 
-  if (task_spec.IsDetachedActor()) {
-    auto job_id = task.GetTaskSpecification().JobId();
+  if (lease_spec.IsDetachedActor()) {
+    auto job_id = lease_spec.JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
   }
@@ -2156,10 +2157,10 @@ void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
   // Notify the task dependency manager that this object is local.
-  const auto ready_lease_ids = dependency_manager_.HandleObjectLocal(object_id);
+  const auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG).WithField(object_id).WithField(self_node_id_)
       << "Object local on node, " << ready_lease_ids.size() << " tasks ready";
-  local_task_manager_.LeasesUnblocked(ready_lease_ids);
+  local_lease_manager_.LeasesUnblocked(ready_lease_ids);
 
   // Notify the wait manager that this object is local.
   wait_manager_.HandleObjectLocal(object_id);
@@ -2192,7 +2193,7 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
-  const auto waiting_lease_ids = dependency_manager_.HandleObjectMissing(object_id);
+  const auto waiting_lease_ids = lease_dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
   result << "Object missing " << object_id << ", "
          << " on " << self_node_id_ << ", " << waiting_lease_ids.size()
@@ -2219,7 +2220,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   auto id = from_flatbuf<ObjectID>(*message->object_id());
 
-  if (dependency_manager_.CheckObjectLocal(id)) {
+  if (lease_dependency_manager_.CheckObjectLocal(id)) {
     // Object is already local, so we directly fire the callback to tell the core worker
     // that the plasma object is ready.
     rpc::PlasmaObjectReadyRequest request;
@@ -2246,7 +2247,8 @@ void NodeManager::ProcessSubscribePlasmaReady(
     //    is local at this time but when the core worker was notified, the object is
     //    is evicted. The core worker should be able to handle evicted object in this
     //    case.
-    dependency_manager_.StartOrUpdateWaitRequest(associated_worker->WorkerId(), refs);
+    lease_dependency_manager_.StartOrUpdateWaitRequest(associated_worker->WorkerId(),
+                                                       refs);
 
     // Add this worker to the listeners for the object ID.
     {
@@ -2273,14 +2275,14 @@ std::string NodeManager::DebugString() const {
   result << "\nNode ID: " << self_node_id_;
   result << "\nNode name: " << self_node_name_;
   result << "\nInitialConfigResources: " << initial_config_.resource_config.DebugString();
-  result << "\nClusterTaskManager:\n";
-  result << cluster_task_manager_.DebugStr();
+  result << "\nClusterLeaseManager:\n";
+  result << cluster_lease_manager_.DebugStr();
   result << "\nClusterResources:";
   result << "\n" << local_object_manager_.DebugString();
   result << "\n" << object_manager_.DebugString();
   result << "\n" << gcs_client_.DebugString();
   result << "\n" << worker_pool_.DebugString();
-  result << "\n" << dependency_manager_.DebugString();
+  result << "\n" << lease_dependency_manager_.DebugString();
   result << "\n" << wait_manager_.DebugString();
   result << "\n" << core_worker_subscriber_.DebugString();
   {
@@ -2652,7 +2654,7 @@ void NodeManager::RecordMetrics() {
     return;
   }
 
-  cluster_task_manager_.RecordMetrics();
+  cluster_lease_manager_.RecordMetrics();
   object_manager_.RecordMetrics();
   local_object_manager_.RecordMetrics();
 
@@ -2660,7 +2662,7 @@ void NodeManager::RecordMetrics() {
   uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
   object_directory_.RecordMetrics(duration_ms);
-  dependency_manager_.RecordMetrics();
+  lease_dependency_manager_.RecordMetrics();
 }
 
 void NodeManager::ConsumeSyncMessage(
@@ -2670,7 +2672,7 @@ void NodeManager::ConsumeSyncMessage(
     resource_view_sync_message.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(message->node_id());
     if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
-      cluster_task_manager_.ScheduleAndDispatchLeases();
+      cluster_lease_manager_.ScheduleAndGrantLeases();
     }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     syncer::CommandsSyncMessage commands_sync_message;
@@ -2714,7 +2716,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
         RAY_LOG(INFO)
                 .WithField(high_memory_eviction_target_->WorkerId())
-                .WithField(high_memory_eviction_target_->GetAssignedLeaseId())
+                .WithField(high_memory_eviction_target_->GetGrantedLeaseId())
             << "Worker evicted and process killed to reclaim memory. "
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
         high_memory_eviction_target_ = nullptr;
@@ -2723,7 +2725,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
     if (is_usage_above_threshold) {
       if (high_memory_eviction_target_ != nullptr) {
         RAY_LOG_EVERY_MS(INFO, 1000)
-                .WithField(high_memory_eviction_target_->GetAssignedLeaseId())
+                .WithField(high_memory_eviction_target_->GetGrantedLeaseId())
                 .WithField(high_memory_eviction_target_->WorkerId())
             << "Memory usage above threshold. "
             << "Still waiting for worker eviction to free up memory. "
@@ -2756,7 +2758,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           RAY_LOG(INFO)
               << "Killing worker with task "
-              << worker_to_kill->GetAssignedTask().GetTaskSpecification().DebugString()
+              << worker_to_kill->GetAssignedLease().GetLeaseSpecification().DebugString()
               << "\n\n"
               << oom_kill_details << "\n\n"
               << oom_kill_suggestions;
@@ -2775,7 +2777,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(worker_to_kill->GetAssignedLeaseId(),
+          SetTaskFailureReason(worker_to_kill->GetGrantedLeaseId(),
                                std::move(task_failure_reason),
                                should_retry);
 
@@ -2791,17 +2793,17 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
           } else if (worker_to_kill->GetActorId().IsNil()) {
-            const auto &ray_task = worker_to_kill->GetAssignedTask();
+            const auto &ray_lease = worker_to_kill->GetAssignedLease();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
-                 {"Name", ray_task.GetTaskSpecification().GetName()}});
+                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
-            const auto &ray_task = worker_to_kill->GetAssignedTask();
+            const auto &ray_lease = worker_to_kill->GetAssignedLease();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
-                 {"Name", ray_task.GetTaskSpecification().GetName()}});
+                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           }
         }
       }
@@ -2837,8 +2839,8 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
-      << ") where the task (" << worker->GetTaskOrActorIdAsDebugString()
-      << ", name=" << worker->GetAssignedTask().GetTaskSpecification().GetName()
+      << ") where the lease (" << worker->GetLeaseIdAsDebugString()
+      << ", name=" << worker->GetAssignedLease().GetLeaseSpecification().GetTaskName()
       << ", pid=" << worker->GetProcess().GetId()
       << ", memory used=" << process_used_bytes_gb << "GB) was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
@@ -2857,9 +2859,9 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 const std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
   std::stringstream not_retriable_recommendation_ss;
-  if (worker && !worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
+  if (worker && !worker->GetAssignedLease().GetLeaseSpecification().IsRetriable()) {
     not_retriable_recommendation_ss << "Set ";
-    if (worker->GetAssignedTask().GetTaskSpecification().IsNormalTask()) {
+    if (worker->GetAssignedLease().GetLeaseSpecification().IsNormalTask()) {
       not_retriable_recommendation_ss << "max_retries";
     } else {
       not_retriable_recommendation_ss << "max_restarts and max_task_retries";

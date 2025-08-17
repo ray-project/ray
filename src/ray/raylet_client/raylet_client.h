@@ -64,7 +64,7 @@ class RayletClientInterface {
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
   /// \param lease_id Unique lease ID for this worker lease request.
   virtual void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1,
@@ -241,7 +241,7 @@ class RayletClient : public RayletClientInterface {
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &resource_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,

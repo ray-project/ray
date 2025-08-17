@@ -36,8 +36,8 @@
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
@@ -45,8 +45,8 @@
 #include "ray/util/throttler.h"
 
 namespace ray {
-using raylet::ClusterTaskManager;
-using raylet::NoopLocalTaskManager;
+using raylet::ClusterLeaseManager;
+using raylet::NoopLocalLeaseManager;
 
 namespace gcs {
 
@@ -150,7 +150,7 @@ class GcsServer {
   void InitClusterResourceScheduler();
 
   /// Initialize cluster task manager.
-  void InitClusterTaskManager();
+  void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(const GcsInitData &gcs_init_data);
@@ -237,12 +237,12 @@ class GcsServer {
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Local task manager.
-  NoopLocalTaskManager local_task_manager_;
+  NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// The cluster task manager.
-  std::unique_ptr<ClusterTaskManager> cluster_task_manager_;
-  /// [gcs_resource_manager_] depends on [cluster_task_manager_].
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.

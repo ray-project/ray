@@ -37,7 +37,7 @@ RayletClient::RayletClient(const rpc::Address &address,
                                      std::move(raylet_unavailable_timeout_callback)))) {}
 
 void RayletClient::RequestWorkerLease(
-    const rpc::TaskSpec &task_spec,
+    const rpc::LeaseSpec &lease_spec,
     bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size,
@@ -50,7 +50,7 @@ void RayletClient::RequestWorkerLease(
   // Request will be sent before the end of this call, and after that, it won't be
   // used any more.
   request->unsafe_arena_set_allocated_resource_spec(
-      const_cast<rpc::TaskSpec *>(&task_spec));
+      const_cast<rpc::LeaseSpec *>(&lease_spec));
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
   request->set_is_selected_based_on_locality(is_selected_based_on_locality);

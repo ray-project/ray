@@ -240,6 +240,11 @@ TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   return TaskSpecification(*task_spec_);
 }
 
+LeaseSpecification GcsActor::GetLeaseSpecification() const {
+  RAY_CHECK(lease_spec_ != nullptr);
+  return LeaseSpecification(*lease_spec_);
+}
+
 const rpc::ActorTableData &GcsActor::GetActorTableData() const {
   return actor_table_data_;
 }
@@ -282,6 +287,13 @@ void GcsActor::WriteActorExportEvent() const {
 }
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
+
+rpc::LeaseSpec *GcsActor::GetMutableLeaseSpec() { return lease_spec_.get(); }
+
+const rpc::LeaseSpec &GcsActor::GetLeaseMessage() const {
+  RAY_CHECK(lease_spec_ != nullptr);
+  return *lease_spec_;
+}
 
 const ResourceRequest &GcsActor::GetAcquiredResources() const {
   return acquired_resources_;
@@ -1111,7 +1123,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         // worker exit to avoid process and resource leak.
         NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
       }
-      CancelActorInScheduling(actor, actor->GetCreationTaskSpecification().LeaseId());
+      CancelActorInScheduling(actor, actor->GetLeaseSpecification().LeaseId());
     }
   }
 
@@ -1822,7 +1834,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
     NotifyCoreWorkerToKillActor(
         actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
   } else {
-    const auto &lease_id = actor->GetCreationTaskSpecification().LeaseId();
+    const auto &lease_id = actor->GetLeaseSpecification().LeaseId();
     RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
         << "The actor hasn't been created yet, cancel scheduling lease";
     if (!worker_id.IsNil()) {
@@ -1831,7 +1843,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
       NotifyCoreWorkerToKillActor(
           actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
     }
-    CancelActorInScheduling(actor, actor->GetCreationTaskSpecification().LeaseId());
+    CancelActorInScheduling(actor, actor->GetLeaseSpecification().LeaseId());
     RestartActor(actor_id,
                  /*need_reschedule=*/true,
                  GenKilledByApplicationCause(GetActor(actor_id)));

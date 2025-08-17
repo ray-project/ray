@@ -28,15 +28,15 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/state_util.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
-using raylet::ClusterTaskManager;
+using raylet::ClusterLeaseManager;
 
 namespace gcs {
 class GcsNodeManager;
@@ -68,7 +68,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                               ClusterResourceManager &cluster_resource_manager,
                               GcsNodeManager &gcs_node_manager,
                               NodeID local_node_id,
-                              ClusterTaskManager *cluster_task_manager = nullptr);
+                              ClusterLeaseManager *cluster_lease_manager = nullptr);
 
   virtual ~GcsResourceManager() = default;
 
@@ -202,7 +202,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
-  ClusterTaskManager *cluster_task_manager_;
+  ClusterLeaseManager *cluster_lease_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
 };

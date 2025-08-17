@@ -153,7 +153,6 @@ ray_cc_library(
         "scheduling/resource_instance_set.cc",
         "scheduling/resource_set.cc",
         "scheduling/scheduling_ids.cc",
-        "task/task.cc",
         "task/task_spec.cc",
     ],
     hdrs = [
@@ -167,7 +166,6 @@ ray_cc_library(
         "scheduling/resource_instance_set.h",
         "scheduling/resource_set.h",
         "scheduling/scheduling_ids.h",
-        "task/task.h",
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
@@ -187,6 +185,25 @@ ray_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "lease_common",
+    srcs = [
+        "lease/lease.cc",
+        "lease/lease_spec.cc",
+        "lease/lease_spec_builder.cc",
+    ],
+    hdrs = [
+        "lease/lease.h",
+        "lease/lease_spec.h",
+        "lease/lease_spec_builder.h",
+    ],
+    deps = [
+        ":id",
+        ":task_common",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 

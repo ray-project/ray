@@ -150,13 +150,6 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
-LeaseID TaskSpecification::LeaseId() const {
-  if (message_->lease_id().empty()) {
-    return LeaseID::Nil();
-  }
-  return LeaseID::FromBinary(message_->lease_id());
-}
-
 std::string TaskSpecification::TaskIdBinary() const {
   if (message_->task_id().empty()) {
     return TaskID::Nil().Binary();

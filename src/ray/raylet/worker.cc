@@ -173,18 +173,9 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignTaskId(const TaskID &task_id) {
-  assigned_task_id_ = task_id;
-  if (!task_id.IsNil()) {
-    task_assign_time_ = absl::Now();
-  }
-}
-
 void Worker::AssignLeaseId(const LeaseID &lease_id) { lease_id_ = lease_id; };
 
-const LeaseID &Worker::GetAssignedLeaseId() const { return lease_id_; }
-
-const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
+const LeaseID &Worker::GetGrantedLeaseId() const { return lease_id_; }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
@@ -203,18 +194,19 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const std::string Worker::GetTaskOrActorIdAsDebugString() const {
+const RayLease &Worker::GetAssignedLease() const { return assigned_lease_; }
+
+const std::string Worker::GetLeaseIdAsDebugString() const {
   std::stringstream id_ss;
   if (GetActorId().IsNil()) {
-    id_ss << "task ID: " << GetAssignedTaskId();
-  } else {
     id_ss << "actor ID: " << GetActorId();
   }
+  id_ss << "lease ID: " << GetGrantedLeaseId();
   return id_ss.str();
 }
 
 bool Worker::IsDetachedActor() const {
-  return assigned_task_.GetTaskSpecification().IsDetachedActor();
+  return assigned_lease_.GetLeaseSpecification().IsDetachedActor();
 }
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }

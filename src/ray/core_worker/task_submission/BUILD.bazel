@@ -88,6 +88,7 @@ ray_cc_library(
     deps = [
         ":dependency_resolver",
         "//src/ray/common:id",
+        "//src/ray/common:lease_common",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:task_manager",
