@@ -103,6 +103,12 @@ def build_dp_deployment(
         engine_core_bundle
     ] + llm_config.get_engine_config().placement_bundles
     placement_strategy = llm_config.get_engine_config().placement_strategy
+    if placement_strategy != "STRICT_PACK":
+        logger.warning(
+            f"DP deployment with placement_strategy={placement_strategy} "
+            "is not supported. Using STRICT_PACK instead."
+        )
+        placement_strategy = "STRICT_PACK"
     deployment_options = {
         "name": name,
         "num_replicas": dp_size,
