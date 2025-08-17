@@ -121,7 +121,9 @@ class ExecutionPlan:
         logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
 
         physical_plan = get_execution_plan(self._logical_plan)
-        physical_plan_str, _ = self.generate_plan_string(physical_plan.dag)
+        physical_plan_str, _ = self.generate_plan_string(
+            physical_plan.dag, display_operator=True
+        )
         physical_plan_str = "-------- Physical Plan --------\n" + physical_plan_str
 
         return logical_plan_str + physical_plan_str
@@ -132,6 +134,7 @@ class ExecutionPlan:
         curr_str: str = "",
         depth: int = 0,
         including_source: bool = True,
+        display_operator: bool = False,
     ):
         """Traverse (DFS) the Plan DAG and
         return a string representation of the operators."""
@@ -139,16 +142,18 @@ class ExecutionPlan:
             return curr_str, depth
 
         curr_max_depth = depth
-        op_name = op.name
+        # For logical plan, only show the operator name like "Aggregate".
+        # But for physical plan, show the operator class name as well like "AllToAllOperator[Aggregate]".
+        op_str = repr(op) if display_operator else op._name
         if depth == 0:
-            curr_str += f"{op_name}\n"
+            curr_str += f"{op_str}\n"
         else:
             trailing_space = " " * ((depth - 1) * 3)
-            curr_str += f"{trailing_space}+- {op_name}\n"
+            curr_str += f"{trailing_space}+- {op_str}\n"
 
         for input in op.input_dependencies:
             curr_str, input_max_depth = ExecutionPlan.generate_plan_string(
-                input, curr_str, depth + 1, including_source
+                input, curr_str, depth + 1, including_source, display_operator
             )
             curr_max_depth = max(curr_max_depth, input_max_depth)
         return curr_str, curr_max_depth

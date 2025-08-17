@@ -535,29 +535,47 @@ def test_dataset_repr(ray_start_regular_shared):
     )
 
 
+def capture_function_output(func, *args, **kwargs):
+    """Helper function to capture the printed output of any function call"""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    output = StringIO()
+    with redirect_stdout(output):
+        func(*args, **kwargs)
+    return output.getvalue()
+
+
 def test_dataset_explain(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map(lambda x: x)
-    assert ds.explain() == (
+
+    result = capture_function_output(lambda: ds.explain())
+    assert result == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
         "+- ReadRange\n"
         "-------- Physical Plan --------\n"
-        "ReadRange->Map(<lambda>)\n"
-        "+- Input\n"
+        "TaskPoolMapOperator[ReadRange->Map(<lambda>)]\n"
+        "+- InputDataBuffer[Input]\n"
     )
+
     ds = ds.filter(lambda x: x["id"] > 0)
-    assert ds.explain() == (
+    result = capture_function_output(lambda: ds.explain())
+
+    assert result == (
         "-------- Logical Plan --------\n"
         "Filter(<lambda>)\n"
         "+- Map(<lambda>)\n"
         "   +- ReadRange\n"
         "-------- Physical Plan --------\n"
-        "ReadRange->Map(<lambda>)->Filter(<lambda>)\n"
-        "+- Input\n"
+        "TaskPoolMapOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)]\n"
+        "+- InputDataBuffer[Input]\n"
     )
     ds = ds.random_shuffle().map(lambda x: x)
-    assert ds.explain() == (
+    result = capture_function_output(lambda: ds.explain())
+
+    assert result == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
         "+- RandomShuffle\n"
@@ -565,9 +583,9 @@ def test_dataset_explain(ray_start_regular_shared):
         "      +- Map(<lambda>)\n"
         "         +- ReadRange\n"
         "-------- Physical Plan --------\n"
-        "Map(<lambda>)\n"
-        "+- ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle\n"
-        "   +- Input\n"
+        "TaskPoolMapOperator[Map(<lambda>)]\n"
+        "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
+        "   +- InputDataBuffer[Input]\n"
     )
 
 

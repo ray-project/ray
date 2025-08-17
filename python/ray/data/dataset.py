@@ -5966,7 +5966,7 @@ class Dataset:
         return self._get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self) -> str:
+    def explain(self):
         """Show the logical plan and physical plan of the dataset.
 
         Examples:
@@ -5977,7 +5977,7 @@ class Dataset:
             from ray.data import Dataset
             ds: Dataset = ray.data.range(10,  override_num_blocks=10)
             ds = ds.map(lambda x: x + 1)
-            print(ds.explain())
+            ds.explain()
 
         .. testoutput::
 
@@ -5985,14 +5985,11 @@ class Dataset:
             Map(<lambda>)
             +- ReadRange
             -------- Physical Plan --------
-            ReadRange->Map(<lambda>)
-            +- Input
+            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+            +- InputDataBuffer[Input]
             <BLANKLINE>
-
-        Returns:
-            A string containing logical plan and physical plan.
         """
-        return self._plan.explain()
+        print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
