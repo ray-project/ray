@@ -354,7 +354,7 @@ def test_drain_and_undrain_http_proxy_actors(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    expected_actor_count = 4 if not is_proxy_on_every_node() else 6
+    expected_actor_count = 6 if is_proxy_on_every_node() else 4
 
     # 3 proxies, 1 controller, 2 replicas.
     wait_for_condition(lambda: len(list_actors()) == expected_actor_count)
