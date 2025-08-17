@@ -110,7 +110,6 @@ def build_dp_deployment(
         "placement_group_bundles": placement_bundles,
         "placement_group_strategy": placement_strategy,
     }
-    logger.info(f"deployment_options: {deployment_options}")
 
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
 
