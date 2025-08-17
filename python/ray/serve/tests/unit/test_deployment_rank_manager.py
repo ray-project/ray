@@ -274,7 +274,7 @@ class TestDeploymentRankManager:
         # When flag is disabled, it logs error but still tries to proceed with reassignment
         # However, the reassignment will fail when trying to access ranks that don't exist
         result = rank_manager.check_rank_consistency_and_reassign_minimally([replica1])
-        assert result == []
+        assert result == [replica1]
 
     def test_check_rank_consistency_stale_ranks_fails_when_flag_enabled(self):
         """Test consistency check fails when there are stale ranks and flag is enabled."""
@@ -334,8 +334,7 @@ class TestDeploymentRankManager:
         result = rank_manager.check_rank_consistency_and_reassign_minimally(
             [replica1, replica2]
         )
-        print(f"Result: {result}")
-        assert len(result) == 0
+        assert result == [replica2] or result == [replica1]
 
 
 class TestDeploymentRankManagerIntegration:

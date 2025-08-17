@@ -1569,6 +1569,7 @@ class DeploymentRankManager:
         active_replica_ids = {
             replica.replica_id.unique_id for replica in active_replicas
         }
+        replica_ids_needs_reconfiguration = set()
 
         # Check for stale ranks - this should never happen
         stale_replica_ids = set(self._replica_ranks.keys()) - active_replica_ids
@@ -1583,6 +1584,7 @@ class DeploymentRankManager:
             # RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
             for replica_id in stale_replica_ids:
                 self.release_rank(replica_id)
+                replica_ids_needs_reconfiguration.add(replica_id)
 
         # Verify system invariants - all active replicas must have ranks
         unranked_replica_ids = active_replica_ids - set(self._replica_ranks.keys())
@@ -1597,6 +1599,7 @@ class DeploymentRankManager:
             # but remove this when RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
             for replica_id in unranked_replica_ids:
                 self.assign_rank(replica_id)
+                replica_ids_needs_reconfiguration.add(replica_id)
 
         # Check for duplicate ranks - this should never happen
         rank_counts = {}
@@ -1617,11 +1620,14 @@ class DeploymentRankManager:
                     # but remove this when RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
                     self._replica_ranks.pop(replica_id)
                     self.assign_rank(replica_id)
+                    replica_ids_needs_reconfiguration.add(replica_id)
 
         # Check if we need to reassign ranks for contiguity
         # Only force contiguity when at target replica count (e.g., after autoscaling down)
         current_ranks = sorted(self._replica_ranks.values())
         expected_ranks = list(range(len(active_replicas)))
+
+        replicas_needing_reconfiguration = []
 
         if current_ranks != expected_ranks:
             logger.info(
@@ -1629,9 +1635,16 @@ class DeploymentRankManager:
                 f"Current: {current_ranks}, Expected: {expected_ranks}. "
                 "Performing minimal reassignment."
             )
-            return self._perform_minimal_rank_reassignment(active_replicas)
+            replicas_needing_reconfiguration.extend(
+                self._perform_minimal_rank_reassignment(active_replicas)
+            )
 
-        return []
+        # TODO (abrar): remove this when RAY_SERVE_FAIL_ON_RANK_ERROR is set to 1 in the future
+        for replica in active_replicas:
+            if replica.replica_id.unique_id in replica_ids_needs_reconfiguration:
+                replicas_needing_reconfiguration.append(replica)
+
+        return replicas_needing_reconfiguration
 
     def _perform_minimal_rank_reassignment(
         self, active_replicas: List["DeploymentReplica"]
