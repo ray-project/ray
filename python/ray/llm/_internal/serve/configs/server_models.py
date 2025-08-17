@@ -29,6 +29,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
 )
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
@@ -499,7 +500,7 @@ class LLMConfig(BaseModelExtended):
             The dictionary to use in .options() when creating the deployment.
         """
 
-        deployment_config = self._set_deployment_placement_options()
+        deployment_options = self._set_deployment_placement_options()
 
         default_runtime_env = ray.get_runtime_context().runtime_env
         if ENABLE_WORKER_PROCESS_SETUP_HOOK:
@@ -507,22 +508,45 @@ class LLMConfig(BaseModelExtended):
                 "worker_process_setup_hook"
             ] = "ray.llm._internal.serve._worker_process_setup_hook"
 
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
         ray_actor_options["runtime_env"] = {
             **default_runtime_env,
             # Existing runtime_env should take precedence over the default.
             **ray_actor_options.get("runtime_env", {}),
             **(self.runtime_env if self.runtime_env else {}),
         }
-        deployment_config["ray_actor_options"] = ray_actor_options
+        deployment_options["ray_actor_options"] = ray_actor_options
 
         # Set the name of the deployment config to map to the model ID.
-        if "name" not in deployment_config:
-            deployment_config["name"] = self._get_deployment_name()
+        if "name" not in deployment_options:
+            deployment_options["name"] = self._get_deployment_name()
         if name_prefix:
-            deployment_config["name"] = name_prefix + deployment_config["name"]
+            deployment_options["name"] = name_prefix + deployment_options["name"]
 
-        return deployment_config
+        # Configure DP deployment options.
+        dp_size = self.engine_kwargs.get("data_parallel_size", None)
+        if dp_size is not None:
+            if "num_replicas" in deployment_options:
+                raise ValueError(
+                    "num_replicas should not be specified for DP deployment, "
+                    "use engine_kwargs.data_parallel_size instead."
+                )
+            if "autoscaling_config" in deployment_options:
+                raise ValueError(
+                    "autoscaling_config is not supported for DP deployment, "
+                    "use engine_kwargs.data_parallel_size to set a fixed number "
+                    "of replicas instead."
+                )
+            deployment_options["num_replicas"] = dp_size
+            deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
+            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
+                logger.warning(
+                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
+                    "is not supported. Using STRICT_PACK instead."
+                )
+                deployment_options["placement_group_strategy"] = "STRICT_PACK"
+
+        return deployment_options
 
     def setup_engine_backend(self):
         self._setup_kv_connector_backend()

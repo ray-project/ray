@@ -4,7 +4,6 @@ from typing import Optional
 
 from ray import serve
 from ray.experimental.collective.util import get_address_and_port
-from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
@@ -82,43 +81,8 @@ def build_dp_deployment(
             "data_parallel_size should be greater than 1 for DP deployment."
         )
 
-    # Create the deployment options.
-    # TODO(rui): support data_parallel_backend=ray and unify
-    # deployment_options handling with LLMDeployment.
-    if "num_replicas" in llm_config.deployment_config:
-        raise ValueError(
-            "num_replicas should not be specified for DP deployment, "
-            "use engine_kwargs.data_parallel_size instead."
-        )
-    if "autoscaling_config" in llm_config.deployment_config:
-        raise ValueError(
-            "autoscaling_config is not supported for DP deployment, "
-            "use engine_kwargs.data_parallel_size to set a fixed number "
-            "of replicas instead."
-        )
-    name_prefix = name_prefix or "DPLLMDeployment:"
-    name = name_prefix + llm_config._get_deployment_name()
-    engine_core_bundle = {"CPU": 1}
-    placement_bundles = [
-        engine_core_bundle
-    ] + llm_config.get_engine_config().placement_bundles
-    placement_strategy = llm_config.get_engine_config().placement_strategy
-    if placement_strategy != "STRICT_PACK":
-        logger.warning(
-            f"DP deployment with placement_strategy={placement_strategy} "
-            "is not supported. Using STRICT_PACK instead."
-        )
-        placement_strategy = "STRICT_PACK"
-    deployment_options = {
-        "name": name,
-        "num_replicas": dp_size,
-        "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
-        "placement_group_bundles": placement_bundles,
-        "placement_group_strategy": placement_strategy,
-    }
-
+    deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
     dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
-
     return DPServer.as_deployment(deployment_options).bind(
         llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
     )
