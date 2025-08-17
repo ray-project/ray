@@ -7,8 +7,7 @@ set -e
 set -x
 
 PYTHON="$1"
-
-PY_WHEEL_VERSION="cp$(tr -d . <<<"$PYTHON")"
+echo "PYTHON: $PYTHON"
 
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
@@ -26,7 +25,7 @@ PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
 PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 
 # Find the appropriate wheel by grepping for the Python version.
-PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PY_WHEEL_VERSION-$PY_WHEEL_VERSION"* | head -n 1)"
+PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PYTHON-$PYTHON"* | head -n 1)"
 echo "PYTHON_WHEEL: $PYTHON_WHEEL"
 
 # Print some env info
