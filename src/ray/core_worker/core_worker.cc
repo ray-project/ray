@@ -2720,8 +2720,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
   return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
                                                 *worker_context_,
                                                 options_.node_ip_address,
-                                                event_name,
-                                                options_.session_name);
+                                                event_name);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {

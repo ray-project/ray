@@ -215,14 +215,15 @@ class TaskProfileEvent : public TaskEvent {
                    std::string component_id,
                    std::string node_ip_address,
                    std::string event_name,
-                   int64_t start_time,
-                   std::string session_name);
+                   int64_t start_time);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
+  /// Note: The extra data will be moved when this is called and will no longer be usable.
+  /// Second element of the RayEventsPair will always be empty for TaskProfileEvent.
   void ToRpcRayEvents(RayEventsPair &ray_events) override;
 
   bool IsProfileEvent() const override { return true; }
@@ -359,6 +360,9 @@ class TaskEventBuffer {
 
   /// Return a string that describes the task event buffer stats.
   virtual std::string DebugString() = 0;
+
+  /// Return the current Ray session name.
+  virtual std::string GetSessionName() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -404,6 +408,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool Enabled() const override;
 
   std::string DebugString() override;
+
+  std::string GetSessionName() const override { return session_name_; }
 
  private:
   /// Add a task status event to be reported.

@@ -28,13 +28,12 @@ namespace worker {
 ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
                            WorkerContext &worker_context,
                            const std::string &node_ip_address,
-                           const std::string &event_name,
-                           std::string session_name = "")
+                           const std::string &event_name)
     : task_event_buffer_(task_event_buffer) {
   const auto &task_spec = worker_context.GetCurrentTask();
   if (task_spec && !task_spec->EnableTaskEvents()) {
     event_ = nullptr;
-    , return;
+    return;
   }
 
   if (worker_context.GetWorkerType() == rpc::WorkerType::DRIVER &&
@@ -50,7 +49,7 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
       node_ip_address,
       event_name,
       absl::GetCurrentTimeNanos(),
-      session_name);
+      task_event_buffer_.GetSessionName());
 }
 
 ProfileEvent::~ProfileEvent() {
