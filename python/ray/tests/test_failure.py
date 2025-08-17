@@ -380,7 +380,7 @@ def test_exception_chain(ray_start_regular):
         assert isinstance(ex, RayTaskError)
 
 
-def test_baseexception_task(ray_start_regular_shared):
+def test_baseexception_task(ray_start_regular):
     class MyBaseException(BaseException):
         pass
 
@@ -392,7 +392,7 @@ def test_baseexception_task(ray_start_regular_shared):
         ray.get(task.remote())
 
 
-def test_baseexception_actor_task(ray_start_regular_shared):
+def test_baseexception_actor_task(ray_start_regular):
     class MyBaseException(BaseException):
         pass
 
@@ -413,7 +413,7 @@ def test_baseexception_actor_task(ray_start_regular_shared):
         ray.get(a.async_f.remote())
 
 
-def test_baseexception_actor_creation(ray_start_regular_shared):
+def test_baseexception_actor_creation(ray_start_regular):
     class MyBaseException(BaseException):
         pass
 
