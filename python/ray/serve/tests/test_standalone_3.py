@@ -436,7 +436,7 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    expected_actors = 4 if not is_proxy_on_every_node() else 5
+    expected_actors = 5 if is_proxy_on_every_node() else 4
     wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
