@@ -294,7 +294,6 @@ class ReplicaMetricsManager:
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
-        # self.
 
         if self.should_collect_metrics():
             self._metrics_pusher.start()
@@ -349,11 +348,15 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
+        window_start = time.time() - look_back_period
+        self._metrics_store.prune_keys_and_compact_data(window_start)
+
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
             window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
+                self._replica_id, window_start
             ),
+            metrics=self._metrics_store.data,
             send_timestamp=time.time(),
         )
 
@@ -501,8 +504,6 @@ class ReplicaMetricsManager:
 
         # Get the prometheus metrics from using the periodic fetching mechanism
         if prometheus_metrics:
-            # The get_autoscaling_metrics method now handles prometheus metrics directly
-            # and updates self._autoscaling_metrics, so we can use that
             autoscaling_metrics = await self.get_autoscaling_metrics(prometheus_metrics)
         else:
             autoscaling_metrics = {}

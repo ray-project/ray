@@ -1,7 +1,8 @@
 import logging
 import time
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, DefaultDict, Dict, Hashable, List, Optional, Set
 
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -14,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.metrics_utils import TimeStampedValue
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -75,6 +77,7 @@ class ReplicaMetricReport:
     """
 
     running_requests: float
+    metrics: dict
     timestamp: float
 
 
@@ -127,9 +130,13 @@ class AutoscalingState:
         # are removed from this dict either when the actor on which the
         # handle lived dies, or after a period of no updates.
         self._handle_requests: Dict[str, HandleMetricReport] = dict()
+
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
+        # arcyleung TODO: deprecate as _replica_metrics includes request counts
         self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        # Prometheus + Custom metrics from each replica
+        self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
 
         self._deployment_info = None
         self._config = None
@@ -164,6 +171,7 @@ class AutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_requests:
             del self._replica_requests[replica_id]
+            del self._replica_metrics[replica_id]
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -214,19 +222,35 @@ class AutoscalingState:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        window_avg: Optional[float],
+        metrics: DefaultDict[Hashable, List[TimeStampedValue]],
+        send_timestamp: float,
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
         if window_avg is None:
             return
 
+        # arcyleung TODO: deprecate after https://github.com/ray-project/ray/pull/51905 merges
         if (
             replica_id not in self._replica_requests
             or send_timestamp > self._replica_requests[replica_id].timestamp
         ):
             self._replica_requests[replica_id] = ReplicaMetricReport(
                 running_requests=window_avg,
+                metrics=None,
+                timestamp=send_timestamp,
+            )
+
+        if (
+            replica_id not in self._replica_metrics
+            or send_timestamp > self._replica_metrics[replica_id].timestamp
+        ):
+            self._replica_metrics[replica_id] = ReplicaMetricReport(
+                running_requests=None,
+                metrics=metrics,
                 timestamp=send_timestamp,
             )
 
@@ -366,6 +390,32 @@ class AutoscalingState:
 
         return total_requests
 
+    def get_replica_metrics(self, agg_func: str) -> float:
+        """Get the raw replica metrics dict."""
+        # arcyleung TODO: pass agg_func from autoscaling policy https://github.com/ray-project/ray/pull/51905
+        # Dummy implementation of mean agg_func across all values of the same metrics key
+
+        metric_values = defaultdict(list)
+        for id in self._running_replicas:
+            if id in self._replica_metrics and self._replica_metrics[id].metrics:
+                for k, v in self._replica_metrics[id].metrics.items():
+                    metric_values[k].append(v)
+
+        agg_dict = {}
+        for k, v_list in metric_values.items():
+            # Flatten if v is a list, otherwise just use the value
+            flat_values: List[TimeStampedValue] = []
+            for v in v_list:
+                if isinstance(v, list):
+                    flat_values.extend(v)
+                else:
+                    flat_values.append(v)
+            print(f"k {k} flat_values: {flat_values}")
+            if flat_values:
+                values = [fv.value for fv in flat_values]
+                agg_dict[k] = sum(values) / len(values)
+        return agg_dict
+
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -413,6 +463,14 @@ class AutoscalingStateManager:
             for deployment_id in self._autoscaling_states
         }
 
+    def get_all_metrics(self, agg_func="mean") -> Dict[DeploymentID, float]:
+        return {
+            deployment_id: self._autoscaling_states[deployment_id].get_replica_metrics(
+                agg_func
+            )
+            for deployment_id in self._autoscaling_states
+        }
+
     def get_target_num_replicas(
         self, deployment_id: DeploymentID, curr_target_num_replicas: int
     ) -> int:
@@ -431,7 +489,11 @@ class AutoscalingStateManager:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        window_avg: Optional[float],
+        metrics: DefaultDict[Hashable, List[TimeStampedValue]],
+        send_timestamp: float,
     ) -> None:
         deployment_id = replica_id.deployment_id
         # Defensively guard against delayed replica metrics arriving
@@ -440,6 +502,7 @@ class AutoscalingStateManager:
             self._autoscaling_states[deployment_id].record_request_metrics_for_replica(
                 replica_id=replica_id,
                 window_avg=window_avg,
+                metrics=metrics,
                 send_timestamp=send_timestamp,
             )
 
