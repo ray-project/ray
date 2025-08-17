@@ -55,13 +55,15 @@ TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    std::string component_id,
                                    std::string node_ip_address,
                                    std::string event_name,
-                                   int64_t start_time)
+                                   int64_t start_time,
+                                   std::string session_name)
     : TaskEvent(task_id, job_id, attempt_number),
       component_type_(std::move(component_type)),
       component_id_(std::move(component_id)),
       node_ip_address_(std::move(node_ip_address)),
       event_name_(std::move(event_name)),
-      start_time_(start_time) {}
+      start_time_(start_time),
+      session_name_(session_name) {}
 
 void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   // Base fields
