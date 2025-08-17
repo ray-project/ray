@@ -194,7 +194,6 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        # dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
 
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
@@ -202,12 +201,6 @@ class VLLMEngineConfig(BaseModelExtended):
             bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        # if dp_rank is not None:
-        #     # For data parallel, we put the placement group on the same node
-        #     # as the driver. This is needed to pass ray_utils._verify_bundles()
-        #     # validation in vLLM.
-        #     node_ip = ray.util.get_node_ip_address()
-        #     bundle["node:" + node_ip] = 0.001
         bundles = [bundle for _ in range(self.num_devices)]
 
         return bundles

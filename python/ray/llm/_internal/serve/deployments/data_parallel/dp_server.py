@@ -31,7 +31,7 @@ class DPServer(LLMServer):
 
         replica_ctx = serve.get_replica_context()
         self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx)
-        logger.info(f"DP rank {self.dp_rank} has registered")
+        logger.info(f"DP rank {self.dp_rank} registered with rank assigner")
 
         if self.dp_rank == 0:
             self.dp_address, self.dp_rpc_port = get_address_and_port()
@@ -39,7 +39,9 @@ class DPServer(LLMServer):
                 self.dp_address, self.dp_rpc_port
             )
             logger.info(
-                f"DP rank {self.dp_rank} has set DP master info: {self.dp_address}, {self.dp_rpc_port}"
+                f"DP rank {self.dp_rank} has set DP master info: "
+                f"data_parallel_address={self.dp_address}, "
+                f"data_parallel_rpc_port={self.dp_rpc_port}"
             )
         else:
             timestamp = time.time()
@@ -48,11 +50,13 @@ class DPServer(LLMServer):
                 self.dp_rpc_port,
             ) = await self.dp_rank_assigner.get_dp_master_info.remote()
             logger.info(
-                f"DP rank {self.dp_rank} got DP master info: {self.dp_address}, {self.dp_rpc_port}, "
-                f"after waiting for {time.time() - timestamp:.3f} seconds"
+                f"DP rank {self.dp_rank} got DP master info: "
+                f"data_parallel_address={self.dp_address}, "
+                f"data_parallel_rpc_port={self.dp_rpc_port}, "
+                f"waited {time.time() - timestamp:.3f} seconds"
             )
 
-        # Update the engine_kwargs to assign the DP information..
+        # Update the engine_kwargs to assign the DP information
         llm_config.update_engine_kwargs(
             data_parallel_rank=self.dp_rank,
             data_parallel_address=self.dp_address,

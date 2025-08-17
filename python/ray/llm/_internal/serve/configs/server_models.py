@@ -412,7 +412,14 @@ class LLMConfig(BaseModelExtended):
         return self._engine_config
 
     def update_engine_kwargs(self, **kwargs: Any) -> None:
+        """Update the engine_kwargs and the engine_config engine_kwargs.
+
+        This is typically called during engine starts, when certain engine_kwargs
+        (e.g., data_parallel_rank) become available.
+        """
         self.engine_kwargs.update(kwargs)
+        # engine_config may be created before engine starts, this makes sure
+        # the engine_config is updated with the latest engine_kwargs.
         if self._engine_config:
             self._engine_config.engine_kwargs.update(kwargs)
 
@@ -453,7 +460,6 @@ class LLMConfig(BaseModelExtended):
                 "placement_group_strategy": engine_config.placement_strategy,
             }
         )
-        logger.info(f"Deployment config: {deployment_config}")
 
         return deployment_config
 
