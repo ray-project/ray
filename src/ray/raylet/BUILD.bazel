@@ -230,7 +230,6 @@ ray_cc_library(
         "//src/ray/object_manager",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/object_manager/plasma:plasma_client",
-        "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/rpc:core_worker_client",
