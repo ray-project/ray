@@ -524,6 +524,8 @@ class LLMConfig(BaseModelExtended):
             deployment_options["name"] = name_prefix + deployment_options["name"]
 
         # Configure DP deployment options.
+        # TODO(rui): move the following to DPServer, e.g.,
+        # deployment_options = DPServer.get_deployment_options(llm_config)
         dp_size = self.engine_kwargs.get("data_parallel_size", None)
         if dp_size is not None:
             if "num_replicas" in deployment_options:
