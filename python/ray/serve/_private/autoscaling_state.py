@@ -410,7 +410,6 @@ class AutoscalingState:
                     flat_values.extend(v)
                 else:
                     flat_values.append(v)
-            print(f"k {k} flat_values: {flat_values}")
             if flat_values:
                 values = [fv.value for fv in flat_values]
                 agg_dict[k] = sum(values) / len(values)

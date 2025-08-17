@@ -99,7 +99,6 @@ from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import (
     Semaphore,
-    check_obj_ref_ready_nowait,
     get_component_file_name,  # noqa: F401
     parse_import_path,
 )
@@ -237,8 +236,6 @@ class ReplicaMetricsManager:
             description="The current number of queries being processed.",
         )
 
-        self._record_autoscaling_metrics_thread = None
-
         self.set_autoscaling_config(autoscaling_config)
 
         if self._cached_metrics_enabled:
@@ -361,25 +358,8 @@ class ReplicaMetricsManager:
         )
 
     def _should_record_autoscaling_metrics(self) -> bool:
-        """Determines if a new record autoscaling metrics should be kicked off.
-
-        A record autoscaling metrics will be started if:
-            1) There is not already an active record autoscaling metrics.
-            2) It has been more than autoscaling_metrics_period_s since
-               the previous record autoscaling metrics was *started*.
-
-        This assumes that self._record_autoscaling_metrics_thread is reset to `None`
-        when an active record autoscaling metrics succeeds or fails (due to
-        returning or timeout).
-        """
-        if self._record_autoscaling_metrics_thread is not None:
-            # There's already an active record autoscaling metrics.
-            return False
-
-        # If there's no active record autoscaling metrics, kick off another and
-        # reset the timer if it's been long enough since the last record
-        # autoscaling metrics. Add some randomness to avoid synchronizing across
-        # all replicas.
+        """Determines if a new record autoscaling metrics should be kicked off. If it has been longer than autoscaling_metrics_period_s since the previous record autoscaling metrics was called."""
+        # Add randomn delay to avoid overloading metrics_source with spike of requests
         time_since_last = time.time() - self._last_record_autoscaling_metrics_time
         randomized_period = self._autoscaling_metrics_period_s * random.uniform(
             0.9, 1.1
@@ -389,34 +369,6 @@ class ReplicaMetricsManager:
     async def get_autoscaling_metrics(
         self, prometheus_metrics: Optional[List[Tuple[str, Optional[str]]]]
     ) -> Dict[str, Any]:
-        """Get the autoscaling metrics for the replica."""
-        if self._record_autoscaling_metrics_thread is None:
-            # There's no active record autoscaling metrics.
-            pass
-        elif check_obj_ref_ready_nowait(self._record_autoscaling_metrics_thread):
-            # Object ref is ready, ray.get it to check for exceptions.
-            try:
-                self._autoscaling_metrics = ray.get(
-                    self._record_autoscaling_metrics_thread
-                )
-            except Exception:
-                logger.exception(
-                    "Exception when trying to get autoscaling metrics:\n"
-                    + traceback.format_exc()
-                )
-            self._record_autoscaling_metrics_thread = None
-        elif (
-            time.time() - self._last_record_autoscaling_metrics_time
-            > self._autoscaling_metrics_timeout_s
-        ):
-            # Record autoscaling metrics hasn't returned and the timeout is up, retrying.
-            logger.warning(
-                "Didn't receive autoscaling metrics response for replica "
-                f"{self._replica_id} after "
-                f"{self._autoscaling_metrics_timeout_s}s, retrying."
-            )
-            self._record_autoscaling_metrics_thread = None
-
         if self._should_record_autoscaling_metrics():
             self._last_record_autoscaling_metrics_time = time.time()
 
