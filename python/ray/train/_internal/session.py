@@ -322,7 +322,7 @@ class _TrainSession:
     def _get_or_create_inter_actor_queue(self):
         """Get or create the inter-actor queue."""
         if self._inter_actor_queue is None:
-            self._inter_actor_queue = ray_queue.Queue(1)
+            self._inter_actor_queue = ray_queue.Queue(1, actor_options={"num_cpus": 0})
         return self._inter_actor_queue
 
     def _get_result_from_queues(self, block: bool) -> Optional[_TrainingResult]:

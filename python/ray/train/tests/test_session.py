@@ -174,7 +174,6 @@ def test_report_after_finish(session):
 @pytest.mark.parametrize(
     "block,put_result_queue,put_actor_queue",
     [
-        # Users should never report to both queues simultaneously.
         (False, False, False),
         (False, False, True),
         (False, True, False),
@@ -184,6 +183,14 @@ def test_report_after_finish(session):
     ],
 )
 def test_get_result_from_queues(session, block, put_result_queue, put_actor_queue):
+    """Verify that we get the expected _TrainingResult from each result queue.
+
+    `block` describes whether we wait for a result or return after a timeout.
+        This argument should have no impact on this unit test.
+    `put_result_queue` and `put_actor_queue` are mutually exclusive and describe
+        which queue has results to process. The returned _TrainingResult should be
+        from the expected queue.
+    """
     result_queue_training_result = _TrainingResult(
         checkpoint=None,
         metrics={"result_queue_metric_key": "result_queue_metric_value"},

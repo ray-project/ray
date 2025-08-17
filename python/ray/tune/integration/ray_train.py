@@ -15,8 +15,9 @@ class TuneReportCallback(UserCallback):
     """Propagate metrics and checkpoint paths from Ray Train workers to Ray Tune."""
 
     def __init__(self):
-        assert _in_tune_session(), "TuneReportCallback must be used in a Tune session."
-        self.training_actor_item_queue = (
+        if not _in_tune_session():
+            raise RuntimeError("TuneReportCallback must be used in a Tune session.")
+        self._training_actor_item_queue = (
             get_session()._get_or_create_inter_actor_queue()
         )
 
@@ -36,4 +37,4 @@ class TuneReportCallback(UserCallback):
         if checkpoint:
             metrics[CHECKPOINT_PATH_KEY] = checkpoint.path
 
-        self.training_actor_item_queue.put(metrics)
+        self._training_actor_item_queue.put(metrics)

@@ -24,7 +24,7 @@ def ray_start_4_cpus():
 @pytest.fixture()
 def ray_cpu_head_gpu_worker():
     cluster = Cluster()
-    cluster.add_node(resources={TRAIN_DRIVER_RESOURCE_NAME: 1, "cpu": 1})
+    cluster.add_node(resources={TRAIN_DRIVER_RESOURCE_NAME: 1})
     cluster.add_node(num_cpus=0, num_gpus=NUM_GPUS_IN_CLUSTER)
 
     ray.init(address=cluster.address)
@@ -80,11 +80,7 @@ def test_e2e(
         trainer.fit()
 
     tuner = ray.tune.Tuner(
-        ray.tune.with_resources(
-            # We need 1 cpu for the ray.util.queue.Queue.
-            launch_training,
-            {TRAIN_DRIVER_RESOURCE_NAME: 0.01, "cpu": 1},
-        ),
+        ray.tune.with_resources(launch_training, {TRAIN_DRIVER_RESOURCE_NAME: 0.01}),
         param_space={
             # Search over parameters passed into each train worker.
             "train_loop_config": {"lr": ray.tune.choice([0.01, 0.001])},
