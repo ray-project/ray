@@ -184,7 +184,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
 
     for config in [pd_config.prefill_config, pd_config.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
-            config.engine_kwargs.update(
+            config.update_engine_kwargs(
                 {
                     "kv_transfer_config": dict(
                         kv_connector="NixlConnector",
