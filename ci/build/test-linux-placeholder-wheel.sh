@@ -23,7 +23,7 @@ fi
 ls -d -- /opt/python/*/bin/
 
 PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
-PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PYTHON"
+PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 
 # Find the appropriate wheel by grepping for the Python version.
 PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PY_WHEEL_VERSION-$PY_WHEEL_VERSION"* | head -n 1)"
