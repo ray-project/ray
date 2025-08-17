@@ -448,6 +448,7 @@ class LLMConfig(BaseModelExtended):
                 "placement_group_strategy": engine_config.placement_strategy,
             }
         )
+        logger.info(f"Deployment config: {deployment_config}")
 
         return deployment_config
 
@@ -516,7 +517,7 @@ class LLMConfig(BaseModelExtended):
         self._setup_kv_connector_backend()
 
     def _setup_kv_connector_backend(self):
-        """Private method to setup kv connector dependning on the local deployment state"""
+        """Private method to setup kv connector depending on the local deployment state"""
         # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
         kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
         if not kv_transfer_config:

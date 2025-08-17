@@ -89,13 +89,14 @@ def build_dp_deployment(
             "use engine_kwargs.data_parallel_size to set a fixed number "
             "of replicas instead."
         )
+    deployment_options = llm_config._set_deployment_placement_options()
     # TODO(rui): support data_parallel_backend=ray and unify
     # deployment_options handling with LLMDeployment.
-    deployment_options = {
-        "name": name,
-        "num_replicas": dp_size,
-        "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
-    }
+    deployment_options.update(
+        name=name,
+        num_replicas=dp_size,
+        max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
+    )
     return DPServer.as_deployment(deployment_options).bind(
         llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
     )
