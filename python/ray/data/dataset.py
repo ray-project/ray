@@ -5985,8 +5985,8 @@ class Dataset:
             Map(<lambda>)
             +- ReadRange
             -------- Physical Plan --------
-            ReadRange->Map(<lambda>)
-            +- Input
+            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+            +- InputDataBuffer[Input]
             <BLANKLINE>
 
         Returns:

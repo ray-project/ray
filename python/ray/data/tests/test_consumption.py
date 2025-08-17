@@ -543,8 +543,8 @@ def test_dataset_explain(ray_start_regular_shared):
         "Map(<lambda>)\n"
         "+- ReadRange\n"
         "-------- Physical Plan --------\n"
-        "ReadRange->Map(<lambda>)\n"
-        "+- Input\n"
+        "TaskPoolMapOperator[ReadRange->Map(<lambda>)]\n"
+        "+- InputDataBuffer[Input]\n"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert ds.explain() == (
@@ -553,8 +553,8 @@ def test_dataset_explain(ray_start_regular_shared):
         "+- Map(<lambda>)\n"
         "   +- ReadRange\n"
         "-------- Physical Plan --------\n"
-        "ReadRange->Map(<lambda>)->Filter(<lambda>)\n"
-        "+- Input\n"
+        "TaskPoolMapOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)]\n"
+        "+- InputDataBuffer[Input]\n"
     )
     ds = ds.random_shuffle().map(lambda x: x)
     assert ds.explain() == (
@@ -565,9 +565,9 @@ def test_dataset_explain(ray_start_regular_shared):
         "      +- Map(<lambda>)\n"
         "         +- ReadRange\n"
         "-------- Physical Plan --------\n"
-        "Map(<lambda>)\n"
-        "+- ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle\n"
-        "   +- Input\n"
+        "TaskPoolMapOperator[Map(<lambda>)]\n"
+        "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
+        "   +- InputDataBuffer[Input]\n"
     )
 
 
