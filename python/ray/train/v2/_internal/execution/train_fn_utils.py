@@ -1,12 +1,21 @@
+import logging
 import threading
 from typing import Any, Dict, Optional
 
+import ray
+import ray.cloudpickle as pickle
 from ray.data import DataIterator
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
 from ray.train.v2.api.context import TrainContext as ExternalTrainContext
+
+logger = logging.getLogger(__name__)
+
+# For reference, {1:1} is 19 bytes, {"1":"1"} is 21 bytes,
+# and {"12345": "12345"} is 25 bytes.
+_MAX_BROADCAST_SIZE_BYTES = 1000
 
 
 class TrainFnUtils:
@@ -67,6 +76,49 @@ class TrainFnUtils:
 
     def get_context(self) -> ExternalTrainContext:
         return ExternalTrainContext()
+
+    def barrier(self) -> None:
+        """Create a barrier across all workers.
+
+        All workers must call this method before the training function can continue.
+
+        This method is used by the public API function :func:`ray.train.collective.barrier`.
+        Users should typically call ``ray.train.collective.barrier()`` instead of calling this method directly.
+        """
+        sync_actor = get_internal_train_context().get_synchronization_actor()
+        return ray.get(
+            sync_actor.broadcast_from_rank_zero.remote(
+                world_rank=get_internal_train_context().get_world_rank(),
+                world_size=get_internal_train_context().get_world_size(),
+                data=None,
+                caller_method_name="ray.train.collective.barrier",
+            )
+        )
+
+    def broadcast_from_rank_zero(self, data: Any) -> Any:
+        """Broadcast data from the rank 0 worker to all other workers.
+
+        This method is used by the public API function :func:`ray.train.collective.broadcast_from_rank_zero`.
+        Users should typically call ``ray.train.collective.broadcast_from_rank_zero()`` instead of calling this method directly.
+        """
+        # Validate data.
+        if data is not None:
+            data_bytes = len(pickle.dumps(data))
+            if data_bytes > _MAX_BROADCAST_SIZE_BYTES:
+                logger.warning(
+                    f"Data size {data_bytes} bytes exceeds the maximum broadcast "
+                    f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
+                )
+
+        sync_actor = get_internal_train_context().get_synchronization_actor()
+        return ray.get(
+            sync_actor.broadcast_from_rank_zero.remote(
+                world_rank=get_internal_train_context().get_world_rank(),
+                world_size=get_internal_train_context().get_world_size(),
+                data=data,
+                caller_method_name="ray.train.collective.broadcast_from_rank_zero",
+            )
+        )
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None
