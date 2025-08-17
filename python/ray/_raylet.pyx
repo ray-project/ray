@@ -1029,7 +1029,7 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, function_desc
 
 cdef c_bool determine_if_retryable(
     c_bool should_retry_exceptions,
-    Exception e,
+    e: BaseException,
     const c_string serialized_retry_exception_allowlist,
     FunctionDescriptor function_descriptor,
 ):
@@ -2012,7 +2012,9 @@ cdef void execute_task(
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
-                except Exception as e:
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
                                     e,
@@ -2121,8 +2123,9 @@ cdef void execute_task(
                     None, # ref_generator_id
                     c_tensor_transport
                 )
-
-        except Exception as e:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error, c_tensor_transport)
@@ -2911,21 +2914,24 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
-        c_log_lines = PythonGetLogBatchLines(log_batch)
+        result = {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+        with nogil:
+            c_log_lines = PythonGetLogBatchLines(move(log_batch))
 
         log_lines = []
         for c_log_line in c_log_lines:
             log_lines.append(c_log_line.decode())
 
-        return {
-            "ip": log_batch.ip().decode(),
-            "pid": log_batch.pid().decode(),
-            "job": log_batch.job_id().decode(),
-            "is_err": log_batch.is_error(),
-            "lines": log_lines,
-            "actor_name": log_batch.actor_name().decode(),
-            "task_name": log_batch.task_name().decode(),
-        }
+        result["lines"] = log_lines
+        return result
 
 
 # This class should only be used for tests

@@ -37,6 +37,10 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
+    @abc.abstractmethod
     async def chat(
         self, request: "ChatCompletionRequest"
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
