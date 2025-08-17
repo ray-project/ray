@@ -411,6 +411,11 @@ class LLMConfig(BaseModelExtended):
 
         return self._engine_config
 
+    def update_engine_kwargs(self, **kwargs: Any) -> None:
+        self.engine_kwargs.update(kwargs)
+        if self._engine_config:
+            self._engine_config.engine_kwargs.update(kwargs)
+
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config
         engine_config = self.get_engine_config()

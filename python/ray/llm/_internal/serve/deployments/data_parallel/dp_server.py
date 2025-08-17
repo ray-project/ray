@@ -52,10 +52,12 @@ class DPServer(LLMServer):
                 f"after waiting for {time.time() - timestamp:.3f} seconds"
             )
 
-        # override the engine_kwargs to assign the DP rank.
-        llm_config.engine_kwargs["data_parallel_rank"] = self.dp_rank
-        llm_config.engine_kwargs["data_parallel_address"] = self.dp_address
-        llm_config.engine_kwargs["data_parallel_rpc_port"] = self.dp_rpc_port
+        # Update the engine_kwargs to assign the DP information..
+        llm_config.update_engine_kwargs(
+            data_parallel_rank=self.dp_rank,
+            data_parallel_address=self.dp_address,
+            data_parallel_rpc_port=self.dp_rpc_port,
+        )
 
         await super().__init__(llm_config)
 
@@ -75,9 +77,10 @@ def build_dp_deployment(
         raise ValueError(
             "data_parallel_size should be greater than 1 for DP deployment."
         )
-    dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
-    name_prefix = name_prefix or "DPLLMDeployment:"
-    name = name_prefix + llm_config._get_deployment_name()
+
+    # Create the deployment options.
+    # TODO(rui): support data_parallel_backend=ray and unify
+    # deployment_options handling with LLMDeployment.
     if "num_replicas" in llm_config.deployment_config:
         raise ValueError(
             "num_replicas should not be specified for DP deployment, "
@@ -89,14 +92,24 @@ def build_dp_deployment(
             "use engine_kwargs.data_parallel_size to set a fixed number "
             "of replicas instead."
         )
-    deployment_options = llm_config._set_deployment_placement_options()
-    # TODO(rui): support data_parallel_backend=ray and unify
-    # deployment_options handling with LLMDeployment.
-    deployment_options.update(
-        name=name,
-        num_replicas=dp_size,
-        max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
-    )
+    name_prefix = name_prefix or "DPLLMDeployment:"
+    name = name_prefix + llm_config._get_deployment_name()
+    engine_core_bundle = {"CPU": 1}
+    placement_bundles = [
+        engine_core_bundle
+    ] + llm_config.get_engine_config().placement_bundles
+    placement_strategy = llm_config.get_engine_config().placement_strategy
+    deployment_options = {
+        "name": name,
+        "num_replicas": dp_size,
+        "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+        "placement_group_bundles": placement_bundles,
+        "placement_group_strategy": placement_strategy,
+    }
+    logger.info(f"deployment_options: {deployment_options}")
+
+    dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
+
     return DPServer.as_deployment(deployment_options).bind(
         llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
     )

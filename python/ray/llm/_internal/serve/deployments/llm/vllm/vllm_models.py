@@ -254,10 +254,6 @@ class VLLMEngineConfig(BaseModelExtended):
                 pg.id,
                 placement_group_table(pg),
             )
-            if dp_rank is not None:
-                raise NotImplementedError(
-                    "Data parallel is not supported with VLLMEngine already in a placement group"
-                )
         else:
             if not ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT:
                 raise RuntimeError(
