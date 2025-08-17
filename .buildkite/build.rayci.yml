@@ -30,6 +30,7 @@ steps:
       - export RAYCI_DISABLE_CPP_WHEEL=true
       - export RAYCI_DISABLE_JAVA=true
       - export BUILD_PLACEHOLDER_WHEEL=true
+      - export TEST_PLACEHOLDER_WHEEL=true
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
     matrix:
       - "3.9"

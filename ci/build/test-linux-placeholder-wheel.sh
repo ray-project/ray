@@ -6,8 +6,10 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-which python
-which python3
+PYTHON="$1"
+
+PY_WHEEL_VERSION="cp$(tr -d . <<<"$PYTHON")"
+
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
 echo "ROOT_DIR: $ROOT_DIR"
@@ -17,32 +19,24 @@ if [[ ! "${OSTYPE}" =~ ^linux ]]; then
   exit 1
 fi
 
-PY_WHEEL_VERSIONS=("39")
-PY_MMS=("3.9")
+# TODO (elliot-barn): list python versions
+ls -d -- /opt/python/*/bin/
 
-for ((i=0; i<${#PY_MMS[@]}; ++i)); do
-  PY_MM="${PY_MMS[i]}"
+PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
+PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PYTHON"
 
-  PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
+# Find the appropriate wheel by grepping for the Python version.
+PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PY_WHEEL_VERSION-$PY_WHEEL_VERSION"* | head -n 1)"
+echo "PYTHON_WHEEL: $PYTHON_WHEEL"
 
-  PYTHON_EXE="/opt/python/$PY_MM/bin/python$PY_MM"
-  PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
+# Print some env info
+"$PYTHON_EXE" --version
 
-  # Find the appropriate wheel by grepping for the Python version.
-  PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"cp$PY_WHEEL_VERSION-cp$PY_WHEEL_VERSION"* | head -n 1)"
-  echo "PYTHON_WHEEL: $PYTHON_WHEEL"
+# Update pip
+"$PIP_CMD" install -U pip
 
-  # Print some env info
-  "$PYTHON_EXE" --version
-  "$PYTHON_EXE" -c "from distutils import util; print(util.get_platform())" || true
+# Install the wheel.
+"$PIP_CMD" uninstall -y ray
+"$PIP_CMD" install -q --no-deps "$PYTHON_WHEEL"
 
-  # Update pip
-  "$PIP_CMD" install -U pip
-
-  # Install the wheel.
-  "$PIP_CMD" uninstall -y ray
-  "$PIP_CMD" install -q --no-deps "$PYTHON_WHEEL"
-
-  # TODO (elliot-barn): Test the wheel content (should be only METADATA)
-
-done
+# TODO (elliot-barn): Test the wheel content (should be only METADATA)
