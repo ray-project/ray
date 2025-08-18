@@ -501,14 +501,10 @@ void CoreWorker::Shutdown() {
   }
 
   // For actors, perform cleanup before shutdown proceeds.
-  // Extract the callback under the lock, then invoke outside the lock.
   std::function<void()> cb;
-  {
-    absl::MutexLock lock(&mutex_);
-    if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil()) {
-      cb = std::move(actor_shutdown_callback_);
-      actor_shutdown_callback_ = nullptr;
-    }
+  if (!GetWorkerContext().GetCurrentActorID().IsNil()) {
+    cb = actor_shutdown_callback_;
+    actor_shutdown_callback_ = nullptr;
   }
   if (cb) {
     RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
