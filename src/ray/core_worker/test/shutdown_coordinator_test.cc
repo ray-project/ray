@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/shutdown_coordinator.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -30,62 +29,71 @@
 namespace ray {
 namespace core {
 
-// Mock implementation of ShutdownExecutorInterface for testing
-class MockShutdownExecutor : public ShutdownExecutorInterface {
+// Simple fake executor for tests without gmock.
+class FakeShutdownExecutor : public ShutdownExecutorInterface {
  public:
-  MOCK_METHOD(void,
-              ExecuteGracefulShutdown,
-              (std::string_view exit_type,
-               std::string_view detail,
-               std::chrono::milliseconds timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              ExecuteForceShutdown,
-              (std::string_view exit_type, std::string_view detail),
-              (override));
-  MOCK_METHOD(void,
-              ExecuteWorkerExit,
-              (std::string_view exit_type,
-               std::string_view detail,
-               std::chrono::milliseconds timeout_ms),
-              (override));
-  MOCK_METHOD(
-      void,
-      ExecuteExit,
-      (std::string_view exit_type,
-       std::string_view detail,
-       std::chrono::milliseconds timeout_ms,
-       const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes),
-      (override));
-  MOCK_METHOD(void,
-              ExecuteHandleExit,
-              (std::string_view exit_type,
-               std::string_view detail,
-               std::chrono::milliseconds timeout_ms),
-              (override));
-  MOCK_METHOD(void, KillChildProcessesImmediately, (), (override));
-  MOCK_METHOD(bool, ShouldWorkerIdleExit, (), (const, override));
-};
+  std::atomic<int> graceful_calls{0};
+  std::atomic<int> force_calls{0};
+  std::atomic<int> worker_exit_calls{0};
+  std::atomic<int> handle_exit_calls{0};
+  std::atomic<bool> idle_exit_allowed{false};
 
-// No-op implementation for tests that don't need actual shutdown behavior
-class NoOpShutdownExecutor : public ShutdownExecutorInterface {
- public:
+  std::string last_exit_type;
+  std::string last_detail;
+
   void ExecuteGracefulShutdown(std::string_view exit_type,
                                std::string_view detail,
-                               std::chrono::milliseconds timeout_ms) override {}
+                               std::chrono::milliseconds timeout_ms) override {
+    graceful_calls++;
+    last_exit_type = std::string(exit_type);
+    last_detail = std::string(detail);
+  }
   void ExecuteForceShutdown(std::string_view exit_type,
-                            std::string_view detail) override {}
+                            std::string_view detail) override {
+    force_calls++;
+    last_exit_type = std::string(exit_type);
+    last_detail = std::string(detail);
+  }
   void ExecuteWorkerExit(std::string_view exit_type,
                          std::string_view detail,
-                         std::chrono::milliseconds timeout_ms) override {}
+                         std::chrono::milliseconds timeout_ms) override {
+    worker_exit_calls++;
+    last_exit_type = std::string(exit_type);
+    last_detail = std::string(detail);
+  }
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
                    std::chrono::milliseconds timeout_ms,
                    const std::shared_ptr<::ray::LocalMemoryBuffer>
-                       &creation_task_exception_pb_bytes) override {}
+                       &creation_task_exception_pb_bytes) override {
+    worker_exit_calls++;
+    last_exit_type = std::string(exit_type);
+    last_detail = std::string(detail);
+  }
   void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
-                         std::chrono::milliseconds timeout_ms) override {}
+                         std::chrono::milliseconds timeout_ms) override {
+    handle_exit_calls++;
+    last_exit_type = std::string(exit_type);
+    last_detail = std::string(detail);
+  }
+  void KillChildProcessesImmediately() override {}
+  bool ShouldWorkerIdleExit() const override { return idle_exit_allowed.load(); }
+};
+
+// No-op executor used in disabled/manual-transition tests.
+class NoOpShutdownExecutor : public ShutdownExecutorInterface {
+ public:
+  void ExecuteGracefulShutdown(std::string_view, std::string_view,
+                               std::chrono::milliseconds) override {}
+  void ExecuteForceShutdown(std::string_view, std::string_view) override {}
+  void ExecuteWorkerExit(std::string_view, std::string_view,
+                         std::chrono::milliseconds) override {}
+  void ExecuteExit(std::string_view, std::string_view, std::chrono::milliseconds,
+                   const std::shared_ptr<::ray::LocalMemoryBuffer> &)
+      override {}
+  void ExecuteHandleExit(std::string_view, std::string_view,
+                         std::chrono::milliseconds) override {}
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return false; }
 };
@@ -95,26 +103,12 @@ class ShutdownCoordinatorTest : public ::testing::Test {
   // Helper to create coordinator with specific worker type
   std::unique_ptr<ShutdownCoordinator> CreateCoordinator(
       WorkerType worker_type = WorkerType::WORKER) {
-    auto mock = std::make_unique<MockShutdownExecutor>();
-
-    // Set up default behavior for the mock
-    ON_CALL(*mock, ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return());
-    ON_CALL(*mock, ExecuteForceShutdown(::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return());
-    ON_CALL(*mock, ExecuteWorkerExit(::testing::_, ::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return());
-    ON_CALL(*mock, ExecuteHandleExit(::testing::_, ::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return());
-    ON_CALL(*mock, KillChildProcessesImmediately()).WillByDefault(::testing::Return());
-    ON_CALL(*mock, ShouldWorkerIdleExit()).WillByDefault(::testing::Return(false));
-
-    return std::make_unique<ShutdownCoordinator>(std::move(mock), worker_type);
+    auto fake = std::make_unique<FakeShutdownExecutor>();
+    return std::make_unique<ShutdownCoordinator>(std::move(fake), worker_type);
   }
 };
 
-// Test 1: Basic State Machine Tests
-TEST_F(ShutdownCoordinatorTest, InitialStateIsRunning) {
+TEST_F(ShutdownCoordinatorTest, InitialStateWithNoTransitions_IsRunning) {
   auto coordinator = CreateCoordinator();
 
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
@@ -125,14 +119,16 @@ TEST_F(ShutdownCoordinatorTest, InitialStateIsRunning) {
   EXPECT_FALSE(coordinator->ShouldEarlyExit());
 }
 
-TEST_F(ShutdownCoordinatorTest, IdempotentShutdownRequests) {
+TEST_F(ShutdownCoordinatorTest, RequestShutdown_IdempotentBehavior) {
   auto coordinator = CreateCoordinator();
 
   // First graceful request should succeed
   EXPECT_TRUE(coordinator->RequestShutdown(
       false, ShutdownReason::kGracefulExit, "test_graceful"));
-  EXPECT_THAT(coordinator->GetState(),
-              ::testing::AnyOf(ShutdownState::kDisconnecting, ShutdownState::kShutdown));
+  {
+    auto st = coordinator->GetState();
+    EXPECT_TRUE(st == ShutdownState::kDisconnecting || st == ShutdownState::kShutdown);
+  }
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
   // A second graceful request should be ignored
@@ -148,13 +144,14 @@ TEST_F(ShutdownCoordinatorTest, IdempotentShutdownRequests) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);  // Reason is updated
 }
 
-TEST_F(ShutdownCoordinatorTest, LegacyTryInitiateShutdown) {
+TEST_F(ShutdownCoordinatorTest, TryInitiateShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
   auto coordinator = CreateCoordinator();
 
   EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
-  EXPECT_THAT(
-      coordinator->GetState(),
-      ::testing::AnyOf(ShutdownState::kShuttingDown, ShutdownState::kDisconnecting));
+  {
+    auto st = coordinator->GetState();
+    EXPECT_TRUE(st == ShutdownState::kShuttingDown || st == ShutdownState::kDisconnecting);
+  }
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
@@ -162,16 +159,14 @@ TEST_F(ShutdownCoordinatorTest, LegacyTryInitiateShutdown) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);  // unchanged
 }
 
-// Test 2: State Transition Tests
-TEST_F(ShutdownCoordinatorTest, ValidStateTransitions) {
+TEST_F(ShutdownCoordinatorTest, GracefulShutdown_TransitionsToDisconnectingThenShutdown) {
   auto coordinator = CreateCoordinator();
 
   // Running -> ShuttingDown -> Disconnecting
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
   auto s = coordinator->GetState();
-  EXPECT_THAT(s,
-              ::testing::AnyOf(ShutdownState::kDisconnecting, ShutdownState::kShutdown));
+  EXPECT_TRUE(s == ShutdownState::kDisconnecting || s == ShutdownState::kShutdown);
 
   if (s == ShutdownState::kDisconnecting) {
     // Disconnecting -> Shutdown
@@ -189,7 +184,7 @@ TEST_F(ShutdownCoordinatorTest, ValidStateTransitions) {
   EXPECT_TRUE(coordinator->IsShutdown());
 }
 
-TEST_F(ShutdownCoordinatorTest, InvalidStateTransitions) {
+TEST_F(ShutdownCoordinatorTest, InvalidTransitions_FromRunning_Fail) {
   auto coordinator = CreateCoordinator();
 
   // Cannot transition to disconnecting from running
@@ -201,7 +196,7 @@ TEST_F(ShutdownCoordinatorTest, InvalidStateTransitions) {
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
 }
 
-TEST_F(ShutdownCoordinatorTest, DirectTransitionToShutdownFromShuttingDown) {
+TEST_F(ShutdownCoordinatorTest, ForceShutdown_TransitionsDirectlyToShutdown) {
   auto coordinator = CreateCoordinator();
 
   // Running -> Shutdown (completes immediately with mocked dependencies)
@@ -213,8 +208,7 @@ TEST_F(ShutdownCoordinatorTest, DirectTransitionToShutdownFromShuttingDown) {
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 }
 
-// Test 3: Thread Safety Tests
-TEST_F(ShutdownCoordinatorTest, ConcurrentShutdownRequests) {
+TEST_F(ShutdownCoordinatorTest, RequestShutdown_Graceful_OnlyOneInitiatorUnderConcurrency) {
   auto coordinator = CreateCoordinator();
 
   constexpr int num_threads = 10;
@@ -239,14 +233,14 @@ TEST_F(ShutdownCoordinatorTest, ConcurrentShutdownRequests) {
 
   // Only one thread should have succeeded
   EXPECT_EQ(success_count.load(), 1);
-  EXPECT_THAT(
-      coordinator->GetState(),
-      ::testing::AnyOf(ShutdownState::kShuttingDown, ShutdownState::kDisconnecting));
+  {
+    auto st = coordinator->GetState();
+    EXPECT_TRUE(st == ShutdownState::kShuttingDown || st == ShutdownState::kDisconnecting);
+  }
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 }
 
-// Test 4: Worker Type Specific Tests
-TEST_F(ShutdownCoordinatorTest, DriverGracefulShutdown) {
+TEST_F(ShutdownCoordinatorTest, Driver_GracefulReasonRecorded) {
   auto coordinator = CreateCoordinator(WorkerType::DRIVER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
@@ -255,7 +249,7 @@ TEST_F(ShutdownCoordinatorTest, DriverGracefulShutdown) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 }
 
-TEST_F(ShutdownCoordinatorTest, DriverForceShutdown) {
+TEST_F(ShutdownCoordinatorTest, Driver_ForceReasonRecorded) {
   auto coordinator = CreateCoordinator(WorkerType::DRIVER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(true,  // force
@@ -264,39 +258,32 @@ TEST_F(ShutdownCoordinatorTest, DriverForceShutdown) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);
 }
 
-// Test regular worker behavior (no special actor cleanup)
-TEST_F(ShutdownCoordinatorTest, WorkerGracefulShutdown) {
+TEST_F(ShutdownCoordinatorTest, Worker_GracefulInitiates) {
   auto coordinator = CreateCoordinator(WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
 }
 
-// Test worker-specific shutdown with ExecuteWorkerExit
-TEST_F(ShutdownCoordinatorTest, WorkerExitShutdown) {
+TEST_F(ShutdownCoordinatorTest, Worker_ExecuteWorkerExit_OnUserError) {
   auto coordinator = CreateCoordinator(WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kUserError));
 }
 
-// Test worker-specific shutdown with ExecuteHandleExit
-TEST_F(ShutdownCoordinatorTest, WorkerIdleTimeout) {
+TEST_F(ShutdownCoordinatorTest, Worker_HandleExit_OnIdleTimeout) {
   auto coordinator = CreateCoordinator(WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kIdleTimeout));
 }
 
-// Test 5: Performance Tests
-TEST_F(ShutdownCoordinatorTest, ShouldEarlyExitPerformance) {
+TEST_F(ShutdownCoordinatorTest, ShouldEarlyExit_Performance_IsFast) {
   auto coordinator = CreateCoordinator();
-
-  // Performance test: ShouldEarlyExit should be very fast
   auto start = std::chrono::high_resolution_clock::now();
-
   constexpr int iterations = 1000000;
-  volatile bool result = false;  // Prevent optimization
+  volatile bool result = false;
 
   for (int i = 0; i < iterations; ++i) {
     result = coordinator->ShouldEarlyExit();
@@ -314,8 +301,7 @@ TEST_F(ShutdownCoordinatorTest, ShouldEarlyExitPerformance) {
   (void)result;
 }
 
-// Test 6: String Representation Tests
-TEST_F(ShutdownCoordinatorTest, StringRepresentations) {
+TEST_F(ShutdownCoordinatorTest, StringRepresentations_StateAndReason_AreReadable) {
   auto coordinator = CreateCoordinator();
 
   EXPECT_EQ(coordinator->GetStateString(), "Running");
@@ -330,26 +316,24 @@ TEST_F(ShutdownCoordinatorTest, StringRepresentations) {
   EXPECT_EQ(coordinator->GetStateString(), "Shutdown");
 }
 
-// Test 7: Exit Type String Tests
-TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_UserError) {
+TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_UserError_IsUSER_ERROR) {
   auto coordinator = CreateCoordinator();
   coordinator->RequestShutdown(false, ShutdownReason::kUserError);
   EXPECT_EQ(coordinator->GetExitTypeString(), "USER_ERROR");
 }
 
-TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_OutOfMemory) {
+TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_OOM_IsNODE_OUT_OF_MEMORY) {
   auto coordinator = CreateCoordinator();
   coordinator->RequestShutdown(false, ShutdownReason::kOutOfMemory);
   EXPECT_EQ(coordinator->GetExitTypeString(), "NODE_OUT_OF_MEMORY");
 }
 
-TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_IdleTimeout) {
+TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_IdleTimeout_IsINTENDED_SYSTEM_EXIT) {
   auto coordinator = CreateCoordinator();
   coordinator->RequestShutdown(false, ShutdownReason::kIdleTimeout);
   EXPECT_EQ(coordinator->GetExitTypeString(), "INTENDED_SYSTEM_EXIT");
 }
 
-// Test 8: Edge Cases
 TEST_F(ShutdownCoordinatorTest, DISABLED_NullDependencies) {
   // Test behavior with no-op dependencies (should not crash)
   auto coordinator = std::make_unique<ShutdownCoordinator>(
@@ -362,7 +346,6 @@ TEST_F(ShutdownCoordinatorTest, DISABLED_NullDependencies) {
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShuttingDown);
 }
 
-// Test manual state transitions with no-op dependencies
 TEST_F(ShutdownCoordinatorTest, DISABLED_ManualStateTransitions) {
   // Use no-op dependencies to manually control transitions
   auto coordinator = std::make_unique<ShutdownCoordinator>(
@@ -385,8 +368,7 @@ TEST_F(ShutdownCoordinatorTest, DISABLED_ManualStateTransitions) {
   EXPECT_TRUE(coordinator->IsShutdown());
 }
 
-// Test 9: Memory Ordering Tests (Advanced)
-TEST_F(ShutdownCoordinatorTest, MemoryOrderingConsistency) {
+TEST_F(ShutdownCoordinatorTest, ShouldEarlyExit_MemoryOrdering_ConcurrentVisibility) {
   auto coordinator = CreateCoordinator();
 
   std::atomic<bool> thread1_saw_shutdown{false};
@@ -413,26 +395,11 @@ TEST_F(ShutdownCoordinatorTest, MemoryOrderingConsistency) {
   EXPECT_TRUE(coordinator->ShouldEarlyExit());
 }
 
-TEST_F(ShutdownCoordinatorTest, ConcurrentGracefulAndForce_ForceExecutesOnce) {
-  using ::testing::StrictMock;
-  auto mock = std::make_unique<StrictMock<MockShutdownExecutor>>();
-  auto *mock_ptr = mock.get();
-
-  EXPECT_CALL(*mock_ptr, ExecuteForceShutdown(::testing::_, ::testing::_)).Times(1);
-  EXPECT_CALL(*mock_ptr,
-              ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))
-      .Times(::testing::AtMost(1));
-  EXPECT_CALL(*mock_ptr, ExecuteWorkerExit(::testing::_, ::testing::_, ::testing::_))
-      .Times(::testing::AnyNumber());
-  EXPECT_CALL(*mock_ptr, ExecuteHandleExit(::testing::_, ::testing::_, ::testing::_))
-      .Times(::testing::AnyNumber());
-  EXPECT_CALL(*mock_ptr, KillChildProcessesImmediately()).Times(::testing::AnyNumber());
-  EXPECT_CALL(*mock_ptr, ShouldWorkerIdleExit())
-      .Times(::testing::AnyNumber())
-      .WillRepeatedly(::testing::Return(false));
-
+TEST_F(ShutdownCoordinatorTest, Concurrent_GracefulVsForce_ForceExecutesOnce) {
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  auto *fake_ptr = fake.get();
   auto coordinator =
-      std::make_unique<ShutdownCoordinator>(std::move(mock), WorkerType::WORKER);
+      std::make_unique<ShutdownCoordinator>(std::move(fake), WorkerType::WORKER);
 
   std::thread t1([&] {
     coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit, "graceful");
@@ -444,28 +411,15 @@ TEST_F(ShutdownCoordinatorTest, ConcurrentGracefulAndForce_ForceExecutesOnce) {
 
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);
+  EXPECT_EQ(fake_ptr->force_calls.load(), 1);
+  EXPECT_LE(fake_ptr->graceful_calls.load(), 1);
 }
 
-TEST_F(ShutdownCoordinatorTest, ConcurrentDoubleForce_ForceExecutesOnce) {
-  using ::testing::StrictMock;
-  auto mock = std::make_unique<StrictMock<MockShutdownExecutor>>();
-  auto *mock_ptr = mock.get();
-
-  EXPECT_CALL(*mock_ptr, ExecuteForceShutdown(::testing::_, ::testing::_)).Times(1);
-  EXPECT_CALL(*mock_ptr,
-              ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))
-      .Times(0);
-  EXPECT_CALL(*mock_ptr, ExecuteWorkerExit(::testing::_, ::testing::_, ::testing::_))
-      .Times(::testing::AnyNumber());
-  EXPECT_CALL(*mock_ptr, ExecuteHandleExit(::testing::_, ::testing::_, ::testing::_))
-      .Times(::testing::AnyNumber());
-  EXPECT_CALL(*mock_ptr, KillChildProcessesImmediately()).Times(::testing::AnyNumber());
-  EXPECT_CALL(*mock_ptr, ShouldWorkerIdleExit())
-      .Times(::testing::AnyNumber())
-      .WillRepeatedly(::testing::Return(false));
-
+TEST_F(ShutdownCoordinatorTest, Concurrent_DoubleForce_ForceExecutesOnce) {
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  auto *fake_ptr = fake.get();
   auto coordinator =
-      std::make_unique<ShutdownCoordinator>(std::move(mock), WorkerType::WORKER);
+      std::make_unique<ShutdownCoordinator>(std::move(fake), WorkerType::WORKER);
 
   std::thread t1(
       [&] { coordinator->RequestShutdown(true, ShutdownReason::kForcedExit, "force1"); });
@@ -476,6 +430,8 @@ TEST_F(ShutdownCoordinatorTest, ConcurrentDoubleForce_ForceExecutesOnce) {
 
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);
+  EXPECT_EQ(fake_ptr->force_calls.load(), 1);
+  EXPECT_EQ(fake_ptr->graceful_calls.load(), 0);
 }
 
 }  // namespace core

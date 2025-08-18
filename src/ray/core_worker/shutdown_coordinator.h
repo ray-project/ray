@@ -172,6 +172,9 @@ class ShutdownCoordinator {
           nullptr);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
+  /// TODO: This is public for now to ease incremental migration and testing.
+  /// Consider removing or making private once all call sites are wired to
+  /// RequestShutdown directly.
   /// \param reason The reason for shutdown initiation
   /// \return true if this call initiated shutdown, false if already shutting down
   bool TryInitiateShutdown(ShutdownReason reason);
@@ -182,6 +185,8 @@ class ShutdownCoordinator {
   /// valid from kShuttingDown.
   ///
   /// \return true if transition succeeded, false if invalid state
+  /// TODO: Public-for-now to support targeted tests; make private when tests
+  /// drive behavior exclusively via RequestShutdown.
   bool TryTransitionToDisconnecting();
 
   /// Attempt to transition to final shutdown state.
@@ -190,6 +195,8 @@ class ShutdownCoordinator {
   /// (force path).
   ///
   /// \return true if transition succeeded, false if invalid state
+  /// TODO: Public-for-now to support targeted tests; make private when tests
+  /// drive behavior exclusively via RequestShutdown.
   bool TryTransitionToShutdown();
 
   /// Get the current shutdown state (mutex-protected, fast path safe).
