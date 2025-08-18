@@ -509,9 +509,8 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
   };
 
-  RedisCommand command{"PING"};
-  SendRedisCmdArgsAsKeys(std::move(command), std::move(redis_callback));
-  return;
+	auto *context = redis_client_->GetPrimaryContext();
+  context->RunArgvAsync({"PING"}, redis_callback);
 }
 
 // Returns True if at least 1 key is deleted, False otherwise.
