@@ -24,15 +24,6 @@ ls -d -- /opt/python/*/bin/
 PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
 PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 
-echo "Checking ./.whl path"
-ls -d -- ./.whl/*
-
-echo "Checking ../.whl path"
-ls -d -- ../.whl/*
-
-echo "Checking ../.whl path"
-ls -d -- ../../.whl/*
-
 # Find the appropriate wheel by grepping for the Python version.
 PYTHON_WHEEL=$(find ./.whl -maxdepth 1 -type f -name "*${PYTHON}*.whl" -print -quit)
 echo "PYTHON_WHEEL: $PYTHON_WHEEL"
