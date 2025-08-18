@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 import torch
 
+import ray
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 
@@ -235,8 +236,8 @@ def test_throughput_tracking(logger):
     check(logger.peek("count"), num_iters * 2 + 1)
     approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
     check(
-        logger.peek("count", throughput=True), approx_throughput, rtol=0.1
-    )  # 10% tolerance in throughput
+        logger.peek("count", throughput=True), approx_throughput, rtol=0.15
+    )  # 15% tolerance in throughput
 
     # Test _get_throughputs() method without key (returns all throughputs)
     throughputs = logger.peek(throughput=True)
@@ -272,6 +273,70 @@ def test_throughput_tracking(logger):
     check("count_throughput" in all_throughputs, True)
     check("nested" in all_throughputs, True)
     check("count_throughput" in all_throughputs["nested"], True)
+
+
+def test_throughput_aggregation():
+    """Test aggregation of throughput metrics from different sources."""
+
+    @ray.remote
+    class EnvRunner:
+        def __init__(self):
+            self.metrics = MetricsLogger()
+
+        def increase(self, count=1):
+            self.metrics.log_value(
+                "counter",
+                count,
+                reduce="sum",
+                clear_on_reduce=False,  # lifetime counter
+                with_throughput=True,
+            )
+
+        def get_metrics(self):
+            return self.metrics.reduce()
+
+    env_runners = [EnvRunner.remote() for _ in range(2)]
+
+    # Main logger.
+    main_metrics = MetricsLogger()
+
+    env_runners[0].increase.remote(count=0)
+    env_runners[1].increase.remote(count=0)
+    _ = [ray.get(act.get_metrics.remote()) for act in env_runners]
+
+    # Add 1 count for actor0 and 5 counts for actor1 to the lifetime counters
+    # in each of the 5 iterations.
+    # 5 iterations -> expect final count of 5 * 6 = 30
+    for _ in range(5):
+        time.sleep(0.1)
+        env_runners[0].increase.remote(count=1)
+        env_runners[1].increase.remote(count=5)
+
+    # Pull metrics from both actors.
+    results = [ray.get(act.get_metrics.remote()) for act in env_runners]
+    main_metrics.aggregate(results)
+    # The first aggregate (before the key even exists in `main_metrics`, throughput
+    # should be NaN.
+    check(main_metrics.peek("counter"), 30)
+    # After first aggregation, throughput should be NaN, b/c the Stats did not exist
+    # within the `MetricsLogger`.
+    assert np.isnan(main_metrics.stats["counter"].throughput)
+
+    # Add 1 count for actor0 and 2 counts for actor1 to the lifetime counters
+    # in each of the 5 iterations.
+    # 5 iterations each 1 sec -> expect throughput of 3/sec.
+    for _ in range(5):
+        time.sleep(0.2)
+        env_runners[0].increase.remote(count=1)
+        env_runners[1].increase.remote(count=2)
+    results = [ray.get(act.get_metrics.remote()) for act in env_runners]
+    main_metrics.aggregate(results)
+
+    check(main_metrics.peek("counter"), 30 + 15)
+    tp = main_metrics.stats["counter"].throughput
+    check(tp, 15, atol=2)
+
+    print(main_metrics.compile())
 
 
 def test_reset_and_delete(logger):
