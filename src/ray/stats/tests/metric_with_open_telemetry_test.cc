@@ -14,14 +14,14 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
 #include "ray/stats/metric.h"
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
 
 namespace ray {
-namespace telemetry {
+namespace observability {
 
 using namespace std::literals;
-using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
+using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
 using TagsMap = absl::flat_hash_map<std::string, std::string>;
 
@@ -233,5 +233,5 @@ INSTANTIATE_TEST_SUITE_P(
                          {"Tag2", "Value5"}},
                         /*expected_value=*/82.0}));
 
-}  // namespace telemetry
+}  // namespace observability
 }  // namespace ray
