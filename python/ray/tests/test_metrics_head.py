@@ -132,6 +132,9 @@ def test_metrics_folder_with_dashboard_override(
             contents = json.loads(f.read())
             assert contents["uid"] == uid
             for panel in contents["panels"]:
+                if panel["type"] == "row":
+                    # Row panels don't have targets
+                    continue
                 for target in panel["targets"]:
                     # Check for standard_global_filters
                     assert 'SessionName=~"$SessionName"' in target["expr"]
@@ -154,6 +157,9 @@ def test_metrics_folder_with_dashboard_override(
             found_max = False
             found_max_pending = False
             for panel in contents["panels"]:
+                if panel["type"] == "row":
+                    # Row panels don't have series overrides
+                    continue
                 for override in panel.get("seriesOverrides", []):
                     if override.get("alias") == "MAX":
                         assert override["fill"] == 0
