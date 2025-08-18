@@ -501,7 +501,9 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
   auto redis_callback = [callback = std::move(callback)](
                             const std::shared_ptr<CallbackReply> &reply) mutable {
     Status status = Status::OK();
-    if (reply->IsError()) {
+    if (reply->IsNil()) {
+      status = Status::IOError("Unexpected connection error.");
+    } else if (reply->IsError()) {
       status = reply->ReadAsStatus();
     }
     std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
