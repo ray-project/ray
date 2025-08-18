@@ -113,7 +113,7 @@ def train_func(config):
     # HF Transformers Trainer
     training_args = TrainingArguments(
         f"{MODEL_NAME}-wikitext2",
-        eval_strategy=config["evaluation_strategy"],
+        evaluation_strategy=config["evaluation_strategy"],
         logging_strategy=config["logging_strategy"],
         save_strategy=config["save_strategy"],
         eval_steps=config["eval_steps"],
@@ -174,7 +174,7 @@ def test_e2e_hf_data_distributed(ray_start_6_cpus_2_gpus, config_id, num_workers
         # HF Transformers Trainer
         training_args = TrainingArguments(
             f"{MODEL_NAME}-wikitext2",
-            eval_strategy=config["evaluation_strategy"],
+            evaluation_strategy=config["evaluation_strategy"],
             logging_strategy=config["logging_strategy"],
             save_strategy=config["save_strategy"],
             eval_steps=config["eval_steps"],
@@ -265,7 +265,7 @@ def test_e2e_ray_data_distributed(ray_start_6_cpus_2_gpus, config_id, num_worker
         # HF Transformers Trainer
         training_args = TrainingArguments(
             f"{MODEL_NAME}-wikitext2",
-            eval_strategy=config["evaluation_strategy"],
+            evaluation_strategy=config["evaluation_strategy"],
             logging_strategy=config["logging_strategy"],
             save_strategy=config["save_strategy"],
             eval_steps=config["eval_steps"],
@@ -359,7 +359,7 @@ def test_e2e_hf_data_local_mode(ray_start_4_cpus, config_id, num_workers):
         # HF Transformers Trainer
         training_args = TrainingArguments(
             f"{MODEL_NAME}-wikitext2",
-            eval_strategy=config["evaluation_strategy"],
+            evaluation_strategy=config["evaluation_strategy"],
             logging_strategy=config["logging_strategy"],
             save_strategy=config["save_strategy"],
             eval_steps=config["eval_steps"],
@@ -443,7 +443,7 @@ def test_e2e_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
         # HF Transformers Trainer
         training_args = TrainingArguments(
             f"{MODEL_NAME}-wikitext2",
-            eval_strategy=config["evaluation_strategy"],
+            evaluation_strategy=config["evaluation_strategy"],
             logging_strategy=config["logging_strategy"],
             save_strategy=config["save_strategy"],
             eval_steps=config["eval_steps"],
