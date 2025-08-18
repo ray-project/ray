@@ -25,8 +25,13 @@ PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
 PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 
 # Find the appropriate wheel by grepping for the Python version.
-PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PYTHON"* | head -n 1)"
+PYTHON_WHEEL=$(find ../.whl -maxdepth 1 -type f -name "*${PYTHON}*.whl" -print -quit)
 echo "PYTHON_WHEEL: $PYTHON_WHEEL"
+
+if [[ -z "$PYTHON_WHEEL" ]]; then
+  echo "No wheel found for pattern *${PYTHON}*.whl" >/dev/stderr
+  exit 1
+fi
 
 # Print some env info
 "$PYTHON_EXE" --version
