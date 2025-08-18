@@ -369,6 +369,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         CoreWorkerService, NumPendingTasks, *request, callback, grpc_client_, timeout_ms);
   }
 
+  std::string DebugString() const override { return ""; }
+
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
