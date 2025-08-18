@@ -29,6 +29,7 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -130,7 +131,7 @@ else:
     )
     RAY_EXTRA_CPP = True
     # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or os.getenv("RAY_DISABLE_EXTRA_CPP") == "1":
+    if "dev" in setup_spec.version or not BUILD_CPP:
         RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
@@ -315,7 +316,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.0.0",
+        "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
@@ -710,7 +711,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
         build(False, False, False)
     else:
-        build(True, BUILD_JAVA, True)
+        build(True, BUILD_JAVA, BUILD_CPP)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
