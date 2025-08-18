@@ -110,11 +110,12 @@ class TrainFnUtils:
                     f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
                 )
 
-        sync_actor = get_internal_train_context().get_synchronization_actor()
+        train_context = get_internal_train_context()
+        sync_actor = train_context.get_synchronization_actor()
         return ray.get(
             sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=get_internal_train_context().get_world_rank(),
-                world_size=get_internal_train_context().get_world_size(),
+                world_rank=train_context.get_world_rank(),
+                world_size=train_context.get_world_size(),
                 data=data,
                 caller_method_name="ray.train.collective.broadcast_from_rank_zero",
             )
