@@ -40,7 +40,7 @@ class PushManager {
   /// \param dest_id The node to send to.
   /// \param obj_id The object to send.
   /// \param num_chunks The total number of chunks to send.
-  /// \param max_chunk_size The max size of a chunk for this object in bytes.
+  /// \param max_chunk_size See comment for max_chunk_size_ in PushState.
   /// \param send_chunk_fn This function will be called with args 0...{num_chunks-1}.
   ///                      The caller promises to call PushManager::OnChunkComplete()
   ///                      once a call to send_chunk_fn finishes.
@@ -81,7 +81,9 @@ class PushManager {
 
     /// total number of chunks of this object.
     int64_t num_chunks_;
-    /// the max size of a chunk for this object in bytes
+    /// the max size of a chunk for this object in bytes, used to count bytes_in_flight_
+    /// and assure it stays under max_bytes_in_flight_. This means we can overcount for
+    /// the last chunk but we're accepting that to keep the code simpler.
     int64_t max_chunk_size_;
     /// The function to send chunks with.
     std::function<void(int64_t)> chunk_send_fn_;
