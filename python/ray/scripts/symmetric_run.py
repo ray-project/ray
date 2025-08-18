@@ -1,23 +1,6 @@
-"""Symmetric Run for Ray.
+"""Symmetric Run for Ray."""
 
-This script will:
-
- - Start a Ray cluster across all nodes.
- - Run a command on the head node.
- - Stop the Ray cluster.
-
-Currently, it also fails when there is another detected Ray instance running on the same node.
-This is because Ray currently does not support the ability to kill a specific Ray instance.
-
-Example:
-
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
-
-    xpanes -c 4 "python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --wait-for-nnodes 4 -- python my_script.py"
-
-"""
-
-from typing import List, Tuple
+from typing import List
 
 import click
 import ray
@@ -84,149 +67,93 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     return False
 
 
-def update_ray_start_cmd(
-    ray_start_cmd: List[str],
-    num_cpus: int,
-    num_gpus: int,
-    disable_usage_stats: bool,
-    resources: str,
-    min_worker_port: int,
-    max_worker_port: int,
-    node_manager_port: int,
-    object_manager_port: int,
-    runtime_env_agent_port: int,
-    dashboard_agent_grpc_port: int,
-    dashboard_agent_listen_port: int,
-    metrics_export_port: int,
-):
-    # Add optional parameters if provided
-    if num_cpus is not None:
-        ray_start_cmd.extend(["--num-cpus", str(num_cpus)])
-    if num_gpus is not None:
-        ray_start_cmd.extend(["--num-gpus", str(num_gpus)])
-    if disable_usage_stats:
-        ray_start_cmd.append("--disable-usage-stats")
-    if resources != "{}":
-        ray_start_cmd.extend(["--resources", resources])
-    if min_worker_port:
-        ray_start_cmd.extend(["--min-worker-port", str(min_worker_port)])
-    if max_worker_port:
-        ray_start_cmd.extend(["--max-worker-port", str(max_worker_port)])
-    if node_manager_port:
-        ray_start_cmd.extend(["--node-manager-port", str(node_manager_port)])
-    if object_manager_port:
-        ray_start_cmd.extend(["--object-manager-port", str(object_manager_port)])
-    if runtime_env_agent_port:
-        ray_start_cmd.extend(["--runtime-env-agent-port", str(runtime_env_agent_port)])
-    if dashboard_agent_grpc_port:
-        ray_start_cmd.extend(
-            ["--dashboard-agent-grpc-port", str(dashboard_agent_grpc_port)]
-        )
-    if dashboard_agent_listen_port:
-        ray_start_cmd.extend(
-            ["--dashboard-agent-listen-port", str(dashboard_agent_listen_port)]
-        )
-    if metrics_export_port:
-        ray_start_cmd.extend(["--metrics-export-port", str(metrics_export_port)])
-    return ray_start_cmd
+def clean_and_validate_ray_start_args(ray_start_args: List[str]) -> List[str]:
+    cleaned_args = ray_start_args.copy()
+    for existing_arg in ["--address", "--wait-for-nnodes"]:
+        if existing_arg in cleaned_args:
+            address_index = cleaned_args.index(existing_arg)
+            # remove the argument and the value
+            cleaned_args.pop(address_index)
+            cleaned_args.pop(address_index)
+
+    for arg in cleaned_args:
+        if arg == "--head":
+            raise click.ClickException("Cannot use --head option in symmetric_run.")
+        if arg == "--node-ip-address":
+            raise click.ClickException(
+                "Cannot use --node-ip-address option in symmetric_run."
+            )
+        if arg == "--port":
+            raise click.ClickException("Cannot use --port option in symmetric_run.")
+        if arg == "--block":
+            raise click.ClickException("Cannot use --block option in symmetric_run.")
+
+    return cleaned_args
 
 
-@click.command()
+@click.command(
+    name="symmetric_run",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    help="""Command to start Ray across all nodes and execute an entrypoint command.
+
+USAGE:
+
+    python -m ray.scripts.symmetric_run --address ADDRESS
+[--wait-for-nnodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
+
+DESCRIPTION:
+
+    This command (1) starts a Ray cluster across all nodes,
+(2) runs a command on the head node, and (3) stops the Ray cluster.
+
+    The '--' separator is required to distinguish between Ray start arguments
+and the entrypoint command. The --wait-for-nnodes option is optional and
+can be used to wait for a specific number of nodes to start.
+
+EXAMPLES:
+
+    # Start Ray with default settings and run a Python script
+
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
+
+    # Start Ray with specific head node and run a command
+
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --wait-for-nnodes 4 -- python train_model.py --epochs=100
+
+    # Start Ray and run a multi-word command
+
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --wait-for-nnodes 4 --num-cpus=4 -- python -m my_module --config=prod
+
+RAY START OPTIONS:
+
+    Most ray start command options are supported. Arguments that are not
+supported are: --head, --node-ip-address, --port, --block.
+
+SEPARATOR REQUIREMENT:
+
+    The '--' separator is mandatory and must appear between Ray start
+    arguments and the entrypoint command. This ensures clear separation
+    between the two sets of arguments.
+""",
+)
 @click.option(
     "--address", required=True, type=str, help="The address of the Ray cluster."
-)
-@click.option(
-    "--num-cpus",
-    type=int,
-    help="The number of CPUs to use for the Ray cluster. If not provided, "
-    "the number of CPUs will be automatically detected.",
-)
-@click.option(
-    "--num-gpus",
-    type=int,
-    help="The number of GPUs to use for the Ray cluster. If not provided, "
-    "the number of GPUs will be automatically detected.",
 )
 @click.option(
     "--wait-for-nnodes",
     type=int,
     help="If provided, wait for this number of nodes to start.",
 )
-@click.option(
-    "--disable-usage-stats",
-    is_flag=True,
-    default=False,
-    help="If True, the usage stats collection will be disabled.",
-)
-@click.option(
-    "--resources",
-    required=False,
-    default="{}",
-    type=str,
-    help="A JSON serialized dictionary mapping resource name to resource quantity.",
-)
-@click.option(
-    "--min-worker-port",
-    type=int,
-    help="the lowest port number that workers will bind on. If not set, "
-    "random ports will be chosen.",
-)
-@click.option(
-    "--max-worker-port",
-    type=int,
-    help="the highest port number that workers will bind on. If set, "
-    "'--min-worker-port' must also be set.",
-)
-@click.option(
-    "--node-manager-port",
-    type=int,
-    default=0,
-    help="the port to use for starting the node manager",
-)
-@click.option(
-    "--object-manager-port",
-    type=int,
-    help="the port to use for starting the object manager",
-)
-@click.option(
-    "--runtime-env-agent-port",
-    type=int,
-    help="The port for the runtime environment agents to listen for http on.",
-)
-@click.option(
-    "--dashboard-agent-grpc-port",
-    type=int,
-    help="the port for dashboard agents to listen for grpc on.",
-)
-@click.option(
-    "--dashboard-agent-listen-port",
-    type=int,
-    help="the port for dashboard agents to listen for http on.",
-)
-@click.option(
-    "--metrics-export-port",
-    type=int,
-    default=None,
-    help="the port to use to expose Ray metrics through a Prometheus endpoint.",
-)
-@click.argument("entrypoint-on-head", nargs=-1, type=click.UNPROCESSED)
-def symmetric_run(
-    address: str,
-    wait_for_nnodes: int,
-    entrypoint_on_head: Tuple[str],
-    num_cpus: int,
-    num_gpus: int,
-    disable_usage_stats: bool,
-    resources: str,
-    min_worker_port: int,
-    max_worker_port: int,
-    node_manager_port: int,
-    object_manager_port: int,
-    runtime_env_agent_port: int,
-    dashboard_agent_grpc_port: int,
-    dashboard_agent_listen_port: int,
-    metrics_export_port: int,
-):
+@click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
+def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
+    all_args = sys.argv[1:]
+    separator = all_args.index("--")
+    if separator == -1:
+        raise click.ClickException("No separator '--' found in arguments.")
+
+    ray_start_args, entrypoint_on_head = all_args[:separator], all_args[separator + 1 :]
+
+    ray_start_args = clean_and_validate_ray_start_args(ray_start_args)
     min_nodes = 1 if wait_for_nnodes is None else wait_for_nnodes
 
     if check_ray_already_started():
@@ -279,23 +206,9 @@ def symmetric_run(
                 "--head",
                 f"--node-ip-address={resolved_gcs_ip}",
                 f"--port={gcs_port}",
+                *ray_start_args,
             ]
 
-            ray_start_cmd = update_ray_start_cmd(
-                ray_start_cmd,
-                num_cpus,
-                num_gpus,
-                disable_usage_stats,
-                resources,
-                min_worker_port,
-                max_worker_port,
-                node_manager_port,
-                object_manager_port,
-                runtime_env_agent_port,
-                dashboard_agent_grpc_port,
-                dashboard_agent_listen_port,
-                metrics_export_port,
-            )
             # Start Ray head. This runs in the background and hides output.
             subprocess.run(ray_start_cmd, check=True, capture_output=True)
             click.echo("Head node started.")
@@ -308,7 +221,7 @@ def symmetric_run(
             # Run the user command if provided.
             if entrypoint_on_head:
                 click.echo(
-                    f"Running command on head node: {' '.join(entrypoint_on_head)}",
+                    f"Running command on head node: {entrypoint_on_head}",
                 )
                 click.echo("=======================")
                 result = subprocess.run(entrypoint_on_head)
@@ -321,23 +234,14 @@ def symmetric_run(
                 raise click.ClickException("Timed out waiting for head node to start.")
 
             # Build the ray start command for worker nodes with all parameters
-            ray_start_cmd = ["ray", "start", "--address", address, "--block"]
-
-            ray_start_cmd = update_ray_start_cmd(
-                ray_start_cmd,
-                num_cpus,
-                num_gpus,
-                disable_usage_stats,
-                resources,
-                min_worker_port,
-                max_worker_port,
-                node_manager_port,
-                object_manager_port,
-                runtime_env_agent_port,
-                dashboard_agent_grpc_port,
-                dashboard_agent_listen_port,
-                metrics_export_port,
-            )
+            ray_start_cmd = [
+                "ray",
+                "start",
+                "--address",
+                address,
+                "--block",
+                *ray_start_args,
+            ]
 
             # This command will block until the Ray cluster is stopped.
             subprocess.run(ray_start_cmd, check=True)
