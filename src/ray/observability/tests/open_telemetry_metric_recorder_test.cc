@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
 
 #include "gtest/gtest.h"
 
 namespace ray {
-namespace telemetry {
+namespace observability {
 
 class OpenTelemetryMetricRecorderTest : public ::testing::Test {
  public:
@@ -84,5 +84,5 @@ TEST_F(OpenTelemetryMetricRecorderTest, TestHistogramMetric) {
   ASSERT_TRUE(recorder_.IsMetricRegistered("test_histogram"));
 }
 
-}  // namespace telemetry
+}  // namespace observability
 }  // namespace ray

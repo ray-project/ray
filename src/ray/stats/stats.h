@@ -28,9 +28,9 @@
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
@@ -40,7 +40,7 @@ namespace stats {
 
 #include <boost/asio.hpp>
 
-using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
+using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecorder;
 
 // TODO(sang) Put all states and logic into a singleton class Stats.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;

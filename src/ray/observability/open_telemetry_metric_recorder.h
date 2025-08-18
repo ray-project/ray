@@ -31,7 +31,7 @@
 #include "absl/container/flat_hash_map.h"
 
 namespace ray {
-namespace telemetry {
+namespace observability {
 
 // OpenTelemetryMetricRecorder is a singleton class that initializes the OpenTelemetry
 // grpc exporter and creates a Meter for recording metrics. It is responsible for
@@ -159,5 +159,5 @@ class OpenTelemetryMetricRecorder {
   friend class OpenTelemetryMetricRecorderTest;
   friend class OpenTelemetryMetricRecorderTest_TestGaugeMetric_Test;
 };
-}  // namespace telemetry
+}  // namespace observability
 }  // namespace ray
