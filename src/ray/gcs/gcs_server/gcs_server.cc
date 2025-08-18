@@ -136,9 +136,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     redis_health_check_periodical_runner_ = PeriodicalRunner::Create(io_context);
     redis_health_check_periodical_runner_->RunFnPeriodically(
         [&redis_store_client] {
-          redis_store_client->AsyncCheckHealth([](const Status &status) {
+          redis_store_client->AsyncCheckHealth({[](const Status &status) {
             RAY_CHECK_OK(status) << "Redis connection failed.";
-          })
+          }, io_context});
         },
         RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
         "GcsServer.deadline_timer.redis_health_check");
