@@ -17,10 +17,10 @@ ray_cc_library(
     hdrs = ["redis_store_client.h"],
     deps = [
         ":gcs_store_client",
+        "//src/ray/common:asio",
         "//src/ray/gcs:gcs_callback",
         "//src/ray/gcs:gcs_redis_client",
         "//src/ray/util:container_util",
-        "//src/ray/common:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
