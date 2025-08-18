@@ -64,9 +64,8 @@ async def test_deployment_handle_result_fails_in_async_context_but_await_succeed
     assert await h.remote() == "hi"
 
 
-@pytest.mark.asyncio
-async def test_http_proxy_requests_work_when_router_in_same_loop(
-    serve_instance_async, _skip_test_if_router_running_in_separate_loop
+def test_http_proxy_requests_work_when_router_in_same_loop(
+    serve_instance, _skip_test_if_router_running_in_separate_loop
 ):
     @serve.deployment
     class F:
@@ -100,7 +99,7 @@ async def test_deployment_handle_configured_for_same_loop_via_init(
 
 @pytest.mark.asyncio
 async def test_child_deployment_handle_configured_for_same_loop_communication(
-    serve_instance_async,
+    serve_instance,
 ):
     @serve.deployment
     class Child:
