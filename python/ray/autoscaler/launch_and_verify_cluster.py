@@ -392,7 +392,10 @@ if __name__ == "__main__":
 
     provider_type = config_yaml.get("provider", {}).get("type")
     config_yaml["provider"]["cache_stopped_nodes"] = False
-    if provider_type == "aws":
+    if provider_type == "azure":
+        print("======================================")
+        print("AZURE provider detected.")
+    elif provider_type == "aws":
         download_ssh_key_aws()
     elif provider_type == "gcp":
         download_ssh_key_gcp()
