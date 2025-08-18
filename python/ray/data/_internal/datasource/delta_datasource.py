@@ -190,10 +190,7 @@ class DeltaDatasource(ParquetDatasource):
         from deltalake import DeltaTable
 
         # Build DeltaTable constructor arguments with enhanced options
-        dt_args = {
-            "table_uri": self._delta_path,
-            "options": self._options.copy()
-        }
+        dt_args = {"table_uri": self._delta_path, "options": self._options.copy()}
 
         # Add storage options if provided (Delta Lake 1.x feature)
         if self._storage_options:
@@ -221,7 +218,9 @@ class DeltaDatasource(ParquetDatasource):
             else:
                 paths = dt.file_uris()
 
-            logger.info(f"Successfully extracted {len(paths)} parquet files from Delta table")
+            logger.info(
+                f"Successfully extracted {len(paths)} parquet files from Delta table"
+            )
             return paths
 
         except Exception as e:
@@ -231,7 +230,7 @@ class DeltaDatasource(ParquetDatasource):
                 logger.warning(
                     f"Delta table has unsupported features, attempting fallback: {e}"
                 )
-                
+
                 # Add fallback options for unsupported features
                 fallback_options = {
                     "ignore_deletion_vectors": True,
@@ -243,17 +242,17 @@ class DeltaDatasource(ParquetDatasource):
 
                 try:
                     dt = DeltaTable(**dt_args)
-                    
+
                     if self._partition_filters:
                         paths = dt.file_uris(partition_filters=self._partition_filters)
                     else:
                         paths = dt.file_uris()
-                    
+
                     logger.info(
                         f"Successfully extracted {len(paths)} parquet files with fallback options"
                     )
                     return paths
-                    
+
                 except Exception as fallback_e:
                     logger.error(f"Fallback attempt also failed: {fallback_e}")
                     raise RuntimeError(
@@ -287,28 +286,28 @@ class DeltaDatasource(ParquetDatasource):
         try:
             # Try to get size information from the Delta table metadata
             from deltalake import DeltaTable
-            
+
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
                 dt_args["storage_options"] = self._storage_options
-            
+
             dt = DeltaTable(**dt_args)
-            
+
             # Get table metadata
             metadata = dt.metadata()
-            
+
             # Estimate size based on file sizes and row count
-            if hasattr(metadata, 'num_rows') and hasattr(metadata, 'size'):
+            if hasattr(metadata, "num_rows") and hasattr(metadata, "size"):
                 # If we have both row count and total size, use them
                 return metadata.size
-            elif hasattr(metadata, 'num_rows'):
+            elif hasattr(metadata, "num_rows"):
                 # Estimate based on row count (rough approximation)
                 estimated_bytes_per_row = 1024  # Conservative estimate
                 return metadata.num_rows * estimated_bytes_per_row
             else:
                 # Fall back to parent class estimation
                 return super().estimate_inmemory_data_size()
-                
+
         except Exception as e:
             logger.warning(f"Could not estimate Delta table size: {e}")
             # Fall back to parent class estimation
@@ -322,13 +321,13 @@ class DeltaDatasource(ParquetDatasource):
         """
         try:
             from deltalake import DeltaTable
-            
+
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
                 dt_args["storage_options"] = self._storage_options
-            
+
             dt = DeltaTable(**dt_args)
-            
+
             metadata = {
                 "table_uri": self._delta_path,
                 "version": dt.version(),
@@ -336,7 +335,7 @@ class DeltaDatasource(ParquetDatasource):
                 "partition_columns": dt.metadata().partition_columns,
                 "num_files": len(dt.file_uris()),
                 "num_rows": dt.metadata().num_rows,
-                "size_bytes": getattr(dt.metadata(), 'size', None),
+                "size_bytes": getattr(dt.metadata(), "size", None),
                 "created_time": dt.metadata().created_time,
                 "last_modified_time": dt.metadata().last_modified_time,
                 "configuration": dt.metadata().configuration,
@@ -344,9 +343,9 @@ class DeltaDatasource(ParquetDatasource):
                 "storage_options": self._storage_options,
                 "unity_catalog_config": self._unity_catalog_config,
             }
-            
+
             return metadata
-            
+
         except Exception as e:
             logger.warning(f"Could not get Delta table metadata: {e}")
             return {
@@ -365,20 +364,20 @@ class DeltaDatasource(ParquetDatasource):
         """
         try:
             from deltalake import DeltaTable
-            
+
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
                 dt_args["storage_options"] = self._storage_options
-            
+
             dt = DeltaTable(**dt_args)
-            
+
             # Get partition information
             partition_info = []
-            
+
             # Get all partition values
             for partition_col in dt.metadata().partition_columns:
                 partition_values = set()
-                
+
                 # Extract partition values from file paths
                 for file_uri in dt.file_uris():
                     # Parse partition values from the file path
@@ -388,14 +387,16 @@ class DeltaDatasource(ParquetDatasource):
                         # Extract the partition value from the path
                         # This is a basic implementation
                         pass
-                
-                partition_info.append({
-                    "column": partition_col,
-                    "values": list(partition_values),
-                })
-            
+
+                partition_info.append(
+                    {
+                        "column": partition_col,
+                        "values": list(partition_values),
+                    }
+                )
+
             return partition_info
-            
+
         except Exception as e:
             logger.warning(f"Could not get partition information: {e}")
             return []
@@ -408,20 +409,20 @@ class DeltaDatasource(ParquetDatasource):
         """
         try:
             from deltalake import DeltaTable
-            
+
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
                 dt_args["storage_options"] = self._storage_options
-            
+
             dt = DeltaTable(**dt_args)
-            
+
             version_info = {
                 "current_version": dt.version(),
                 "table_uri": self._delta_path,
                 "requested_version": self._version,
                 "has_time_travel": True,  # Delta tables support time travel
             }
-            
+
             # Try to get commit info if available
             try:
                 commit_info = dt.history()
@@ -430,9 +431,9 @@ class DeltaDatasource(ParquetDatasource):
             except Exception:
                 # Commit history might not be available
                 pass
-            
+
             return version_info
-            
+
         except Exception as e:
             logger.warning(f"Could not get version information: {e}")
             return {
@@ -454,16 +455,16 @@ class DeltaDatasource(ParquetDatasource):
         """
         try:
             from deltalake import DeltaTable
-            
+
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
                 dt_args["storage_options"] = self._storage_options
-            
+
             dt = DeltaTable(**dt_args)
-            
+
             # Get actual partition columns from the table
             actual_partition_columns = set(dt.metadata().partition_columns)
-            
+
             # Check if all filter columns exist in the table's partition columns
             for column, operator, value in partition_filters:
                 if column not in actual_partition_columns:
@@ -472,7 +473,7 @@ class DeltaDatasource(ParquetDatasource):
                         f"Available columns: {actual_partition_columns}"
                     )
                     return False
-                
+
                 # Validate operator
                 valid_operators = {"=", "!=", "in", "not in"}
                 if operator not in valid_operators:
@@ -481,9 +482,9 @@ class DeltaDatasource(ParquetDatasource):
                         f"Valid operators: {valid_operators}"
                     )
                     return False
-            
+
             return True
-            
+
         except Exception as e:
             logger.warning(f"Could not validate partition filters: {e}")
             return False
@@ -496,63 +497,63 @@ class DeltaDatasource(ParquetDatasource):
         """
         try:
             from deltalake import DeltaTable
-            
+
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
                 dt_args["storage_options"] = self._storage_options
-            
+
             dt = DeltaTable(**dt_args)
-            
+
             hints = {
                 "table_uri": self._delta_path,
                 "recommended_parallelism": None,
                 "memory_optimization": {},
                 "performance_tips": [],
             }
-            
+
             # Analyze table characteristics for optimization hints
             metadata = dt.metadata()
-            
+
             # File count-based parallelism recommendation
             num_files = len(dt.file_uris())
             if num_files > 0:
                 # Recommend parallelism based on file count, but cap it
                 recommended = min(num_files, 100)  # Cap at 100 for very large tables
                 hints["recommended_parallelism"] = recommended
-            
+
             # Memory optimization hints
             if self._without_files:
                 hints["memory_optimization"]["without_files"] = True
                 hints["performance_tips"].append(
                     "Using without_files=True reduces memory usage but disables file tracking"
                 )
-            
+
             if self._log_buffer_size:
                 hints["memory_optimization"]["log_buffer_size"] = self._log_buffer_size
                 hints["performance_tips"].append(
                     f"Log buffer size set to {self._log_buffer_size} for optimized commit log reading"
                 )
-            
+
             # Partition-based optimizations
             if self._partition_filters:
                 hints["performance_tips"].append(
                     "Partition filters applied - this will reduce data scanned"
                 )
-            
+
             # Version-based optimizations
             if self._version is not None:
                 hints["performance_tips"].append(
                     f"Reading specific version {self._version} - ensure this version exists"
                 )
-            
+
             # Storage optimization hints
             if self._storage_options:
                 hints["performance_tips"].append(
                     "Custom storage options provided - ensure they match your cloud configuration"
                 )
-            
+
             return hints
-            
+
         except Exception as e:
             logger.warning(f"Could not get optimization hints: {e}")
             return {

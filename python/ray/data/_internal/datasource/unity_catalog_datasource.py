@@ -387,11 +387,13 @@ class UnityCatalogConnector:
             self.table_name = parts[0] if parts else "unknown"
 
         # Update Unity Catalog config
-        self.unity_catalog_config.update({
-            "catalog_name": self.catalog_name,
-            "schema_name": self.schema_name,
-            "table_name": self.table_name,
-        })
+        self.unity_catalog_config.update(
+            {
+                "catalog_name": self.catalog_name,
+                "schema_name": self.schema_name,
+                "table_name": self.table_name,
+            }
+        )
 
     def validate_configuration(self) -> List[str]:
         """Validate the current configuration and return any issues found.
@@ -559,12 +561,14 @@ class UnityCatalogConnector:
                     env_vars["AWS_DEFAULT_REGION"] = self.region
 
                 # Update storage options for AWS
-                self.storage_options.update({
-                    "aws_region": self.region or aws.get("region"),
-                    "aws_access_key_id": aws["access_key_id"],
-                    "aws_secret_access_key": aws["secret_access_key"],
-                    "aws_session_token": aws["session_token"],
-                })
+                self.storage_options.update(
+                    {
+                        "aws_region": self.region or aws.get("region"),
+                        "aws_access_key_id": aws["access_key_id"],
+                        "aws_secret_access_key": aws["secret_access_key"],
+                        "aws_session_token": aws["session_token"],
+                    }
+                )
 
                 logger.info("Configured AWS credentials")
 
@@ -572,9 +576,11 @@ class UnityCatalogConnector:
                 env_vars["AZURE_STORAGE_SAS_TOKEN"] = creds["azuresasuri"]
 
                 # Update storage options for Azure
-                self.storage_options.update({
-                    "azure_storage_sas_token": creds["azuresasuri"],
-                })
+                self.storage_options.update(
+                    {
+                        "azure_storage_sas_token": creds["azuresasuri"],
+                    }
+                )
 
                 logger.info("Configured Azure SAS token")
 
@@ -591,9 +597,11 @@ class UnityCatalogConnector:
                     env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
 
                     # Update storage options for GCP
-                    self.storage_options.update({
-                        "google_application_credentials": temp_file.name,
-                    })
+                    self.storage_options.update(
+                        {
+                            "google_application_credentials": temp_file.name,
+                        }
+                    )
 
                     logger.info(
                         f"Configured GCP service account credentials: {temp_file.name}"
@@ -884,11 +892,13 @@ class UnityCatalogConnector:
             default_options.update(self.delta_options)
 
             # Add enhanced Delta Lake options
-            kwargs.update({
-                "options": default_options,
-                "storage_options": self.storage_options,
-                "unity_catalog_config": self.unity_catalog_config,
-            })
+            kwargs.update(
+                {
+                    "options": default_options,
+                    "storage_options": self.storage_options,
+                    "unity_catalog_config": self.unity_catalog_config,
+                }
+            )
 
             # Add other Delta Lake specific options if not present
             if "without_files" not in kwargs:
@@ -1046,7 +1056,7 @@ class UnityCatalogConnector:
         self,
         exc_type: Optional[type],
         exc_val: Optional[Exception],
-        exc_tb: Optional[Any]
+        exc_tb: Optional[Any],
     ) -> bool:
         """Context manager exit with cleanup."""
         self._cleanup_temp_files()

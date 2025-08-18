@@ -3995,7 +3995,7 @@ def read_delta(
 
     """
     from ray.data._internal.datasource.delta_datasource import DeltaDatasource
-    
+
     # Create the Delta datasource with all the provided options
     datasource = DeltaDatasource(
         path=path,
@@ -4018,7 +4018,7 @@ def read_delta(
         unity_catalog_config=unity_catalog_config,
         **arrow_parquet_args,
     )
-    
+
     # Read from the datasource
     return read_datasource(datasource)
 
