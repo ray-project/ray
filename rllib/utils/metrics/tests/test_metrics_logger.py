@@ -276,7 +276,7 @@ def test_throughput_tracking(logger):
 
 
 def test_throughput_aggregation():
-    """Test aggregation of throughput metrics from different sources."""
+    """Test aggregation of throughput metrics from different (remote) sources."""
 
     @ray.remote
     class EnvRunner:

@@ -573,9 +573,8 @@ class Stats:
                         continue
                     tmp_values.append(stats.values[-i])
 
-                # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
-                # TODO (sven) : explain why all this
-
+                # Now reduce across `tmp_values` based on the reduce-settings of this
+                # Stats.
                 if self._reduce_per_index_on_aggregate:
                     n_values = 1
                 else:
@@ -1004,18 +1003,27 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
         # clear_on_reduce=False) -> We subtract the previous value (from 2
         # `reduce()` calls ago) from all to-be-merged stats, so we don't count
         # twice the older sum from before.
-        added_sum = 0.0
+
+        # Also, for the merged, new throughput value, we need to find out what the
+        # actual value-delta is between before the last reduce and the current one.
+
+        added_sum = 0.0  # Used in `base_stats._recompute_throughput` if applicable.
         if (
             base_stats._reduce_method == "sum"
             and base_stats._inf_window
             and base_stats._clear_on_reduce is False
         ):
             for stat in incoming_stats:
+                # Subtract "lifetime counts" from the Stat's values to not count
+                # older "lifetime counts" more than once.
                 _hist = stat.get_reduce_history()
                 prev_reduction, new_reduction = _hist[-2][0], _hist[-1][0]
+                # This may not be populated yet -> use 0 then.
                 if np.isnan(prev_reduction):
                     prev_reduction = 0
                 base_stats.values[-1] -= prev_reduction
+                # Keep track of how many counts we actually gained (for throughput
+                # recomputation).
                 added_sum += new_reduction - prev_reduction
 
         if len(incoming_stats) > 1:
