@@ -129,7 +129,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
     break;
   case StorageType::REDIS_PERSIST: {
-    store_client = std::make_unique<RedisStoreClient>(CreateRedisClient(io_context), io_context);
+    store_client =
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context), io_context);
     break;
   }
   default:
