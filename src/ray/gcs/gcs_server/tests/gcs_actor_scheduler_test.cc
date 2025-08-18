@@ -44,7 +44,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
+    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
                                                               gcs_table_storage_.get(),
                                                               io_context_->GetIoService(),
