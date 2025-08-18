@@ -18,7 +18,7 @@ import ci.ray_ci.bazel_sharding as bazel_sharding
 GLOBAL_CONFIG_FILE = (
     os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
 )
-RAY_VERSION = "3.0.0.dev0"
+RAY_VERSION = "2.49.0"
 
 
 def ci_init() -> None:
