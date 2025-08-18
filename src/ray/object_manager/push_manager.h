@@ -31,9 +31,7 @@ class PushManager {
   /// \param max_bytes_in_flight Max number of bytes allowed to be in flight
   ///                             from this PushManager (this raylet).
   explicit PushManager(int64_t max_bytes_in_flight)
-      : max_bytes_in_flight_(max_bytes_in_flight) {
-    RAY_CHECK_GT(max_bytes_in_flight_, 0);
-  };
+      : max_bytes_in_flight_(max_bytes_in_flight){};
 
   /// Start pushing an object subject to max chunks in flight limit.
   ///
@@ -59,7 +57,6 @@ class PushManager {
   /// Cancel all pushes that have not yet been sent to the removed node.
   void HandleNodeRemoved(const NodeID &node_id);
 
-  /// Record the internal metrics.
   void RecordMetrics() const;
 
   int64_t BytesInFlight() const { return bytes_in_flight_; }
@@ -72,7 +69,6 @@ class PushManager {
     return push_requests_with_chunks_to_send_.size();
   }
 
-  /// Get the number of bytes in flight.
   std::string DebugString() const;
 
  private:
