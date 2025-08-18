@@ -612,11 +612,10 @@ class TaskManager : public TaskManagerInterface {
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. On success, sets direct_return_out to true if the object's value
   /// was returned directly by value (not stored in plasma).
-  Status HandleTaskReturn(const ObjectID &object_id,
-                          const rpc::ReturnObject &return_object,
-                          const NodeID &worker_node_id,
-                          bool store_in_plasma,
-                          bool *direct_return_out) ABSL_LOCKS_EXCLUDED(mu_);
+  StatusOr<bool> HandleTaskReturn(const ObjectID &object_id,
+                                  const rpc::ReturnObject &return_object,
+                                  const NodeID &worker_node_id,
+                                  bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.

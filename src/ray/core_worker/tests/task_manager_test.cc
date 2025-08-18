@@ -1359,6 +1359,191 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   ASSERT_EQ(stored_in_plasma.size(), 3);
 }
 
+// High-level tests around plasma put failures and retries using a real memory store
+TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
+  auto local_ref_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      lineage_pinning_enabled_);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                             local_ref_counter.get());
+
+  TaskManager failing_mgr(
+      *local_store,
+      *local_ref_counter,
+      /*put_in_local_plasma_callback=*/
+      [](const RayObject &, const ObjectID &) {
+        return Status::ObjectStoreFull("simulated");
+      },
+      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+        last_object_recovery_ = object_recovery;
+        return Status::OK();
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      [](const JobID &, const std::string &, const std::string &, double) {
+        return Status::OK();
+      },
+      /*max_lineage_bytes*/ 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+        return nullptr;
+      },
+      mock_gcs_client_);
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  failing_mgr.AddPendingTask(caller_address, spec, "");
+  failing_mgr.MarkDependenciesResolved(spec.TaskId());
+  failing_mgr.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  auto return_id = spec.ReturnId(0);
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  failing_mgr.CompletePendingTask(
+      spec.TaskId(), reply, rpc::Address(), /*app_err=*/false);
+
+  ASSERT_FALSE(failing_mgr.IsTaskPending(spec.TaskId()));
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_TRUE(results[0]->IsException());
+}
+
+TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
+  std::shared_ptr<std::atomic<int>> attempts = std::make_shared<std::atomic<int>>(0);
+  auto local_ref_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      lineage_pinning_enabled_);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                             local_ref_counter.get());
+  TaskManager retry_mgr(
+      *local_store,
+      *local_ref_counter,
+      /*put_in_local_plasma_callback=*/
+      [attempts](const RayObject &, const ObjectID &) {
+        int n = ++(*attempts);
+        if (n < 3) {
+          return Status::TransientObjectStoreFull("retry");
+        }
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+        last_object_recovery_ = object_recovery;
+        return Status::OK();
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      [](const JobID &, const std::string &, const std::string &, double) {
+        return Status::OK();
+      },
+      /*max_lineage_bytes*/ 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+        return nullptr;
+      },
+      mock_gcs_client_);
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  retry_mgr.AddPendingTask(caller_address, spec, "");
+  retry_mgr.MarkDependenciesResolved(spec.TaskId());
+  retry_mgr.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  auto return_id = spec.ReturnId(0);
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  retry_mgr.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), /*app_err=*/false);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_TRUE(results[0]->IsInPlasmaError());
+}
+
+TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
+  bool first_fail_done = false;
+  auto local_ref_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      lineage_pinning_enabled_);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                             local_ref_counter.get());
+  TaskManager dyn_mgr(
+      *local_store,
+      *local_ref_counter,
+      /*put_in_local_plasma_callback=*/
+      [&first_fail_done](const RayObject &, const ObjectID &) {
+        if (!first_fail_done) {
+          first_fail_done = true;
+          return Status::IOError("broken pipe");
+        }
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+        last_object_recovery_ = object_recovery;
+        return Status::OK();
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      [](const JobID &, const std::string &, const std::string &, double) {
+        return Status::OK();
+      },
+      /*max_lineage_bytes*/ 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+        return nullptr;
+      },
+      mock_gcs_client_);
+
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
+  dyn_mgr.MarkDependenciesResolved(spec.TaskId());
+  dyn_mgr.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  rpc::PushTaskReply reply;
+  auto generator_id = spec.ReturnId(0);
+  auto gen_obj = reply.add_return_objects();
+  gen_obj->set_object_id(generator_id.Binary());
+  auto data = GenerateRandomBuffer();
+  gen_obj->set_data(data->Data(), data->Size());
+  for (int i = 0; i < 2; i++) {
+    auto dyn_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+    auto dyn_obj = reply.add_dynamic_return_objects();
+    dyn_obj->set_object_id(dyn_id.Binary());
+    dyn_obj->set_data(data->Data(), data->Size());
+    dyn_obj->set_in_plasma(true);
+  }
+
+  dyn_mgr.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), /*app_err=*/false);
+  ASSERT_FALSE(dyn_mgr.IsTaskPending(spec.TaskId()));
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
   /**
    * Test create and deletion of stream works.
