@@ -111,7 +111,7 @@ class DashboardAgent:
                 ),
             )  # noqa
         )
-        grpc_ip = "127.0.0.1" if self.ip == "localhost" else "0.0.0.0"
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
             self.grpc_port = add_port_to_grpc_server(
                 self.server, build_address(grpc_ip, self.dashboard_agent_port)
