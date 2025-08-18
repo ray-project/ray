@@ -135,14 +135,24 @@ refresh_compile_commands(
 
 ray_cc_library(
     name = "ray_mock",
+    # NOTE(edoakes): we are moving towards fine-grained mock and fake targets.
+    # Do not include new files in this target, instead make a BUILD.bazel file
+    # in the subdirectory and exclude it here.
     hdrs = glob(
         ["src/mock/**/*.h"],
-        exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"],
+        exclude = [
+            "src/mock/ray/common/pubsub/publisher.h",
+            "src/mock/ray/common/pubsub/subscriber.h",
+            "src/mock/ray/common/ray_syncer/ray_syncer.h",
+        ],
     ),
 )
 
 ray_cc_library(
     name = "ray_fakes",
+    # NOTE(edoakes): we are moving towards fine-grained mock and fake targets.
+    # Do not include new files in this target, instead make a BUILD.bazel file
+    # in the subdirectory and exclude it here.
     hdrs = glob(
         ["src/fakes/**/*.h"],
     ),
