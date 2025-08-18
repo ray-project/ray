@@ -142,8 +142,7 @@ class SubscriptionIndex {
   absl::flat_hash_map<std::string, std::unique_ptr<EntityState>> entities_;
   // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
-  absl::flat_hash_map<UniqueID, absl::flat_hash_set<std::string>>
-      subscribers_to_key_id_;
+  absl::flat_hash_map<UniqueID, absl::flat_hash_set<std::string>> subscribers_to_key_id_;
 };
 
 struct LongPollConnection {

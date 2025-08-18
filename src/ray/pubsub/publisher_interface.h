@@ -80,7 +80,7 @@ class PublisherInterface {
                                       const UniqueID &subscriber_id,
                                       const std::optional<std::string> &key_id) = 0;
 
-  virtual std::string DebugString() const  = 0;
+  virtual std::string DebugString() const = 0;
 };
 
 }  // namespace pubsub

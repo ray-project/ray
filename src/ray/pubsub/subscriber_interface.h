@@ -57,14 +57,13 @@ class SubscriberInterface {
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
   /// \return True if inserted, false if the key already exists and this becomes a no-op.
-  virtual bool Subscribe(
-      std::unique_ptr<rpc::SubMessage> sub_message,
-      rpc::ChannelType channel_type,
-      const rpc::Address &publisher_address,
-      const std::string &key_id,
-      SubscribeDoneCallback subscribe_done_callback,
-      SubscriptionItemCallback subscription_callback,
-      SubscriptionFailureCallback subscription_failure_callback) = 0;
+  virtual bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+                         rpc::ChannelType channel_type,
+                         const rpc::Address &publisher_address,
+                         const std::string &key_id,
+                         SubscribeDoneCallback subscribe_done_callback,
+                         SubscriptionItemCallback subscription_callback,
+                         SubscriptionFailureCallback subscription_failure_callback) = 0;
 
   /// Subscribe to all entities in channel channel_type.
   ///
@@ -112,8 +111,8 @@ class SubscriberInterface {
   /// \param publisher_address The publisher address to check.
   /// \param key_id The entity id to check.
   virtual bool IsSubscribed(const rpc::ChannelType channel_type,
-                                          const rpc::Address &publisher_address,
-                                          const std::string &key_id) const = 0;
+                            const rpc::Address &publisher_address,
+                            const std::string &key_id) const = 0;
 
   virtual std::string DebugString() const = 0;
 

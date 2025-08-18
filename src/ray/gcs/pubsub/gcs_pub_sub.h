@@ -81,7 +81,8 @@ class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with GCS based GcsSubscribers.
   // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
-  GcsSubscriber(rpc::Address gcs_address, std::unique_ptr<pubsub::SubscriberInterface> subscriber)
+  GcsSubscriber(rpc::Address gcs_address,
+                std::unique_ptr<pubsub::SubscriberInterface> subscriber)
       : gcs_address_(std::move(gcs_address)), subscriber_(std::move(subscriber)) {}
 
   /// Subscribe*() member functions below would be incrementally converted to use the GCS

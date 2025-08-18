@@ -100,8 +100,7 @@ bool EntityState::RemoveSubscriber(const UniqueID &subscriber_id) {
   return subscribers_.erase(subscriber_id) > 0;
 }
 
-const absl::flat_hash_map<UniqueID, SubscriberState *> &EntityState::Subscribers()
-    const {
+const absl::flat_hash_map<UniqueID, SubscriberState *> &EntityState::Subscribers() const {
   return subscribers_;
 }
 

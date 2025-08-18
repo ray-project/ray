@@ -34,10 +34,7 @@ class MockPublisher : public Publisher {
                const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
-  MOCK_METHOD(std::string,
-              DebugString,
-              (),
-              (override));
+  MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
 }  // namespace pubsub
