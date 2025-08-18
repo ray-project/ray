@@ -85,11 +85,12 @@ class TrainFnUtils:
         This method is used by the public API function :func:`ray.train.collective.barrier`.
         Users should typically call ``ray.train.collective.barrier()`` instead of calling this method directly.
         """
-        sync_actor = get_internal_train_context().get_synchronization_actor()
+        train_context = get_internal_train_context()
+        sync_actor = train_context.get_synchronization_actor()
         return ray.get(
             sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=get_internal_train_context().get_world_rank(),
-                world_size=get_internal_train_context().get_world_size(),
+                world_rank=train_context.get_world_rank(),
+                world_size=train_context.get_world_size(),
                 data=None,
                 caller_method_name="ray.train.collective.barrier",
             )
