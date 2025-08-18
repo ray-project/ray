@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/pubsub/publisher_interface.h"
+
 namespace ray {
 namespace pubsub {
 
-class MockPublisher : public Publisher {
+class MockPublisher : public PublisherInterface {
  public:
   MOCK_METHOD(bool,
               RegisterSubscription,
@@ -34,7 +36,7 @@ class MockPublisher : public Publisher {
                const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
-  MOCK_METHOD(std::string, DebugString, (), (override));
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
 }  // namespace pubsub

@@ -34,11 +34,13 @@ ray_cc_test(
     srcs = ["reference_count_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:asio",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker:memory_store",
         "//src/ray/pubsub:publisher_interface",
+        "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber_interface",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_googletest//:gtest",
@@ -54,6 +56,8 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
@@ -72,6 +76,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
