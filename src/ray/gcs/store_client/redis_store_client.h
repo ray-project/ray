@@ -91,32 +91,28 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
   return os;
 }
 
-// Options for connecting to Redis.
-class RedisClientOptions {
- public:
+struct RedisClientOptions {
+  // Redis server address.
+  std::string ip;
+  int port;
+
+  // Redis username and password.
+  std::string username = "";
+  std::string password = "";
+
+  // Whether to use TLS/SSL for the connection.
+  bool enable_ssl = false;
+
   RedisClientOptions(const std::string &ip,
                      int port,
-                     const std::string &username,
-                     const std::string &password,
+                     const std::string &username = "",
+                     const std::string &password = "",
                      bool enable_ssl = false)
-      : ip_(ip),
-        port_(port),
-        username_(username),
-        password_(password),
-        enable_ssl_(enable_ssl) {}
-
-  // Redis server address
-  std::string ip_;
-  int port_;
-
-  // Username of Redis.
-  std::string username_;
-
-  // Password of Redis.
-  std::string password_;
-
-  // Whether to use tls/ssl for redis connection
-  bool enable_ssl_ = false;
+      : ip(ip),
+        port(port),
+        username(username),
+        password(password),
+        enable_ssl(enable_ssl) {}
 };
 
 // StoreClient using Redis as persistence backend.

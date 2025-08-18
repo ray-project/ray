@@ -120,13 +120,13 @@ void RedisStoreClient::MGetValues(
 
 std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service,
                                                   const RedisClientOptions &options) {
-  RAY_CHECK(!options.ip_.empty()) << "Redis IP address cannot be empty.";
+  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
   auto context = std::make_shared<RedisContext>(io_service);
-  RAY_CHECK_OK(context->Connect(options.ip_,
-                                options.port_,
-                                /*username=*/options.username_,
-                                /*password=*/options.password_,
-                                /*enable_ssl=*/options.enable_ssl_))
+  RAY_CHECK_OK(context->Connect(options.ip,
+                                options.port,
+                                /*username=*/options.username,
+                                /*password=*/options.password,
+                                /*enable_ssl=*/options.enable_ssl))
       << "Failed to connect to Redis.";
   return context;
 }
