@@ -112,6 +112,7 @@ ray_cc_library(
         "//src/ray/common:runtime_env",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
+        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/ipc:client_connection",
         "//src/ray/util:network_util",
