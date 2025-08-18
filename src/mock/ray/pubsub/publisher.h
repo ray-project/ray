@@ -19,6 +19,13 @@ namespace pubsub {
 
 class MockPublisher : public PublisherInterface {
  public:
+  MOCK_METHOD(void,
+              ConnectToSubscriber,
+              (const rpc::PubsubLongPollingRequest &request,
+               std::string *publisher_id,
+               google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
   MOCK_METHOD(bool,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
