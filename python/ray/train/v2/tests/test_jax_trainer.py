@@ -1,3 +1,6 @@
+import sys
+from unittest.mock import MagicMock
+
 import pytest
 
 import ray
@@ -129,6 +132,23 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         if node["Alive"] and node["Labels"].get("ray.io/tpu-slice-name") == slice_label
     ]
     assert len(labeled_nodes) == 2
+
+
+def test_training_loop_for_local_mode(ray_tpu_single_host, monkeypatch):
+    mock_jax = MagicMock()
+    mock_jax.devices.return_value = ["TPU:0"]
+    monkeypatch.setitem(sys.modules, "jax", mock_jax)
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=ScalingConfig(
+            num_workers=0,
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    assert result.metrics == {"result": ["TPU:0"]}
 
 
 if __name__ == "__main__":

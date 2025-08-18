@@ -39,8 +39,10 @@ def build_model():
     return model
 
 
-@pytest.mark.parametrize("num_workers", [1, 2])
-def test_tensorflow_linear(ray_start_4_cpus, num_workers):
+@pytest.mark.parametrize("num_workers", [0, 1, 2])
+def test_tensorflow_linear_for_distributed_and_local_mode(
+    ray_start_4_cpus, num_workers
+):
     """Also tests air Keras callback."""
     epochs = 1
 
@@ -67,7 +69,8 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     )
     result = trainer.fit()
     assert not result.error
-    assert result.checkpoint
+    if num_workers > 0:
+        assert result.checkpoint
 
 
 if __name__ == "__main__":

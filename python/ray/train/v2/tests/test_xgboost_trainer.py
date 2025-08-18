@@ -21,8 +21,6 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = ScalingConfig(num_workers=2)
-
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
 dataset_df["target"] = data_raw["target"]
@@ -35,7 +33,8 @@ params = {
 }
 
 
-def test_fit(ray_start_4_cpus):
+@pytest.mark.parametrize("num_workers", [0, 2])
+def test_fit_distributed_and_local_mode(ray_start_4_cpus, num_workers):
     def xgboost_train_fn_per_worker(
         label_column: str,
         dataset_keys: set,
@@ -81,6 +80,7 @@ def test_fit(ray_start_4_cpus):
 
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
+    scale_config = ScalingConfig(num_workers=num_workers)
     trainer = XGBoostTrainer(
         train_loop_per_worker=lambda: xgboost_train_fn_per_worker(
             label_column="target",

@@ -74,9 +74,10 @@ def test_no_optional_arguments():
     trainer.fit()
 
 
-def test_train_loop_config():
+@pytest.mark.parametrize("num_workers", [0, 1])
+def test_train_loop_config_for_distributed_and_local_mode(num_workers):
     """Check that the train loop config is passed to the train function
-    if a config parameter is accepted."""
+    if a config parameter is accepted, whether in distributed or local mode."""
 
     def train_fn(config):
         with create_dict_checkpoint({}) as checkpoint:
@@ -86,13 +87,14 @@ def test_train_loop_config():
     trainer = DataParallelTrainer(
         train_fn,
         train_loop_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
     result = trainer.fit()
     assert result.metrics == train_loop_config
 
 
-def test_report_checkpoint_rank0(tmp_path):
+@pytest.mark.parametrize("num_workers", [0, 2])
+def test_report_checkpoint_rank0_for_distributed_and_local_mode(num_workers, tmp_path):
     """Check that checkpoints can be reported from rank 0 only."""
 
     def train_fn():
@@ -105,12 +107,15 @@ def test_report_checkpoint_rank0(tmp_path):
 
     trainer = DataParallelTrainer(
         train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=num_workers),
         run_config=RunConfig(storage_path=str(tmp_path)),
     )
     result = trainer.fit()
     assert result.metrics == {"rank": 0}
-    assert result.checkpoint
+    if num_workers > 0:
+        assert result.checkpoint
+    else:
+        assert result.checkpoint is None
 
 
 def test_report_checkpoint_multirank(tmp_path):

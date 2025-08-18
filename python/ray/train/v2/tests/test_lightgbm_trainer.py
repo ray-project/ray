@@ -23,8 +23,6 @@ def ray_start_6_cpus():
     ray.shutdown()
 
 
-scale_config = ScalingConfig(num_workers=2)
-
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
 dataset_df["target"] = data_raw["target"]
@@ -36,7 +34,10 @@ params = {
 }
 
 
-def test_fit_with_categoricals(ray_start_6_cpus):
+@pytest.mark.parametrize("num_workers", [0, 2])
+def test_fit_with_categoricals_for_distributed_and_local_mode(
+    ray_start_6_cpus, num_workers
+):
     def lightgbm_train_fn_per_worker(
         config: dict,
         label_column: str,
@@ -82,13 +83,19 @@ def test_fit_with_categoricals(ray_start_6_cpus):
 
     train_df_with_cat = train_df.copy()
     test_df_with_cat = test_df.copy()
+    dataset_shard_size = num_workers if num_workers > 0 else 1
     train_df_with_cat["categorical_column"] = pd.Series(
-        (["A", "B"] * math.ceil(len(train_df_with_cat) / 2))[: len(train_df_with_cat)]
+        (["A", "B"] * math.ceil(len(train_df_with_cat) / dataset_shard_size))[
+            : len(train_df_with_cat)
+        ]
     ).astype("category")
     test_df_with_cat["categorical_column"] = pd.Series(
-        (["A", "B"] * math.ceil(len(test_df_with_cat) / 2))[: len(test_df_with_cat)]
+        (["A", "B"] * math.ceil(len(test_df_with_cat) / dataset_shard_size))[
+            : len(test_df_with_cat)
+        ]
     ).astype("category")
 
+    scale_config = ScalingConfig(num_workers=num_workers)
     train_dataset = ray.data.from_pandas(train_df_with_cat)
     valid_dataset = ray.data.from_pandas(test_df_with_cat)
     trainer = LightGBMTrainer(
@@ -102,9 +109,10 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    model = RayTrainReportCallback.get_model(checkpoint)
-    assert model.pandas_categorical == [["A", "B"]]
+    if num_workers > 0:
+        checkpoint = result.checkpoint
+        model = RayTrainReportCallback.get_model(checkpoint)
+        assert model.pandas_categorical == [["A", "B"]]
 
 
 if __name__ == "__main__":
