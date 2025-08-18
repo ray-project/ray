@@ -190,9 +190,9 @@ class RayTrainWorker:
         synchronization_actor: ActorHandle,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
+        controller_actor: ActorHandle,
         dataset_manager: Optional[ActorHandle] = None,
         checkpoint: Optional[Checkpoint] = None,
-        controller_actor: Optional[ActorHandle] = None,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
         context_callbacks_to_propagate = [
@@ -210,8 +210,8 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
-            checkpoint=checkpoint,
             controller_actor=controller_actor,
+            checkpoint=checkpoint,
             dataset_manager=dataset_manager,
         )
         # Configure the train and root logger for the worker processes.

@@ -484,7 +484,7 @@ class TrainController:
         self._shutdown()
 
         # Call after_controller_finish with the final result
-        result = await self._build_result()
+        result = self._build_result()
         for callback in self._controller_callbacks:
             callback.after_controller_finish(result)
 
@@ -500,7 +500,7 @@ class TrainController:
         self._set_state(AbortedState())
         ray.actor.exit_actor()
 
-    async def _build_result(self) -> Result:
+    def _build_result(self) -> Result:
 
         storage = self._checkpoint_manager._storage_context
 
@@ -531,7 +531,7 @@ class TrainController:
             _storage_filesystem=storage.storage_filesystem,
         )
 
-    async def get_result(self) -> Result:
+    def get_result(self) -> Result:
         """Get the final training result from the TrainController."""
 
         controller_state = self.get_state()
@@ -539,7 +539,7 @@ class TrainController:
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
-        return await self._build_result()
+        return self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
         """Get the training failed error from the controller state.

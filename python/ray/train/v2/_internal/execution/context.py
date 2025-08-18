@@ -98,9 +98,9 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
-    checkpoint: Optional[Checkpoint] = None
-
     controller_actor: ActorHandle
+
+    checkpoint: Optional[Checkpoint] = None
     num_reported_checkpoints: int = 0
 
     dataset_manager: Optional[ActorHandle["DatasetManager"]] = None
