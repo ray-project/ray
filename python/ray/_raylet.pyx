@@ -2013,6 +2013,7 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except (KeyboardInterrupt, SystemExit):
+                    # Special casing these two because Ray can raise them
                     raise
                 except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
@@ -2124,6 +2125,7 @@ cdef void execute_task(
                     c_tensor_transport
                 )
         except (KeyboardInterrupt, SystemExit):
+            # Special casing these two because Ray can raise them
             raise
         except BaseException as e:
             num_errors_stored = store_task_errors(
