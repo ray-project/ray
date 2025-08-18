@@ -132,6 +132,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
        bool include_task_info,
        std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update),
       (override));
+
+  MOCK_METHOD(std::string, GetSessionName, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {
