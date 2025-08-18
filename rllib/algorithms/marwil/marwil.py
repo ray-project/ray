@@ -457,7 +457,7 @@ class MARWIL(Algorithm):
         #  the user that sth. is not right, although it is as
         #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
-            return_iterator = (
+            return_iterator = self.config.num_learners > 0 or (
                 self.config.dataset_num_iters_per_learner > 1
                 if self.config.dataset_num_iters_per_learner
                 else True
