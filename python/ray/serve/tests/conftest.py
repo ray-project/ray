@@ -157,6 +157,25 @@ def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
+    # # Skip DEPLOY_FAILED apps as they may not delete properly
+    # try:
+    #     from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
+    #     from ray.serve._private.application_state import StatusOverview
+    #     from ray.serve.schema import ApplicationStatus
+        
+    #     all_apps = []
+    #     for status_bytes in ray.get(_shared_serve_instance._controller.list_serve_statuses.remote()):
+    #         proto = StatusOverviewProto.FromString(status_bytes)
+    #         status = StatusOverview.from_proto(proto)
+    #         # Only delete apps that aren't in DEPLOY_FAILED state
+    #         if status.app_status.status != ApplicationStatus.DEPLOY_FAILED:
+    #             all_apps.append(status.name)
+        
+    #     if all_apps:
+    #         _shared_serve_instance.delete_apps(all_apps, blocking=True)
+    # except Exception:
+    #     # Fallback to original behavior if something goes wrong
+    #     _shared_serve_instance.delete_all_apps()
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles(_skip_asyncio_check=True)
 
