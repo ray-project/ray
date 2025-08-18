@@ -1029,7 +1029,7 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, function_desc
 
 cdef c_bool determine_if_retryable(
     c_bool should_retry_exceptions,
-    Exception e,
+    e: BaseException,
     const c_string serialized_retry_exception_allowlist,
     FunctionDescriptor function_descriptor,
 ):
@@ -2012,7 +2012,10 @@ cdef void execute_task(
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
-                except Exception as e:
+                except (KeyboardInterrupt, SystemExit):
+                    # Special casing these two because Ray can raise them
+                    raise
+                except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
                                     e,
@@ -2121,8 +2124,10 @@ cdef void execute_task(
                     None, # ref_generator_id
                     c_tensor_transport
                 )
-
-        except Exception as e:
+        except (KeyboardInterrupt, SystemExit):
+            # Special casing these two because Ray can raise them
+            raise
+        except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error, c_tensor_transport)
@@ -2195,6 +2200,7 @@ cdef execute_task_with_cancellation_handler(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
+
         # Record the actor class via :actor_name: magic token in the log.
         #
         # (Phase 1): this covers code run before __init__ finishes.
@@ -2739,6 +2745,38 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.stop_and_join_asyncio_threads_if_exist()
 
+
+cdef void call_actor_shutdown() noexcept nogil:
+    """C++ wrapper function that calls the Python actor shutdown callback."""
+    with gil:
+        _call_actor_shutdown()
+
+
+def _call_actor_shutdown():
+    """Internal function that calls actor's __ray_shutdown__ method."""
+    try:
+        worker = ray._private.worker.global_worker
+
+        if not worker.actors:
+            return
+
+        actor_id, actor_instance = next(iter(worker.actors.items()))
+        if actor_instance is not None:
+            # Only call __ray_shutdown__ if the method exists and is callable
+            # This preserves backward compatibility: actors without __ray_shutdown__
+            # use Python's normal exit flow (including atexit handlers)
+            if hasattr(actor_instance, '__ray_shutdown__') and callable(getattr(actor_instance, '__ray_shutdown__')):
+                try:
+                    actor_instance.__ray_shutdown__()
+                except Exception:
+                    logger.exception("Error during actor __ray_shutdown__ method")
+            # Always clean up the actor instance
+            worker.actors.pop(actor_id, None)
+    except Exception:
+        # Catch any system-level exceptions to prevent propagation to C++
+        logger.exception("System error during actor shutdown callback")
+
+
 cdef class StreamRedirector:
     @staticmethod
     def redirect_stdout(const c_string &file_path, uint64_t rotation_max_size, uint64_t rotation_max_file_count, c_bool tee_to_stdout, c_bool tee_to_stderr):
@@ -2911,21 +2949,24 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
-        c_log_lines = PythonGetLogBatchLines(log_batch)
+        result = {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+        with nogil:
+            c_log_lines = PythonGetLogBatchLines(move(log_batch))
 
         log_lines = []
         for c_log_line in c_log_lines:
             log_lines.append(c_log_line.decode())
 
-        return {
-            "ip": log_batch.ip().decode(),
-            "pid": log_batch.pid().decode(),
-            "job": log_batch.job_id().decode(),
-            "is_err": log_batch.is_error(),
-            "lines": log_lines,
-            "actor_name": log_batch.actor_name().decode(),
-            "task_name": log_batch.task_name().decode(),
-        }
+        result["lines"] = log_lines
+        return result
 
 
 # This class should only be used for tests
@@ -3022,6 +3063,7 @@ cdef class CoreWorker:
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
+        options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.runtime_env_hash = runtime_env_hash

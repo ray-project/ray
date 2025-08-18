@@ -1,4 +1,4 @@
-from typing import List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, overload
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -22,7 +22,7 @@ def build_llm_deployment(
     name_prefix: Optional[str] = None,
     deployment_kwargs: Optional[dict] = None,
 ) -> Application:
-    name_prefix = name_prefix or "LLMDeployment:"
+    name_prefix = name_prefix or "LLMServer:"
     deployment_kwargs = deployment_kwargs or {}
 
     deployment_options = llm_config.get_serve_options(
@@ -50,6 +50,11 @@ def _get_llm_deployments(
             raise ValueError(f"Unsupported engine: {llm_config.llm_engine}")
 
     return llm_deployments
+
+
+@overload
+def build_openai_app(llm_serving_args: Dict[str, Any]) -> Application:
+    ...
 
 
 def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:

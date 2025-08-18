@@ -23,7 +23,7 @@
 #include <string>
 #include <string_view>
 
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/scoped_env_setter.h"
 #include "ray/util/temporary_directory.h"

@@ -48,7 +48,7 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -180,7 +180,7 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ray::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
@@ -1740,7 +1740,7 @@ class CoreWorker {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the local Raylet that goes over a local socket.
-  std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client_;
+  std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
 
   // Client to the local Raylet that goes over a gRPC connection.
   std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
@@ -1899,6 +1899,9 @@ class CoreWorker {
 
   /// Worker's PID
   uint32_t pid_;
+
+  /// Callback to cleanup actor instance before shutdown
+  std::function<void()> actor_shutdown_callback_;
 
   // Guards generator_ids_pending_deletion_.
   absl::Mutex generator_ids_pending_deletion_mutex_;
