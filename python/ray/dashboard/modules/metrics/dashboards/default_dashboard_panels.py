@@ -31,7 +31,7 @@ MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-CLUSTER_OVERVIEW_AND_HEALTH_PANELS = [
+OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
         id=24,
         title="Node Count",
@@ -528,9 +528,9 @@ NODE_TPU_UTILIZATION_PANELS = [
 
 DEFAULT_GRAFANA_ROWS = [
     Row(
-        title="Cluster Overview and Health",
+        title="Overview and Health",
         id=1001,
-        panels=CLUSTER_OVERVIEW_AND_HEALTH_PANELS,
+        panels=OVERVIEW_AND_HEALTH_PANELS,
         collapsed=False,
     ),
     Row(

@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
-    DEFAULT_GRAFANA_PANELS,
+    DEFAULT_GRAFANA_ROWS,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
@@ -210,9 +210,10 @@ def test_metrics_folder_when_dashboard_disabled():
 
 
 def test_default_dashboard_utilizes_global_filters():
-    for panel in DEFAULT_GRAFANA_PANELS:
-        for target in panel.targets:
-            assert "{global_filters}" in target.expr
+    for row in DEFAULT_GRAFANA_ROWS:
+        for panel in row.panels:
+            for target in panel.targets:
+                assert "{global_filters}" in target.expr
 
 
 def test_serve_dashboard_utilizes_global_filters():
