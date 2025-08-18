@@ -44,6 +44,8 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 /// A pair of rpc::events::RayEvent.
 /// When converting the TaskStatusEvent, the pair will be populated with the
 /// rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent respectively.
+/// When converting the TaskProfileEvent, only the first element of the pair will be
+/// populated with rpc::events::TaskProfileEvents
 using RayEventsPair =
     std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>;
 
@@ -213,13 +215,16 @@ class TaskProfileEvent : public TaskEvent {
                    std::string component_id,
                    std::string node_ip_address,
                    std::string event_name,
-                   int64_t start_time);
+                   int64_t start_time,
+                   std::string session_name);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
+  /// Note: The extra data will be moved when this is called and will no longer be usable.
+  /// Second element of the RayEventsPair will always be empty for TaskProfileEvent.
   void ToRpcRayEvents(RayEventsPair &ray_events) override;
 
   bool IsProfileEvent() const override { return true; }
@@ -229,6 +234,9 @@ class TaskProfileEvent : public TaskEvent {
   void SetExtraData(const std::string &extra_data) { extra_data_ = extra_data; }
 
  private:
+  // Helper functions to populate the base fields of rpc::events::RayEvent
+  void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
+                                     google::protobuf::Timestamp timestamp);
   /// The below fields mirror rpc::ProfileEvent
   std::string component_type_;
   std::string component_id_;
@@ -237,6 +245,8 @@ class TaskProfileEvent : public TaskEvent {
   int64_t start_time_{};
   int64_t end_time_{};
   std::string extra_data_;
+  /// The current Ray session name.
+  std::string session_name_;
 };
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
@@ -351,6 +361,9 @@ class TaskEventBuffer {
 
   /// Return a string that describes the task event buffer stats.
   virtual std::string DebugString() = 0;
+
+  /// Return the current Ray session name.
+  virtual std::string GetSessionName() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -396,6 +409,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool Enabled() const override;
 
   std::string DebugString() override;
+
+  std::string GetSessionName() const override { return session_name_; }
 
  private:
   /// Add a task status event to be reported.
@@ -591,6 +606,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents);
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
   FRIEND_TEST(TaskEventTestWriteExport, TestWriteTaskExportEvents);
+  FRIEND_TEST(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents);
+  FRIEND_TEST(TaskEventBufferTest, TestMixedStatusAndProfileEventsToRayEvents);
 };
 
 }  // namespace worker
