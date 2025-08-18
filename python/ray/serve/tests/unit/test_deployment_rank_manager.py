@@ -434,3 +434,9 @@ class TestDeploymentRankManagerIntegration:
         # For ranks [0, 3, 7, 10] -> [0, 1, 2, 3], replica_0 keeps 0, replica_1 can keep 3->reordered to 3
         # But the algorithm should actually reassign to make them contiguous at [0, 1, 2, 3]
         assert len(result) == 2  # At least 2 replicas reassigned
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
