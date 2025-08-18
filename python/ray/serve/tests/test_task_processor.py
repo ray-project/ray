@@ -1,6 +1,7 @@
 import json
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -204,6 +205,121 @@ class TestTaskConsumerWithRayServe:
 
         wait_for_condition(assert_result, timeout=10)
 
+    def test_task_consumer_persistence_across_restarts(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that tasks persist in queue and get executed after deployment restart."""
+        processor_config = create_processor_config()
+        processor_config.adapter_config.worker_concurrency = 1
+
+        # Use a shared object to track processed tasks across deployments
+        @ray.remote
+        class ProcessedTasksTracker:
+            def __init__(self):
+                self.processed_tasks = set()
+
+            def add_task(self, task_data):
+                self.processed_tasks.add(task_data)
+
+            def get_processed_tasks(self):
+                return self.processed_tasks
+
+            def get_count(self):
+                return len(self.processed_tasks)
+
+        tracker = ProcessedTasksTracker.remote()
+
+        @serve.deployment(num_replicas=1)
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            def __init__(self, tracker_ref):
+                self.tracker = tracker_ref
+                self.local_processed = []
+
+            @task_handler(name="process_request")
+            def process_request(self, data):
+                ray.get(self.tracker.add_task.remote(data))
+                self.local_processed.append(data)
+                # Simulate some processing time
+                time.sleep(1)
+                return f"Processed: {data}"
+
+            def get_local_processed(self):
+                return self.local_processed
+
+        # First deployment - send tasks and process some
+        serve.run(
+            ServeTaskConsumer.bind(tracker),
+            name="test_task_consumer_persistence_across_restarts_v1",
+        )
+
+        num_tasks = 20
+        task_ids = []
+        for i in range(num_tasks):
+            task_id_ref = send_request_to_queue.remote(processor_config, f"task_{i}")
+            task_ids.append(ray.get(task_id_ref))
+
+        # Wait for at least 2 tasks to be processed
+        def wait_for_some_tasks():
+            count = ray.get(tracker.get_count.remote())
+            return count >= 2
+
+        wait_for_condition(wait_for_some_tasks, timeout=10)
+        serve.delete("test_task_consumer_persistence_across_restarts_v1")
+
+        # Wait for the deployment to be fully deleted
+        def wait_for_deployment_deletion():
+            try:
+                status = serve.status()
+                return (
+                    "test_task_consumer_persistence_across_restarts_v1"
+                    not in status.applications
+                )
+            except Exception:
+                return True
+
+        wait_for_condition(wait_for_deployment_deletion, timeout=10)
+
+        # Record how many tasks were processed before restart
+        tasks_before_restart = ray.get(tracker.get_count.remote())
+        assert (
+            tasks_before_restart >= 2
+        ), f"Expected at least 2 tasks processed, got {tasks_before_restart}"
+        assert (
+            tasks_before_restart < num_tasks
+        ), "All tasks were processed before restart, test cannot verify persistence"
+
+        # Restart the deployment with a new instance
+        handle2 = serve.run(
+            ServeTaskConsumer.bind(tracker),
+            name="test_task_consumer_persistence_across_restarts_v2",
+        )
+
+        # Wait for all tasks to be eventually processed
+        def wait_for_all_tasks():
+            count = ray.get(tracker.get_count.remote())
+            return count == num_tasks
+
+        wait_for_condition(wait_for_all_tasks, timeout=20)
+
+        expected_tasks = {f"task_{i}" for i in range(num_tasks)}
+        final_processed_tasks = ray.get(tracker.get_processed_tasks.remote())
+
+        # Verify all tasks were processed
+        assert (
+            final_processed_tasks == expected_tasks
+        ), f"Expected {expected_tasks}, got {final_processed_tasks}"
+
+        # Verify that the second deployment processed the remaining tasks
+        local_processed_second = handle2.get_local_processed.remote().result()
+        assert (
+            len(local_processed_second) > 0
+        ), "Second deployment should have processed some tasks"
+        assert len(local_processed_second) == num_tasks - tasks_before_restart, (
+            f"Second deployment should have processed {num_tasks - tasks_before_restart} tasks, "
+            f"but processed {len(local_processed_second)}"
+        )
+
     def test_task_consumer_as_serve_deployment_with_async_task_handler(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
@@ -228,6 +344,10 @@ class TestTaskConsumerWithRayServe:
                 async def process_request(self, data):
                     self.task_received = True
                     self.data_received = data
+
+
+class TestTaskConsumerWithDLQsConfiguration:
+    """Test task consumer with dead letter queues."""
 
     def test_task_consumer_as_serve_deployment_with_unknown_task(
         self, temp_queue_directory, serve_instance, create_processor_config

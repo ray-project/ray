@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from celery import Celery
 from celery.signals import task_failure, task_unknown
 
+from ray.serve import get_replica_context
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import (
     CeleryAdapterConfig,
@@ -361,6 +362,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _app: Celery
     _config: TaskProcessorConfig
     _worker_thread: Optional[threading.Thread] = None
+    _worker_hostname: Optional[str] = None
 
     def __init__(self, config: TaskProcessorConfig):
         super().__init__()
@@ -475,9 +477,19 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             logger.info("Celery worker thread is already running.")
             return
 
+        unique_id = int(time.time())
+        try:
+            unique_id = get_replica_context().replica_tag
+        except Exception:
+            logger.warning(
+                "exception in get_replica_context, using timestamp as unique id"
+            )
+
+        self._worker_hostname = f"{self._app.main}_{unique_id}"
+
         worker_args = [
             "worker",
-            f"--hostname={self._app.main}",
+            f"--hostname={self._worker_hostname}",
             "-Q",
             self._config.queue_name,
         ]
@@ -488,7 +500,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         )
         self._worker_thread.start()
 
-        logger.info(f"Celery worker thread started with hostname: {self._app.main}")
+        logger.info(
+            f"Celery worker thread started with hostname: {self._worker_hostname}"
+        )
 
     def stop_consumer(self, timeout: float = 10.0):
         """Signals the Celery worker to shut down and waits for it to terminate."""
@@ -500,7 +514,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
 
         # Use the worker's hostname for targeted shutdown
         self._app.control.broadcast(
-            "shutdown", destination=[f"celery@{self._app.main}"]
+            "shutdown", destination=[f"celery@{self._worker_hostname}"]
         )
         self._worker_thread.join(timeout=timeout)
 
@@ -512,7 +526,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         self._worker_thread = None
 
     def shutdown(self):
+        logger.info("Shutting down Celery worker...")
         self._app.control.shutdown()
+        logger.info("Celery worker shutdown complete...")
 
     def cancel_task_sync(self, task_id) -> bool:
         return self._app.AsyncResult(task_id).cancel()
