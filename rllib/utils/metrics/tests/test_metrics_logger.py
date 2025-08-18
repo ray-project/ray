@@ -324,7 +324,7 @@ def test_throughput_aggregation():
 
     # Add 1 count for actor0 and 2 counts for actor1 to the lifetime counters
     # in each of the 5 iterations.
-    # 5 iterations each 1 sec -> expect throughput of 3/sec.
+    # 5 iterations each 1 sec -> expect throughput of 3/0.2sec = 5/sec.
     for _ in range(5):
         time.sleep(0.2)
         env_runners[0].increase.remote(count=1)
@@ -335,8 +335,6 @@ def test_throughput_aggregation():
     check(main_metrics.peek("counter"), 30 + 15)
     tp = main_metrics.stats["counter"].throughput
     check(tp, 15, atol=2)
-
-    print(main_metrics.compile())
 
 
 def test_reset_and_delete(logger):
