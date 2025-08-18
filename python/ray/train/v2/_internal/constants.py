@@ -103,10 +103,6 @@ ENV_VARS_TO_PROPAGATE = {
 # The environment variable to enable the Ray Train Metrics.
 METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
-# Whether or not to run the controller as an actor.
-RUN_CONTROLLER_AS_ACTOR_ENV_VAR = "RAY_TRAIN_RUN_CONTROLLER_AS_ACTOR"
-DEFAULT_RUN_CONTROLLER_AS_ACTOR = True
-
 
 def is_v2_enabled() -> bool:
     return env_bool(V2_ENABLED_ENV_VAR, False)
