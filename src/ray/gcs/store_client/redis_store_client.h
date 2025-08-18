@@ -25,10 +25,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/asio/postable.h"
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -91,6 +91,34 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
   return os;
 }
 
+// Options for connecting to Redis.
+class RedisClientOptions {
+ public:
+  RedisClientOptions(const std::string &ip,
+                     int port,
+                     const std::string &username,
+                     const std::string &password,
+                     bool enable_ssl = false)
+      : ip_(ip),
+        port_(port),
+        username_(username),
+        password_(password),
+        enable_ssl_(enable_ssl) {}
+
+  // Redis server address
+  std::string ip_;
+  int port_;
+
+  // Username of Redis.
+  std::string username_;
+
+  // Password of Redis.
+  std::string password_;
+
+  // Whether to use tls/ssl for redis connection
+  bool enable_ssl_ = false;
+};
+
 // StoreClient using Redis as persistence backend.
 //
 // The StoreClient does not currently handle any failures (transient or otherwise) of
@@ -116,8 +144,11 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
 // [1] https://github.com/ray-project/ray/pull/35123#issuecomment-1546549046
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client,
-                            instrumented_io_context &io_service);
+  /// Connect to Redis. Not thread safe.
+  ///
+  /// \param io_service The event loop for this client. Must be single threaded.
+  /// \param options The options for connecting to Redis.
+  explicit RedisStoreClient(instrumented_io_context &io_service, const RedisClientOptions &options);
   ~RedisStoreClient();
 
   Status AsyncPut(const std::string &table_name,
@@ -180,13 +211,13 @@ class RedisStoreClient : public StoreClient {
     // Don't call this. Use ScanKeysAndValues instead.
     explicit RedisScanner(
         PrivateCtorTag tag,
-        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<RedisContext> primary_context,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
         Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
     static void ScanKeysAndValues(
-        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<RedisContext> primary_context,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
         Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
@@ -198,6 +229,7 @@ class RedisStoreClient : public StoreClient {
     void Scan();
 
     void OnScanCallback(const std::shared_ptr<CallbackReply> &reply);
+
     /// The table name that the scanner will scan.
     RedisKey redis_key_;
 
@@ -217,7 +249,7 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
-    std::shared_ptr<RedisClient> redis_client_;
+    std::shared_ptr<RedisContext> primary_context_;
 
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback_;
 
@@ -273,10 +305,18 @@ class RedisStoreClient : public StoreClient {
                   const std::vector<std::string> &keys,
                   Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
+  // XXX: move into options_.
   std::string external_storage_namespace_;
-  std::shared_ptr<RedisClient> redis_client_;
+
   instrumented_io_context &io_service_;
+
+  RedisClientOptions options_;
+
+  // The following context writes everything to the primary shard.
+  std::shared_ptr<RedisContext> primary_context_;
+
   std::shared_ptr<PeriodicalRunner> periodic_health_check_runner_;
+
   absl::Mutex mu_;
 
   // The pending redis requests queue for each key.

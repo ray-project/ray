@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/redis_client.h"
+#include "ray/gcs/store_client/redis_client.h"
 
 #include <memory>
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"

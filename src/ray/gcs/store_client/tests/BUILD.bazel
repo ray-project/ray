@@ -82,3 +82,35 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "redis_callback_reply_test",
+    size = "small",
+    srcs = ["redis_callback_reply_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "redis_async_context_test",
+    size = "small",
+    srcs = ["redis_async_context_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_util",
+        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

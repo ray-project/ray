@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
 #include "ray/util/path_utils.h"
 
@@ -74,16 +73,15 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
   void InitStoreClient() override {
     RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "");
-    redis_client_ = std::make_shared<RedisClient>(options);
-    RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
-
-    store_client_ = std::make_shared<RedisStoreClient>(redis_client_);
+    auto &io_context = *io_service_pool_->Get();
+    store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
   }
 
-  void DisconnectStoreClient() override { redis_client_->Disconnect(); }
+  void DisconnectStoreClient() override {
+    store_client_.reset();
+  }
 
  protected:
-  std::shared_ptr<RedisClient> redis_client_;
   std::unique_ptr<std::thread> t_;
   std::atomic<bool> stopped_ = false;
 };
