@@ -29,7 +29,8 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
 namespace core {
@@ -129,7 +130,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
                             SubscriptionCallbackMap *sub_callback_map,
                             SubscriptionFailureCallbackMap *sub_failure_callback_map,
-                            pubsub::SubscriberID subscriber_id,
+                            UniqueID subscriber_id,
                             PublisherFactoryFn client_factory)
       : directory_(dict),
         subscription_callback_map_(sub_callback_map),
@@ -225,7 +226,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
-  pubsub::SubscriberID subscriber_id_;
+  UniqueID subscriber_id_;
   std::unique_ptr<pubsub::pub_internal::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
@@ -243,7 +244,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   ~MockDistributedPublisher() = default;
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
-                            const pubsub::SubscriberID &subscriber_id,
+                            const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
@@ -272,16 +273,20 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   }
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                              const pubsub::SubscriberID &subscriber_id,
+                              const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id_binary) override {
     return true;
   }
+
+  void UnregisterSubscriber(const UniqueID &subscriber_id) override { return; }
 
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
       std::string *publisher_id,
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override {}
+
+  std::string DebugString() const override { return ""; }
 
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
@@ -342,6 +347,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     num_requests_++;
   }
+
+  std::string DebugString() const override { return ""; }
 
   bool FlushBorrowerCallbacks() {
     // Flush all the borrower callbacks. This means that after this function is invoked,

@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 
 // clang-format on
