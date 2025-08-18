@@ -2749,22 +2749,10 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
-        active_replicas = self._replicas.get(
-            states=[
-                ReplicaState.UPDATING,
-                ReplicaState.RUNNING,
-                ReplicaState.PENDING_MIGRATION,
-                ReplicaState.STOPPING,
-                ReplicaState.STARTING,
-                # Recovering is not included because unlike starting, recovering
-                # replicas dont have their rank assigned in deployment rank manager
-                # when they are constructed.
-            ]
-        )
+        active_replicas = self._replicas.get()
         if (
             active_replicas
-            and not self._has_outdated_version_replicas()
-            and len(active_replicas) == self._target_state.target_num_replicas
+            and self._curr_status_info.status == DeploymentStatus.HEALTHY
         ):
             if active_replicas:
                 replicas_to_reconfigure = (
