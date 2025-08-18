@@ -6,38 +6,35 @@ FROM "$BASE_IMAGE"
 
 ARG PIP_REQUIREMENTS
 
+COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
+
 RUN <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
-DEBIAN_REQUIREMENTS=(
+APT_PKGS=(
     apt-transport-https
     ca-certificates
-    curl
     htop
-    gnupg
-    google-cloud-sdk
     libaio1
     libgl1-mesa-glx
     libglfw3
     libjemalloc-dev
     libosmesa6-dev
     patchelf
-    unzip
-    zip
 )
 
 sudo apt-get update -y
-sudo apt-get install -y --no-install-recommends "${DEBIAN_REQUIREMENTS[@]}"
+sudo apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 sudo apt-get autoclean
+sudo rm -rf /etc/apt/sources.list.d/*
 
-rm -rf /tmp/wrk
-git clone --branch 4.2.0 https://github.com/wg/wrk.git /tmp/wrk
+git clone --branch=4.2.0 --depth=1 https://github.com/wg/wrk.git /tmp/wrk
 make -C /tmp/wrk -j
 sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
+rm -rf /tmp/wrk
+
+"$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
 
 EOF
-
-COPY "$PIP_REQUIREMENTS" .
-RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -r "${PIP_REQUIREMENTS}"
