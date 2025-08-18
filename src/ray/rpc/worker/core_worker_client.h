@@ -192,6 +192,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void FreeActorObject(const FreeActorObjectRequest &request,
                                const ClientCallback<FreeActorObjectReply> &callback) {}
 
+  virtual std::string DebugString() const { return ""; }
+
   virtual ~CoreWorkerClientInterface() = default;
 };
 
