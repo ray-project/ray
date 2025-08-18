@@ -160,8 +160,8 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': Z",
             "'bytes_outputs_of_finished_tasks': Z",
             "'rows_outputs_of_finished_tasks': Z",
-            "'num_external_inqueue_blocks': Z",
-            "'num_external_inqueue_bytes': Z",
+            "'num_external_inqueue_blocks': N",
+            "'num_external_inqueue_bytes': N",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -1852,6 +1852,13 @@ def test_op_metrics_logging():
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
+        # InputDataBuffer has no inqueue, manually set to 0
+        input_str = input_str.replace(
+            "'num_external_inqueue_blocks': N", "'num_external_inqueue_blocks': Z"
+        )
+        input_str = input_str.replace(
+            "'num_external_inqueue_bytes': N", "'num_external_inqueue_bytes': Z"
+        )
         map_str = (
             "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
