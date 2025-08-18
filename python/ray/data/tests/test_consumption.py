@@ -535,14 +535,13 @@ def test_dataset_repr(ray_start_regular_shared):
     )
 
 
-def test_dataset_explain(ray_start_regular_shared):
-    from ray._private.test_utils import capture_function_output
-
+def test_dataset_explain(ray_start_regular_shared, capsys):
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map(lambda x: x)
 
-    result = capture_function_output(lambda: ds.explain())
-    assert result.rstrip() == (
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
         "+- ReadRange\n"
@@ -552,9 +551,9 @@ def test_dataset_explain(ray_start_regular_shared):
     )
 
     ds = ds.filter(lambda x: x["id"] > 0)
-    result = capture_function_output(lambda: ds.explain())
-
-    assert result.rstrip() == (
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
         "Filter(<lambda>)\n"
         "+- Map(<lambda>)\n"
@@ -564,9 +563,9 @@ def test_dataset_explain(ray_start_regular_shared):
         "+- InputDataBuffer[Input]"
     )
     ds = ds.random_shuffle().map(lambda x: x)
-    result = capture_function_output(lambda: ds.explain())
-
-    assert result.rstrip() == (
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
         "+- RandomShuffle\n"
