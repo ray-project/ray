@@ -120,6 +120,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   }
 
   std::string DebugString() override { return ""; }
+
+  std::string GetSessionName() const override { return "test-session-name"; }
 };
 
 class TaskReceiverTest : public ::testing::Test {

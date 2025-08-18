@@ -83,6 +83,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
     return true;
   }
 
+  std::string GetSessionName() const override { return "test-session-name"; }
+
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 };
 
