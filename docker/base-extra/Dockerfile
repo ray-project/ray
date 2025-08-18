@@ -43,7 +43,7 @@ wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
 
 # Add gdb since ray dashboard uses `memray attach`, which requires gdb.
 
-DEB_PKGS=(
+APT_PKGS=(
     google-cloud-sdk
     supervisor
     vim
@@ -58,7 +58,7 @@ DEB_PKGS=(
 )
 
 if [[ "$RAY_IMAGE_TESTING" == "1" ]]; then
-    DEB_PKGS+=(
+    APT_PKGS+=(
         apt-transport-https
         ca-certificates
         htop
@@ -72,7 +72,7 @@ if [[ "$RAY_IMAGE_TESTING" == "1" ]]; then
 fi
 
 sudo apt-get update -y
-sudo apt-get install -y "${DEB_PKGS[@]}"
+sudo apt-get install -y "${APT_PKGS[@]}"
 sudo apt-get autoclean
 
 # Install azcopy
