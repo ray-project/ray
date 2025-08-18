@@ -15,7 +15,7 @@ webdataset
 raydp==1.7.0b20250423.dev0
 pylance==0.22
 delta-sharing
-deltalake==0.9.0
+deltalake>=1.1.0
 pytest-mock
 decord
 snowflake-connector-python>=3.15.0
@@ -23,3 +23,7 @@ pyiceberg[sql-sqlite]==0.9.0
 clickhouse-connect
 pybase64
 hudi==0.4.0
+kafka-python>=2.0.0
+boto3>=1.26.76
+croniter>=1.0.0
+pyflink>=1.15.0

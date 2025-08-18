@@ -2,6 +2,7 @@ import collections
 import logging
 import os
 import warnings
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -3893,21 +3894,50 @@ def read_delta(
     include_paths: bool = False,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    # Delta Lake specific options
+    version: Optional[Union[int, str, datetime]] = None,
+    without_files: bool = False,
+    log_buffer_size: Optional[int] = None,
+    options: Optional[Dict[str, Any]] = None,
+    # Partition filtering for Delta Lake
+    partition_filters: Optional[List[Tuple[str, str, Any]]] = None,
+    # Enhanced Delta Lake options
+    storage_options: Optional[Dict[str, Any]] = None,
+    unity_catalog_config: Optional[Dict[str, Any]] = None,
     **arrow_parquet_args,
 ):
     """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+
+    This function uses the enhanced DeltaDatasource internally, which provides comprehensive
+    Delta Lake support including deletion vector handling, time travel, advanced partition filtering,
+    Unity Catalog integration, and rich metadata extraction.
 
     Examples:
 
         >>> import ray
         >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
+        
+        # Time travel to specific version
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/", version=123) # doctest: +SKIP
+        
+        # Use partition filters
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/", 
+        ...                          partition_filters=[("year", "=", "2023")]) # doctest: +SKIP
+        
+        # With storage options for cloud providers
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/",
+        ...                          storage_options={"aws_region": "us-west-2"}) # doctest: +SKIP
+        
+        # Unity Catalog integration
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/",
+        ...                          unity_catalog_config={"catalog_name": "hive_metastore"}) # doctest: +SKIP
 
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/
             filesystems.html#filesystem-implementations>`_. Specify this parameter if
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
@@ -3937,57 +3967,60 @@ def read_delta(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        version: Delta table version to read (can be version number, timestamp string, or datetime).
+            If None, reads the latest version.
+        without_files: If True, loads table without tracking files for memory reduction.
+            Useful for append-only applications that don't need file tracking.
+        log_buffer_size: Number of files to buffer when reading the commit log.
+            A positive integer that can decrease latency but increase memory usage.
+            Defaults to 4 * number of CPUs.
+        options: Delta Lake table options to pass to the DeltaTable constructor.
+            Useful for handling unsupported features like deletion vectors.
+            Example: {"ignore_deletion_vectors": True}
+        partition_filters: Delta Lake partition filters in DNF format.
+            List of tuples: [("column", "op", "value")] where op can be "=", "!=", "in", "not in".
+            Example: [("year", "=", "2023"), ("month", "in", ["Jan", "Feb"])]
+        storage_options: Storage-specific options for cloud providers.
+            Example: {"aws_region": "us-west-2", "azure_account": "account"}
+        unity_catalog_config: Unity Catalog specific configuration.
+            Example: {"catalog_name": "hive_metastore", "schema_name": "default"}
         **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified parquet
-        files.
+        :class:`~ray.data.Dataset` producing records read from the specified Delta Lake
+        table using the enhanced DeltaDatasource.
 
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
-    # not functions. Move to _check_import if moved to a DataSource object.
-    import importlib
-
-    package = "deltalake"
-    try:
-        importlib.import_module(package)
-    except ImportError:
-        raise ImportError(
-            f"`ray.data.read_delta` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
-        )
-
-    from deltalake import DeltaTable
-
-    # This seems reasonable to keep it at one table, even Spark doesn't really support
-    # multi-table reads, it's usually up to the developer to keep it in one table.
-    if not isinstance(path, str):
-        raise ValueError("Only a single Delta Lake table path is supported.")
-
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path).file_uris()
-    file_extensions = ["parquet"]
-
-    return read_parquet(
-        paths,
+    from ray.data._internal.datasource.delta_datasource import DeltaDatasource
+    
+    # Create the Delta datasource with all the provided options
+    datasource = DeltaDatasource(
+        path=path,
         filesystem=filesystem,
         columns=columns,
-        parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
-        file_extensions=file_extensions,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        version=version,
+        without_files=without_files,
+        log_buffer_size=log_buffer_size,
+        options=options,
+        partition_filters=partition_filters,
+        storage_options=storage_options,
+        unity_catalog_config=unity_catalog_config,
         **arrow_parquet_args,
     )
+    
+    # Read from the datasource
+    return read_datasource(datasource)
 
 
 def _get_datasource_or_legacy_reader(
