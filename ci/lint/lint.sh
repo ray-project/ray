@@ -99,15 +99,22 @@ test_coverage() {
 }
 
 api_annotations() {
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
-  ./ci/lint/check_api_annotations.py
+  echo "--- Install ray"
+  RAY_DISABLE_EXTRA_CPP=1 pip install -v -c python/requirements_compiled.txt -e "python[all]"
+
+  echo "--- Check API annotations"
+  python3 ci/lint/check_api_annotations.py
 }
 
 api_policy_check() {
+  echo "--- Install ray"
   # install ray and compile doc to generate API files
-  make -C doc/ html
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  RAY_DISABLE_EXTRA_CPP=1 pip install -v -c python/requirements_compiled.txt -e "python[all]"
 
+  echo "--- Make docs"
+  make -C doc/ html
+
+  echo "--- Check API discrepancy"
   # validate the API files
   bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }
