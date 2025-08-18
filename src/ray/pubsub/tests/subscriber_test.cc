@@ -130,7 +130,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   std::queue<rpc::PubsubCommandBatchRequest> requests_;
   int64_t sequence_id_ = 0;
   int64_t max_processed_sequence_id_ = 0;
-  std::string publisher_id_ = pubsub::PublisherID::FromRandom().Binary();
+  std::string publisher_id_ = UniqueID::FromRandom().Binary();
 };
 
 namespace pubsub {

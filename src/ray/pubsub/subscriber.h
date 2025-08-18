@@ -124,7 +124,7 @@ class SubscriberChannel {
                               const std::string &key_id);
 
   /// Return true if the subscription exists for a given publisher id.
-  bool SubscriptionExists(const PublisherID &publisher_id) {
+  bool SubscriptionExists(const UniqueID &publisher_id) {
     return subscription_map_.contains(publisher_id);
   }
 
@@ -146,7 +146,7 @@ class SubscriberChannel {
   /// subscribed.
   std::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
-    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
       return absl::nullopt;
@@ -165,7 +165,7 @@ class SubscriberChannel {
   /// subscribed.
   std::optional<SubscriptionFailureCallback> GetFailureCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
-    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
       return absl::nullopt;
@@ -183,7 +183,7 @@ class SubscriberChannel {
   const rpc::ChannelType channel_type_;
 
   /// Mapping of the publisher ID -> subscription info for the publisher.
-  absl::flat_hash_map<PublisherID, Subscriptions> subscription_map_;
+  absl::flat_hash_map<UniqueID, Subscriptions> subscription_map_;
 
   /// An event loop to execute RPC callbacks. This should be equivalent to the client
   /// pool's io service.
@@ -337,7 +337,7 @@ class Subscriber : public SubscriberInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Return true if the given publisher id has subscription to any of channel.
-  bool SubscriptionExists(const PublisherID &publisher_id)
+  bool SubscriptionExists(const UniqueID &publisher_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     return std::any_of(channels_.begin(), channels_.end(), [publisher_id](const auto &p) {
       return p.second->SubscriptionExists(publisher_id);
@@ -366,14 +366,14 @@ class Subscriber : public SubscriberInterface {
     SubscribeDoneCallback done_cb;
   };
   using CommandQueue = std::queue<std::unique_ptr<CommandItem>>;
-  absl::flat_hash_map<PublisherID, CommandQueue> commands_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<UniqueID, CommandQueue> commands_ ABSL_GUARDED_BY(mutex_);
 
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.
-  absl::flat_hash_set<PublisherID> publishers_connected_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_set<UniqueID> publishers_connected_ ABSL_GUARDED_BY(mutex_);
 
   /// A set to keep track of in-flight command batch requests
-  absl::flat_hash_set<PublisherID> command_batch_sent_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_set<UniqueID> command_batch_sent_ ABSL_GUARDED_BY(mutex_);
 
   /// Mapping of channel type to channels.
   absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<SubscriberChannel>> channels_
@@ -381,7 +381,7 @@ class Subscriber : public SubscriberInterface {
 
   /// Keeps track of last processed <publisher_id, sequence_id> by publisher.
   /// Note the publisher_id only change if gcs failover.
-  absl::flat_hash_map<PublisherID, std::pair<PublisherID, int64_t>> processed_sequences_
+  absl::flat_hash_map<UniqueID, std::pair<UniqueID, int64_t>> processed_sequences_
       ABSL_GUARDED_BY(mutex_);
 };
 
