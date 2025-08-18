@@ -39,7 +39,6 @@ def test_baseexception_actor_task(ray_start_regular_shared):
     with pytest.raises(MyBaseException):
         ray.get(a.f.remote())
 
-    a = Actor.remote()
     with pytest.raises(MyBaseException):
         ray.get(a.async_f.remote())
 
@@ -53,12 +52,10 @@ def test_baseexception_actor_creation(ray_start_regular_shared):
         def __init__(self):
             raise MyBaseException("abc")
 
-    try:
+    with pytest.raises(ActorDiedError) as e:
         a = Actor.remote()
         ray.get(a.__ray_ready__.remote())
-        raise Exception("abc")
-    except ActorDiedError as e:
-        assert "MyBaseException" in str(e)
+    assert "MyBaseException" in str(e.value)
 
 
 def test_baseexception_streaming_generator(ray_start_regular_shared):
