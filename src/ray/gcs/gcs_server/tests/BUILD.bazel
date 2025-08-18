@@ -81,8 +81,8 @@ ray_cc_library(
     ],
     deps = [
         "//:ray_fakes",
-        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
     ],
 )
 

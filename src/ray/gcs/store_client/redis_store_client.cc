@@ -118,20 +118,25 @@ void RedisStoreClient::MGetValues(
   }
 }
 
-std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service, const RedisClientOptions &options) {
+std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service,
+                                                  const RedisClientOptions &options) {
   RAY_CHECK(!options.ip_.empty()) << "Redis IP address cannot be empty.";
   auto context = std::make_shared<RedisContext>(io_service);
   RAY_CHECK_OK(context->Connect(options.ip_,
-                                         options.port_,
-                                         /*username=*/options.username_,
-                                         /*password=*/options.password_,
-                                         /*enable_ssl=*/options.enable_ssl_)) << "Failed to connect to Redis.";
+                                options.port_,
+                                /*username=*/options.username_,
+                                /*password=*/options.password_,
+                                /*enable_ssl=*/options.enable_ssl_))
+      << "Failed to connect to Redis.";
   return context;
 }
 
-RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service, const RedisClientOptions &options)
+RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
+                                   const RedisClientOptions &options)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      io_service_(io_service), options_(options), primary_context_(ConnectRedisContext(io_service, options)) {
+      io_service_(io_service),
+      options_(options),
+      primary_context_(ConnectRedisContext(io_service, options)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
@@ -315,22 +320,23 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
       }
     }
     // Send the actual request
-    primary_context_->RunArgvAsync(command.ToRedisArgs(),
-                      [this,
-                       concurrency_keys,  // Copied!
-                       redis_callback = std::move(redis_callback)](auto reply) {
-                        std::vector<std::function<void()>> requests;
-                        {
-                          absl::MutexLock lock(&mu_);
-                          requests = TakeRequestsFromSendingQueue(concurrency_keys);
-                        }
-                        for (auto &request : requests) {
-                          request();
-                        }
-                        if (redis_callback) {
-                          redis_callback(reply);
-                        }
-                      });
+    primary_context_->RunArgvAsync(
+        command.ToRedisArgs(),
+        [this,
+         concurrency_keys,  // Copied!
+         redis_callback = std::move(redis_callback)](auto reply) {
+          std::vector<std::function<void()>> requests;
+          {
+            absl::MutexLock lock(&mu_);
+            requests = TakeRequestsFromSendingQueue(concurrency_keys);
+          }
+          for (auto &request : requests) {
+            request();
+          }
+          if (redis_callback) {
+            redis_callback(reply);
+          }
+        });
   };
 
   {
@@ -475,12 +481,13 @@ Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   RedisCommand command = {
       "INCRBY", RedisKey{external_storage_namespace_, "JobCounter"}, {"1"}};
 
-  primary_context_->RunArgvAsync(command.ToRedisArgs(),
-                    [callback = std::move(callback)](
-                        const std::shared_ptr<CallbackReply> &reply) mutable {
-                      auto job_id = static_cast<int>(reply->ReadAsInteger());
-                      std::move(callback).Post("GcsStore.GetNextJobID", job_id);
-                    });
+  primary_context_->RunArgvAsync(
+      command.ToRedisArgs(),
+      [callback =
+           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
+        auto job_id = static_cast<int>(reply->ReadAsInteger());
+        std::move(callback).Post("GcsStore.GetNextJobID", job_id);
+      });
 
   return Status::OK();
 }

@@ -585,7 +585,8 @@ void GcsServer::InitKVManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(CreateRedisStoreClient(io_context));
+    instance =
+        std::make_unique<StoreClientInternalKV>(CreateRedisStoreClient(io_context));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
@@ -864,11 +865,12 @@ std::string GcsServer::GetDebugState() const {
 
 std::unique_ptr<RedisStoreClient> GcsServer::CreateRedisStoreClient(
     instrumented_io_context &io_service) {
-  return std::make_unique<RedisStoreClient>(io_service, RedisClientOptions(config_.redis_address,
-                                            config_.redis_port,
-                                            config_.redis_username,
-                                            config_.redis_password,
-                                            config_.enable_redis_ssl));
+  return std::make_unique<RedisStoreClient>(io_service,
+                                            RedisClientOptions(config_.redis_address,
+                                                               config_.redis_port,
+                                                               config_.redis_username,
+                                                               config_.redis_password,
+                                                               config_.enable_redis_ssl));
 }
 
 void GcsServer::PrintAsioStats() {
