@@ -45,7 +45,7 @@ depsets:
       - python/requirements/llm/llm-requirements.txt
       - python/requirements/llm/llm-test-requirements.txt
     constraints:
-      - python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
+      - python/lock_files/llm/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
     output: python/lock_files/llm/requirements_compiled_rayllm_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
 
 # Third, subset the base test dependencies into Ray dependencies.
