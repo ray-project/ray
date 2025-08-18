@@ -10,6 +10,7 @@ from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.runtime_context import get_runtime_context
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 
@@ -30,8 +31,9 @@ class DPServer(LLMServer):
         self.dp_rank_assigner = dp_rank_assigner
 
         replica_ctx = serve.get_replica_context()
-        self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx)
-        logger.info(f"DP rank {self.dp_rank} has registered")
+        node_id = get_runtime_context().get_node_id()
+        self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx, node_id)
+        logger.info(f"DP rank {self.dp_rank} registered with rank assigner")
 
         if self.dp_rank == 0:
             self.dp_address, self.dp_rpc_port = get_address_and_port()
