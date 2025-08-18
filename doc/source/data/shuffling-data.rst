@@ -190,7 +190,7 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
 .. code-block:: bash
 
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort_benchmark.py
-    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
+    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort_benchmark.py --num-partitions=10 --partition-size=1e7
 
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
     # [dataset]: Run `pip install tqdm` to enable progress reporting.
