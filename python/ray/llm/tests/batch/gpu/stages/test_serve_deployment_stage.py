@@ -5,12 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ray.llm._internal.batch.stages.serve_deployment_stage import (
-    ServeDeploymentStage,
     ServeDeploymentStageUDF,
-)
-from ray.llm._internal.serve.configs.openai_api_models import (
-    CompletionRequest,
-    ChatCompletionRequest,
 )
 
 
@@ -30,9 +25,49 @@ def mock_serve_deployment_handle():
 
 
 @pytest.mark.asyncio
-async def test_serve_deployment_udf_completions(mock_serve_deployment_handle):
-    mock_response = MagicMock()
-    mock_response.model_dump.return_value = {"test": "response"}
+@pytest.mark.parametrize(
+    "method,dtype,expected_input_keys,test_data",
+    [
+        (
+            "completions",
+            "CompletionRequest",
+            ["method", "request_kwargs"],
+            [
+                {
+                    "method": "completions",
+                    "dtype": "CompletionRequest",
+                    "request_kwargs": {"prompt": "Hello", "temperature": 0.7},
+                },
+            ],
+        ),
+        (
+            "chat",
+            "ChatCompletionRequest",
+            ["method", "request_kwargs"],
+            [
+                {
+                    "method": "chat",
+                    "dtype": "ChatCompletionRequest",
+                    "request_kwargs": {
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a helpful assistant",
+                            },
+                            {"role": "user", "content": "Hello 1"},
+                        ]
+                    },
+                },
+            ],
+        ),
+    ],
+)
+async def test_serve_deployment_udf_methods(
+    mock_serve_deployment_handle, method, dtype, expected_input_keys, test_data
+):
+    """Test both completions and chat methods."""
+    # Create a mock response that will be returned directly
+    mock_response = {"test": "response"}
 
     def mock_remote_call(*args, **kwargs):
         async def mock_async_iterator():
@@ -40,134 +75,64 @@ async def test_serve_deployment_udf_completions(mock_serve_deployment_handle):
 
         return mock_async_iterator()
 
-    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+    getattr(mock_serve_deployment_handle, method).remote.side_effect = mock_remote_call
 
-    # Create UDF instance with completions method
     udf = ServeDeploymentStageUDF(
         data_column="__data",
-        expected_input_keys=["prompt"],
+        expected_input_keys=expected_input_keys,
         deployment_name="test_deployment",
         app_name="test_app",
-        method="completions",
     )
 
-    assert udf._method == "completions"
-    assert udf._request_type == CompletionRequest
-
-    # Test batch processing
-    batch = {
-        "__data": [
-            {"prompt": "Hello", "temperature": 0.7},
-            {"prompt": "World", "temperature": 0.8},
-            {"prompt": "Test", "temperature": 0.9},
-        ]
-    }
+    batch = {"__data": test_data}
 
     responses = []
     async for response in udf(batch):
         responses.append(response)
 
-    # The UDF returns a single response containing all the data
     assert len(responses) == 1
     assert "__data" in responses[0]
-    assert len(responses[0]["__data"]) == 3
+    assert len(responses[0]["__data"]) == len(test_data)
 
-    # Check that each item in the response has the expected fields
     for i, item in enumerate(responses[0]["__data"]):
         assert "batch_uuid" in item
-        assert "time_taken_llm" in item
+        assert "time_taken" in item
         assert item["request_id"] == str(i)
         assert "test" in item  # From the mock response
 
-    assert mock_serve_deployment_handle.completions.remote.call_count == 3
-
-
-@pytest.mark.asyncio
-async def test_serve_deployment_udf_chat(mock_serve_deployment_handle):
-    mock_response = MagicMock()
-    mock_response.model_dump.return_value = {"test": "response"}
-
-    def mock_remote_call(*args, **kwargs):
-        async def mock_async_iterator():
-            yield mock_response
-
-        return mock_async_iterator()
-
-    mock_serve_deployment_handle.chat.remote.side_effect = mock_remote_call
-
-    # Create UDF instance with chat method
-    udf = ServeDeploymentStageUDF(
-        data_column="__data",
-        expected_input_keys=["messages"],
-        deployment_name="test_deployment",
-        app_name="test_app",
-        method="chat",
+    assert getattr(mock_serve_deployment_handle, method).remote.call_count == len(
+        test_data
     )
-
-    assert udf._method == "chat"
-    assert udf._request_type == ChatCompletionRequest
-    assert udf.request_id == 0
-
-    # Test batch processing
-    batch = {
-        "__data": [
-            {
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant"},
-                    {"role": "user", "content": "Hello 1"},
-                ]
-            },
-            {
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant"},
-                    {"role": "user", "content": "Hello 2"},
-                ]
-            },
-        ]
-    }
-
-    responses = []
-    async for response in udf(batch):
-        responses.append(response)
-
-    # The UDF returns a single response containing all the data
-    assert len(responses) == 1
-    assert "__data" in responses[0]
-    assert len(responses[0]["__data"]) == 2
-
-    # Check that each item in the response has the expected fields
-    for i, item in enumerate(responses[0]["__data"]):
-        assert "batch_uuid" in item
-        assert "time_taken_llm" in item
-        assert item["request_id"] == str(i)
-        assert "test" in item  # From the mock response
-
-    assert mock_serve_deployment_handle.chat.remote.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_serve_deployment_invalid_method(mock_serve_deployment_handle):
-    with pytest.raises(ValueError, match="Unsupported method: invalid_method"):
-        ServeDeploymentStageUDF(
-            data_column="__data",
-            expected_input_keys=["prompt"],
-            deployment_name="test_deployment",
-            app_name="test_app",
-            method="invalid_method",
-        )
-
+    """Test that invalid method raises error at runtime."""
+    # Set up the mock to simulate a method that doesn't exist
     mock_serve_deployment_handle.invalid_method = None
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "invalid_method",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "Hello", "temperature": 0.7},
+            }
+        ]
+    }
+
     with pytest.raises(
-        ValueError,
-        match="Method invalid_method is not supported by the serve deployment.",
+        ValueError, match="Method invalid_method not found in the serve deployment."
     ):
-        ServeDeploymentStageUDF(
-            data_column="__data",
-            expected_input_keys=["prompt"],
-            deployment_name="test_deployment",
-            app_name="test_app",
-            method="invalid_method",
-        )
+        async for _ in udf(batch):
+            pass
 
 
 if __name__ == "__main__":

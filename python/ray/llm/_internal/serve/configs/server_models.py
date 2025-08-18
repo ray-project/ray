@@ -197,11 +197,6 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
-    deployment_name: Optional[str] = Field(
-        default=None,
-        description="The name of the deployment. If not specified, the deployment name will be inferred from the model ID.",
-    )
-
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "

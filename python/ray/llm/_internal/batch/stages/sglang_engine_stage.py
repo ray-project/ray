@@ -177,24 +177,22 @@ class SGLangEngineWrapper:
 
     async def generate_async(
         self, row: Dict[str, Any]
-    ) -> Tuple[SGLangEngineRequest, Dict[str, Any], float]:
+    ) -> Tuple[SGLangEngineRequest, Dict[str, Any]]:
         """Process a single request.
 
         Args:
             request: The request.
 
         Returns:
-            A tuple of index in batch, request output, bypassed custom fields, and time taken.
+            A tuple of index in batch, request output and bypassed custom fields.
         """
         request = await self._prepare_llm_request(row)
-        t = time.perf_counter()
 
         async with self.semaphore:
             output = await self._generate_async(request)
 
-        time_taken = time.perf_counter() - t
         output_data = SGLangOutputData.from_sglang_engine_output(output)
-        return request, output_data.model_dump(), time_taken
+        return request, output_data.model_dump()
 
     async def _generate_async(self, request: SGLangEngineRequest) -> Any:
         """Process a single request.
@@ -327,15 +325,17 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
         tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
 
+        time_taken = -1.0
         for resp in asyncio.as_completed(tasks):
-            request, output, time_taken_llm = await resp
+            request, output = await resp
+            time_taken = time.perf_counter() - t
 
             yield {
                 **output,
                 "request_id": request.request_id,
                 self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken_llm,
+                "time_taken_llm": time_taken,
                 "params": str(request.params),
             }
 
@@ -344,7 +344,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
             "[SGLang] Elapsed time for batch %s with size %d: %s",
             batch_uuid.hex,
             len(batch),
-            batch_time_taken,
+            time_taken,
         )
 
     def __del__(self):

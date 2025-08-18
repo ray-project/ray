@@ -5,6 +5,9 @@ from typing import Generator, List
 import pytest
 import requests
 
+from ray import serve
+from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_llm_deployment
+
 S3_ARTIFACT_URL = "https://air-example-data.s3.amazonaws.com/"
 S3_ARTIFACT_LLM_OSSCI_URL = S3_ARTIFACT_URL + "rayllm-ossci/"
 
@@ -167,3 +170,59 @@ def gpu_type():
         print("Failed to import torch to get GPU type", flush=True)
     except ValueError as err:
         print(f"Failed to get the GPU type: {err}", flush=True)
+
+
+@pytest.fixture
+def create_model_opt_125m_deployment(gpu_type, model_opt_125m):
+    """Create a serve deployment for testing."""
+    app_name = "test_serve_deployment_processor_app"
+    deployment_name = "test_deployment_name"
+
+    chat_template = """
+{% if messages[0]['role'] == 'system' %}
+    {% set offset = 1 %}
+{% else %}
+    {% set offset = 0 %}
+{% endif %}
+
+{{ bos_token }}
+{% for message in messages %}
+    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
+        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+    {% endif %}
+
+    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
+{% endfor %}
+
+{% if add_generation_prompt %}
+    {{ '<|im_start|>assistant\n' }}
+{% endif %}
+    """
+
+    # Create a vLLM serve deployment
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id=model_opt_125m,
+            model_source=model_opt_125m,
+        ),
+        accelerator_type=gpu_type,
+        deployment_config=dict(
+            name="test_deployment_name",  # This is not necessarily the final deployment name
+            autoscaling_config=dict(
+                min_replicas=1,
+                max_replicas=1,
+            ),
+        ),
+        engine_kwargs=dict(
+            enable_prefix_caching=True,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=4096,
+            # Add chat template for OPT model to enable chat API
+            chat_template=chat_template,
+        ),
+    )
+
+    llm_app = build_llm_deployment(llm_config, deployment_name=deployment_name)
+    serve.run(llm_app, name=app_name)
+    yield deployment_name, app_name
+    serve.shutdown()

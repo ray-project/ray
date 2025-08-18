@@ -249,14 +249,12 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     """The configuration for the serve deployment processor.
 
-    This processor enables sharing LLM engines across multiple processors and is compatible with
-    both vLLM and SGLang engines, depending on the underlying serve deployment.
+    This processor enables sharing serve deployments across multiple processors. This is useful
+    for sharing the same LLM engine across multiple processors.
 
     Args:
-        llm_config: The LLM config used to build the serve deployment.
-        name_prefix: The name prefix of the serve application to use.
+        deployment_name: The name of the serve deployment to use.
         app_name: The name of the serve application to use.
-        method: The method to invoke on the serve deployment.
         batch_size: The batch size to send to the serve deployment. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
@@ -296,24 +294,28 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
                 ),
             )
 
-            APP_NAME = "facebook"
+            APP_NAME = "facebook_opt_app"
+            DEPLOYMENT_NAME = "facebook_deployment"
 
-            llm_app = build_llm_deployment(llm_config, name_prefix="chat_completions")
+            llm_app = build_llm_deployment(llm_config, deployment_name=DEPLOYMENT_NAME)
             app = serve.run(llm_app, name=APP_NAME)
 
             config=ServeDeploymentProcessorConfig(
-                llm_config=llm_config,
+                deployment_name=DEPLOYMENT_NAME,
                 app_name=APP_NAME,
-                method="completions",
                 batch_size=1,
                 concurrency=1,
             )
             processor = build_llm_processor(
                 config,
-                preprocess=lambda row: CompletionRequest(
-                    model="facebook/opt-1.3b",
-                    prompt=row["prompt"],
-                    stream=False
+                preprocess=lambda row: dict(
+                    method="completions",
+                    dtype="CompletionRequest",
+                    request_kwargs=dict(
+                        model="facebook/opt-1.3b",
+                        prompt=row["prompt"],
+                        stream=False
+                    )
                 ),
                 postprocess=lambda row: dict(
                     resp=row["choices"][0]["text"],
