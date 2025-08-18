@@ -37,10 +37,10 @@ fi
 "$PYTHON_EXE" --version
 
 # Update pip
-"$PIP_CMD" install -U pip
+"$PIP_CMD" install --upgrade pip
 
 # Install the wheel.
 "$PIP_CMD" uninstall -y ray
-"$PIP_CMD" install -q --no-deps "$PYTHON_WHEEL"
+"$PIP_CMD" install -q --no-deps "$PYTHON_WHEEL" --use-pep517
 
 # TODO (elliot-barn): Test the wheel content (should be only METADATA)
