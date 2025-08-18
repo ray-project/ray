@@ -16,10 +16,13 @@ from ray.core.generated import (
 
 logger = logging.getLogger(__name__)
 
+
 class PublishResult:
     """A Data class that represents the result of publishing an item."""
 
-    def __init__(self, publish_status: bool, events_published: int, events_filtered_out: int):
+    def __init__(
+        self, publish_status: bool, events_published: int, events_filtered_out: int
+    ):
         self.publish_status = publish_status
         self.events_published = events_published
         self.events_filtered_out = events_filtered_out
@@ -69,8 +72,7 @@ class RayEventsPublisherBase(ABC):
     def start(self) -> None:
         """Start async worker task."""
         self._publish_worker_task = asyncio.create_task(
-            self._async_worker_loop(),
-            name=f"ray_events_publisher_{self._name}"
+            self._async_worker_loop(), name=f"ray_events_publisher_{self._name}"
         )
 
     def has_capacity(self) -> bool:
@@ -121,11 +123,11 @@ class RayEventsPublisherBase(ABC):
         """
         while True:
             item = await self._queue.get()
-            
+
             # Check for sentinel value (None) indicating shutdown
             if item is None:
                 break
-                
+
             await self._async_publish_with_retries(item)
 
     async def _async_publish_with_retries(self, item) -> None:
@@ -139,8 +141,12 @@ class RayEventsPublisherBase(ABC):
             result = await self._async_publish(item)
             if result.publish_status:
                 with self._metrics_lock:
-                    self._metric_events_published_since_last += int(result.events_published)
-                    self._metric_events_filtered_out_since_last += int(result.events_filtered_out)
+                    self._metric_events_published_since_last += int(
+                        result.events_published
+                    )
+                    self._metric_events_filtered_out_since_last += int(
+                        result.events_filtered_out
+                    )
                 return
             if attempts >= self._max_retries:
                 with self._metrics_lock:
@@ -224,7 +230,9 @@ class GCSPublisher(RayEventsPublisherBase):
             request = events_event_aggregator_service_pb2.AddEventsRequest(
                 events_data=events_data
             )
-            response = await self._gcs_event_stub.AddEvents(request, timeout=self._timeout)
+            response = await self._gcs_event_stub.AddEvents(
+                request, timeout=self._timeout
+            )
             if response.status.code != 0:
                 logger.error(f"GCS AddEvents failed: {response.status.message}")
                 return PublishResult(False, 0, 0)
@@ -298,7 +306,7 @@ class ExternalPublisher(RayEventsPublisherBase):
         """Shutdown worker and close HTTP session."""
         # Wait for worker to complete (processes all queued items)
         await super().shutdown()
-        
+
         # Now safe to close session since worker is done
         if self._session:
             await self._session.close()
@@ -320,7 +328,7 @@ class ExternalPublisher(RayEventsPublisherBase):
             # Create session on first use (lazy initialization)
             if not self._session:
                 self._session = aiohttp.ClientSession(timeout=self._timeout)
-            
+
             async with self._session.post(
                 self._endpoint,
                 json=filtered_json,

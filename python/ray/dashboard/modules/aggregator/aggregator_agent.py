@@ -206,7 +206,7 @@ class AggregatorAgent(
         # Dedicated publisher loop thread (single loop)
         self._publisher_thread = None
 
-        self._gcs_channel = create_gcs_channel(self.gcs_address,True)
+        self._gcs_channel = create_gcs_channel(self.gcs_address, True)
         self._gcs_event_stub = gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
             self._gcs_channel
         )
@@ -243,7 +243,7 @@ class AggregatorAgent(
             )
         else:
             self._gcs_publisher = NoopPublisher()
-        
+
         if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC:
             endpoint = f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}"
             self._external_publisher = ExternalPublisher(
@@ -334,7 +334,10 @@ class AggregatorAgent(
             )
             metadata_batch = self._task_metadata_buffer.get()
 
-        if draining_event_batch or len(draining_task_metadata_batch.dropped_task_attempts) > 0:
+        if (
+            draining_event_batch
+            or len(draining_task_metadata_batch.dropped_task_attempts) > 0
+        ):
             frozen_batch = tuple(draining_event_batch)
             self._gcs_publisher.enqueue((frozen_batch, draining_task_metadata_batch))
             if draining_event_batch:
@@ -352,7 +355,7 @@ class AggregatorAgent(
             # Check if stop event is set
             if self._stop_event.is_set():
                 break
-                
+
             # If both destination queues are full, wait a bit before pulling from buffer
             if (
                 not self._gcs_publisher.has_capacity()
@@ -383,26 +386,26 @@ class AggregatorAgent(
             else:
                 # wait for a bit before pulling from buffer again
                 await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
-    
-    async def _publisher_event_loop(self):
-            # Start destination publisher workers
-            self._gcs_publisher.start()
-            self._external_publisher.start()
 
-            # Launch one batching task
-            batching_task = asyncio.create_task(
-                self._publish_events(),
-                name="event_aggregator_agent_publish_events",
-            )
-            try:
-                # Await batching completion (it will exit when stop event is set)
-                await batching_task
-            finally:
-                # Drain any remaining items and shutdown publishers
-                await self._drain_event_buffer_to_publishers()
-                await self._gcs_publisher.shutdown()
-                await self._external_publisher.shutdown()
-                self._update_metrics()
+    async def _publisher_event_loop(self):
+        # Start destination publisher workers
+        self._gcs_publisher.start()
+        self._external_publisher.start()
+
+        # Launch one batching task
+        batching_task = asyncio.create_task(
+            self._publish_events(),
+            name="event_aggregator_agent_publish_events",
+        )
+        try:
+            # Await batching completion (it will exit when stop event is set)
+            await batching_task
+        finally:
+            # Drain any remaining items and shutdown publishers
+            await self._drain_event_buffer_to_publishers()
+            await self._gcs_publisher.shutdown()
+            await self._external_publisher.shutdown()
+            self._update_metrics()
 
     def _create_and_start_publisher_loop(self) -> None:
         """Creates and starts a dedicated asyncio event loop with multiple async publisher workers."""
@@ -415,7 +418,9 @@ class AggregatorAgent(
                 pending = asyncio.all_tasks(loop)
                 for t in pending:
                     t.cancel()
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
             except Exception:
                 pass
             finally:
@@ -444,11 +449,15 @@ class AggregatorAgent(
             # Publisher stats
             _events_published_to_gcs = gcs_publisher_metrics.get("published", 0)
             _events_failed_to_publish_to_gcs = gcs_publisher_metrics.get("failed", 0)
-            _events_dropped_in_gcs_publish_queue = gcs_publisher_metrics.get("queue_dropped", 0)
+            _events_dropped_in_gcs_publish_queue = gcs_publisher_metrics.get(
+                "queue_dropped", 0
+            )
 
             _events_published = external_publisher_metrics.get("published", 0)
             _events_filtered_out = external_publisher_metrics.get("filtered_out", 0)
-            _events_failed_to_publish_to_external = external_publisher_metrics.get("failed", 0)
+            _events_failed_to_publish_to_external = external_publisher_metrics.get(
+                "failed", 0
+            )
             _events_dropped_in_external_publish_queue = external_publisher_metrics.get(
                 "queue_dropped", 0
             )
@@ -523,7 +532,7 @@ class AggregatorAgent(
 
         # Update metrics immediately
         self._update_metrics()
-        
+
         # Join publisher loop thread to ensure clean shutdown
         if self._publisher_thread is not None:
             try:
