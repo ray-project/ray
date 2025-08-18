@@ -31,10 +31,11 @@ namespace core {
 ShutdownCoordinator::ShutdownCoordinator(
     std::unique_ptr<ShutdownExecutorInterface> executor, WorkerType worker_type)
     : executor_(std::move(executor)), worker_type_(worker_type) {
-      RAY_CHECK(executor_) << "ShutdownCoordinator requires a non-null ShutdownExecutorInterface. "
-                           << "This indicates a construction-time bug. "
-                           << "Pass a concrete executor (e.g., CoreWorkerShutdownExecutor) "
-                           << "when creating the coordinator.";
+  RAY_CHECK(executor_)
+      << "ShutdownCoordinator requires a non-null ShutdownExecutorInterface. "
+      << "This indicates a construction-time bug. "
+      << "Pass a concrete executor (e.g., CoreWorkerShutdownExecutor) "
+      << "when creating the coordinator.";
 }
 
 bool ShutdownCoordinator::RequestShutdown(

@@ -84,15 +84,19 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
 // No-op executor used in disabled/manual-transition tests.
 class NoOpShutdownExecutor : public ShutdownExecutorInterface {
  public:
-  void ExecuteGracefulShutdown(std::string_view, std::string_view,
+  void ExecuteGracefulShutdown(std::string_view,
+                               std::string_view,
                                std::chrono::milliseconds) override {}
   void ExecuteForceShutdown(std::string_view, std::string_view) override {}
-  void ExecuteWorkerExit(std::string_view, std::string_view,
+  void ExecuteWorkerExit(std::string_view,
+                         std::string_view,
                          std::chrono::milliseconds) override {}
-  void ExecuteExit(std::string_view, std::string_view, std::chrono::milliseconds,
-                   const std::shared_ptr<::ray::LocalMemoryBuffer> &)
-      override {}
-  void ExecuteHandleExit(std::string_view, std::string_view,
+  void ExecuteExit(std::string_view,
+                   std::string_view,
+                   std::chrono::milliseconds,
+                   const std::shared_ptr<::ray::LocalMemoryBuffer> &) override {}
+  void ExecuteHandleExit(std::string_view,
+                         std::string_view,
                          std::chrono::milliseconds) override {}
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return false; }
@@ -144,13 +148,15 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_IdempotentBehavior) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);  // Reason is updated
 }
 
-TEST_F(ShutdownCoordinatorTest, TryInitiateShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
+TEST_F(ShutdownCoordinatorTest,
+       TryInitiateShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
   auto coordinator = CreateCoordinator();
 
   EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
   {
     auto st = coordinator->GetState();
-    EXPECT_TRUE(st == ShutdownState::kShuttingDown || st == ShutdownState::kDisconnecting);
+    EXPECT_TRUE(st == ShutdownState::kShuttingDown ||
+                st == ShutdownState::kDisconnecting);
   }
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
@@ -208,7 +214,8 @@ TEST_F(ShutdownCoordinatorTest, ForceShutdown_TransitionsDirectlyToShutdown) {
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 }
 
-TEST_F(ShutdownCoordinatorTest, RequestShutdown_Graceful_OnlyOneInitiatorUnderConcurrency) {
+TEST_F(ShutdownCoordinatorTest,
+       RequestShutdown_Graceful_OnlyOneInitiatorUnderConcurrency) {
   auto coordinator = CreateCoordinator();
 
   constexpr int num_threads = 10;
@@ -235,7 +242,8 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_Graceful_OnlyOneInitiatorUnderCo
   EXPECT_EQ(success_count.load(), 1);
   {
     auto st = coordinator->GetState();
-    EXPECT_TRUE(st == ShutdownState::kShuttingDown || st == ShutdownState::kDisconnecting);
+    EXPECT_TRUE(st == ShutdownState::kShuttingDown ||
+                st == ShutdownState::kDisconnecting);
   }
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 }
@@ -328,7 +336,8 @@ TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_OOM_IsNODE_OUT_OF_MEMORY) 
   EXPECT_EQ(coordinator->GetExitTypeString(), "NODE_OUT_OF_MEMORY");
 }
 
-TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_IdleTimeout_IsINTENDED_SYSTEM_EXIT) {
+TEST_F(ShutdownCoordinatorTest,
+       ExitTypeStringMapping_IdleTimeout_IsINTENDED_SYSTEM_EXIT) {
   auto coordinator = CreateCoordinator();
   coordinator->RequestShutdown(false, ShutdownReason::kIdleTimeout);
   EXPECT_EQ(coordinator->GetExitTypeString(), "INTENDED_SYSTEM_EXIT");

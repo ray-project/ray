@@ -162,14 +162,13 @@ class ShutdownCoordinator {
   /// \param force_on_timeout If true, fallback to force shutdown on
   /// timeout; if false, wait indefinitely \return true if this call initiated shutdown,
   /// false if already shutting down
-  bool RequestShutdown(
-      bool force_shutdown,
-      ShutdownReason reason,
-      std::string_view detail = "",
-      std::chrono::milliseconds timeout_ms = kInfiniteTimeout,
-      bool force_on_timeout = false,
-      const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes =
-          nullptr);
+  bool RequestShutdown(bool force_shutdown,
+                       ShutdownReason reason,
+                       std::string_view detail = "",
+                       std::chrono::milliseconds timeout_ms = kInfiniteTimeout,
+                       bool force_on_timeout = false,
+                       const std::shared_ptr<::ray::LocalMemoryBuffer>
+                           &creation_task_exception_pb_bytes = nullptr);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
   /// TODO: This is public for now to ease incremental migration and testing.
