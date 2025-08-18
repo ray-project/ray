@@ -225,7 +225,6 @@ ray_cc_library(
         "//src/ray/common:memory_monitor",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/flatbuffers:node_manager_generated",
-        "//src/ray/gcs",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/object_manager",
         "//src/ray/object_manager:ownership_object_directory",
