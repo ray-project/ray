@@ -678,10 +678,6 @@ def test_duplicate_objectref_transfer(ray_start_regular):
     val1 = ray.get(result1)
     val2 = ray.get(result2)
 
-    print(f"Original tensor: {original_value}")
-    print(f"Result1: {val1}, Expected: {original_value + 1}")
-    print(f"Result2: {val2}, Expected: {original_value + 1}")
-
     # Check for correctness
     assert val1 == pytest.approx(
         original_value + 1
