@@ -565,7 +565,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
-        self.log_gradients = True
+        self.log_gradients = False
 
         # `self.checkpointing()`
         self.export_native_model_files = False
