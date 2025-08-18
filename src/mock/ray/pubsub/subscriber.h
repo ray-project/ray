@@ -20,20 +20,6 @@
 namespace ray {
 namespace pubsub {
 
-class MockSubscriberClientInterface : public SubscriberClientInterface {
- public:
-  MOCK_METHOD(void,
-              PubsubLongPolling,
-              (const rpc::PubsubLongPollingRequest &request,
-               const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback),
-              (override));
-  MOCK_METHOD(void,
-              PubsubCommandBatch,
-              (const rpc::PubsubCommandBatchRequest &request,
-               const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback),
-              (override));
-};
-
 class MockSubscriber : public SubscriberInterface {
  public:
   MOCK_METHOD(bool,
