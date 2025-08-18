@@ -1013,6 +1013,8 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
             for stat in incoming_stats:
                 _hist = stat.get_reduce_history()
                 prev_reduction, new_reduction = _hist[-2][0], _hist[-1][0]
+                if np.isnan(prev_reduction):
+                    prev_reduction = 0
                 base_stats.values[-1] -= prev_reduction
                 added_sum += new_reduction - prev_reduction
 

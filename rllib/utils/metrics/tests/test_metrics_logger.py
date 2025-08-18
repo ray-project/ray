@@ -295,7 +295,7 @@ def test_throughput_aggregation():
         def get_metrics(self):
             return self.metrics.reduce()
 
-    env_runners = [EnvRunner.remote() for _ in range(2)]
+    env_runners = [EnvRunner.remote() for _ in range(3)]
 
     # Main logger.
     main_metrics = MetricsLogger()
@@ -335,6 +335,17 @@ def test_throughput_aggregation():
     check(main_metrics.peek("counter"), 30 + 15)
     tp = main_metrics.stats["counter"].throughput
     check(tp, 15, atol=2)
+
+    time.sleep(1.0)
+    env_runners[2].increase.remote(count=50)
+    results = ray.get(env_runners[2].get_metrics.remote())
+    main_metrics.aggregate([results])
+
+    check(main_metrics.peek("counter"), 30 + 15 + 50)
+    tp = main_metrics.stats["counter"].throughput
+    # Expect throughput - due to the EMA - to be only slightly higher than
+    # the original value of 15.
+    check(tp, 16, atol=2)
 
 
 def test_reset_and_delete(logger):
