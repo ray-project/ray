@@ -2179,16 +2179,15 @@ cdef execute_task_with_cancellation_handler(
     title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids to restrict availability to this task.
+    # runtime_ids, OMP_NUM_THREADS to restrict availability to this task.
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        ray._private.utils.set_visible_accelerator_ids()
-
-    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
-    # It will be unset after the task execution if it was overwridden here.
-    # No-op if already set.
-    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
+        omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+    else:
+        original_visible_accelerator_env_vars = None
+        omp_num_threads_overriden = False
 
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
@@ -2289,9 +2288,14 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = None
 
-        if omp_num_threads_overriden:
-            # Reset the OMP_NUM_THREADS environ if it was set.
-            os.environ.pop("OMP_NUM_THREADS", None)
+        if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
+            if original_visible_accelerator_env_vars:
+                # Reset the visible accelerator env vars for normal tasks, since they may be reused.
+                ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
+            if omp_num_threads_overriden:
+                # Reset the OMP_NUM_THREADS environ if it was set.
+                os.environ.pop("OMP_NUM_THREADS", None)
+
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
