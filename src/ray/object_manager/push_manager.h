@@ -62,16 +62,21 @@ class PushManager {
   /// Record the internal metrics.
   void RecordMetrics() const;
 
+  int64_t BytesInFlight() const { return bytes_in_flight_; }
+
+  int64_t ChunksRemaining() const { return chunks_remaining_; }
+
+  int64_t PushesInFlight() const { return push_state_map_.size(); }
+
+  int64_t PushRequestsRemaining() const {
+    return push_requests_with_chunks_to_send_.size();
+  }
+
+  /// Get the number of bytes in flight.
   std::string DebugString() const;
 
  private:
-  FRIEND_TEST(TestPushManager, TestSingleTransfer);
   FRIEND_TEST(TestPushManager, TestPushState);
-  FRIEND_TEST(TestPushManager, TestRetryDuplicates);
-  FRIEND_TEST(TestPushManager, TestResendWholeObject);
-  FRIEND_TEST(TestPushManager, TestMultipleTransfers);
-  FRIEND_TEST(TestPushManager, TestPushMultipleObject);
-  FRIEND_TEST(TestPushManager, TestNodeRemoved);
 
   /// Tracks the state of an active object push to another node.
   struct PushState {
