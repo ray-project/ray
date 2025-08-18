@@ -1,6 +1,9 @@
 import os
+import hashlib
 import time
 import traceback
+import random
+import string
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
@@ -418,36 +421,61 @@ def run_release_test_kuberay(
     smoke_test: bool = False,
     test_definition_root: Optional[str] = None,
 ) -> Result:
-    result.stable = test.get("stable", True)
-    result.smoke_test = smoke_test
-    cluster_compute = load_test_cluster_compute(test, test_definition_root)
-    kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
-        cluster_compute
-    )
-    kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
-    if kuberay_autoscaler_version:
-        kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
-    else:
-        kuberay_autoscaler_config = None
-    working_dir_upload_path = upload_working_dir(get_working_dir(test))
+    start_time = time.monotonic()
+    pipeline_exception = None
+    try:
+        result.stable = test.get("stable", True)
+        result.smoke_test = smoke_test
+        cluster_compute = load_test_cluster_compute(test, test_definition_root)
+        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
+            cluster_compute
+        )
+        kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
+        if kuberay_autoscaler_version:
+            kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
+        else:
+            kuberay_autoscaler_config = None
+        working_dir_upload_path = upload_working_dir(get_working_dir(test))
 
-    command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+        test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
+        # random 8 digit suffix
+        random_suffix = "".join(random.choices(string.digits, k=8))
+        base_job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}"
+        job_name = base_job_name.replace("_", "-")
+        logger.info(f"Job name: {job_name}")
+        kuberay_job_manager = KubeRayJobManager()
+        retcode, duration = kuberay_job_manager.run_and_wait(
+            job_name=job_name,
+            image=test.get_anyscale_byod_image(),
+            cmd_to_run=test["run"]["script"],
+            env_vars=test.get_byod_runtime_env(),
+            working_dir=working_dir_upload_path,
+            pip=test.get_byod_pips(),
+            compute_config=kuberay_compute_config,
+            autoscaler_config=kuberay_autoscaler_config,
+            timeout=command_timeout,
+        )
+        kuberay_job_manager.fetch_results()
+        result.return_code = retcode
+        result.runtime = duration
+    except Exception as e:
+        logger.info(f"Exception: {e}")
+        pipeline_exception = e
+        result.runtime = time.monotonic() - start_time
 
-    kuberay_job_manager = KubeRayJobManager()
-    retcode, duration = kuberay_job_manager.run_and_wait(
-        job_name=test["name"].replace(".", "-").replace("_", "-"),
-        image=test.get_anyscale_byod_image(),
-        cmd_to_run=test["run"]["script"],
-        env_vars=test.get_byod_runtime_env(),
-        working_dir=working_dir_upload_path,
-        pip=test.get_byod_pips(),
-        compute_config=kuberay_compute_config,
-        autoscaler_config=kuberay_autoscaler_config,
-        timeout=command_timeout,
-    )
-    kuberay_job_manager.fetch_results()
-    result.return_code = retcode
-    result.runtime = duration
+    if pipeline_exception:
+        buildkite_group(":rotating_light: Handling errors")
+        exit_code, result_status, runtime = handle_exception(
+            pipeline_exception,
+            result.runtime,
+        )
+
+        result.return_code = exit_code.value
+        result.status = result_status.value
+        if runtime is not None:
+            result.runtime = runtime
+        raise pipeline_exception
     return result
 
 

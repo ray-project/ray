@@ -104,6 +104,16 @@ VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
 DEFAULT_BATCH_FORMAT = "numpy"
 
 
+def _is_empty_schema(schema: Optional[Schema]) -> bool:
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    return schema is None or (
+        not schema.names
+        if isinstance(schema, PandasBlockSchema)
+        else not schema  # pyarrow schema check
+    )
+
+
 def _apply_batch_format(given_batch_format: Optional[str]) -> str:
     if given_batch_format == "default":
         given_batch_format = DEFAULT_BATCH_FORMAT

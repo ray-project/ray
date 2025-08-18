@@ -58,6 +58,13 @@ def get_deployment_start_time(controller: ServeController, name: str):
     return deployment_info.start_time_ms
 
 
+def check_num_queued_requests_eq(handle: DeploymentHandle, expected: int):
+    assert (
+        handle._router._asyncio_router._metrics_manager.num_queued_requests == expected
+    )
+    return True
+
+
 def assert_no_replicas_deprovisioned(
     replica_ids_1: Iterable[ReplicaID], replica_ids_2: Iterable[ReplicaID]
 ) -> None:
@@ -135,12 +142,9 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "target_ongoing_requests": 10,
                 "upscale_delay_s": 0,
-                "downscale_delay_s": 0,
+                "downscale_delay_s": 5,
                 "look_back_period_s": 1,
             },
-            # We will send many requests. This will make sure replicas are
-            # killed quickly during cleanup.
-            graceful_shutdown_timeout_s=1,
             max_ongoing_requests=25,
             version="v1",
         )
@@ -154,25 +158,32 @@ class TestAutoscalingMetrics:
 
         # Wait for metrics to propagate
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=1)
-        print("Autoscaling metrics started recording on controller.")
+        tlog("Autoscaling metrics started recording on controller.")
 
         # Many queries should be inflight.
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
-        print("Confirmed many queries are inflight.")
+        tlog("Confirmed many queries are inflight.")
+
+        wait_for_condition(check_num_queued_requests_eq, handle=handle, expected=0)
+        tlog("Confirmed all requests are assigned to replicas.")
 
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
-        print("Confirmed deployment scaled to 5 replicas.")
-        print("Releasing signal.")
+        tlog("Confirmed deployment scaled to 5 replicas.")
+        tlog("Releasing signal.")
         signal.send.remote()
 
         # After traffic stops, num replica should drop to 1
         wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
-        print("Num replicas dropped to 1.")
+        tlog("Num replicas dropped to 1.")
 
         # Request metrics should drop to 0
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
-        print("Queued and ongoing requests dropped to 0.")
+        tlog("Queued and ongoing requests dropped to 0.")
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
     @pytest.mark.parametrize("use_generator", [True, False])
     def test_replicas_die(self, serve_instance_with_signal, use_generator):
         """If replicas die while requests are still executing, that
@@ -400,8 +411,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -428,7 +439,9 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("scaling_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
+@mock.patch(
+    "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 1
+)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance_with_signal,
     scaling_factor,
@@ -546,7 +559,7 @@ def test_cold_start_time(serve_instance):
     result = handle.remote().result()
     cold_start_time = time.time() - start
     if sys.platform == "win32":
-        timeout = 5  # Windows has a longer tail.
+        timeout = 10  # Windows has a longer tail.
     else:
         timeout = 3
     assert cold_start_time < timeout
@@ -585,8 +598,8 @@ def test_e2e_bursty(serve_instance_with_signal):
         def __init__(self):
             logging.getLogger("ray.serve").setLevel(logging.ERROR)
 
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -623,7 +636,9 @@ def test_e2e_bursty(serve_instance_with_signal):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
+@mock.patch(
+    "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 1
+)
 def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
@@ -647,8 +662,8 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -950,12 +965,13 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
 
     handle = serve.run(scaler.bind())
     dep_id = DeploymentID(name="scaler")
-    responses = [handle.remote() for _ in range(10)]
+    responses = [handle.remote() for _ in range(20)]
 
     wait_for_condition(
         check_num_replicas_eq,
         name="scaler",
         target=2,
+        use_controller=True,
         retry_interval_ms=1000,
         timeout=20,
     )
@@ -1031,9 +1047,9 @@ import ray
 import os
 
 @serve.deployment
-def g():
+async def g():
     signal = ray.get_actor("signal123")
-    ray.get(signal.wait.remote())
+    await signal.wait.remote()
     return os.getpid()
 
 

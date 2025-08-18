@@ -17,6 +17,9 @@ from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.issue_detection.issue_detector_configuration import (
+        IssueDetectorsConfiguration,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +283,15 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
         return DEFAULT_SHUFFLE_STRATEGY
 
 
+def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
+    # Lazily import to avoid circular dependencies.
+    from ray.data._internal.issue_detection.issue_detector_configuration import (
+        IssueDetectorsConfiguration,
+    )
+
+    return IssueDetectorsConfiguration()
+
+
 @DeveloperAPI
 @dataclass
 class DataContext:
@@ -301,9 +313,7 @@ class DataContext:
 
     Args:
         target_max_block_size: The max target block size in bytes for reads and
-            transformations.
-        target_shuffle_max_block_size: The max target block size in bytes for shuffle
-            ops like ``random_shuffle``, ``sort``, and ``repartition``.
+            transformations. If `None`, this means the block size is infinite.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
             ``read_op_min_num_blocks``.
@@ -398,8 +408,8 @@ class DataContext:
             map tasks won't record memory stats.
     """
 
-    target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
-    target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
+    # `None` means the block size is infinite.
+    target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
@@ -519,6 +529,10 @@ class DataContext:
     # retry task may still be scheduled to this actor and it will fail.
     _enable_actor_pool_on_exit_hook: bool = False
 
+    issue_detectors_config: "IssueDetectorsConfiguration" = field(
+        default_factory=_issue_detectors_config_factory
+    )
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
@@ -562,16 +576,24 @@ class DataContext:
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
             warnings.warn(
-                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+
         elif name == "use_push_based_shuffle":
             warnings.warn(
-                "`use_push_based_shuffle` is deprecated, please configure "
+                "`use_push_based_shuffle` is deprecated! Configure "
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "target_shuffle_max_block_size":
+            warnings.warn(
+                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead."
+            )
+
+            self.target_max_block_size = value
 
         elif name == "use_polars":
             warnings.warn(

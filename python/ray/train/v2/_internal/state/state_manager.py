@@ -1,8 +1,8 @@
 import logging
-import time
 from collections import defaultdict
 from typing import Dict, List, Optional
 
+import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
@@ -19,6 +19,12 @@ from ray.train.v2._internal.state.schema import (
     TrainWorker,
 )
 from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
+from ray.train.v2._internal.state.util import (
+    current_time_ns,
+    mark_workers_dead,
+    update_train_run_aborted,
+    update_train_run_attempt_aborted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +55,7 @@ class TrainStateManager:
             status=RunStatus.INITIALIZING,
             status_detail=None,
             controller_actor_id=controller_actor_id,
-            start_time_ns=_current_time_ns(),
+            start_time_ns=current_time_ns(),
             controller_log_file_path=controller_log_file_path,
         )
         self._runs[run.id] = run
@@ -106,7 +112,7 @@ class TrainStateManager:
         run = self._runs[run_id]
         run.status = RunStatus.FINISHED
         run.status_detail = None
-        run.end_time_ns = _current_time_ns()
+        run.end_time_ns = current_time_ns()
         self._create_or_update_train_run(run)
 
     def update_train_run_errored(
@@ -117,7 +123,7 @@ class TrainStateManager:
         run = self._runs[run_id]
         run.status = RunStatus.ERRORED
         run.status_detail = status_detail
-        run.end_time_ns = _current_time_ns()
+        run.end_time_ns = current_time_ns()
         self._create_or_update_train_run(run)
 
     def update_train_run_aborted(
@@ -125,9 +131,7 @@ class TrainStateManager:
         run_id: str,
     ):
         run = self._runs[run_id]
-        run.status = RunStatus.ABORTED
-        run.status_detail = None  # TODO: Add status detail.
-        run.end_time_ns = _current_time_ns()
+        update_train_run_aborted(run=run, graceful=True)
         self._create_or_update_train_run(run)
 
     def create_train_run_attempt(
@@ -144,7 +148,7 @@ class TrainStateManager:
         run_attempt = TrainRunAttempt(
             run_id=run_id,
             attempt_id=attempt_id,
-            start_time_ns=_current_time_ns(),
+            start_time_ns=current_time_ns(),
             status=RunAttemptStatus.PENDING,
             status_detail=status_detail,
             resources=resources,
@@ -193,8 +197,8 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         run_attempt.status = RunAttemptStatus.FINISHED
         run_attempt.status_detail = None
-        run_attempt.end_time_ns = _current_time_ns()
-        _mark_workers_dead(run_attempt)
+        run_attempt.end_time_ns = current_time_ns()
+        mark_workers_dead(run_attempt)
         self._create_or_update_train_run_attempt(run_attempt)
 
     def update_train_run_attempt_errored(
@@ -206,8 +210,8 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         run_attempt.status = RunAttemptStatus.ERRORED
         run_attempt.status_detail = status_detail
-        run_attempt.end_time_ns = _current_time_ns()
-        _mark_workers_dead(run_attempt)
+        run_attempt.end_time_ns = current_time_ns()
+        mark_workers_dead(run_attempt)
         self._create_or_update_train_run_attempt(run_attempt)
 
     def update_train_run_attempt_aborted(
@@ -216,29 +220,23 @@ class TrainStateManager:
         attempt_id: str,
     ):
         run_attempt = self._run_attempts[run_id][attempt_id]
-        run_attempt.status_detail = None  # TODO: Add status detail.
-        run_attempt.status = RunAttemptStatus.ABORTED
-        run_attempt.end_time_ns = _current_time_ns()
-        _mark_workers_dead(run_attempt)
+        update_train_run_attempt_aborted(run_attempt=run_attempt, graceful=True)
         self._create_or_update_train_run_attempt(run_attempt)
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
-        self._state_actor.create_or_update_train_run.remote(run)
+        ref = self._state_actor.create_or_update_train_run.remote(run)
+        # Block to avoid case where controller is dead but run is not terminal.
+        if run.status.is_terminal():
+            ray.get(ref)
 
     def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
-
-
-def _current_time_ns() -> int:
-    return time.time_ns()
+        # Block to avoid case where controller is dead but attempt is not terminal.
+        ref = self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
+        if run_attempt.status.is_terminal():
+            ray.get(ref)
 
 
 def _get_scheduling_status_detail(
     num_workers: int, resources_per_worker: Dict[str, float]
 ) -> str:
     return f"Scheduling {num_workers} workers, each requiring: {resources_per_worker}."
-
-
-def _mark_workers_dead(run_attempt: TrainRunAttempt) -> None:
-    for worker in run_attempt.workers:
-        worker.status = ActorStatus.DEAD

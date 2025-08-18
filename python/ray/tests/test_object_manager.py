@@ -2,7 +2,6 @@ import multiprocessing
 import sys
 import time
 import warnings
-from collections import defaultdict
 
 import numpy as np
 import pytest
@@ -62,94 +61,6 @@ def test_object_transfer_during_oom(ray_start_cluster_head):
     # Getting the remote ref is possible even though we don't have enough
     # memory locally to hold both objects once.
     ray.get(remote_ref)
-
-
-# This test is here to make sure that when we broadcast an object to a bunch of
-# machines, we don't have too many excess object transfers.
-@pytest.mark.skip(reason="TODO(ekl)")
-def test_object_broadcast(ray_start_cluster_with_resource):
-    cluster, num_nodes = ray_start_cluster_with_resource
-
-    @ray.remote
-    def f(x):
-        return
-
-    x = np.zeros(1024 * 1024, dtype=np.uint8)
-
-    @ray.remote
-    def create_object():
-        return np.zeros(1024 * 1024, dtype=np.uint8)
-
-    object_refs = []
-
-    for _ in range(3):
-        # Broadcast an object to all machines.
-        x_id = ray.put(x)
-        object_refs.append(x_id)
-        ray.get(
-            [
-                f._remote(args=[x_id], resources={str(i % num_nodes): 1})
-                for i in range(10 * num_nodes)
-            ]
-        )
-
-    for _ in range(3):
-        # Broadcast an object to all machines.
-        x_id = create_object.remote()
-        object_refs.append(x_id)
-        ray.get(
-            [
-                f._remote(args=[x_id], resources={str(i % num_nodes): 1})
-                for i in range(10 * num_nodes)
-            ]
-        )
-
-    # Wait for profiling information to be pushed to the profile table.
-    time.sleep(1)
-    transfer_events = ray._private.state.object_transfer_timeline()
-
-    # Make sure that each object was transferred a reasonable number of times.
-    for x_id in object_refs:
-        relevant_events = [
-            event
-            for event in transfer_events
-            if event["cat"] == "transfer_send"
-            and event["args"][0] == x_id.hex()
-            and event["args"][2] == 1
-        ]
-
-        # NOTE: Each event currently appears twice because we duplicate the
-        # send and receive boxes to underline them with a box (black if it is a
-        # send and gray if it is a receive). So we need to remove these extra
-        # boxes here.
-        deduplicated_relevant_events = [
-            event for event in relevant_events if event["cname"] != "black"
-        ]
-        assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
-        relevant_events = deduplicated_relevant_events
-
-        # Each object must have been broadcast to each remote machine.
-        assert len(relevant_events) >= num_nodes - 1
-        # If more object transfers than necessary have been done, print a
-        # warning.
-        if len(relevant_events) > num_nodes - 1:
-            warnings.warn(
-                "This object was transferred {} times, when only {} "
-                "transfers were required.".format(len(relevant_events), num_nodes - 1)
-            )
-        # Each object should not have been broadcast more than once from every
-        # machine to every other machine. Also, a pair of machines should not
-        # both have sent the object to each other.
-        assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
-
-        # Make sure that no object was sent multiple times between the same
-        # pair of object managers.
-        send_counts = defaultdict(int)
-        for event in relevant_events:
-            # The pid identifies the sender and the tid identifies the
-            # receiver.
-            send_counts[(event["pid"], event["tid"])] += 1
-        assert all(value == 1 for value in send_counts.values())
 
 
 # When submitting an actor method, we try to pre-emptively push its arguments

@@ -16,6 +16,7 @@ examples/rayjob-kueue-gang-scheduling
 examples/distributed-checkpointing-with-gcsfuse
 examples/modin-example
 examples/rayserve-llm-example
+examples/rayserve-deepseek-example
 examples/verl-post-training
 ```
 
@@ -33,4 +34,5 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-distributed-checkpointing-gcsefuse`
 - {ref}`kuberay-modin-example`
 - {ref}`kuberay-rayservice-llm-example`
+- {ref}`kuberay-rayservice-deepseek-example`
 - {ref}`kuberay-verl`

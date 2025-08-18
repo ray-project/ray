@@ -25,7 +25,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/util/event.h"
-#include "ray/util/event_label.h"
 
 namespace ray {
 /// Monitor the filesystem capacity ray is using.

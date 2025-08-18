@@ -1,4 +1,4 @@
-workspace(name = "com_github_ray_project_ray")
+workspace(name = "io_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -9,6 +9,20 @@ http_archive(
         "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
     ],
 )
+
+http_archive(
+    name = "rules_java",
+    sha256 = "302bcd9592377bf9befc8e41aa97ec02df12813d47af9979e4764f3ffdcc5da8",
+    urls = [
+        "https://github.com/bazelbuild/rules_java/releases/download/7.12.4/rules_java-7.12.4.tar.gz",
+    ],
+)
+
+load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
+
+rules_java_dependencies()
+
+rules_java_toolchains()
 
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
@@ -100,6 +114,19 @@ filegroup(
 """,
     sha256 = "61c9a2c0d5981a78482025b6b69728521fbc78506d68b223d4a2eb825de5ca3d",
     urls = ["https://github.com/distribution/distribution/releases/download/v3.0.0/registry_3.0.0_linux_amd64.tar.gz"],
+)
+
+http_archive(
+    name = "uv_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "2c4392591fe9469d006452ef22f32712f35087d87fb1764ec03e23544eb8770d",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.10/uv-x86_64-unknown-linux-gnu.tar.gz"],
 )
 
 http_archive(

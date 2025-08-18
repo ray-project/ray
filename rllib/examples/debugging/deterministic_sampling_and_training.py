@@ -71,7 +71,6 @@ from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_iters=3)
 parser.set_defaults(
-    enable_new_api_stack=True,
     # Test by default with more than one Env per EnvRunner.
     num_envs_per_env_runner=2,
 )

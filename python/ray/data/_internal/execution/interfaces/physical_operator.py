@@ -18,7 +18,7 @@ from typing import (
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -28,6 +28,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
 
@@ -317,9 +318,12 @@ class PhysicalOperator(Operator):
             return self._output_block_size_option.target_max_block_size
 
     @property
-    def actual_target_max_block_size(self) -> int:
+    def actual_target_max_block_size(self) -> Optional[int]:
         """
         The actual target max block size output by this operator.
+        Returns:
+            `None` if the target max block size is not set, otherwise the target max block size.
+            `None` means the block size is infinite.
         """
         target_max_block_size = self.target_max_block_size
         if target_max_block_size is None:
@@ -633,6 +637,18 @@ class PhysicalOperator(Operator):
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
 
+    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal output backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's output backpressure should be set to.
+        """
+        # only update on change to in_backpressure
+        if self._in_task_output_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_output_backpressure(in_backpressure)
+            self._in_task_output_backpressure = in_backpressure
+
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
@@ -689,9 +705,74 @@ class PhysicalOperator(Operator):
                     # In all cases, we swallow the exception.
                     pass
 
+    def upstream_op_num_outputs(self):
+        upstream_op_num_outputs = sum(
+            op.num_outputs_total() or 0 for op in self.input_dependencies
+        )
+        return upstream_op_num_outputs
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod
     def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
         """Returns resources used by this operator beyond standard accounting."""
         ...
+
+
+def estimate_total_num_of_blocks(
+    num_tasks_submitted: int,
+    upstream_op_num_outputs: int,
+    metrics: OpRuntimeMetrics,
+    total_num_tasks: Optional[int] = None,
+) -> Tuple[int, int, int]:
+    """This method is trying to estimate total number of blocks/rows based on
+    - How many outputs produced by the input deps
+    - How many blocks/rows produced by tasks of this operator
+    """
+
+    if (
+        upstream_op_num_outputs > 0
+        and metrics.num_inputs_received > 0
+        and metrics.num_tasks_finished > 0
+    ):
+        estimated_num_tasks = total_num_tasks
+        if estimated_num_tasks is None:
+            estimated_num_tasks = (
+                upstream_op_num_outputs
+                / metrics.num_inputs_received
+                * num_tasks_submitted
+            )
+
+        estimated_num_output_bundles = round(
+            estimated_num_tasks
+            * metrics.num_outputs_of_finished_tasks
+            / metrics.num_tasks_finished
+        )
+        estimated_output_num_rows = round(
+            estimated_num_tasks
+            * metrics.rows_task_outputs_generated
+            / metrics.num_tasks_finished
+        )
+        return (
+            estimated_num_tasks,
+            estimated_num_output_bundles,
+            estimated_output_num_rows,
+        )
+
+    return (0, 0, 0)
+
+
+def _create_sub_pb(
+    name: str, total_output_rows: Optional[int], position: int
+) -> Tuple[ProgressBar, int]:
+    progress_bar = ProgressBar(
+        name,
+        total_output_rows or 1,
+        unit="row",
+        position=position,
+    )
+    # NOTE: call `set_description` to trigger the initial print of progress
+    # bar on console.
+    progress_bar.set_description(f"  *- {name}")
+    position += 1
+    return progress_bar, position

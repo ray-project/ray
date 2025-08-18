@@ -23,6 +23,7 @@
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace raylet {
@@ -36,13 +37,13 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      get_node_info_(get_node_info),
-      announce_infeasible_task_(announce_infeasible_task),
+      get_node_info_(std::move(get_node_info)),
+      announce_infeasible_task_(std::move(announce_infeasible_task)),
       local_task_manager_(local_task_manager),
       scheduler_resource_reporter_(
           tasks_to_schedule_, infeasible_tasks_, local_task_manager_),
       internal_stats_(*this, local_task_manager_),
-      get_time_ms_(get_time_ms) {}
+      get_time_ms_(std::move(get_time_ms)) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     RayTask task,
@@ -273,8 +274,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
         announce_infeasible_task_(task);
       }
 
-      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it++);
@@ -328,7 +328,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_[shapes_it->first] = std::move(shapes_it->second);
       infeasible_tasks_.erase(shapes_it++);
     }
   }
@@ -455,7 +455,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_ip_address(
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();
 }

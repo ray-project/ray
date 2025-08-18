@@ -1,4 +1,3 @@
-import datetime
 import os
 import random
 import sys
@@ -1130,27 +1129,6 @@ def test_wrapped_actor_handle(ray_start_regular_shared):
     a = A.remote()
     b_list = ray.get(a.get_actor_ref.remote())
     assert ray.get(b_list[0].doit.remote()) == 2
-
-
-@pytest.mark.skip("This test is just used to print the latency of creating 100 actors.")
-def test_actor_creation_latency(ray_start_regular_shared):
-    # This test is just used to test the latency of actor creation.
-    @ray.remote
-    class Actor:
-        def get_value(self):
-            return 1
-
-    start = datetime.datetime.now()
-    actor_handles = [Actor.remote() for _ in range(100)]
-    actor_create_time = datetime.datetime.now()
-    for actor_handle in actor_handles:
-        ray.get(actor_handle.get_value.remote())
-    end = datetime.datetime.now()
-    print(
-        "actor_create_time_consume = {}, total_time_consume = {}".format(
-            actor_create_time - start, end - start
-        )
-    )
 
 
 @pytest.mark.parametrize("enable_concurrency_group", [True, False])

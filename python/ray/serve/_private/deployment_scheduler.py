@@ -41,6 +41,7 @@ class SpreadDeploymentSchedulingPolicy:
 class Resources(dict):
     # Custom resource priority from environment variable
     CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
+    EPSILON = 1e-9
 
     def get(self, key: str):
         val = super().get(key)
@@ -56,7 +57,8 @@ class Resources(dict):
 
     def can_fit(self, other):
         keys = set(self.keys()) | set(other.keys())
-        return all(self.get(k) >= other.get(k) for k in keys)
+        # We add a small epsilon to avoid floating point precision issues.
+        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
 
     def __eq__(self, other):
         keys = set(self.keys()) | set(other.keys())

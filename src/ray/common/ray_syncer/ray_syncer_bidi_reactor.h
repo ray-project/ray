@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/ray_syncer/common.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
@@ -67,7 +68,7 @@ using ray::rpc::syncer::ResourceViewSyncMessage;
 // clang-format on
 class RaySyncerBidiReactor {
  public:
-  RaySyncerBidiReactor(std::string remote_node_id)
+  explicit RaySyncerBidiReactor(std::string remote_node_id)
       : remote_node_id_(std::move(remote_node_id)) {}
 
   virtual ~RaySyncerBidiReactor() = default;

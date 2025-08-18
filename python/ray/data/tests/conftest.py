@@ -18,7 +18,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -275,8 +275,9 @@ def assert_base_partitioned_ds():
 @pytest.fixture
 def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DataContext.get_current())
-    yield
+    ctx = ray.data.context.DataContext.get_current()
+    original = copy.deepcopy(ctx)
+    yield ctx
     ray.data.context.DataContext._set_current(original)
 
 
@@ -356,6 +357,26 @@ def target_max_block_size(request):
     original = ctx.target_max_block_size
     ctx.target_max_block_size = request.param
     yield request.param
+    ctx.target_max_block_size = original
+
+
+@pytest.fixture(params=[None, DEFAULT_TARGET_MAX_BLOCK_SIZE])
+def target_max_block_size_infinite_or_default(request):
+    """Fixture that sets target_max_block_size to None/DEFAULT_TARGET_MAX_BLOCK_SIZE and resets after test finishes."""
+    ctx = ray.data.context.DataContext.get_current()
+    original = ctx.target_max_block_size
+    ctx.target_max_block_size = request.param
+    yield
+    ctx.target_max_block_size = original
+
+
+@pytest.fixture(params=[None])
+def target_max_block_size_infinite(request):
+    """Fixture that sets target_max_block_size to None and resets after test finishes."""
+    ctx = ray.data.context.DataContext.get_current()
+    original = ctx.target_max_block_size
+    ctx.target_max_block_size = request.param
+    yield
     ctx.target_max_block_size = original
 
 

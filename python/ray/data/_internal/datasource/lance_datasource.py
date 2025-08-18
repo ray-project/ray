@@ -61,7 +61,11 @@ class LanceDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
-        for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
+        ds_fragments = self.scanner_options.get("fragments")
+        if ds_fragments is None:
+            ds_fragments = self.lance_ds.get_fragments()
+
+        for fragments in np.array_split(ds_fragments, parallelism):
             if len(fragments) <= 0:
                 continue
 

@@ -268,6 +268,15 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
+        from typing import Any
+
+        def safe_get(v: Any, stats: Dict[str, int]):
+            from collections.abc import Hashable
+
+            if isinstance(v, Hashable):
+                return stats.get(v, -1)
+            else:
+                return -1  # Unhashable type treated as a missing category
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
@@ -277,8 +286,7 @@ class OneHotEncoder(Preprocessor):
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
             one_hot = np.zeros((len(df), num_categories), dtype=int)
-
-            codes = df[column].apply(lambda v, m=stats: m.get(v, -1)).to_numpy()
+            codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
             valid_rows = codes != -1
             one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
             df[output_column] = one_hot.tolist()

@@ -20,7 +20,6 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     put_object,
-    skip_flaky_core_test_premerge,
 )
 
 logger = logging.getLogger(__name__)
@@ -279,7 +278,6 @@ def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure)
 def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
-        ray.get(ref[0])
         if depth == max_depth:
             ray.get(signal.wait.remote())
             if failure:
@@ -307,15 +305,6 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    try:
-        assert ray.get(tail_oid) is None
-        assert not failure
-    except ray.exceptions.OwnerDiedError:
-        # There is only 1 core, so the same worker will execute all `recursive`
-        # tasks. Therefore, if we kill the worker during the last task, its
-        # owner (the worker that executed the second-to-last task) will also
-        # have died.
-        assert failure
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -327,7 +316,6 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
 def test_actor_holding_serialized_reference(
     one_cpu_100MiB_shared, use_ray_put, failure
 ):

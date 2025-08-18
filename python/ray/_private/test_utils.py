@@ -19,7 +19,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import requests
@@ -30,8 +29,8 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
-import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
+from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
@@ -659,7 +658,7 @@ def get_metric_check_condition(
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
     addr = node_info["NodeManagerAddress"]
-    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+    prom_addr = export_addr or build_address(addr, metrics_export_port)
 
     def f():
         for metric_pattern in metrics_to_check:
@@ -772,9 +771,8 @@ def put_object(obj, use_ray_put):
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
-    ip_port = address.split(":")
-    ip = ip_port[0]
-    port = int(ip_port[1])
+    ip, port_str = parse_address(address)
+    port = int(port_str)
     time_elapsed = 0
     start = time.time()
     while time_elapsed <= timeout_ms:
@@ -1295,7 +1293,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         kill_delay_s: float = 0,
-        max_to_kill: int = 2,
+        max_to_kill: Optional[int] = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
@@ -1334,7 +1332,7 @@ class ResourceKillerActor:
 
             for to_kill in to_kills:
                 self._kill_resource(*to_kill)
-            if len(self.killed) >= self.max_to_kill:
+            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
@@ -1423,7 +1421,7 @@ class RayletKiller(NodeKillerBase):
 
         from ray.core.generated import node_manager_pb2_grpc
 
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
@@ -1466,7 +1464,11 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         def _kill_node_with_grace_period(node_id, node_to_kill_ip):
             self._drain_node(node_id)
             time.sleep(self._grace_period_s)
-            _terminate_ec2_instance(node_to_kill_ip)
+            # Anyscale extends the drain deadline if you shut down the instance
+            # directly. To work around this, we force-stop Ray on the node. Anyscale
+            # should then terminate it shortly after without updating the drain
+            # deadline.
+            _execute_command_on_node("ray stop --force", node_to_kill_ip)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
         thread = threading.Thread(
@@ -1772,7 +1774,9 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
@@ -1824,7 +1828,9 @@ def kill_raylet(raylet, graceful=False):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
@@ -1976,102 +1982,29 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
-
-
-def _get_library_usages() -> Set[str]:
-    return set(
-        ray_usage_lib.get_library_usages_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
-        )
-    )
-
-
-def _get_extra_usage_tags() -> Dict[str, str]:
-    return ray_usage_lib.get_extra_usage_tags_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client()
-    )
-
-
-class TelemetryCallsite(Enum):
-    DRIVER = "driver"
-    ACTOR = "actor"
-    TASK = "task"
-
-
-def check_library_usage_telemetry(
-    use_lib_fn: Callable[[], None],
-    *,
-    callsite: TelemetryCallsite,
-    expected_library_usages: List[Set[str]],
-    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
-):
-    """Helper for writing tests to validate library usage telemetry.
-
-    `use_lib_fn` is a callable that will be called from the provided callsite.
-    After calling it, the telemetry data to export will be validated against
-    expected_library_usages and expected_extra_usage_tags.
-    """
-    assert len(_get_library_usages()) == 0, _get_library_usages()
-
-    if callsite == TelemetryCallsite.DRIVER:
-        use_lib_fn()
-    elif callsite == TelemetryCallsite.ACTOR:
-
-        @ray.remote
-        class A:
-            def __init__(self):
-                use_lib_fn()
-
-        a = A.remote()
-        ray.get(a.__ray_ready__.remote())
-    elif callsite == TelemetryCallsite.TASK:
-
-        @ray.remote
-        def f():
-            use_lib_fn()
-
-        ray.get(f.remote())
-    else:
-        assert False, f"Unrecognized callsite: {callsite}"
-
-    library_usages = _get_library_usages()
-    extra_usage_tags = _get_extra_usage_tags()
-
-    assert library_usages in expected_library_usages, library_usages
-    if expected_extra_usage_tags:
-        assert all(
-            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
-        ), extra_usage_tags
-
-
-def _terminate_ec2_instance(ip):
-    logging.info(f"Terminating instance, {ip=}")
+def _terminate_ec2_instance(node_ip: str) -> None:
+    logging.info(f"Terminating instance {node_ip}")
     # This command uses IMDSv2 to get the host instance id and region.
     # After that it terminates itself using aws cli.
-    multi_line_command = (
-        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+    command = (
         'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
         'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
         "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
     )
+    _execute_command_on_node(command, node_ip)
+
+
+def _execute_command_on_node(command: str, node_ip: str):
+    logging.debug(f"Executing command on node {node_ip}: {command}")
+
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        f"{command}"
+    )
+
     # This is a feature on Anyscale platform that enables
     # easy ssh access to worker nodes.
-    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
 
     try:
         subprocess.run(

@@ -195,7 +195,6 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
-
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
@@ -364,6 +363,12 @@ def validate_placement_group(
     """
 
     assert _max_cpu_fraction_per_node is not None
+
+    if _max_cpu_fraction_per_node != 1.0:
+        warnings.warn(
+            "The experimental '_max_cpu_fraction_per_node' option for placement groups "
+            "is deprecated and will be removed in a future version of Ray."
+        )
 
     if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
         raise ValueError(

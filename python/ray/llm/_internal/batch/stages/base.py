@@ -160,14 +160,8 @@ class StatefulStageUDF:
         for idx, row in enumerate(inputs):
             row[self.IDX_IN_BATCH_COLUMN] = idx
 
-        # Always stream the outputs one by one to better overlapping
-        # batches. For example, when the output batch size is 64, Ray Data
-        # will collect 64 outputs, and 1) send the batch of 64 to the next stage,
-        # 2) get the next batch of this stage. Assuming the input batch size
-        # is 63 and we yield all 63 results at once, then Ray Data will wait
-        # for 2 batches (63 + 63 > 64) to continue proceeding. On the other hand,
-        # if we stream outputs one-by-one, Ray Data can form a batch of 64 before
-        # the second batch is done.
+        # Collect all outputs first, then return them in the original order
+        # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
         not_outputed_rows = set(range(len(inputs)))
         async for output in self.udf(inputs):
             if self.IDX_IN_BATCH_COLUMN not in output:
@@ -186,10 +180,12 @@ class StatefulStageUDF:
             # Add stage outputs to the data column of the row.
             inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
             inputs[idx_in_batch].update(output)
-            yield {self.data_column: [inputs[idx_in_batch]]}
 
         if not_outputed_rows:
             raise ValueError(f"The rows {not_outputed_rows} are not outputed.")
+
+        # Return all updated inputs in the original order
+        yield {self.data_column: inputs}
 
     def validate_inputs(self, inputs: List[Dict[str, Any]]):
         """Validate the inputs to make sure the required keys are present.

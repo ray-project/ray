@@ -90,7 +90,7 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
-DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
 // TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
 // CPU and memory resource reservation in the followup PR.
@@ -260,6 +260,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
+  std::unique_ptr<ray::rpc::RayletClientPool> raylet_client_pool;
   std::unique_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
@@ -355,489 +356,488 @@ int main(int argc, char *argv[]) {
 
   ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
-  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
-      [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
-        RAY_CHECK_OK(status);
-        RAY_CHECK(stored_raylet_config.has_value());
-        RayConfig::instance().initialize(*stored_raylet_config);
-        ray::asio::testing::Init();
-        ray::rpc::testing::Init();
+  gcs_client->InternalKV().AsyncGetInternalConfig([&](::ray::Status status,
+                                                      const std::optional<std::string>
+                                                          &stored_raylet_config) {
+    RAY_CHECK_OK(status);
+    RAY_CHECK(stored_raylet_config.has_value());
+    RayConfig::instance().initialize(*stored_raylet_config);
+    ray::asio::testing::Init();
+    ray::rpc::testing::Init();
 
-        // Core worker tries to kill child processes when it exits. But they can't do
-        // it perfectly: if the core worker is killed by SIGKILL, the child processes
-        // leak. So in raylet we also kill child processes via Linux subreaper.
-        // Only works on Linux >= 3.4.
-        if (RayConfig::instance()
-                .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
-          enable_subreaper();
-        } else {
-          RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
-          ray::SetSigchldIgnore();
-        }
+    // Core worker tries to kill child processes when it exits. But they can't do
+    // it perfectly: if the core worker is killed by SIGKILL, the child processes
+    // leak. So in raylet we also kill child processes via Linux subreaper.
+    // Only works on Linux >= 3.4.
+    if (RayConfig::instance()
+            .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+      enable_subreaper();
+    } else {
+      RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+      ray::SetSigchldIgnore();
+    }
 
-        // Parse the worker port list.
-        std::istringstream worker_port_list_string(worker_port_list);
-        std::string worker_port;
-        std::vector<int> worker_ports;
+    // Parse the worker port list.
+    std::istringstream worker_port_list_string(worker_port_list);
+    std::string worker_port;
+    std::vector<int> worker_ports;
 
-        while (std::getline(worker_port_list_string, worker_port, ',')) {
-          worker_ports.push_back(std::stoi(worker_port));
-        }
+    while (std::getline(worker_port_list_string, worker_port, ',')) {
+      worker_ports.push_back(std::stoi(worker_port));
+    }
 
-        // Parse the resource list.
-        std::istringstream resource_string(static_resource_list);
-        std::string resource_name;
-        std::string resource_quantity;
+    // Parse the resource list.
+    std::istringstream resource_string(static_resource_list);
+    std::string resource_name;
+    std::string resource_quantity;
 
-        while (std::getline(resource_string, resource_name, ',')) {
-          RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
-          static_resource_conf[resource_name] = std::stod(resource_quantity);
-        }
-        auto num_cpus_it = static_resource_conf.find("CPU");
-        int num_cpus = num_cpus_it != static_resource_conf.end()
-                           ? static_cast<int>(num_cpus_it->second)
-                           : 0;
+    while (std::getline(resource_string, resource_name, ',')) {
+      RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
+      static_resource_conf[resource_name] = std::stod(resource_quantity);
+    }
+    auto num_cpus_it = static_resource_conf.find("CPU");
+    int num_cpus = num_cpus_it != static_resource_conf.end()
+                       ? static_cast<int>(num_cpus_it->second)
+                       : 0;
 
-        node_manager_config.raylet_config = *stored_raylet_config;
-        node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
-        RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
-                       << node_manager_config.resource_config.DebugString();
-        node_manager_config.node_manager_address = node_ip_address;
-        node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_workers_soft_limit =
-            RayConfig::instance().num_workers_soft_limit();
-        node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
-        node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
-        node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
-        node_manager_config.min_worker_port = min_worker_port;
-        node_manager_config.max_worker_port = max_worker_port;
-        node_manager_config.worker_ports = worker_ports;
-        node_manager_config.labels = parse_node_labels(labels_json_str);
+    node_manager_config.raylet_config = *stored_raylet_config;
+    node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
+    RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
+                   << node_manager_config.resource_config.DebugString();
+    node_manager_config.node_manager_address = node_ip_address;
+    node_manager_config.node_manager_port = node_manager_port;
+    node_manager_config.num_workers_soft_limit =
+        RayConfig::instance().num_workers_soft_limit();
+    node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
+    node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+    node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
+    node_manager_config.min_worker_port = min_worker_port;
+    node_manager_config.max_worker_port = max_worker_port;
+    node_manager_config.worker_ports = worker_ports;
+    node_manager_config.labels = parse_node_labels(labels_json_str);
 
-        if (!python_worker_command.empty()) {
-          node_manager_config.worker_commands.emplace(
-              make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
-        }
-        if (!java_worker_command.empty()) {
-          node_manager_config.worker_commands.emplace(
-              make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
-        }
-        if (!cpp_worker_command.empty()) {
-          node_manager_config.worker_commands.emplace(
-              make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
-        }
-        node_manager_config.native_library_path = native_library_path;
-        if (python_worker_command.empty() && java_worker_command.empty() &&
-            cpp_worker_command.empty()) {
-          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
-                         << "should be provided";
-        }
-        if (dashboard_agent_command.empty()) {
-          RAY_LOG(FATAL) << "Dashboard agent command must be non empty";
-        }
-        node_manager_config.dashboard_agent_command = dashboard_agent_command;
+    if (!python_worker_command.empty()) {
+      node_manager_config.worker_commands.emplace(
+          make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
+    }
+    if (!java_worker_command.empty()) {
+      node_manager_config.worker_commands.emplace(
+          make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
+    }
+    if (!cpp_worker_command.empty()) {
+      node_manager_config.worker_commands.emplace(
+          make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
+    }
+    node_manager_config.native_library_path = native_library_path;
+    if (python_worker_command.empty() && java_worker_command.empty() &&
+        cpp_worker_command.empty()) {
+      RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+                     << "should be provided";
+    }
+    if (dashboard_agent_command.empty()) {
+      RAY_LOG(FATAL) << "Dashboard agent command must be non empty";
+    }
+    node_manager_config.dashboard_agent_command = dashboard_agent_command;
 
-        if (runtime_env_agent_command.empty()) {
-          RAY_LOG(FATAL) << "Runtime env agent command must be non empty";
-        }
-        node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
+    if (runtime_env_agent_command.empty()) {
+      RAY_LOG(FATAL) << "Runtime env agent command must be non empty";
+    }
+    node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
 
-        node_manager_config.report_resources_period_ms =
-            RayConfig::instance().raylet_report_resources_period_milliseconds();
-        node_manager_config.record_metrics_period_ms =
-            RayConfig::instance().metrics_report_interval_ms() / 2;
-        node_manager_config.store_socket_name = store_socket_name;
-        node_manager_config.log_dir = log_dir;
-        node_manager_config.session_dir = session_dir;
-        node_manager_config.resource_dir = resource_dir;
-        node_manager_config.ray_debugger_external = ray_debugger_external;
-        node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+    node_manager_config.report_resources_period_ms =
+        RayConfig::instance().raylet_report_resources_period_milliseconds();
+    node_manager_config.record_metrics_period_ms =
+        RayConfig::instance().metrics_report_interval_ms() / 2;
+    node_manager_config.store_socket_name = store_socket_name;
+    node_manager_config.log_dir = log_dir;
+    node_manager_config.session_dir = session_dir;
+    node_manager_config.resource_dir = resource_dir;
+    node_manager_config.ray_debugger_external = ray_debugger_external;
+    node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
 
-        // Configuration for the object manager.
-        ray::ObjectManagerConfig object_manager_config;
-        object_manager_config.object_manager_address = node_ip_address;
-        object_manager_config.object_manager_port = object_manager_port;
-        object_manager_config.store_socket_name = store_socket_name;
+    // Configuration for the object manager.
+    ray::ObjectManagerConfig object_manager_config;
+    object_manager_config.object_manager_address = node_ip_address;
+    object_manager_config.object_manager_port = object_manager_port;
+    object_manager_config.store_socket_name = store_socket_name;
 
-        object_manager_config.timer_freq_ms =
-            RayConfig::instance().object_manager_timer_freq_ms();
-        object_manager_config.pull_timeout_ms =
-            RayConfig::instance().object_manager_pull_timeout_ms();
-        object_manager_config.push_timeout_ms =
-            RayConfig::instance().object_manager_push_timeout_ms();
-        if (object_store_memory <= 0) {
-          RAY_LOG(FATAL) << "Object store memory should be set.";
-        }
-        object_manager_config.object_store_memory = object_store_memory;
-        object_manager_config.max_bytes_in_flight =
-            RayConfig::instance().object_manager_max_bytes_in_flight();
-        object_manager_config.plasma_directory = plasma_directory;
-        object_manager_config.fallback_directory = fallback_directory;
-        object_manager_config.huge_pages = huge_pages;
+    object_manager_config.timer_freq_ms =
+        RayConfig::instance().object_manager_timer_freq_ms();
+    object_manager_config.pull_timeout_ms =
+        RayConfig::instance().object_manager_pull_timeout_ms();
+    object_manager_config.push_timeout_ms =
+        RayConfig::instance().object_manager_push_timeout_ms();
+    if (object_store_memory <= 0) {
+      RAY_LOG(FATAL) << "Object store memory should be set.";
+    }
+    object_manager_config.object_store_memory = object_store_memory;
+    object_manager_config.max_bytes_in_flight =
+        RayConfig::instance().object_manager_max_bytes_in_flight();
+    object_manager_config.plasma_directory = plasma_directory;
+    object_manager_config.fallback_directory = fallback_directory;
+    object_manager_config.huge_pages = huge_pages;
 
-        object_manager_config.rpc_service_threads_number =
-            std::min(std::max(2, num_cpus / 4), 8);
-        if (RayConfig::instance().object_manager_rpc_threads_num() != 0) {
-          object_manager_config.rpc_service_threads_number =
-              RayConfig::instance().object_manager_rpc_threads_num();
-        }
-        object_manager_config.object_chunk_size =
-            RayConfig::instance().object_manager_default_chunk_size();
+    object_manager_config.rpc_service_threads_number =
+        std::min(std::max(2, num_cpus / 4), 8);
+    if (RayConfig::instance().object_manager_rpc_threads_num() != 0) {
+      object_manager_config.rpc_service_threads_number =
+          RayConfig::instance().object_manager_rpc_threads_num();
+    }
+    object_manager_config.object_chunk_size =
+        RayConfig::instance().object_manager_default_chunk_size();
 
-        RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                       << "rpc_service_threads_number = "
-                       << object_manager_config.rpc_service_threads_number
-                       << ", object_chunk_size = "
-                       << object_manager_config.object_chunk_size;
-        // Initialize stats.
-        const ray::stats::TagsType global_tags = {
-            {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::WorkerIdKey, ""},
-            {ray::stats::VersionKey, kRayVersion},
-            {ray::stats::NodeAddressKey, node_ip_address},
-            {ray::stats::SessionNameKey, session_name}};
-        ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+    RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
+                   << "rpc_service_threads_number = "
+                   << object_manager_config.rpc_service_threads_number
+                   << ", object_chunk_size = " << object_manager_config.object_chunk_size;
+    RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
-        RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
+    node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
 
-        node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
-
-        worker_pool = std::make_unique<ray::raylet::WorkerPool>(
-            main_service,
-            raylet_node_id,
-            node_manager_config.node_manager_address,
-            [&]() {
-              // Callback to determine the maximum number of idle workers to
-              // keep around.
-              if (node_manager_config.num_workers_soft_limit >= 0) {
-                return node_manager_config.num_workers_soft_limit;
-              }
-              // If no limit is provided, use the available number of CPUs,
-              // assuming that each incoming task will likely require 1 CPU.
-              // We floor the available CPUs to the nearest integer to avoid
-              // starting too many workers when there is less than 1 CPU left.
-              // Otherwise, we could end up repeatedly starting the worker, then
-              // killing it because it idles for too long. The downside is that
-              // we will be slower to schedule tasks that could use a fraction
-              // of a CPU.
-              return static_cast<int64_t>(
-                  cluster_resource_scheduler->GetLocalResourceManager()
-                      .GetLocalAvailableCpus());
-            },
-            node_manager_config.num_prestart_python_workers,
-            node_manager_config.maximum_startup_concurrency,
-            node_manager_config.min_worker_port,
-            node_manager_config.max_worker_port,
-            node_manager_config.worker_ports,
-            *gcs_client,
-            node_manager_config.worker_commands,
-            node_manager_config.native_library_path,
-            /*starting_worker_timeout_callback=*/
-            [&] { cluster_task_manager->ScheduleAndDispatchTasks(); },
-            node_manager_config.ray_debugger_external,
-            /*get_time=*/[]() { return absl::Now(); },
-            node_manager_config.enable_resource_isolation);
-
-        client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
-            main_service, /*record_stats=*/true);
-
-        worker_rpc_pool = std::make_unique<ray::rpc::CoreWorkerClientPool>(
-            [&](const ray::rpc::Address &addr) {
-              return std::make_shared<ray::rpc::CoreWorkerClient>(
-                  addr,
-                  *client_call_manager,
-                  ray::rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
-                      gcs_client.get(),
-                      worker_rpc_pool.get(),
-                      [&](const std::string &node_manager_address, int32_t port) {
-                        return std::make_shared<ray::raylet::RayletClient>(
-                            ray::rpc::NodeManagerWorkerClient::make(
-                                node_manager_address, port, *client_call_manager));
-                      },
-                      addr));
-            });
-
-        core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
-            raylet_node_id,
-            /*channels=*/
-            std::vector<ray::rpc::ChannelType>{
-                ray::rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                ray::rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                ray::rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-            RayConfig::instance().max_command_batch_size(),
-            /*get_client=*/
-            [&](const ray::rpc::Address &address) {
-              return worker_rpc_pool->GetOrConnect(address);
-            },
-            &main_service);
-
-        object_directory = std::make_unique<ray::OwnershipBasedObjectDirectory>(
-            main_service,
-            *gcs_client,
-            core_worker_subscriber.get(),
-            worker_rpc_pool.get(),
-            [&](const ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
-              ray::rpc::ObjectReference ref;
-              ref.set_object_id(obj_id.Binary());
-              node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
-            });
-
-        object_manager = std::make_unique<ray::ObjectManager>(
-            main_service,
-            raylet_node_id,
-            object_manager_config,
-            *gcs_client,
-            object_directory.get(),
-            /*restore_spilled_object=*/
-            [&](const ObjectID &object_id,
-                int64_t object_size,
-                const std::string &object_url,
-                std::function<void(const ray::Status &)> callback) {
-              local_object_manager->AsyncRestoreSpilledObject(
-                  object_id, object_size, object_url, std::move(callback));
-            },
-            /*get_spilled_object_url=*/
-            [&](const ObjectID &object_id) {
-              return local_object_manager->GetLocalSpilledObjectURL(object_id);
-            },
-            /*spill_objects_callback=*/
-            [&]() {
-              // This callback is called from the plasma store thread.
-              // NOTE: It means the local object manager should be thread-safe.
-              main_service.post(
-                  [&]() { local_object_manager->SpillObjectUptoMaxThroughput(); },
-                  "NodeManager.SpillObjects");
-              return local_object_manager->IsSpillingInProgress();
-            },
-            /*object_store_full_callback=*/
-            [&]() {
-              // Post on the node manager's event loop since this
-              // callback is called from the plasma store thread.
-              // This will help keep node manager lock-less.
-              main_service.post([&]() { node_manager->TriggerGlobalGC(); },
-                                "NodeManager.GlobalGC");
-            },
-            /*add_object_callback=*/
-            [&](const ray::ObjectInfo &object_info) {
-              node_manager->HandleObjectLocal(object_info);
-            },
-            /*delete_object_callback=*/
-            [&](const ObjectID &object_id) {
-              node_manager->HandleObjectMissing(object_id);
-            },
-            /*pin_object=*/
-            [&](const ObjectID &object_id) {
-              std::vector<ObjectID> object_ids = {object_id};
-              std::vector<std::unique_ptr<ray::RayObject>> results;
-              std::unique_ptr<ray::RayObject> result;
-              if (node_manager->GetObjectsFromPlasma(object_ids, &results) &&
-                  results.size() > 0) {
-                result = std::move(results[0]);
-              }
-              return result;
-            },
-            /*fail_pull_request=*/
-            [&](const ObjectID &object_id, ray::rpc::ErrorType error_type) {
-              ray::rpc::ObjectReference ref;
-              ref.set_object_id(object_id.Binary());
-              node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
-            });
-
-        local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
-            raylet_node_id,
-            node_manager_config.node_manager_address,
-            node_manager_config.node_manager_port,
-            main_service,
-            RayConfig::instance().free_objects_batch_size(),
-            RayConfig::instance().free_objects_period_milliseconds(),
-            *worker_pool,
-            *worker_rpc_pool,
-            /*max_io_workers*/ node_manager_config.max_io_workers,
-            /*is_external_storage_type_fs*/
-            RayConfig::instance().is_external_storage_type_fs(),
-            /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
-            /*on_objects_freed*/
-            [&](const std::vector<ObjectID> &object_ids) {
-              object_manager->FreeObjects(object_ids,
-                                          /*local_only=*/false);
-            },
-            /*is_plasma_object_spillable*/
-            [&](const ObjectID &object_id) {
-              return object_manager->IsPlasmaObjectSpillable(object_id);
-            },
-            /*core_worker_subscriber_=*/core_worker_subscriber.get(),
-            object_directory.get());
-
-        dependency_manager =
-            std::make_unique<ray::raylet::DependencyManager>(*object_manager);
-
-        cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
-            main_service,
-            ray::scheduling::NodeID(raylet_node_id.Binary()),
-            node_manager_config.resource_config.GetResourceMap(),
-            /*is_node_available_fn*/
-            [&](ray::scheduling::NodeID node_id) {
-              return gcs_client->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
-                     nullptr;
-            },
-            /*get_used_object_store_memory*/
-            [&]() {
-              if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-                // Get the current bytes used by local primary object copies.  This
-                // is used to help node scale down decisions. A node can only be
-                // safely drained when this function reports zero.
-                int64_t bytes_used = local_object_manager->GetPrimaryBytes();
-                // Report nonzero if we have objects spilled to the local filesystem.
-                if (bytes_used == 0 && local_object_manager->HasLocallySpilledObjects()) {
-                  bytes_used = 1;
-                }
-                return bytes_used;
-              }
-              return object_manager->GetUsedMemory();
-            },
-            /*get_pull_manager_at_capacity*/
-            [&]() { return object_manager->PullManagerHasPullsQueued(); },
-            shutdown_raylet_gracefully,
-            /*labels*/
-            node_manager_config.labels);
-
-        auto get_node_info_func = [&](const NodeID &node_id) {
-          return gcs_client->Nodes().Get(node_id);
-        };
-        auto announce_infeasible_task = [](const ray::RayTask &task) {
-          /// Publish the infeasible task error to GCS so that drivers can subscribe to it
-          /// and print.
-          bool suppress_warning = false;
-
-          if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
-            // If the task is part of a placement group, do nothing. If necessary, the
-            // infeasible warning should come from the placement group scheduling, not the
-            // task scheduling.
-            suppress_warning = true;
+    worker_pool = std::make_unique<ray::raylet::WorkerPool>(
+        main_service,
+        raylet_node_id,
+        node_manager_config.node_manager_address,
+        [&]() {
+          // Callback to determine the maximum number of idle workers to
+          // keep around.
+          if (node_manager_config.num_workers_soft_limit >= 0) {
+            return node_manager_config.num_workers_soft_limit;
           }
+          // If no limit is provided, use the available number of CPUs,
+          // assuming that each incoming task will likely require 1 CPU.
+          // We floor the available CPUs to the nearest integer to avoid
+          // starting too many workers when there is less than 1 CPU left.
+          // Otherwise, we could end up repeatedly starting the worker, then
+          // killing it because it idles for too long. The downside is that
+          // we will be slower to schedule tasks that could use a fraction
+          // of a CPU.
+          return static_cast<int64_t>(
+              cluster_resource_scheduler->GetLocalResourceManager()
+                  .GetLocalAvailableCpus());
+        },
+        node_manager_config.num_prestart_python_workers,
+        node_manager_config.maximum_startup_concurrency,
+        node_manager_config.min_worker_port,
+        node_manager_config.max_worker_port,
+        node_manager_config.worker_ports,
+        *gcs_client,
+        node_manager_config.worker_commands,
+        node_manager_config.native_library_path,
+        /*starting_worker_timeout_callback=*/
+        [&] { cluster_task_manager->ScheduleAndDispatchTasks(); },
+        node_manager_config.ray_debugger_external,
+        /*get_time=*/[]() { return absl::Now(); },
+        node_manager_config.enable_resource_isolation);
 
-          // Push a warning to the task's driver that this task is currently infeasible.
-          if (!suppress_warning) {
-            std::ostringstream error_message;
-            error_message
-                << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
-                << " cannot be scheduled right now. It requires "
-                << task.GetTaskSpecification()
-                       .GetRequiredPlacementResources()
-                       .DebugString()
-                << " for placement, however the cluster currently cannot provide the "
-                   "requested "
-                   "resources. The required resources may be added as autoscaling takes "
-                   "place "
-                   "or placement groups are scheduled. Otherwise, consider reducing the "
-                   "resource requirements of the task.";
-            std::string error_message_str = error_message.str();
-            RAY_LOG(WARNING) << error_message_str;
+    client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
+        main_service, /*record_stats=*/true);
+
+    worker_rpc_pool = std::make_unique<ray::rpc::CoreWorkerClientPool>(
+        [&](const ray::rpc::Address &addr) {
+          return std::make_shared<ray::rpc::CoreWorkerClient>(
+              addr,
+              *client_call_manager,
+              ray::rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                  gcs_client.get(),
+                  worker_rpc_pool.get(),
+                  raylet_client_pool.get(),
+                  addr));
+        });
+
+    raylet_client_pool =
+        std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
+          return std::make_shared<ray::raylet::RayletClient>(
+              addr,
+              *client_call_manager,
+              ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                  gcs_client.get(), raylet_client_pool.get(), addr));
+        });
+
+    core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
+        raylet_node_id,
+        /*channels=*/
+        std::vector<ray::rpc::ChannelType>{
+            ray::rpc::ChannelType::WORKER_OBJECT_EVICTION,
+            ray::rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+            ray::rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+        RayConfig::instance().max_command_batch_size(),
+        /*get_client=*/
+        [&](const ray::rpc::Address &address) {
+          return worker_rpc_pool->GetOrConnect(address);
+        },
+        &main_service);
+
+    object_directory = std::make_unique<ray::OwnershipBasedObjectDirectory>(
+        main_service,
+        *gcs_client,
+        core_worker_subscriber.get(),
+        worker_rpc_pool.get(),
+        [&](const ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
+          ray::rpc::ObjectReference ref;
+          ref.set_object_id(obj_id.Binary());
+          node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+        });
+
+    object_manager = std::make_unique<ray::ObjectManager>(
+        main_service,
+        raylet_node_id,
+        object_manager_config,
+        *gcs_client,
+        object_directory.get(),
+        /*restore_spilled_object=*/
+        [&](const ObjectID &object_id,
+            int64_t object_size,
+            const std::string &object_url,
+            std::function<void(const ray::Status &)> callback) {
+          local_object_manager->AsyncRestoreSpilledObject(
+              object_id, object_size, object_url, std::move(callback));
+        },
+        /*get_spilled_object_url=*/
+        [&](const ObjectID &object_id) {
+          return local_object_manager->GetLocalSpilledObjectURL(object_id);
+        },
+        /*spill_objects_callback=*/
+        [&]() {
+          // This callback is called from the plasma store thread.
+          // NOTE: It means the local object manager should be thread-safe.
+          main_service.post(
+              [&]() { local_object_manager->SpillObjectUptoMaxThroughput(); },
+              "NodeManager.SpillObjects");
+          return local_object_manager->IsSpillingInProgress();
+        },
+        /*object_store_full_callback=*/
+        [&]() {
+          // Post on the node manager's event loop since this
+          // callback is called from the plasma store thread.
+          // This will help keep node manager lock-less.
+          main_service.post([&]() { node_manager->TriggerGlobalGC(); },
+                            "NodeManager.GlobalGC");
+        },
+        /*add_object_callback=*/
+        [&](const ray::ObjectInfo &object_info) {
+          node_manager->HandleObjectLocal(object_info);
+        },
+        /*delete_object_callback=*/
+        [&](const ObjectID &object_id) { node_manager->HandleObjectMissing(object_id); },
+        /*pin_object=*/
+        [&](const ObjectID &object_id) {
+          std::vector<ObjectID> object_ids = {object_id};
+          std::vector<std::unique_ptr<ray::RayObject>> results;
+          std::unique_ptr<ray::RayObject> result;
+          if (node_manager->GetObjectsFromPlasma(object_ids, &results) &&
+              results.size() > 0) {
+            result = std::move(results[0]);
           }
-        };
+          return result;
+        },
+        /*fail_pull_request=*/
+        [&](const ObjectID &object_id, ray::rpc::ErrorType error_type) {
+          ray::rpc::ObjectReference ref;
+          ref.set_object_id(object_id.Binary());
+          node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+        });
 
-        RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
-                  RayConfig::instance().max_task_args_memory_fraction() <= 1)
-            << "max_task_args_memory_fraction must be a nonzero fraction.";
-        auto max_task_args_memory =
-            static_cast<int64_t>(static_cast<float>(object_manager->GetMemoryCapacity()) *
-                                 RayConfig::instance().max_task_args_memory_fraction());
-        if (max_task_args_memory <= 0) {
-          RAY_LOG(WARNING)
-              << "Max task args should be a fraction of the object store capacity, but "
-                 "object "
-                 "store capacity is zero or negative. Allowing task args to use 100% of "
-                 "the "
-                 "local object store. This can cause ObjectStoreFullErrors if the tasks' "
-                 "return values are greater than the remaining capacity.";
-          max_task_args_memory = 0;
-        }
+    local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
+        raylet_node_id,
+        node_manager_config.node_manager_address,
+        node_manager_config.node_manager_port,
+        main_service,
+        RayConfig::instance().free_objects_batch_size(),
+        RayConfig::instance().free_objects_period_milliseconds(),
+        *worker_pool,
+        *worker_rpc_pool,
+        /*max_io_workers*/ node_manager_config.max_io_workers,
+        /*is_external_storage_type_fs*/
+        RayConfig::instance().is_external_storage_type_fs(),
+        /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
+        /*on_objects_freed*/
+        [&](const std::vector<ObjectID> &object_ids) {
+          object_manager->FreeObjects(object_ids,
+                                      /*local_only=*/false);
+        },
+        /*is_plasma_object_spillable*/
+        [&](const ObjectID &object_id) {
+          return object_manager->IsPlasmaObjectSpillable(object_id);
+        },
+        /*core_worker_subscriber_=*/core_worker_subscriber.get(),
+        object_directory.get());
 
-        local_task_manager = std::make_unique<ray::raylet::LocalTaskManager>(
-            raylet_node_id,
-            *cluster_resource_scheduler,
-            *dependency_manager,
-            get_node_info_func,
-            *worker_pool,
-            leased_workers,
-            [&](const std::vector<ObjectID> &object_ids,
-                std::vector<std::unique_ptr<ray::RayObject>> *results) {
-              return node_manager->GetObjectsFromPlasma(object_ids, results);
-            },
-            max_task_args_memory);
+    dependency_manager =
+        std::make_unique<ray::raylet::DependencyManager>(*object_manager);
 
-        cluster_task_manager =
-            std::make_unique<ray::raylet::ClusterTaskManager>(raylet_node_id,
-                                                              *cluster_resource_scheduler,
-                                                              get_node_info_func,
-                                                              announce_infeasible_task,
-                                                              *local_task_manager);
+    cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
+        main_service,
+        ray::scheduling::NodeID(raylet_node_id.Binary()),
+        node_manager_config.resource_config.GetResourceMap(),
+        /*is_node_available_fn*/
+        [&](ray::scheduling::NodeID node_id) {
+          return gcs_client->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+        },
+        /*get_used_object_store_memory*/
+        [&]() {
+          if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
+            // Get the current bytes used by local primary object copies.  This
+            // is used to help node scale down decisions. A node can only be
+            // safely drained when this function reports zero.
+            int64_t bytes_used = local_object_manager->GetPrimaryBytes();
+            // Report nonzero if we have objects spilled to the local filesystem.
+            if (bytes_used == 0 && local_object_manager->HasLocallySpilledObjects()) {
+              bytes_used = 1;
+            }
+            return bytes_used;
+          }
+          return object_manager->GetUsedMemory();
+        },
+        /*get_pull_manager_at_capacity*/
+        [&]() { return object_manager->PullManagerHasPullsQueued(); },
+        shutdown_raylet_gracefully,
+        /*labels*/
+        node_manager_config.labels);
 
-        auto raylet_client_factory =
-            [&](const NodeID &node_id, ray::rpc::ClientCallManager &client_call_manager) {
-              const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
-              RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-              std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
-                  ray::rpc::NodeManagerWorkerClient::make(
-                      node_info->node_manager_address(),
-                      node_info->node_manager_port(),
-                      client_call_manager);
-              return std::make_shared<ray::raylet::RayletClient>(
-                  std::move(raylet_client));
-            };
+    auto get_node_info_func = [&](const NodeID &node_id) {
+      return gcs_client->Nodes().Get(node_id);
+    };
+    auto announce_infeasible_task = [](const ray::RayTask &task) {
+      /// Publish the infeasible task error to GCS so that drivers can subscribe to it
+      /// and print.
+      bool suppress_warning = false;
 
-        plasma_client = std::make_unique<plasma::PlasmaClient>();
-        node_manager = std::make_unique<ray::raylet::NodeManager>(
-            main_service,
-            raylet_node_id,
-            node_name,
-            node_manager_config,
-            *gcs_client,
-            *client_call_manager,
-            *worker_rpc_pool,
-            *core_worker_subscriber,
-            *cluster_resource_scheduler,
-            *local_task_manager,
-            *cluster_task_manager,
-            *object_directory,
-            *object_manager,
-            *local_object_manager,
-            *dependency_manager,
-            *worker_pool,
-            leased_workers,
+      if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
+        // If the task is part of a placement group, do nothing. If necessary, the
+        // infeasible warning should come from the placement group scheduling, not the
+        // task scheduling.
+        suppress_warning = true;
+      }
+
+      // Push a warning to the task's driver that this task is currently infeasible.
+      if (!suppress_warning) {
+        std::ostringstream error_message;
+        error_message
+            << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
+            << " cannot be scheduled right now. It requires "
+            << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
+            << " for placement, however the cluster currently cannot provide the "
+               "requested "
+               "resources. The required resources may be added as autoscaling takes "
+               "place "
+               "or placement groups are scheduled. Otherwise, consider reducing the "
+               "resource requirements of the task.";
+        std::string error_message_str = error_message.str();
+        RAY_LOG(WARNING) << error_message_str;
+      }
+    };
+
+    RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
+              RayConfig::instance().max_task_args_memory_fraction() <= 1)
+        << "max_task_args_memory_fraction must be a nonzero fraction.";
+    auto max_task_args_memory =
+        static_cast<int64_t>(static_cast<float>(object_manager->GetMemoryCapacity()) *
+                             RayConfig::instance().max_task_args_memory_fraction());
+    if (max_task_args_memory <= 0) {
+      RAY_LOG(WARNING)
+          << "Max task args should be a fraction of the object store capacity, but "
+             "object "
+             "store capacity is zero or negative. Allowing task args to use 100% of "
+             "the "
+             "local object store. This can cause ObjectStoreFullErrors if the tasks' "
+             "return values are greater than the remaining capacity.";
+      max_task_args_memory = 0;
+    }
+
+    local_task_manager = std::make_unique<ray::raylet::LocalTaskManager>(
+        raylet_node_id,
+        *cluster_resource_scheduler,
+        *dependency_manager,
+        get_node_info_func,
+        *worker_pool,
+        leased_workers,
+        [&](const std::vector<ObjectID> &object_ids,
+            std::vector<std::unique_ptr<ray::RayObject>> *results) {
+          return node_manager->GetObjectsFromPlasma(object_ids, results);
+        },
+        max_task_args_memory);
+
+    cluster_task_manager =
+        std::make_unique<ray::raylet::ClusterTaskManager>(raylet_node_id,
+                                                          *cluster_resource_scheduler,
+                                                          get_node_info_func,
+                                                          announce_infeasible_task,
+                                                          *local_task_manager);
+
+    auto raylet_client_factory = [&](const NodeID &node_id) {
+      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
+      RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+      auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
+          node_id, node_info->node_manager_address(), node_info->node_manager_port());
+      return raylet_client_pool->GetOrConnectByAddress(std::move(addr));
+    };
+
+    plasma_client = std::make_unique<plasma::PlasmaClient>();
+    node_manager = std::make_unique<ray::raylet::NodeManager>(
+        main_service,
+        raylet_node_id,
+        node_name,
+        node_manager_config,
+        *gcs_client,
+        *client_call_manager,
+        *worker_rpc_pool,
+        *raylet_client_pool,
+        *core_worker_subscriber,
+        *cluster_resource_scheduler,
+        *local_task_manager,
+        *cluster_task_manager,
+        *object_directory,
+        *object_manager,
+        *local_object_manager,
+        *dependency_manager,
+        *worker_pool,
+        leased_workers,
+        *plasma_client,
+        std::make_unique<ray::core::experimental::MutableObjectProvider>(
             *plasma_client,
-            std::make_unique<ray::core::experimental::MutableObjectProvider>(
-                *plasma_client,
-                std::move(raylet_client_factory),
-                /*check_signals=*/nullptr),
-            shutdown_raylet_gracefully);
+            std::move(raylet_client_factory),
+            /*check_signals=*/nullptr),
+        shutdown_raylet_gracefully);
 
-        // Initialize the node manager.
-        raylet = std::make_unique<ray::raylet::Raylet>(main_service,
-                                                       raylet_node_id,
-                                                       raylet_socket_name,
-                                                       node_ip_address,
-                                                       node_name,
-                                                       node_manager_config,
-                                                       object_manager_config,
-                                                       *gcs_client,
-                                                       metrics_export_port,
-                                                       is_head_node,
-                                                       *node_manager);
+    // Initialize the node manager.
+    raylet = std::make_unique<ray::raylet::Raylet>(main_service,
+                                                   raylet_node_id,
+                                                   raylet_socket_name,
+                                                   node_ip_address,
+                                                   node_name,
+                                                   node_manager_config,
+                                                   object_manager_config,
+                                                   *gcs_client,
+                                                   metrics_export_port,
+                                                   is_head_node,
+                                                   *node_manager);
 
-        // Initialize event framework.
-        if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          const std::vector<ray::SourceTypeVariant> source_types = {
-              ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
-          ray::RayEventInit(source_types,
-                            {{"node_id", raylet->GetNodeId().Hex()}},
-                            log_dir,
-                            RayConfig::instance().event_level(),
-                            RayConfig::instance().emit_event_to_log_file());
-        };
+    // Initializing stats should be done after the node manager is initialized because
+    // <explain why>. Metrics exported before this call will be buffered until `Init` is
+    // called.
+    const ray::stats::TagsType global_tags = {
+        {ray::stats::ComponentKey, "raylet"},
+        {ray::stats::WorkerIdKey, ""},
+        {ray::stats::VersionKey, kRayVersion},
+        {ray::stats::NodeAddressKey, node_ip_address},
+        {ray::stats::SessionNameKey, session_name}};
+    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        raylet->Start();
-      }));
+    // Initialize event framework. This should be done after the node manager is
+    // initialized.
+    if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+      const std::vector<ray::SourceTypeVariant> source_types = {
+          ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
+      ray::RayEventInit(source_types,
+                        {{"node_id", raylet->GetNodeId().Hex()}},
+                        log_dir,
+                        RayConfig::instance().event_level(),
+                        RayConfig::instance().emit_event_to_log_file());
+    };
+
+    raylet->Start();
+  });
 
   auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
                             const boost::system::error_code &error, int signal_number) {

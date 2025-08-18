@@ -591,7 +591,7 @@ def run(
             "persistent-storage.html#setting-the-local-staging-directory"
         )
 
-    ray._private.usage.usage_lib.record_library_usage("tune")
+    ray._common.usage.usage_lib.record_library_usage("tune")
 
     # Tracking environment variable usage here will also catch:
     # 1.) Tuner.fit() usage

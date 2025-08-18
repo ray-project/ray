@@ -103,13 +103,13 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
-    def requires_nccl(self) -> bool:
-        # By default, channels do not require NCCL.
+    def requires_accelerator(self) -> bool:
+        # By default, channels do not require accelerator.
         return False
 
     def get_custom_communicator(self) -> Optional[Communicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the custom communicator group if one is specified.
         """
         return None
 
@@ -126,7 +126,7 @@ class ChannelContext:
     _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
-        # Used for the torch.Tensor NCCL transport.
+        # Used for the torch.Tensor accelerator transport.
         self.communicators: Dict[str, "Communicator"] = {}
         # Used for driver process to store actors in the communicator.
         self.communicator_handles: Dict[str, "CommunicatorHandle"] = {}

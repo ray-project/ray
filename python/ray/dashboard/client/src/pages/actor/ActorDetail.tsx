@@ -1,7 +1,10 @@
 import { Box } from "@mui/material";
 import React from "react";
 import { Outlet } from "react-router-dom";
-import { CodeDialogButton } from "../../common/CodeDialogButton";
+import {
+  CodeDialogButton,
+  CodeDialogButtonWithPreview,
+} from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -115,12 +118,12 @@ const ActorDetailPage = () => {
           },
           {
             label: "Node ID",
-            content: actorDetail.address?.rayletId
+            content: actorDetail.address?.nodeId
               ? {
-                  value: actorDetail.address?.rayletId,
-                  copyableValue: actorDetail.address?.rayletId,
-                  link: actorDetail.address.rayletId
-                    ? generateNodeLink(actorDetail.address.rayletId)
+                  value: actorDetail.address?.nodeId,
+                  copyableValue: actorDetail.address?.nodeId,
+                  link: actorDetail.address.nodeId
+                    ? generateNodeLink(actorDetail.address.nodeId)
                     : undefined,
                 }
               : { value: "-" },
@@ -217,6 +220,47 @@ const ActorDetailPage = () => {
                     'Call site not recorded. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
                   }
                 />
+              </Box>
+            ),
+          },
+          {
+            label: "Required Resources",
+            content: (
+              <Box display="inline-block">
+                {Object.entries(actorDetail.requiredResources || {}).length >
+                0 ? (
+                  <CodeDialogButtonWithPreview
+                    sx={{ maxWidth: 200 }}
+                    title="Required resources"
+                    code={JSON.stringify(
+                      actorDetail.requiredResources,
+                      undefined,
+                      2,
+                    )}
+                  />
+                ) : (
+                  "{}"
+                )}
+              </Box>
+            ),
+          },
+          {
+            label: "Label Selector",
+            content: (
+              <Box display="inline-block">
+                {Object.entries(actorDetail.labelSelector || {}).length > 0 ? (
+                  <CodeDialogButtonWithPreview
+                    sx={{ maxWidth: 200 }}
+                    title="Label selector"
+                    code={JSON.stringify(
+                      actorDetail.labelSelector,
+                      undefined,
+                      2,
+                    )}
+                  />
+                ) : (
+                  "{}"
+                )}
               </Box>
             ),
           },

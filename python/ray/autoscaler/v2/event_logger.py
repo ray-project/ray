@@ -11,6 +11,7 @@ from ray.core.generated.autoscaler_pb2 import (
     GangResourceRequest,
     ResourceRequest,
 )
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,21 @@ class AutoscalerEventLogger:
                 log_str += f"{resource_map}*{req_count.count}"
                 if idx < len(requests_by_count) - 1:
                     log_str += ", "
+
+                # Parse and log label selectors if present
+                if req_count.request.label_selectors:
+                    selector_strs = []
+                    for selector in req_count.request.label_selectors:
+                        for constraint in selector.label_constraints:
+                            op = LabelSelectorOperator.Name(constraint.operator)
+                            values = ",".join(constraint.label_values)
+                            selector_strs.append(
+                                f"{constraint.label_key} {op} [{values}]"
+                            )
+                    if selector_strs:
+                        log_str += (
+                            " with label selectors: [" + "; ".join(selector_strs) + "]"
+                        )
 
             log_str += (
                 ". Add suitable node types to this cluster to resolve this issue."

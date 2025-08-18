@@ -33,6 +33,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.execution_options.actor_locality_enabled = (
             dataloader_config.actor_locality_enabled
         )
+        data_context.execution_options.preserve_order = dataloader_config.preserve_order
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
@@ -69,6 +70,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 collate_fn=self._get_collate_fn(),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
                 drop_last=True,
+                pin_memory=dataloader_config.ray_data_pin_memory,
             )
         )
 
