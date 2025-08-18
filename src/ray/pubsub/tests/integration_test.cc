@@ -132,6 +132,8 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
         });
   }
 
+  std::string DebugString() const { return ""; }
+
  private:
   std::unique_ptr<rpc::SubscriberService::Stub> stub_;
 };
