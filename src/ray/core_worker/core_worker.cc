@@ -502,14 +502,9 @@ void CoreWorker::Shutdown() {
   }
 
   // For actors, perform cleanup before shutdown proceeds.
-  std::function<void()> cb;
-  if (!GetWorkerContext().GetCurrentActorID().IsNil()) {
-    cb = actor_shutdown_callback_;
-    actor_shutdown_callback_ = nullptr;
-  }
-  if (cb) {
+  if (!GetWorkerContext().GetCurrentActorID().IsNil() && actor_shutdown_callback_) {
     RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
-    cb();
+    actor_shutdown_callback_();
   }
   RAY_LOG(INFO) << "Shutting down.";
 
