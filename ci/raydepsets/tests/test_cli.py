@@ -14,12 +14,11 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
-    _append_uv_flags,
     _flatten_flags,
     _get_depset,
     _override_uv_flags,
     _uv_binary,
-    load,
+    build,
 )
 from ci.raydepsets.tests.utils import (
     append_to_file,
@@ -52,7 +51,7 @@ def _create_test_manager(
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
-            load,
+            build,
             [
                 "fake_path/test.depsets.yaml",
                 "--workspace-dir",
@@ -94,7 +93,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.7.20" in result.stdout.decode("utf-8")
+        assert "uv 0.8.10" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -151,13 +150,34 @@ class TestCli(unittest.TestCase):
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
+    def test_compile_with_append_and_override_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--python-version 3.10"],
+                override_flags=["--extra-index-url https://dummyurl.com"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            output_text = output_file.read_text()
+            assert "--python-version 3.10" in output_text
+            assert "--extra-index-url https://dummyurl.com" in output_text
+            assert (
+                "--extra-index-url https://download.pytorch.org/whl/cu128"
+                not in output_text
+            )
+
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             uv_cache_dir = Path(tmpdir) / "uv_cache"
 
             result = CliRunner().invoke(
-                load,
+                build,
                 [
                     "test.depsets.yaml",
                     "--workspace-dir",
@@ -275,11 +295,6 @@ class TestCli(unittest.TestCase):
                 manager.get_path("requirements_test.txt")
                 == f"{tmpdir}/requirements_test.txt"
             )
-
-    def test_append_uv_flags(self):
-        assert _append_uv_flags(
-            ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
-        ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
 
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
