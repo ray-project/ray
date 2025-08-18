@@ -77,8 +77,6 @@ class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
 @pytest_asyncio.fixture
 async def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        # Use the actual node IP address instead of parsing from webui_url
-        # which might contain localhost/127.0.0.1
         node_ip = ctx.address_info["node_ip_address"]
         agent_address = build_address(node_ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
         assert wait_until_server_available(agent_address)
@@ -471,7 +469,6 @@ async def test_job_log_in_multiple_node(
         dashboard_agent_listen_port=DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 2
     )
 
-    # Get the actual node IP from the cluster head node instead of parsing from webui_url
     node_ip = cluster.head_node.node_ip_address
     agent_address = build_address(node_ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
     assert wait_until_server_available(agent_address)
@@ -606,10 +603,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
         # We will need to wait for the ray to be started in the subprocess.
         address_info = ray.init("auto", ignore_reinit_error=True).address_info
 
-        # Get the actual node IP address from the nodes list
-        nodes = list_nodes()
-        assert len(nodes) > 0, "No nodes found"
-        node_ip = nodes[0].node_ip
+        node_ip = address_info["node_ip_address"]
 
         dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
         agent_address = build_address(node_ip, dashboard_agent_listen_port)

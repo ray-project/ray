@@ -25,7 +25,6 @@ def test_healthz_head(monkeypatch, ray_start_cluster):
 def test_healthz_agent_1(monkeypatch, ray_start_cluster):
     agent_port = find_free_port()
     h = ray_start_cluster.add_node(dashboard_agent_listen_port=agent_port)
-    # Use the node's actual IP address instead of localhost
     uri = f"http://{h.node_ip_address}:{agent_port}/api/local_raylet_healthz"
 
     wait_for_condition(lambda: requests.get(uri).status_code == 200)
@@ -44,7 +43,6 @@ def test_healthz_agent_2(monkeypatch, ray_start_cluster):
 
     agent_port = find_free_port()
     h = ray_start_cluster.add_node(dashboard_agent_listen_port=agent_port)
-    # Use the node's actual IP address instead of localhost
     uri = f"http://{h.node_ip_address}:{agent_port}/api/local_raylet_healthz"
 
     wait_for_condition(lambda: requests.get(uri).status_code == 200)
