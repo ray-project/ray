@@ -33,5 +33,22 @@ def test_p2p(ray_start_regular):
     assert tensor.sum().item() == remote_sum
 
 
+def test_ipc(ray_start_regular):
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA required for IPC test")
+    world_size = 2
+    actors = [GPUTestActor.options(num_gpus=0.5).remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="nccl")
+
+    sender, receiver = actors[0], actors[1]
+    tensor = torch.randn((3,), device="cuda")
+
+    ref = sender.echo.remote(tensor)
+    result = receiver.sum.remote(ref)
+
+    out = ray.get(result)
+    assert out == tensor.sum().item()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

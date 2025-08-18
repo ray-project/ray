@@ -108,6 +108,148 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     return gpu_object
 
 
+# Helper invoked on an actor process to report its current CUDA device id.
+# Returns -1 if CUDA is not available.
+def __ray_get_cuda_device__(self) -> int:
+    try:
+        import torch as _torch
+        if _torch.cuda.is_available():
+            return int(_torch.cuda.current_device())
+    except Exception:
+        pass
+    return -1
+
+
+# Export CUDA IPC handles for tensors stored under obj_id.
+# Only used when tensors are CUDA tensors and source/target actors reside on the same GPU.
+# Returns a list of metadata tuples per tensor.
+def __ray_cuda_ipc_export__(self, obj_id: str):
+    from ray._private.worker import global_worker
+    tensors = global_worker.gpu_object_manager.gpu_object_store.get_object(obj_id)
+    metas = []
+    for t in tensors:
+        if t.device.type != "cuda":
+            raise RuntimeError("CUDA IPC export requires CUDA tensors")
+        # Use untyped storage to avoid dtype-specific paths.
+        storage = t.untyped_storage()
+        size_bytes = int(storage.nbytes())
+        # The following private API is the standard way in PyTorch to create an IPC handle.
+        # It may change across versions; guarded by try/except to provide a clear error.
+        try:
+            h = storage._share_cuda_()
+            # Normalize to a 64-byte cudaIpcMemHandle_t for CuPy.
+            handle_bytes = None
+            # Case 1: Attribute holder (e.g., .handle)
+            if hasattr(h, "handle"):
+                try:
+                    print("handle type")
+                    print(type(h.handle))
+                    handle_bytes = bytes(h.handle)
+                except Exception:
+                    pass
+            # Case 2: Already bytes-like
+            if handle_bytes is None and isinstance(h, (bytes, bytearray, memoryview)):
+                handle_bytes = bytes(h)
+            # Case 3: Tuple forms
+            if handle_bytes is None and isinstance(h, tuple):
+                # Common: (bytes, ...)
+                if h and isinstance(h[0], (bytes, bytearray, memoryview)):
+                    handle_bytes = bytes(h[0])
+                else:
+                    # Try flattening ints/nested ints
+                    flat_ints: list[int] = []
+                    def _flatten_ints(val):
+                        if isinstance(val, int):
+                            flat_ints.append(val)
+                        elif isinstance(val, (tuple, list)):
+                            for vv in val:
+                                _flatten_ints(vv)
+                    _flatten_ints(h)
+                    try:
+                        handle_bytes = bytes(flat_ints)
+                    except Exception:
+                        handle_bytes = None
+            # Last resort: bytes() on the object
+            if handle_bytes is None:
+                try:
+                    handle_bytes = bytes(h)
+                except Exception:
+                    handle_bytes = None
+            # Validate handle size: cudaIpcMemHandle_t is 64 bytes
+            if not handle_bytes or len(handle_bytes) != 64:
+                raise RuntimeError(
+                    f"Invalid CUDA IPC handle size. Expected 64 bytes, got {0 if not handle_bytes else len(handle_bytes)} (raw={type(h)})."
+                )
+
+            metas.append(
+                {
+                    "handle": handle_bytes,
+                    "size_bytes": size_bytes,
+                    "dtype": str(t.dtype),
+                    "shape": tuple(t.size()),
+                    "stride": tuple(t.stride()),
+                    "storage_offset": int(t.storage_offset()),
+                    "device_index": int(t.device.index),
+                }
+            )
+        except Exception as e:
+            raise RuntimeError("PyTorch does not support CUDA IPC on this build") from e
+
+    return metas
+
+
+# Import CUDA IPC handles and reconstruct tensors into the local GPU object store.
+# Expects the metadata returned by __ray_cuda_ipc_export__.
+def __ray_cuda_ipc_import__(self, obj_id: str, metas):
+    try:
+        import torch as _torch
+    except ImportError:
+        raise
+
+    tensors = []
+    for meta in metas:
+        if not _torch.cuda.is_available():
+            raise RuntimeError("CUDA is required to import CUDA IPC handles")
+        device = _torch.device("cuda", meta["device_index"]) if meta.get("device_index") is not None else _torch.device("cuda")
+        # Try PyTorch-native IPC path first, then fall back to CuPy-based import if unavailable.
+        try:
+            storage = _torch.UntypedStorage.from_cuda_ipc_handle(meta["size_bytes"], meta["handle"])  # type: ignore[attr-defined]
+            dtype = getattr(_torch, str(meta["dtype"]).split(".")[-1])
+            t = _torch.empty(0, device=device, dtype=dtype)
+            t = t.set_(storage, meta["storage_offset"], meta["shape"], meta["stride"])  # type: ignore[attr-defined]
+            tensors.append(t)
+            continue
+        except Exception:
+            pass
+
+        # CuPy-based fallback: open the CUDA IPC mem handle via runtime API and wrap with DLPack.
+        try:
+            import cupy as _cp  # Requires cupy-cuda12x in the environment
+
+            handle = meta["handle"]
+            # Ensure bytes-like handle of correct size for cudaIpcMemHandle_t (typically 64 bytes)
+            if isinstance(handle, memoryview):
+                handle = handle.tobytes()
+            ptr = _cp.cuda.runtime.ipcOpenMemHandle(handle, 0)
+            mem = _cp.cuda.UnownedMemory(ptr, meta["size_bytes"], owner=None)
+            mptr = _cp.cuda.MemoryPointer(mem, 0)
+            # Map dtype and strides (CuPy expects strides in bytes)
+            dtype_name = str(meta["dtype"]).split(".")[-1]
+            cp_dtype = getattr(_cp, dtype_name)
+            itemsize = _cp.dtype(cp_dtype).itemsize
+            strides_bytes = tuple(s * itemsize for s in meta["stride"]) if meta.get("stride") else None
+            arr = _cp.ndarray(shape=tuple(meta["shape"]), dtype=cp_dtype, memptr=mptr, strides=strides_bytes)
+            # Convert to torch via DLPack (zero-copy)
+            t = _torch.utils.dlpack.from_dlpack(arr.toDlpack())
+            tensors.append(t)
+            # Note: We are not closing the IPC handle here; rely on process teardown or future GC integration.
+        except Exception as e:
+            raise RuntimeError(f"CUDA IPC import via CuPy failed: {e}")
+
+    from ray._private.worker import global_worker
+    global_worker.gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
+
+
 @dataclass
 class _GPUObject:
     # A list of tensors representing the GPU object.

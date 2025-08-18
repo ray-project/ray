@@ -651,7 +651,7 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
     assert not gpu_object_store.has_object(obj_id2)
-
+    
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
