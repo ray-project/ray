@@ -1877,15 +1877,9 @@ class CoreWorker {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
-  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
-  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
-  /// See https://github.com/ray-project/ray/issues/51642.
-  ///
-  /// RESOLVED: Unified shutdown coordinator handles all shutdown entry points.
-
   /// Unified shutdown coordinator that manages all shutdown operations.
-  /// This replaces the fragmented is_exited_/is_shutdown_ atomics with a
-  /// single state machine that coordinates all shutdown entry points.
+  /// Implements a thread-safe, single state machine that coordinates
+  /// all shutdown entry points.
   std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
   /// ELIMINATED: Legacy atomics removed as per unified shutdown design.

@@ -646,7 +646,7 @@ void CoreWorker::Exit(
   shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
                                          reason,
                                          detail,
-                                         std::chrono::milliseconds{-1},
+                                         ShutdownCoordinator::kInfiniteTimeout,
                                          false,
                                          creation_task_exception_pb_bytes);
 }
@@ -4227,10 +4227,10 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
 
         if (force_exit) {
           reason = ShutdownReason::kForcedExit;
-          detail = "Worker force exits because its job has finished";
+          detail = "Worker force exited because its job has finished";
         } else {
           reason = ShutdownReason::kIdleTimeout;
-          detail = "Worker exits because it was idle for a long time";
+          detail = "Worker exited because it was idle for a long time";
         }
 
         shutdown_coordinator_->RequestShutdown(force_exit,  // force flag from request
@@ -4242,7 +4242,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
         shutdown_coordinator_->RequestShutdown(
             false,  // graceful fallback
             ShutdownReason::kIdleTimeout,
-            "Worker exits due to RPC failure during idle exit");
+            "Worker exited due to RPC failure during idle exit");
       });
 }
 

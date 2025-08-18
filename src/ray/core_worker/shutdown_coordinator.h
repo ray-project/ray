@@ -131,6 +131,7 @@ enum class ShutdownState : std::uint8_t {
 ///   }
 class ShutdownCoordinator {
  public:
+  static constexpr std::chrono::milliseconds kInfiniteTimeout{-1};
   /// Constructor
   ///
   /// \param executor Shutdown executor implementation
@@ -165,7 +166,7 @@ class ShutdownCoordinator {
       bool force_shutdown,
       ShutdownReason reason,
       std::string_view detail = "",
-      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{-1},
+      std::chrono::milliseconds timeout_ms = kInfiniteTimeout,
       bool force_on_timeout = false,
       const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes =
           nullptr);

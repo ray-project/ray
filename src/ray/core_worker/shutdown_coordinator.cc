@@ -31,7 +31,10 @@ namespace core {
 ShutdownCoordinator::ShutdownCoordinator(
     std::unique_ptr<ShutdownExecutorInterface> executor, WorkerType worker_type)
     : executor_(std::move(executor)), worker_type_(worker_type) {
-  RAY_CHECK(executor_) << "ShutdownExecutor cannot be null";
+      RAY_CHECK(executor_) << "ShutdownCoordinator requires a non-null ShutdownExecutorInterface. "
+                           << "This indicates a construction-time bug. "
+                           << "Pass a concrete executor (e.g., CoreWorkerShutdownExecutor) "
+                           << "when creating the coordinator.";
 }
 
 bool ShutdownCoordinator::RequestShutdown(
@@ -71,8 +74,7 @@ bool ShutdownCoordinator::RequestShutdown(
 
 bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
   // Legacy compatibility - delegate to graceful shutdown by default
-  return RequestShutdown(
-      false, reason, "", std::chrono::milliseconds{-1}, false, nullptr);
+  return RequestShutdown(false, reason, "", kInfiniteTimeout, false, nullptr);
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
