@@ -104,6 +104,10 @@ class _LLMServerBase(ABC):
         """
         ...
 
+    @abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
         return None
@@ -204,7 +208,6 @@ class LLMServer(_LLMServerBase):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-            self._push_telemetry_report()
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
@@ -252,8 +255,7 @@ class LLMServer(_LLMServerBase):
 
         await self.engine.start()
 
-    def _push_telemetry_report(self):
-        """Push telemetry reports for the model in the current deployment."""
+        # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
@@ -393,6 +395,19 @@ class LLMServer(_LLMServerBase):
             return await self.engine.check_health()
         except Exception as e:
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
+            raise e
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
             raise e
 
     async def llm_config(self) -> Optional[LLMConfig]:
