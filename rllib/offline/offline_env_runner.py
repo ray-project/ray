@@ -39,8 +39,10 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()
         # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
-        data_context.execution_options.resource_limits.cpu = (
-            config.num_cpus_per_env_runner
+        data_context.execution_options.resource_limits = (
+            data_context.execution_options.resource_limits.copy(
+                cpu=config.num_cpus_per_env_runner
+            )
         )
 
         # Set the output write method.

@@ -1,7 +1,7 @@
 import os
 import sys
-from subprocess import check_output
 from collections import defaultdict
+from subprocess import check_output
 
 import click
 from github import Github

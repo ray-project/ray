@@ -111,7 +111,6 @@ class CoreWorkerProcess {
   ///
   /// \param[in] quick_exit If set to true, quick exit if uninitialized without
   /// crash.
-  /// \return Void.
   static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
@@ -145,19 +144,6 @@ class CoreWorkerProcessImpl {
 
   /// Shutdown the driver completely at the process level.
   void ShutdownDriver();
-
-  /// Register core worker to worker pool.
-  static Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
-                                       const WorkerID &worker_id,
-                                       rpc::WorkerType worker_type,
-                                       const JobID &job_id,
-                                       int runtime_env_hash,
-                                       const Language &language,
-                                       const std::string &ip_address,
-                                       const std::string &serialized_job_config,
-                                       const StartupToken &startup_token,
-                                       NodeID *raylet_id,
-                                       int *port);
 
  private:
   /// The various options.

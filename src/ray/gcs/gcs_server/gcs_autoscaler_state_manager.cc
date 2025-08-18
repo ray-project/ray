@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace gcs {
@@ -92,10 +93,9 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data_ptr = gcs::CreateErrorTableData(
+        auto error_data = CreateErrorTableData(
             error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        RAY_CHECK_OK(
-            gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
+        gcs_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
@@ -219,6 +219,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
+    // Create a BundleSelector. Only one BundleSelector will be created for now.
+    // Multiple will be added when we implement the fallback mechanism.
+    auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
     // Copy the PG's bundles to the request.
     for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
@@ -237,9 +241,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       // use the BundleSelector for GangResourceRequests.
       auto legacy_resource_req = gang_resource_req->add_requests();
       *legacy_resource_req->mutable_resources_bundle() = unit_resources;
-
-      // Create a new BundleSelector
-      auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
       // Add ResourceRequest for this bundle.
       auto *bundle_resource_req = bundle_selector->add_resource_requests();
@@ -606,29 +607,28 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
   for (const auto &node_infeasible_request_pair : per_node_infeasible_requests) {
     const auto &node_id = node_infeasible_request_pair.first;
     const auto &infeasible_shapes = node_infeasible_request_pair.second;
-    const auto raylet_client = raylet_client_pool_.GetOrConnectByID(node_id);
+    const auto raylet_client = raylet_client_pool_.GetByID(node_id);
 
-    if (raylet_client.has_value()) {
+    if (raylet_client) {
       std::string resource_shapes_str =
           ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
 
       RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
                        << " with infeasible_shapes=" << resource_shapes_str;
 
-      (*raylet_client)
-          ->CancelTasksWithResourceShapes(
-              infeasible_shapes,
-              [node_id](const Status &status,
-                        const rpc::CancelTasksWithResourceShapesReply &) {
-                if (status.ok()) {
-                  RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
-                } else {
-                  // Autoscaler will eventually retry the infeasible task cancellation
-                  RAY_LOG(WARNING)
-                      << "Failed to cancel infeasible requests on node " << node_id
-                      << ". RPC failed with status: " << status.ToString();
-                }
-              });
+      raylet_client->CancelTasksWithResourceShapes(
+          infeasible_shapes,
+          [node_id](const Status &status,
+                    const rpc::CancelTasksWithResourceShapesReply &) {
+            if (status.ok()) {
+              RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+            } else {
+              // Autoscaler will eventually retry the infeasible task cancellation
+              RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node "
+                               << node_id
+                               << ". RPC failed with status: " << status.ToString();
+            }
+          });
     } else {
       RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
                        << ". Raylet client to the node is not available.";

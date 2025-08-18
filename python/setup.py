@@ -29,6 +29,7 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -130,7 +131,7 @@ else:
     )
     RAY_EXTRA_CPP = True
     # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or os.getenv("RAY_DISABLE_EXTRA_CPP") == "1":
+    if "dev" in setup_spec.version or not BUILD_CPP:
         RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
@@ -299,12 +300,23 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
+            ]
+        )
+    )
+
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.0.0",
+        "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
@@ -355,7 +367,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.9.2",
+                "vllm>=0.10.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -383,7 +395,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
@@ -629,13 +641,12 @@ def build(build_python, build_java, build_cpp):
         #
         # And we put it here so that does not change behavior of
         # conda-forge build.
-        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
-            bazel_flags.append("--incompatible_strict_action_env")
+        bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
-    bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
+    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
+    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -645,6 +656,7 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.append("--config=tsan")
 
     bazel_bin = _find_bazel_bin()
+    # Build all things first.
     subprocess.check_call(
         [bazel_bin]
         + bazel_precmd_flags
@@ -654,6 +666,12 @@ def build(build_python, build_java, build_cpp):
         + bazel_targets,
         env=bazel_env,
     )
+    # Then run the actions.
+    for action in bazel_targets:
+        subprocess.check_call(
+            [bazel_bin] + bazel_precmd_flags + ["run"] + bazel_flags + [action],
+            env=bazel_env,
+        )
 
 
 def _walk_thirdparty_dir(directory):
@@ -693,7 +711,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
         build(False, False, False)
     else:
-        build(True, BUILD_JAVA, True)
+        build(True, BUILD_JAVA, BUILD_CPP)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -759,6 +777,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},

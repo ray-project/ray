@@ -16,6 +16,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -36,6 +37,9 @@ from typing import (
     overload,
 )
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    import torch
 
 import colorama
 
@@ -99,9 +103,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    import torch
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -870,7 +871,7 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        out_of_band_tensors: Dict[str, List["torch.Tensor"]] = {}
+        gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
@@ -881,9 +882,10 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            out_of_band_tensors[
-                object_id
-            ] = self.gpu_object_manager.get_out_of_band_tensors(object_id)
+            if object_id not in gpu_objects:
+                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                    object_id
+                )
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -892,7 +894,7 @@ class Worker:
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(
-                serialized_objects, object_refs, out_of_band_tensors
+                serialized_objects, object_refs, gpu_objects
             )
 
     def get_objects(
@@ -1082,6 +1084,18 @@ class Worker:
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
+
+
+_connect_or_shutdown_lock = threading.RLock()
+
+
+def with_connect_or_shutdown_lock(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with _connect_or_shutdown_lock:
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 @PublicAPI
@@ -1445,7 +1459,7 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Debugger instead.
+        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1761,7 +1775,7 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "For debugging consider using Ray debugger. ",
+            " For debugging consider using Ray Distributed Debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1965,6 +1979,20 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
+    # Check and show accelerator override warning during driver initialization
+    from ray._private.ray_constants import env_bool
+
+    override_on_zero = env_bool(
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+        True,
+    )
+    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
+        logger.warning(
+            "Tip: In future versions of Ray, Ray will no longer override accelerator "
+            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
+            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0"
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -1977,6 +2005,7 @@ _post_init_hooks = []
 
 @PublicAPI
 @client_mode_hook
+@with_connect_or_shutdown_lock
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -2354,6 +2383,7 @@ def is_initialized() -> bool:
 
 
 # TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
+@with_connect_or_shutdown_lock
 def connect(
     node,
     session_name: str,
@@ -2377,7 +2407,7 @@ def connect(
 
     Args:
         node (ray._private.node.Node): The node to connect.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2567,7 +2597,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
@@ -3639,6 +3668,11 @@ def remote(
             the default value is 3, and a value of -1 indicates
             infinite retries.
             See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+        allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+            tasks out of order. If you're using multi-threaded (``max_concurrency > 1``)
+            or async actors, you can't set this to False. Defaults to True if you're
+            using multi-threaded or async actors, and False otherwise. Actor task
+            retries are always executed out of order.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.

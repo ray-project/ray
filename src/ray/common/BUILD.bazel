@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "compat",
@@ -15,14 +15,26 @@ ray_cc_library(
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
+        ":asio",
         ":id",
-        ":network",
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "buffer",
+    hdrs = ["buffer.h"],
+    deps = [
+        ":status",
+        "//src/ray/thirdparty:aligned_alloc",
+        "//src/ray/util:logging",
     ],
 )
 
@@ -30,17 +42,16 @@ ray_cc_library(
     name = "ray_object",
     srcs = ["ray_object.cc"],
     hdrs = [
-        "buffer.h",
         "ray_object.h",
     ],
     deps = [
+        ":buffer",
         ":id",
-        ":status",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/thirdparty:aligned_alloc",
-        "//src/ray/util",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+        "@msgpack",
     ],
 )
 
@@ -107,24 +118,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "network",
-    srcs = [
-        "client_connection.cc",
-        "network_util.cc",
-    ],
-    hdrs = [
-        "client_connection.h",
-        "network_util.h",
-    ],
-    deps = [
-        ":asio",
-        ":id",
-        ":status",
-        "//:node_manager_fbs",
-    ],
-)
-
-ray_cc_library(
     name = "id",
     srcs = [
         "common_protocol.cc",
@@ -186,7 +179,7 @@ ray_cc_library(
         ":ray_config",
         ":ray_object",
         ":runtime_env",
-        "//:node_manager_fbs",
+        "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/util",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -279,7 +272,6 @@ ray_cc_library(
         ":asio",
         ":id",
         "//:ray_syncer_cc_grpc",
-        "//src/ray/util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -291,7 +283,6 @@ ray_cc_library(
     hdrs = ["status.h"],
     deps = [
         ":source_location",
-        "//src/ray/util:logging",
         "//src/ray/util:macros",
         "//src/ray/util:visibility",
         "@boost//:system",
@@ -311,6 +302,7 @@ ray_cc_library(
     deps = [
         ":macros",
         ":status",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -319,15 +311,4 @@ ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
-)
-
-ray_cc_test(
-    name = "source_location_test",
-    size = "small",
-    srcs = ["source_location_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":source_location",
-        "@com_google_googletest//:gtest_main",
-    ],
 )

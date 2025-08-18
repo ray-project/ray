@@ -53,7 +53,7 @@ def auto_http_archive(
 
     # auto appending ray project namespace prefix for 3rd party library reusing.
     if build_file == True:
-        build_file = "@com_github_ray_project_ray//%s:%s" % ("bazel", name + ".BUILD")
+        build_file = "@io_ray//%s:%s" % ("bazel", name + ".BUILD")
 
     if urls == True:
         prefer_url_over_mirrors = is_github
@@ -106,41 +106,41 @@ def ray_deps_setup():
     # all of http/git_repository should add prefix for patches defined in ray directory.
     auto_http_archive(
         name = "com_github_antirez_redis",
-        build_file = "@com_github_ray_project_ray//bazel:redis.BUILD",
+        build_file = "@io_ray//bazel:redis.BUILD",
         patch_args = ["-p1"],
         url = "https://github.com/redis/redis/archive/refs/tags/7.2.3.tar.gz",
         sha256 = "afd656dbc18a886f9a1cc08a550bf5eb89de0d431e713eba3ae243391fb008a6",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
+            "@io_ray//thirdparty/patches:redis-quiet.patch",
         ],
         workspace_file_content = 'workspace(name = "com_github_antirez_redis")',
     )
 
     auto_http_archive(
         name = "com_github_redis_hiredis",
-        build_file = "@com_github_ray_project_ray//bazel:hiredis.BUILD",
+        build_file = "@io_ray//bazel:hiredis.BUILD",
         url = "https://github.com/redis/hiredis/archive/60e5075d4ac77424809f855ba3e398df7aacefe8.tar.gz",
         sha256 = "b6d6f799b7714d85316f9ebfb76a35a78744f42ea3b6774289d882d13a2f0383",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:hiredis-windows-msvc.patch",
+            "@io_ray//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
     )
 
     auto_http_archive(
         name = "com_github_spdlog",
-        build_file = "@com_github_ray_project_ray//bazel:spdlog.BUILD",
+        build_file = "@io_ray//bazel:spdlog.BUILD",
         urls = ["https://github.com/gabime/spdlog/archive/v1.12.0.zip"],
         sha256 = "6174bf8885287422a6c6a0312eb8a30e8d22bcfcee7c48a6d02d1835d7769232",
         # spdlog rotation filename format conflict with ray, update the format.
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:spdlog-rotation-file-format.patch",
+            "@io_ray//thirdparty/patches:spdlog-rotation-file-format.patch",
         ],
         patch_args = ["-p1"],
     )
 
     auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
-        build_file = "@com_github_ray_project_ray//bazel:redis.BUILD",
+        build_file = "@io_ray//bazel:redis.BUILD",
         strip_prefix = None,
         url = "https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.zip",
         sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
@@ -202,6 +202,15 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/cython/cython/archive/refs/tags/3.0.12.tar.gz",
         sha256 = "a156fff948c2013f2c8c398612c018e2b52314fdf0228af8fbdb5585e13699c2",
+        patches = [
+            # Use python3 rather than python. macos does not have python installed
+            # by default, and hermetic strict action does not work as python cannot
+            # be found under /usr/bin or any systeme PATH in bazel sandbox.
+            #
+            # This patch can be removed after the following change is included.
+            # https://github.com/cython/cython/pull/7053
+            "//thirdparty/patches:cython.patch",
+        ],
     )
 
     auto_http_archive(
@@ -215,8 +224,8 @@ def ray_deps_setup():
         url = "https://github.com/census-instrumentation/opencensus-cpp/archive/5e5f2632c84e2230fb7ccb8e336f603d2ec6aa1b.zip",
         sha256 = "1b88d6663f05c6a56c1604eb2afad22831d5f28a76f6fab8f37187f1e4ace425",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
+            "@io_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+            "@io_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -254,11 +263,11 @@ def ray_deps_setup():
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-headers.patch",
+            "@io_ray//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
-            "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-zlib.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
+            "@io_ray//thirdparty/patches:prometheus-windows-zlib.patch",
+            "@io_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
+            "@io_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
         ],
     )
 
@@ -268,8 +277,9 @@ def ray_deps_setup():
         url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
         sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
+            "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
+            "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
         ],
     )
 
@@ -346,7 +356,7 @@ def ray_deps_setup():
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:msgpack-windows-iovec.patch",
+            "@io_ray//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
     )
 
@@ -362,7 +372,7 @@ def ray_deps_setup():
         strip_prefix = "json-3.9.1",
         urls = ["https://github.com/nlohmann/json/archive/v3.9.1.tar.gz"],
         sha256 = "4cf0df69731494668bdd6460ed8cb269b68de9c19ad8c27abc24cd72605b2d5b",
-        build_file = "@com_github_ray_project_ray//bazel:nlohmann_json.BUILD",
+        build_file = "@io_ray//bazel:nlohmann_json.BUILD",
     )
 
     auto_http_archive(
@@ -388,7 +398,7 @@ def ray_deps_setup():
     http_archive(
         name = "jemalloc",
         urls = ["https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2"],
-        build_file = "@com_github_ray_project_ray//bazel:jemalloc.BUILD",
+        build_file = "@io_ray//bazel:jemalloc.BUILD",
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",
     )

@@ -5,14 +5,13 @@ ray_cc_library(
     srcs = ["object_manager.cc"],
     hdrs = ["object_manager.h"],
     deps = [
-        "spilled_object_reader",
         ":chunk_object_reader",
         ":object_buffer_pool",
         ":object_directory",
         ":object_manager_common",
         ":pull_manager",
         ":push_manager",
-        "//:object_manager_rpc",
+        ":spilled_object_reader",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -20,6 +19,8 @@ ray_cc_library(
         "//src/ray/object_manager/plasma:plasma_store_server_lib",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/rpc:object_manager_client",
+        "//src/ray/rpc:object_manager_server",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -42,7 +43,6 @@ ray_cc_library(
     deps = [
         ":object_manager_common",
         ":ownership_object_directory",
-        "//:object_manager_rpc",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
@@ -64,11 +64,11 @@ ray_cc_library(
     hdrs = ["ownership_object_directory.h"],
     deps = [
         ":object_directory",
-        "//:worker_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/pubsub:subscriber_lib",
+        "//src/ray/pubsub:subscriber_interface",
+        "//src/ray/rpc:core_worker_client",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -117,9 +117,9 @@ ray_cc_library(
     name = "object_manager_grpc_client_manager",
     hdrs = ["grpc_client_manager.h"],
     deps = [
-        "//:grpc_client",
-        "//:rpc_client_call",
         "//src/ray/common:ray_config",
+        "//src/ray/rpc:client_call",
+        "//src/ray/rpc:grpc_client",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",
     ],

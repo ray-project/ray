@@ -15,6 +15,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -24,10 +25,11 @@
 namespace ray {
 
 enum class LabelSelectorOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0,
   // This is to support equality or in semantics.
-  LABEL_IN = 0,
+  LABEL_IN = 1,
   // This is to support not equal or not in semantics.
-  LABEL_NOT_IN = 1
+  LABEL_NOT_IN = 2
 };
 
 // Defines requirements for a label key and value.
