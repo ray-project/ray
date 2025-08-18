@@ -381,7 +381,7 @@ PSUTIL_PROCESS_ATTRS = (
         "cpu_times",
         "cmdline",
         "memory_info",
-        "memory_full_info",
+        # "memory_full_info", # remove it as an action item for pytorch 2.6 perf debug
     ]
     + ["num_fds"]
     if sys.platform != "win32"
