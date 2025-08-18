@@ -181,7 +181,6 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
-        from ray.experimental.collective import get_tensor_transport_manager
 
         gpu_object_refs = set()
         for arg in task_args:
@@ -192,6 +191,8 @@ class GPUObjectManager:
                 continue
             if self.is_managed_object(arg.hex()):
                 gpu_object_refs.add(arg)
+        if gpu_object_refs:
+            from ray.experimental.collective import get_tensor_transport_manager
 
         # Count the number of readers for each GPU object.
         for obj_ref in gpu_object_refs:
