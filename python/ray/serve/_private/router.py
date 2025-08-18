@@ -355,7 +355,7 @@ class RouterMetricsManager:
             "queued_requests": self.num_queued_requests,
             "running_requests": running_requests,
         }
-        print(f"AGGREGATED REQUESTS: {result=}")
+        print(f"{time.perf_counter()} AGGREGATED REQUESTS: {result=}")
         return result
 
     async def shutdown(self):

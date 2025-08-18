@@ -161,7 +161,7 @@ test:asan-buildkite --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.
 aquery:ci --color=no
 aquery:ci --noshow_progress
 
-test:ci-base --test_output=errors
+test:ci-base --test_output=all
 test:ci-base --test_verbose_timeout_warnings
 test:ci-base --flaky_test_attempts=3
 
