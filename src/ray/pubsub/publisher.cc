@@ -96,12 +96,11 @@ bool EntityState::AddSubscriber(SubscriberState *subscriber) {
   return subscribers_.emplace(subscriber->id(), subscriber).second;
 }
 
-bool EntityState::RemoveSubscriber(const SubscriberID &id) {
-  return subscribers_.erase(id) > 0;
+bool EntityState::RemoveSubscriber(const UniqueID &subscriber_id) {
+  return subscribers_.erase(subscriber_id) > 0;
 }
 
-const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscribers()
-    const {
+const absl::flat_hash_map<UniqueID, SubscriberState *> &EntityState::Subscribers() const {
   return subscribers_;
 }
 
@@ -150,9 +149,9 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *sub
   return key_added;
 }
 
-std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
+std::vector<UniqueID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
-  std::vector<SubscriberID> subscribers;
+  std::vector<UniqueID> subscribers;
   if (!subscribers_to_all_->Subscribers().empty()) {
     for (const auto &[sub_id, sub] : subscribers_to_all_->Subscribers()) {
       subscribers.push_back(sub_id);
@@ -167,7 +166,7 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
   return subscribers;
 }
 
-bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
+bool SubscriptionIndex::EraseSubscriber(const UniqueID &subscriber_id) {
   // Erase subscriber of all keys.
   if (subscribers_to_all_->RemoveSubscriber(subscriber_id)) {
     return true;
@@ -197,7 +196,7 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
 }
 
 bool SubscriptionIndex::EraseEntry(const std::string &key_id,
-                                   const SubscriberID &subscriber_id) {
+                                   const UniqueID &subscriber_id) {
   // Erase the subscriber of all keys.
   if (key_id.empty()) {
     return subscribers_to_all_->RemoveSubscriber(subscriber_id);
@@ -239,7 +238,7 @@ bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
   return entities_.contains(key_id);
 }
 
-bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
+bool SubscriptionIndex::HasSubscriber(const UniqueID &subscriber_id) const {
   if (subscribers_to_all_->Subscribers().contains(subscriber_id)) {
     return true;
   }
@@ -381,7 +380,7 @@ void Publisher::ConnectToSubscriber(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(send_reply_callback != nullptr);
 
-  const auto subscriber_id = SubscriberID::FromBinary(request.subscriber_id());
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex()
                  << ", publisher_id " << publisher_id_.Hex();
   absl::MutexLock lock(&mutex_);
@@ -405,7 +404,7 @@ void Publisher::ConnectToSubscriber(
 }
 
 bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
-                                     const SubscriberID &subscriber_id,
+                                     const UniqueID &subscriber_id,
                                      const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
@@ -453,7 +452,7 @@ void Publisher::PublishFailure(const rpc::ChannelType channel_type,
 }
 
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
-                                       const SubscriberID &subscriber_id,
+                                       const UniqueID &subscriber_id,
                                        const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
@@ -461,7 +460,7 @@ bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
   return subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
 }
 
-void Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
+void Publisher::UnregisterSubscriber(const UniqueID &subscriber_id) {
   absl::MutexLock lock(&mutex_);
   UnregisterSubscriberInternal(subscriber_id);
 }
@@ -470,7 +469,7 @@ void Publisher::UnregisterAll() {
   absl::MutexLock lock(&mutex_);
   // Save the subscriber IDs to be removed, because UnregisterSubscriberInternal()
   // erases from subscribers_.
-  std::vector<SubscriberID> ids;
+  std::vector<UniqueID> ids;
   for (const auto &[id, subscriber] : subscribers_) {
     ids.push_back(id);
   }
@@ -479,7 +478,7 @@ void Publisher::UnregisterAll() {
   }
 }
 
-void Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+void Publisher::UnregisterSubscriberInternal(const UniqueID &subscriber_id) {
   RAY_LOG(DEBUG) << "Unregistering subscriber " << subscriber_id.Hex();
   for (auto &index : subscription_index_map_) {
     index.second.EraseSubscriber(subscriber_id);
@@ -497,7 +496,7 @@ void Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) 
 
 void Publisher::CheckDeadSubscribers() {
   absl::MutexLock lock(&mutex_);
-  std::vector<SubscriberID> dead_subscribers;
+  std::vector<UniqueID> dead_subscribers;
 
   for (const auto &it : subscribers_) {
     const auto &subscriber = it.second;
