@@ -574,7 +574,7 @@ def test_change_route_prefix(serve_instance):
         resp = httpx.get(f"{url}/old")
         assert "Path '/old' not found." in resp.text
 
-        # Response from new route should be same PID.
+        # Response from new route should be same PID
         url = get_application_url(exclude_route_prefix=True)
         pid2 = httpx.get(f"{url}/new").json()[0]
         assert pid2 == pid1
