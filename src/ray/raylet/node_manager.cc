@@ -407,9 +407,9 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
       << " is dead: " << job_data.is_dead()
       << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  // Tasks of this job may already arrived but failed to pop a worker because the job
+  // Leases of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
-  // reschedule these tasks.
+  // reschedule these leases.
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
@@ -1647,7 +1647,7 @@ void NodeManager::HandleReportWorkerBacklog(
   local_lease_manager.ClearWorkerBacklog(worker_id);
   std::unordered_set<SchedulingClass> seen;
   for (const auto &backlog_report : request.backlog_reports()) {
-    const TaskSpecification resource_spec(backlog_report.resource_spec());
+    const LeaseSpecification resource_spec(backlog_report.resource_spec());
     const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
     RAY_CHECK(seen.find(scheduling_class) == seen.end());
     local_lease_manager.SetWorkerBacklog(

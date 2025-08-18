@@ -355,7 +355,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// Arguments needed by currently granted leases. These should be pinned before
   /// the lease is granted to ensure that the arguments are not evicted before
   /// the lease(s) start running.
-  absl::flat_hash_map<LeaseID, std::vector<ObjectID>> executing_lease_args_;
+  absl::flat_hash_map<LeaseID, std::vector<ObjectID>> granted_lease_args_;
 
   /// All arguments of granted leases, which are also pinned in the object store.
   /// The value is a pair: (the pointer to the object store that should be deleted

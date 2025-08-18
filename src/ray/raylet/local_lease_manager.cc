@@ -314,7 +314,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                             "arguments of executing tasks ("
                          << max_pinned_lease_arguments_bytes_
                          << "). Waiting to dispatch task until other tasks complete";
-          RAY_CHECK(!executing_lease_args_.empty() && !pinned_lease_arguments_.empty())
+          RAY_CHECK(!granted_lease_args_.empty() && !pinned_lease_arguments_.empty())
               << "Cannot dispatch lease " << lease_id
               << " until another task finishes and releases its arguments, but no other "
                  "task is running";
@@ -638,7 +638,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   } else {
     // A worker has successfully popped for a valid task. Grant the task to
     // the worker.
-    RAY_LOG(DEBUG) << "Granting lease " << worker->GetGrantedLeaseId() << " to worker "
+    RAY_LOG(DEBUG) << "Granting lease " << lease_id << " to worker "
                    << worker->WorkerId();
 
     Grant(
@@ -797,7 +797,7 @@ void LocalLeaseManager::PinLeaseArgs(const LeaseSpecification &lease_spec,
   // receive a duplicate lease request if there is a failure and the original
   // version of the lease has not yet been canceled.
   auto executed_lease_inserted =
-      executing_lease_args_.emplace(lease_spec.LeaseId(), deps).second;
+      granted_lease_args_.emplace(lease_spec.LeaseId(), deps).second;
   if (executed_lease_inserted) {
     for (size_t i = 0; i < deps.size(); i++) {
       auto [it, pinned_lease_inserted] =
@@ -815,11 +815,11 @@ void LocalLeaseManager::PinLeaseArgs(const LeaseSpecification &lease_spec,
 }
 
 void LocalLeaseManager::ReleaseLeaseArgs(const LeaseID &lease_id) {
-  auto it = executing_lease_args_.find(lease_id);
+  auto it = granted_lease_args_.find(lease_id);
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate lease request if there is a failure and the original
   // version of the lease has not yet been canceled.
-  if (it != executing_lease_args_.end()) {
+  if (it != granted_lease_args_.end()) {
     for (auto &arg : it->second) {
       auto arg_it = pinned_lease_arguments_.find(arg);
       RAY_CHECK(arg_it != pinned_lease_arguments_.end());
@@ -831,7 +831,7 @@ void LocalLeaseManager::ReleaseLeaseArgs(const LeaseID &lease_id) {
         pinned_lease_arguments_.erase(arg_it);
       }
     }
-    executing_lease_args_.erase(it);
+    granted_lease_args_.erase(it);
   }
 }
 
@@ -1168,13 +1168,13 @@ uint64_t LocalLeaseManager::MaxRunningLeasesPerSchedulingClass(
 }
 
 void LocalLeaseManager::RecordMetrics() const {
-  ray::stats::STATS_scheduler_tasks.Record(executing_lease_args_.size(), "Executing");
+  ray::stats::STATS_scheduler_tasks.Record(granted_lease_args_.size(), "Executing");
   ray::stats::STATS_scheduler_tasks.Record(waiting_leases_index_.size(), "Waiting");
 }
 
 void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting leases size: " << waiting_leases_index_.size() << "\n";
-  buffer << "Number of granted leases: " << executing_lease_args_.size() << "\n";
+  buffer << "Number of granted lease arguments: " << granted_lease_args_.size() << "\n";
   buffer << "Number of pinned lease arguments: " << pinned_lease_arguments_.size()
          << "\n";
   buffer << "Number of total spilled leases: " << num_lease_spilled_ << "\n";

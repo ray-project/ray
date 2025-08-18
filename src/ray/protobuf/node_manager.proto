@@ -22,10 +22,10 @@ import "src/ray/protobuf/autoscaler.proto";
 import "src/ray/protobuf/runtime_env_common.proto";
 
 message WorkerBacklogReport {
-  // TaskSpec indicating the scheduling class.
+  // LeaseSpec indicating the scheduling class.
   // Cannot send scheduling class directly
   // since it's local to each process.
-  TaskSpec resource_spec = 1;
+  LeaseSpec resource_spec = 1;
   // Size of the backlog for the above scheduling class.
   int64 backlog_size = 2;
 }
