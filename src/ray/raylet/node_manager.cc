@@ -1936,7 +1936,7 @@ void NodeManager::HandleResizeLocalResourceInstances(
 
   if (!delta_resource_map.empty()) {
     // Log the updated resources
-    RAY_LOG(INFO) << "Successfully resized local resources. Current Total resources:";
+    RAY_LOG(INFO) << "Successfully resized local resources. Current total resources:";
     for (const auto &[resource_name, updated_value] : updated_total_map) {
       RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
     }
