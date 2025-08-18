@@ -258,7 +258,7 @@ class TestExternalPublisher:
         base_kwargs["stop_event"].set()
         publisher.join()
 
-        stats = publisher.get_and_reset_stats()
+        stats = publisher.get_and_reset_metrics()
         assert stats["published"] == 0
         assert stats["filtered_out"] == 2
         kwargs["http_session"].post.assert_not_called()

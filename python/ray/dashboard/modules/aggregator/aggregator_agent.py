@@ -7,9 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
-from urllib3.util import Retry
-from requests import Session
-from requests.adapters import HTTPAdapter
+
 
 try:
     import prometheus_client
@@ -39,10 +37,6 @@ env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 # Max number of threads for the thread pool executor handling gRPC requests
 GRPC_TPE_MAX_WORKERS = ray_constants.env_integer(
     f"{env_var_prefix}_GRPC_TPE_MAX_WORKERS", 10
-)
-# Number of worker threads that publish events to the external service
-PUBLISH_EVENT_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_PUBLISH_EVENT_WORKERS", 1
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
@@ -79,7 +73,10 @@ EVENT_PUBLISH_TIMEOUT_SECONDS = ray_constants.env_integer(
     f"{env_var_prefix}_EVENT_PUBLISH_TIMEOUT_SECONDS", 5
 )
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+)
+PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
 )
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
@@ -95,26 +92,20 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
 # Destination publisher queues and retry controls
-PUBLISH_DEST_QUEUE_MAX_SIZE = ray_constants.env_integer(
+PUBLISHER_QUEUE_MAX_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_PUBLISH_DEST_QUEUE_MAX_SIZE", 100
 )
-PUBLISH_MAX_RETRIES = ray_constants.env_integer(
+PUBLISHER_MAX_RETRIES = ray_constants.env_integer(
     f"{env_var_prefix}_PUBLISH_MAX_RETRIES", 5
 )
-PUBLISH_INITIAL_BACKOFF_SECONDS = ray_constants.env_float(
+PUBLISHER_INITIAL_BACKOFF_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_PUBLISH_INITIAL_BACKOFF_SECONDS", 0.01
 )
-PUBLISH_MAX_BACKOFF_SECONDS = ray_constants.env_float(
+PUBLISHER_MAX_BACKOFF_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_PUBLISH_MAX_BACKOFF_SECONDS", 5.0
 )
-PUBLISH_JITTER_RATIO = ray_constants.env_float(
+PUBLISHER_JITTER_RATIO = ray_constants.env_float(
     f"{env_var_prefix}_PUBLISH_JITTER_RATIO", 0.1
-)
-GCS_PUBLISHER_NUM_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_GCS_PUBLISHER_NUM_WORKERS", 1
-)
-EXTERNAL_PUBLISHER_NUM_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_EXTERNAL_PUBLISHER_NUM_WORKERS", 1
 )
 
 # Metrics
@@ -212,25 +203,16 @@ class AggregatorAgent(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
         )
-        self._gcs_channel = create_gcs_channel(self.gcs_address)
+        # Dedicated publisher loop thread (single loop)
+        self._publisher_thread = None
+
+        self._gcs_channel = create_gcs_channel(self.gcs_address,True)
         self._gcs_event_stub = gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
             self._gcs_channel
         )
 
-        self._http_session = Session()
-        retries = Retry(
-            total=REQUEST_BACKOFF_MAX,
-            backoff_factor=REQUEST_BACKOFF_FACTOR,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods={"POST"},
-            respect_retry_after_header=True,
-        )
-        self._http_session.mount("http://", HTTPAdapter(max_retries=retries))
-        self._http_session.mount("https://", HTTPAdapter(max_retries=retries))
-
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._publisher_threads = []
         self._events_received_since_last_metrics_update = 0
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
@@ -253,32 +235,29 @@ class AggregatorAgent(
             self._gcs_publisher = GCSPublisher(
                 gcs_event_stub=self._gcs_event_stub,
                 timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
-                queue_max_size=PUBLISH_DEST_QUEUE_MAX_SIZE,
-                num_workers=GCS_PUBLISHER_NUM_WORKERS,
-                stop_event=self._stop_event,
-                max_enqueue_interval_seconds=MAX_BUFFER_SEND_INTERVAL_SECONDS,
-                max_retries=PUBLISH_MAX_RETRIES,
-                initial_backoff=PUBLISH_INITIAL_BACKOFF_SECONDS,
-                max_backoff=PUBLISH_MAX_BACKOFF_SECONDS,
-                jitter_ratio=PUBLISH_JITTER_RATIO,
+                queue_max_size=PUBLISHER_QUEUE_MAX_SIZE,
+                max_retries=PUBLISHER_MAX_RETRIES,
+                initial_backoff=PUBLISHER_INITIAL_BACKOFF_SECONDS,
+                max_backoff=PUBLISHER_MAX_BACKOFF_SECONDS,
+                jitter_ratio=PUBLISHER_JITTER_RATIO,
             )
         else:
             self._gcs_publisher = NoopPublisher()
-        endpoint = f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}"
-        self._external_publisher = ExternalPublisher(
-            http_session=self._http_session,
-            endpoint=endpoint,
-            events_filter_fn=self._can_expose_event,
-            timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
-            queue_max_size=PUBLISH_DEST_QUEUE_MAX_SIZE,
-            num_workers=EXTERNAL_PUBLISHER_NUM_WORKERS,
-            stop_event=self._stop_event,
-            max_enqueue_interval_seconds=MAX_BUFFER_SEND_INTERVAL_SECONDS,
-            max_retries=PUBLISH_MAX_RETRIES,
-            initial_backoff=PUBLISH_INITIAL_BACKOFF_SECONDS,
-            max_backoff=PUBLISH_MAX_BACKOFF_SECONDS,
-            jitter_ratio=PUBLISH_JITTER_RATIO,
-        )
+        
+        if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC:
+            endpoint = f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}"
+            self._external_publisher = ExternalPublisher(
+                endpoint=endpoint,
+                events_filter_fn=self._can_expose_event,
+                timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
+                queue_max_size=PUBLISHER_QUEUE_MAX_SIZE,
+                max_retries=PUBLISHER_MAX_RETRIES,
+                initial_backoff=PUBLISHER_INITIAL_BACKOFF_SECONDS,
+                max_backoff=PUBLISHER_MAX_BACKOFF_SECONDS,
+                jitter_ratio=PUBLISHER_JITTER_RATIO,
+            )
+        else:
+            self._external_publisher = NoopPublisher()
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -295,13 +274,8 @@ class AggregatorAgent(
         Receives events from the request, adds them to the event buffer,
         """
         events_data = request.events_data
-        task_events_metadata = (
-            events_data.task_events_metadata
-            if events_data.HasField("task_events_metadata")
-            else None
-        )
 
-        self._task_metadata_buffer.merge(task_events_metadata)
+        self._task_metadata_buffer.merge(events_data.task_events_metadata)
 
         for event in events_data.events:
             with self._lock:
@@ -339,13 +313,13 @@ class AggregatorAgent(
 
     # TODO: This is a temporary solution to drain the event buffer to publishers when stopping the agent.
     # We need to find a better way to do this.
-    def _drain_event_buffer_to_publishers(self) -> None:
+    async def _drain_event_buffer_to_publishers(self) -> None:
         """Drain remaining events from the internal buffer and enqueue to publishers."""
-        draining_batch = []
+        draining_event_batch = []
         while True:
             try:
                 event_proto = self._event_buffer.get(block=False)
-                draining_batch.append(event_proto)
+                draining_event_batch.append(event_proto)
             except Exception:
                 break
 
@@ -360,30 +334,36 @@ class AggregatorAgent(
             )
             metadata_batch = self._task_metadata_buffer.get()
 
-        if draining_batch or draining_task_metadata_batch:
-            frozen_batch = tuple(draining_batch)
+        if draining_event_batch or len(draining_task_metadata_batch.dropped_task_attempts) > 0:
+            frozen_batch = tuple(draining_event_batch)
             self._gcs_publisher.enqueue((frozen_batch, draining_task_metadata_batch))
-            if draining_batch:
+            if draining_event_batch:
                 self._external_publisher.enqueue(frozen_batch)
 
-    def _publish_events(self) -> None:
+    async def _publish_events(self) -> None:
         """
         Continuously builds batches from the event buffer and enqueues them to publishers.
         If both destination queues are full, it waits briefly and retries to avoid
         building more batches and growing memory.
         """
         event_batch = []
+
         while True:
+            # Check if stop event is set
+            if self._stop_event.is_set():
+                break
+                
             # If both destination queues are full, wait a bit before pulling from buffer
             if (
                 not self._gcs_publisher.has_capacity()
                 and not self._external_publisher.has_capacity()
             ):
-                should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
-                if should_stop:
+                await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
+                if self._stop_event.is_set():
                     break
                 continue
 
+            # prepare a batch of events to send
             while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
                 try:
                     event_proto = self._event_buffer.get(block=False)
@@ -394,19 +374,52 @@ class AggregatorAgent(
             if event_batch:
                 task_events_metadata = self._task_metadata_buffer.get()
                 frozen_batch = tuple(event_batch)
-                # Enqueue; each publisher handles buffer overflow themselves
+                # Enqueue batch to publishers
                 self._gcs_publisher.enqueue((frozen_batch, task_events_metadata))
                 self._external_publisher.enqueue(frozen_batch)
 
                 # Reset local batch
                 event_batch.clear()
             else:
-                should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
-                if should_stop:
-                    break
+                # wait for a bit before pulling from buffer again
+                await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
+    
+    async def _publisher_event_loop(self):
+            # Start destination publisher workers
+            self._gcs_publisher.start()
+            self._external_publisher.start()
 
-        # On exit (stop), drain remaining buffer into publishers
-        self._drain_event_buffer_to_publishers()
+            # Launch one batching task
+            batching_task = asyncio.create_task(
+                self._publish_events(),
+                name="event_aggregator_agent_publish_events",
+            )
+            try:
+                # Await batching completion (it will exit when stop event is set)
+                await batching_task
+            finally:
+                # Drain any remaining items and shutdown publishers
+                await self._drain_event_buffer_to_publishers()
+                await self._gcs_publisher.shutdown()
+                await self._external_publisher.shutdown()
+                self._update_metrics()
+
+    def _create_and_start_publisher_loop(self) -> None:
+        """Creates and starts a dedicated asyncio event loop with multiple async publisher workers."""
+        loop = get_or_create_event_loop()
+
+        try:
+            loop.run_until_complete(self._publisher_event_loop())
+        finally:
+            try:
+                pending = asyncio.all_tasks(loop)
+                for t in pending:
+                    t.cancel()
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            finally:
+                loop.close()
 
     def _update_metrics(self) -> None:
         """
@@ -416,8 +429,8 @@ class AggregatorAgent(
             return
 
         # Pull publisher stats without holding the aggregator lock to avoid blocking
-        gcs_stats = self._gcs_publisher.get_and_reset_stats()
-        external_stats = self._external_publisher.get_and_reset_stats()
+        gcs_publisher_metrics = self._gcs_publisher.get_and_reset_metrics()
+        external_publisher_metrics = self._external_publisher.get_and_reset_metrics()
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
@@ -429,14 +442,14 @@ class AggregatorAgent(
             )
 
             # Publisher stats
-            _events_published_to_gcs = gcs_stats.get("published", 0)
-            _events_failed_to_publish_to_gcs = gcs_stats.get("failed", 0)
-            _events_dropped_in_gcs_publish_queue = gcs_stats.get("queue_dropped", 0)
+            _events_published_to_gcs = gcs_publisher_metrics.get("published", 0)
+            _events_failed_to_publish_to_gcs = gcs_publisher_metrics.get("failed", 0)
+            _events_dropped_in_gcs_publish_queue = gcs_publisher_metrics.get("queue_dropped", 0)
 
-            _events_published = external_stats.get("published", 0)
-            _events_filtered_out = external_stats.get("filtered_out", 0)
-            _events_failed_to_publish_to_external = external_stats.get("failed", 0)
-            _events_dropped_in_external_publish_queue = external_stats.get(
+            _events_published = external_publisher_metrics.get("published", 0)
+            _events_filtered_out = external_publisher_metrics.get("filtered_out", 0)
+            _events_failed_to_publish_to_external = external_publisher_metrics.get("failed", 0)
+            _events_dropped_in_external_publish_queue = external_publisher_metrics.get(
                 "queue_dropped", 0
             )
 
@@ -508,19 +521,15 @@ class AggregatorAgent(
             self._cleanup_finished_event.wait()
             return
 
-        # drain remaining events in buffer
-        self._drain_event_buffer_to_publishers()
-
-        # Join publisher worker threads
-        self._gcs_publisher.join()
-        self._external_publisher.join()
-
-        # Join producer threads
-        for thread in self._publisher_threads:
-            thread.join()
-
         # Update metrics immediately
         self._update_metrics()
+        
+        # Join publisher loop thread to ensure clean shutdown
+        if self._publisher_thread is not None:
+            try:
+                self._publisher_thread.join()
+            except Exception:
+                pass
 
         self._cleanup_finished_event.set()
 
@@ -542,18 +551,14 @@ class AggregatorAgent(
         )
         thread.start()
 
-        for _ in range(PUBLISH_EVENT_WORKERS):
-            thread = threading.Thread(
-                target=self._publish_events,
-                name="event_aggregator_agent_publish_events",
-                daemon=False,
-            )
-            self._publisher_threads.append(thread)
-            thread.start()
-
-        # Start destination publish worker threads
-        self._gcs_publisher.start()
-        self._external_publisher.start()
+        # Start a dedicated publisher event loop in a separate thread
+        publisher_thread = threading.Thread(
+            target=self._create_and_start_publisher_loop,
+            name="event_aggregator_agent_publisher_loop",
+            daemon=False,
+        )
+        self._publisher_thread = publisher_thread
+        publisher_thread.start()
 
         while True:
             self._update_metrics()
