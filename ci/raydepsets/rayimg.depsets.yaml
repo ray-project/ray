@@ -1,0 +1,18 @@
+build_arg_sets:
+  py311:
+    PYTHON_VERSION: 3.11
+
+
+depsets:
+  - name: ray_img_depset_${PYTHON_VERSION}
+    requirements:
+      - /tmp/ray-deps/requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    output: python/ray-img/requirements_compiled_ray_img_${PYTHON_VERSION}.txt
+    operation: compile
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --find-links=.whl/
+    build_arg_sets:
+      - py311
