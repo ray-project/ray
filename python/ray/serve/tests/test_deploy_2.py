@@ -266,13 +266,20 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
 
     url = get_application_url("HTTP", app_name="app1")
     assert httpx.get(f"{url}").text == "hello alice"
-    proxy_url = "http://localhost:8000/-/routes"
-    routes = httpx.get(proxy_url).json()
+    url_without_route_prefix = get_application_url(
+        "HTTP", app_name="app1", exclude_route_prefix=True
+    )
+    routes_url = f"{url_without_route_prefix}/-/routes"
+    routes = httpx.get(routes_url).json()
     assert routes["/app1"] == "app1"
 
     url = get_application_url("HTTP", app_name="app2")
     assert httpx.get(f"{url}").text == "hello bob"
-    routes = httpx.get(proxy_url).json()
+    url_without_route_prefix = get_application_url(
+        "HTTP", app_name="app2", exclude_route_prefix=True
+    )
+    routes_url = f"{url_without_route_prefix}/-/routes"
+    routes = httpx.get(routes_url).json()
     assert routes["/app2"] == "app2"
 
     app1_status = serve.status().applications["app1"]
