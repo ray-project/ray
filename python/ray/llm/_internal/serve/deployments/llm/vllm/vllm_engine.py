@@ -1,12 +1,12 @@
 import argparse
 import os
-import uuid
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
 from starlette.requests import Request
 from transformers.dynamic_module_utils import init_hf_modules
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
@@ -26,7 +26,6 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    FrontendArgs,
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -56,7 +55,11 @@ def _get_vllm_engine_config(
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    from vllm.usage.usage_lib import UsageContext
+
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
@@ -114,41 +117,14 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs, utils as vllm_utils
+        from vllm import envs as vllm_envs
 
         if not vllm_envs.VLLM_USE_V1:
             logger.warning(
                 "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
             )
 
-        # TODO (Kourosh): This validation logic belongs to the PDProxy module.
-        # Pick a random port in P/D case.
-        kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
-        if kv_transfer_config is not None:
-            connector_type = getattr(kv_transfer_config, "kv_connector", "")
-            if connector_type != "NixlConnector":
-                raise ValueError("Only NixlConnector is supported for kv transfer.")
-            if (
-                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
-                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm_envs.environment_variables
-            ):
-                raise ValueError(
-                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
-                    "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
-                    "that you are using an older version of vLLM."
-                )
-
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm_utils.get_open_port()
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
-
-            # We need to overwrite the engine_id to make it unique across replicas.
-            engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
-            host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-            port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
+        self.llm_config.setup_engine_backend()
 
         self._running = False
 
@@ -324,7 +300,7 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm import envs as vllm_envs
 
-        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
+        # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
                 vllm_engine_args, vllm_engine_config, placement_group
@@ -339,12 +315,11 @@ class VLLMEngine(LLMEngine):
 
         custom_stat_loggers = None
         if self.llm_config.log_engine_metrics:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
-                RayPrometheusStatLogger,
-            )
+            from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
 
-            # V1 AsyncLLM does not yet support add_logger
-            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            # V1 AsyncLLM does not yet support add_logger: https://github.com/vllm-project/vllm/issues/17702
+            # Use `disable_log_stats: False` and `log_engine_metrics: False` as
+            # a workaround to enable PrometheusStatLogger instead.
             custom_stat_loggers = [RayPrometheusStatLogger]
 
         executor_class = Executor.get_class(vllm_engine_config)
@@ -361,19 +336,9 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        # TODO (Kourosh): We should uncomment this logic when
-        # https://github.com/vllm-project/vllm/pull/20636 is
-        # included in our vLLM release.
-        # if disk_lora_model.model_id in self._oai_models.lora_requests:
-        #     # Lora is already loaded, return
-        #     return
-
         self._validate_openai_serving_models()
 
-        if any(
-            lora_request.lora_name == disk_lora_model.model_id
-            for lora_request in self._oai_models.lora_requests  # type: ignore[attr-defined]
-        ):
+        if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
 
@@ -485,3 +450,7 @@ class VLLMEngine(LLMEngine):
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
+
+    async def reset_prefix_cache(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.reset_prefix_cache()

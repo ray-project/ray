@@ -58,7 +58,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2._internal.logging.logging import configure_controller_logger
+from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
@@ -117,7 +117,7 @@ class TrainController:
             ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
             DEFAULT_ENABLE_CONTROLLER_LOGGING,
         ):
-            configure_controller_logger(self._train_run_context)
+            LoggingManager.configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
@@ -281,12 +281,28 @@ class TrainController:
             ControllerError if the worker group failed to start.
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
+        scaling_config = self._train_run_context.scaling_config
+
+        # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
+        bundle_label_selector = None
+        try:
+            for callback in self._controller_callbacks:
+                selector = callback.on_controller_start_worker_group(
+                    scaling_config=scaling_config, num_workers=num_workers
+                )
+                if selector:
+                    bundle_label_selector = selector
+                    break
+        except Exception as e:
+            return ControllerError(e)
+
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
+            bundle_label_selector=bundle_label_selector,
         )
         try:
             self._worker_group = self.worker_group_cls.create(

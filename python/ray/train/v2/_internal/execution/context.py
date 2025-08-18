@@ -19,6 +19,10 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.callbacks.datasets import (
+        DatasetManager,
+        DatasetShardMetadata,
+    )
     from ray.train.v2._internal.execution.callback import TrainContextCallback
     from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
 
@@ -94,10 +98,13 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
-    dataset_shards: Dict[str, DataIterator]
-    controller_actor: ActorHandle
     checkpoint: Optional[Checkpoint] = None
+
+    controller_actor: ActorHandle
     num_reported_checkpoints: int = 0
+
+    dataset_manager: Optional[ActorHandle["DatasetManager"]] = None
+    _cached_dataset_shards: Dict[str, DataIterator] = field(default_factory=dict)
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
@@ -144,7 +151,7 @@ class TrainContext:
             )
         )
 
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -152,19 +159,34 @@ class TrainContext:
         appropriate framework-specific data type.
 
         Args:
-            dataset_name: Name of the dataset shard.
+            dataset_info: The shard metadata, including the dataset name and worker rank.
+
         Returns:
             The ``DataIterator`` shard with the given name for this worker.
+
         Raises:
             KeyError: If the dataset shard with the given name is not found.
         """
+        dataset_name = dataset_info.dataset_name
+        error = KeyError(
+            f"Dataset shard for '{dataset_name}' not found. "
+            "Please ensure that the dataset is passed through the Trainer `datasets` "
+            "argument."
+        )
+
+        if self.dataset_manager is None:
+            raise error
+
+        if dataset_info.dataset_name in self._cached_dataset_shards:
+            return self._cached_dataset_shards[dataset_info.dataset_name]
+
         try:
-            return self.dataset_shards[dataset_name]
-        except KeyError:
-            raise KeyError(
-                f"Dataset {dataset_name} not found. Available datasets: "
-                f"{list(self.dataset_shards.keys())}."
-            )
+            shard = ray.get(self.dataset_manager.get_dataset_shard.remote(dataset_info))
+        except KeyError as e:
+            raise error from e
+
+        self._cached_dataset_shards[dataset_info.dataset_name] = shard
+        return shard
 
     def get_context_callbacks(self) -> List["TrainContextCallback"]:
         return self.execution_context.train_context_callbacks
@@ -227,7 +249,7 @@ class TrainContext:
         metrics: Dict[str, Any],
         checkpoint: Optional[Checkpoint] = None,
         checkpoint_dir_name: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.
@@ -289,6 +311,16 @@ _context_lock = threading.Lock()
 
 
 def get_train_context() -> TrainContext:
+    """Get the internal train context.
+
+    Note:
+        This should not be used directly by user-facing APIs. User-facing APIs should
+        call :class:`~ray.train.v2._internal.execution.train_fn_utils.TrainFnUtils`
+        or use :class:`~ray.train.v2.api.context.TrainContext` instead.
+
+    Returns:
+        The internal TrainContext for this worker.
+    """
     with _context_lock:
         if _train_context is None:
             raise RuntimeError("TrainContext has not been initialized.")

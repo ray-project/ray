@@ -195,9 +195,12 @@ class ResourceManager:
             assert not op_usage.object_store_memory
             assert not op_running_usage.object_store_memory
             assert not op_pending_usage.object_store_memory
-            op_usage.object_store_memory = self._estimate_object_store_memory(op, state)
-            op_running_usage.object_store_memory = self._estimate_object_store_memory(
-                op, state
+
+            used_object_store = self._estimate_object_store_memory(op, state)
+
+            op_usage = op_usage.copy(object_store_memory=used_object_store)
+            op_running_usage = op_running_usage.copy(
+                object_store_memory=used_object_store
             )
 
             if isinstance(op, ReportsExtraResourceUsage):
@@ -263,7 +266,10 @@ class ResourceManager:
         exclude = self._options.exclude_resources
         total_resources = self._get_total_resources()
         default_mem_fraction = self._object_store_memory_limit_fraction
-        total_resources.object_store_memory *= default_mem_fraction
+        total_resources = total_resources.copy(
+            object_store_memory=total_resources.object_store_memory
+            * default_mem_fraction
+        )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
 
@@ -660,8 +666,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # exceeded `_reserved_for_op_outputs`.
             op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
-            op_usage = self._resource_manager.get_op_usage(op).copy()
-            op_usage.object_store_memory = op_mem_usage
+            op_usage = self._resource_manager.get_op_usage(op).copy(
+                object_store_memory=op_mem_usage
+            )
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.
             op_reserved_remaining = op_reserved.subtract(op_usage).max(
@@ -701,7 +708,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 op_shared,
                 to_borrow,
             )
-            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
+
             if op.min_max_resource_requirements()[1].gpu > 0:
                 # If an operator needs GPU, we just allocate all GPUs to it.
                 # TODO(hchen): allocate resources across multiple GPU operators.
@@ -710,13 +717,17 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # 1. The op is setting a minimum concurrency that is larger than
                 #    available num of GPUs.
                 # 2. The cluster scales down, and the global limit decreases.
-                self._op_budgets[op].gpu = max(
+                target_num_gpu = max(
                     self._resource_manager.get_global_limits().gpu
                     - self._resource_manager.get_op_usage(op).gpu,
                     0,
                 )
             else:
-                self._op_budgets[op].gpu = 0
+                target_num_gpu = 0
+
+            self._op_budgets[op] = (
+                self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
+            )
 
         # A materializing operator like `AllToAllOperator` waits for all its input
         # operator's outputs before processing data. This often forces the input
@@ -727,4 +738,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 isinstance(next_op, MATERIALIZING_OPERATORS)
                 for next_op in op.output_dependencies
             ):
-                self._op_budgets[op].object_store_memory = float("inf")
+                self._op_budgets[op] = self._op_budgets[op].copy(
+                    object_store_memory=float("inf")
+                )

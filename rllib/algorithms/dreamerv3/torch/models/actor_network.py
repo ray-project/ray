@@ -138,7 +138,7 @@ class ActorNetwork(nn.Module):
             distr_params = torch.cat([mean_logits, std_logits], dim=-1)
             distr = self.get_action_dist_object(distr_params)
 
-            action = distr.sample()
+            action = distr.rsample()
 
         if return_distr_params:
             return action, distr_params
