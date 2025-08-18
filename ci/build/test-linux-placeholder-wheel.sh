@@ -25,7 +25,7 @@ PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
 PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 
 # Find the appropriate wheel by grepping for the Python version.
-PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PYTHON-$PYTHON"* | head -n 1)"
+PYTHON_WHEEL="$(printf "%s\n" "../.whl/*$PYTHON"* | head -n 1)"
 echo "PYTHON_WHEEL: $PYTHON_WHEEL"
 
 # Print some env info
