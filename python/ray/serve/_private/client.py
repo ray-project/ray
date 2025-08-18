@@ -90,13 +90,14 @@ class ServeControllerClient:
         for cache_key in list(self.handle_cache):
             self.handle_cache[cache_key].shutdown()
             del self.handle_cache[cache_key]
-    
+
     async def shutdown_cached_handles_async(self):
         """Shuts down all cached handles asynchronously.
 
         Remove the reference to the cached handles so that they can be
         garbage collected.
         """
+
         async def shutdown_task(cache_key):
             await self.handle_cache[cache_key].shutdown_async()
             del self.handle_cache[cache_key]
@@ -125,7 +126,7 @@ class ServeControllerClient:
                     "Check controller logs for more details."
                 )
             self._shutdown = True
-        
+
     async def shutdown_async(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
