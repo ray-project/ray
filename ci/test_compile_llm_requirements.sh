@@ -2,11 +2,6 @@
 
 set -e
 
-# Install uv and set up Python
-pip install uv
-uv python install 3.11
-uv python pin 3.11
-
 # Create a temporary directory for backup files and setup cleanup trap
 TEMP_DIR=$(mktemp -d)
 cleanup() {
