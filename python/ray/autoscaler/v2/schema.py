@@ -267,6 +267,11 @@ class IPPRStatus:
     def is_finished(self) -> bool:
         return self.resized_status is None
 
+    def can_resize_up(self) -> bool:
+        return self.is_finished() and (
+            self.current_cpu < self.max_cpu or self.current_memory < self.max_memory
+        )
+
     def is_timeout(self) -> bool:
         return (
             self.is_in_progress()

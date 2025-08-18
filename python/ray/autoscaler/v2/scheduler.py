@@ -1555,17 +1555,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         target_nodes = []
 
         for node in existing_nodes:
-            if node.ippr_status is not None and node.ippr_status.is_finished():
-                if (
-                    node.ippr_status.current_cpu < node.ippr_status.max_cpu
-                    or node.ippr_status.current_memory < node.ippr_status.max_memory
-                ):
-                    node.update_total_resources(
-                        {
-                            "CPU": node.ippr_status.max_cpu,
-                            "memory": node.ippr_status.max_memory,
-                        }
-                    )
+            if node.ippr_status is not None and node.ippr_status.can_resize_up():
+                node.update_total_resources(
+                    {
+                        "CPU": node.ippr_status.max_cpu,
+                        "memory": node.ippr_status.max_memory,
+                    }
+                )
 
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
             (
