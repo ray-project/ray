@@ -237,8 +237,8 @@ ray_cc_test(
         ":gcs_server_test_util",
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/pubsub:publisher",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/pubsub:publisher",
         "@com_google_googletest//:gtest_main",
     ],
 )
