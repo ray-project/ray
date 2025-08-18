@@ -97,10 +97,7 @@ async def test_deployment_handle_configured_for_same_loop_via_init(
         h.remote().result()
 
 
-@pytest.mark.asyncio
-async def test_child_deployment_handle_configured_for_same_loop_communication(
-    serve_instance,
-):
+def test_child_deployment_handle_configured_for_same_loop_communication(serve_instance):
     @serve.deployment
     class Child:
         def __call__(self):
