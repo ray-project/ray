@@ -46,9 +46,9 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/task_receiver.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -180,7 +180,7 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ray::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
@@ -288,7 +288,7 @@ class CoreWorker {
 
   int64_t GetTaskDepth() const { return worker_context_->GetTaskDepth(); }
 
-  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
 
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
@@ -1740,7 +1740,7 @@ class CoreWorker {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the local Raylet that goes over a local socket.
-  std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client_;
+  std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
 
   // Client to the local Raylet that goes over a gRPC connection.
   std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
@@ -1930,18 +1930,5 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
-};
-
-// Lease request rate-limiter based on cluster node size.
-// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
-class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
- public:
-  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
-  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeInfo &data);
-
- private:
-  const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
 };
 }  // namespace ray::core
