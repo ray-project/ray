@@ -661,11 +661,12 @@ def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
                         )()
                     ]
                 }
+                args = ["--address", "127.0.0.1:6379", "--", "echo", "test"]
 
-                # Test basic symmetric_run call using CliRunner
-                runner.invoke(
-                    symmetric_run, ["--address", "127.0.0.1:6379", "--", "echo", "test"]
-                )
+                with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+                    # Test basic symmetric_run call using CliRunner
+                    result = runner.invoke(symmetric_run, args)
+                    assert result.exit_code == 0
 
                 # Verify that subprocess.run was called for ray start
                 assert mock_run.called
@@ -724,10 +725,14 @@ def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
                     )
 
                     # Test worker node behavior
-                    runner.invoke(
-                        symmetric_run,
-                        ["--address", "192.168.1.100:6379", "--", "echo", "test"],
-                    )
+                    args = ["--address", "192.168.1.100:6379", "--", "echo", "test"]
+                    with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+                        with patch(
+                            "ray.scripts.symmetric_run.check_head_node_ready"
+                        ) as mock_check_head_node_ready:
+                            mock_check_head_node_ready.return_value = True
+                            result = runner.invoke(symmetric_run, args)
+                            assert result.exit_code == 0
 
                     # Verify that subprocess.run was called
                     assert mock_run.called

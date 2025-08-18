@@ -148,6 +148,7 @@ SEPARATOR REQUIREMENT:
 def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
     separator = all_args.index("--")
+
     if separator == -1:
         raise click.ClickException("No separator '--' found in arguments.")
 
