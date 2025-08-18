@@ -856,6 +856,7 @@ class Worker:
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
+            inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
         )
 
