@@ -2989,7 +2989,7 @@ class AlgorithmConfig(_Config):
         if offline_evaluation_type is not NotProvided:
             self.offline_evaluation_type = offline_evaluation_type
         if offline_eval_runner_class is not NotProvided:
-            self.offline_eval_runner_cls = offline_eval_runner_class
+            self.offline_eval_runner_class = offline_eval_runner_class
         if offline_loss_for_module_fn is not NotProvided:
             self.offline_loss_for_module_fn = offline_loss_for_module_fn
         if offline_eval_batch_size_per_runner is not NotProvided:
@@ -5328,8 +5328,8 @@ class AlgorithmConfig(_Config):
 
         from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
 
-        if self.prelearner_class and not issubclass(
-            self.prelearner_class, OfflineEvaluationRunner
+        if self.offline_eval_runner_class and not issubclass(
+            self.offline_eval_runner_class, OfflineEvaluationRunner
         ):
             self._value_error(
                 "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
