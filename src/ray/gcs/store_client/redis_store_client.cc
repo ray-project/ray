@@ -509,7 +509,7 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
   };
 
-	auto *context = redis_client_->GetPrimaryContext();
+  auto *context = redis_client_->GetPrimaryContext();
   context->RunArgvAsync({"PING"}, redis_callback);
 }
 
