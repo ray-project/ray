@@ -185,13 +185,11 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     for config in [pd_config.prefill_config, pd_config.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
             config.update_engine_kwargs(
-                {
-                    "kv_transfer_config": dict(
-                        kv_connector="NixlConnector",
-                        kv_role="kv_both",
-                        engine_id=str(uuid.uuid4()),
-                    )
-                }
+                kv_transfer_config=dict(
+                    kv_connector="NixlConnector",
+                    kv_role="kv_both",
+                    engine_id=str(uuid.uuid4()),
+                )
             )
 
     prefill_deployment = build_llm_deployment(
