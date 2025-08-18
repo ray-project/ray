@@ -83,7 +83,7 @@ class PublisherInterface {
   /// Unregister subscriber. No messages on any channels will be published to it anymore.
   ///
   /// \param subscriber_id The ID of the subscriber.
-  virtual void UnregisterSubscription(const UniqueID &subscriber_id) = 0;
+  virtual void UnregisterSubscriber(const UniqueID &subscriber_id) = 0;
 
   virtual std::string DebugString() const = 0;
 };
