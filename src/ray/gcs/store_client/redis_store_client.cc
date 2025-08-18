@@ -26,6 +26,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
@@ -118,13 +119,30 @@ void RedisStoreClient::MGetValues(
   }
 }
 
-RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
+RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client,
+                                   instrumented_io_context &io_service)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      redis_client_(std::move(redis_client)) {
+      redis_client_(std::move(redis_client)),
+      io_service_(io_service) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
+
+  // Health check Redis periodically and crash if it becomes unavailable.
+  // XXX: remove RayConfig dep.
+  periodic_health_check_runner_ = PeriodicalRunner::Create(io_service_);
+  periodic_health_check_runner_->RunFnPeriodically(
+      [this] {
+        AsyncCheckHealth({[](const Status &status) {
+                            RAY_CHECK_OK(status) << "Redis connection failed.";
+                          },
+                          io_service_});
+      },
+      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+      "RedisStoreClient.redis_health_check");
 }
+
+RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,

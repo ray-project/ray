@@ -287,8 +287,6 @@ class GcsServer {
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
   /// Grpc based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
-  /// Periodical runner to health check Redis (if Redis store client is in use).
-  std::shared_ptr<PeriodicalRunner> redis_health_check_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// Gcs service state flag, which is used for ut.

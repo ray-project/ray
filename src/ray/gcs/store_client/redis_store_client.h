@@ -24,8 +24,9 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/asio/postable.h"
-#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -91,6 +92,11 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
 }
 
 // StoreClient using Redis as persistence backend.
+//
+// The StoreClient does not currently handle any failures (transient or otherwise) of
+// the Redis server. A periodic health check runs in the background and it will crash
+// the process if the Redis server cannot be reached.
+//
 // Note in redis term a "key" points to a hash table and a "field" is a key, a "value"
 // is just a value. We double quote "key" and "field" to avoid confusion.
 //
@@ -110,7 +116,9 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
 // [1] https://github.com/ray-project/ray/pull/35123#issuecomment-1546549046
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
+  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client,
+                            instrumented_io_context &io_service);
+  ~RedisStoreClient();
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
@@ -149,12 +157,12 @@ class RedisStoreClient : public StoreClient {
                      const std::string &key,
                      Postable<void(bool)> callback) override;
 
-  // Method specific to the redis store client that checks if Redis is available.
+ private:
+  // Check if Redis is available.
   //
   // \param callback The callback that will be called with a Status. OK means healthy.
   void AsyncCheckHealth(Postable<void(Status)> callback);
 
- private:
   /// \class RedisScanner
   ///
   /// This class is used to HSCAN data from a Redis table.
@@ -267,6 +275,8 @@ class RedisStoreClient : public StoreClient {
 
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
+  instrumented_io_context &io_service_;
+  std::shared_ptr<PeriodicalRunner> periodic_health_check_runner_;
   absl::Mutex mu_;
 
   // The pending redis requests queue for each key.
