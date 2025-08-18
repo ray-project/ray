@@ -1,15 +1,26 @@
-import pandas as pd
-import ray
+from pathlib import Path
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+import ray
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
+)
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     create_map_transformer_from_block_fn,
@@ -19,19 +30,8 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import DataContext, ShuffleStrategy
-from pathlib import Path
-import pyarrow as pa
-import pyarrow.parquet as pq
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
-)
-from ray.data._internal.compute import ActorPoolStrategy
-
+from ray.data.context import DataContext, ShuffleStrategy
 
 # ---------------------------------------------------------------------------
 # simple helpers
