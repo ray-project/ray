@@ -306,7 +306,7 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
   auto num_ready_keys = std::make_shared<size_t>(0);
   std::function<void()> send_redis = [this,
                                       num_ready_keys = num_ready_keys,
-                                      concurrency_keys,  // Copied!
+                                      concurrency_keys,
                                       command = std::move(command),
                                       redis_callback =
                                           std::move(redis_callback)]() mutable {
