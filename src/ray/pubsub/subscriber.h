@@ -30,7 +30,7 @@
 #include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
-#include "src/ray/pubsub/subscriber_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
 
