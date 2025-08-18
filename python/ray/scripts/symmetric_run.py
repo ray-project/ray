@@ -22,25 +22,23 @@ from typing import List, Tuple
 import click
 import ray
 import socket
-import os
+import psutil
 import subprocess
 import sys
 import time
 
-import psutil
+from ray._private.ray_constants import env_integer
+from ray._raylet import GcsClient
 
-CLUSTER_WAIT_TIMEOUT = int(os.environ.get("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30))
+CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
 
 
-def check_ray_already_started(address="auto"):
-    try:
-        import ray._private.services as services
+def check_ray_already_started() -> bool:
+    import ray._private.services as services
 
-        # Try auto-detecting the Ray instance.
-        services.canonicalize_bootstrap_address_or_die(address)
-    except ConnectionError:
-        return False
-    return True
+    # Try auto-detecting the Ray instance.
+    running_gcs_addresses = services.find_gcs_addresses()
+    return len(running_gcs_addresses) > 0
 
 
 def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
@@ -76,16 +74,17 @@ def is_port_open(host: str, port: int, timeout: int = 5) -> bool:
         return False
 
 
-def check_head_node_ready(gcs_ip, gcs_port, timeout=CLUSTER_WAIT_TIMEOUT):
+def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
+    gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
-        if is_port_open(gcs_ip, gcs_port):
+        if gcs_client.check_alive([], timeout=1):
             click.echo("Ray cluster is ready!", err=True)
             return True
         time.sleep(5)
 
     click.echo(
-        f"Timeout: Ray cluster at {gcs_ip}:{gcs_port} not ready after {timeout}s",
+        f"Timeout: Ray cluster at {address} not ready after {timeout}s",
         err=True,
     )
     return False
@@ -327,7 +326,7 @@ def symmetric_run(
                 f"On worker node. Connecting to Ray cluster at {address}...", err=True
             )
 
-            if not check_head_node_ready(gcs_ip, gcs_port):
+            if not check_head_node_ready(address):
                 raise click.ClickException("Timed out waiting for head node to start.")
 
             # Build the ray start command for worker nodes with all parameters
