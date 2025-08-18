@@ -1678,6 +1678,11 @@ class CoreWorker {
                     const int64_t timeout_ms,
                     std::vector<std::shared_ptr<RayObject>> &results);
 
+  /// Helper to compute idleness from precomputed counters.
+  bool IsIdle(size_t num_objects_with_references,
+              int64_t pins_in_flight,
+              size_t num_pending_tasks) const;
+
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
   /// \return The caller ID. For non-actor tasks, this is the current task ID.
@@ -1881,9 +1886,6 @@ class CoreWorker {
   /// Implements a thread-safe, single state machine that coordinates
   /// all shutdown entry points.
   std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
-
-  /// ELIMINATED: Legacy atomics removed as per unified shutdown design.
-  /// All shutdown state now managed by shutdown_coordinator_ with no race conditions.
 
   int64_t max_direct_call_object_size_;
 

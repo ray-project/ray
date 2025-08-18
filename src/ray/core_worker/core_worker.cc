@@ -4199,8 +4199,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't have object references and it doesn't
   // have any object pinning RPCs in flight and it doesn't have pending tasks.
-  bool is_idle = (num_objects_with_references == 0) && (pins_in_flight == 0) &&
-                 (num_pending_tasks == 0);
+  bool is_idle = IsIdle(num_objects_with_references, pins_in_flight, num_pending_tasks);
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle) {
@@ -4421,9 +4420,14 @@ bool CoreWorker::ShouldWorkerExit() const {
   const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't have object references and it doesn't
   // have any object pinning RPCs in flight and it doesn't have pending tasks.
-  bool is_idle = (num_objects_with_references == 0) && (pins_in_flight == 0) &&
-                 (num_pending_tasks == 0);
-  return is_idle;
+  return IsIdle(num_objects_with_references, pins_in_flight, num_pending_tasks);
+}
+
+bool CoreWorker::IsIdle(size_t num_objects_with_references,
+                        int64_t pins_in_flight,
+                        size_t num_pending_tasks) const {
+  return (num_objects_with_references == 0) && (pins_in_flight == 0) &&
+         (num_pending_tasks == 0);
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
