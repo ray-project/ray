@@ -38,6 +38,10 @@ class FakePublisher : public Publisher {
     return true;
   }
 
+  bool UnregisterSubscriber(const UniqueID &subscriber_id) override {
+    return;
+  }
+
   std::string DebugString() const override { return "FakePublisher"; }
 };
 

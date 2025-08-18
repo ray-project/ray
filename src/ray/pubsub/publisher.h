@@ -299,13 +299,9 @@ class Publisher : public PublisherInterface {
                               const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
 
-  std::string DebugString() const override;
+  void UnregisterSubscriber(const UniqueID &subscriber_id) override;
 
-  /// Remove the subscriber. Once the subscriber is removed, messages won't be published
-  /// to it anymore.
-  ///
-  /// \param subscriber_id The node id of the subscriber to unsubscribe.
-  void UnregisterSubscriber(const UniqueID &subscriber_id);
+  std::string DebugString() const override;
 
   /// Flushes all inflight pollings and unregisters all subscribers.
   void UnregisterAll();

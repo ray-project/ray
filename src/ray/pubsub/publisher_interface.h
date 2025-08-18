@@ -47,7 +47,7 @@ class PublisherInterface {
   /// Register the subscription.
   ///
   /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
+  /// \param subscriber_id The ID of the subscriber.
   /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
   /// subscribing to all.
   /// \return True if registration is new. False otherwise.
@@ -73,12 +73,17 @@ class PublisherInterface {
   /// subscriber anymore.
   ///
   /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
+  /// \param subscriber_id The ID of the subscriber.
   /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
   /// \return True if erased. False otherwise.
   virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const UniqueID &subscriber_id,
                                       const std::optional<std::string> &key_id) = 0;
+
+  /// Unregister subscriber. No messages on any channels will be published to it anymore.
+  ///
+  /// \param subscriber_id The ID of the subscriber.
+  virtual void UnregisterSubscription(const UniqueID &subscriber_id) = 0;
 
   virtual std::string DebugString() const = 0;
 };

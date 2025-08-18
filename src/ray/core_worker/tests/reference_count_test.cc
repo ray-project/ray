@@ -278,6 +278,10 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     return true;
   }
 
+  bool UnregisterSubscriber(const UniqueID &subscriber_id) override {
+    return;
+  }
+
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
       std::string *publisher_id,

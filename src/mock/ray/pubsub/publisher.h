@@ -43,6 +43,10 @@ class MockPublisher : public PublisherInterface {
                const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
+  MOCK_METHOD(void,
+              UnregisterSubscriber,
+              (const UniqueID &subscriber_id),
+              (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
