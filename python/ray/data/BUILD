@@ -214,6 +214,20 @@ py_test(
 )
 
 py_test(
+    name = "test_lazy_start",
+    size = "small",
+    srcs = ["tests/test_lazy_start.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_jumbo_arrow_block",
     size = "large",
     srcs = ["tests/test_jumbo_arrow_block.py"],

@@ -365,6 +365,8 @@ class PhysicalOperator(Operator):
         )
 
         if not self._execution_finished:
+            if not self._started:
+                return False
             if (
                 self._inputs_complete
                 and internal_queue_size == 0

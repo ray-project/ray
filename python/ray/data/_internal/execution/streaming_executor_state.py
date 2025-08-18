@@ -191,7 +191,12 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
+    def __init__(
+        self,
+        op: PhysicalOperator,
+        inqueues: List[OpBufferQueue],
+        options: ExecutionOptions,
+    ):
         # Each input queue is connected to another operator's output queue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.input_queues: List[OpBufferQueue] = inqueues
@@ -213,6 +218,7 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        self._options = options
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -349,6 +355,8 @@ class OpState:
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
             if ref is not None:
+                if not self.op._started:
+                    self.op.start(self._options)
                 self.op.add_input(ref, input_index=i)
                 return
 
@@ -432,11 +440,14 @@ def build_streaming_topology(
             inqueues.append(parent_state.output_queue)
 
         # Create state.
-        op_state = OpState(op, inqueues)
+        op_state = OpState(op, inqueues, options)
         topology[op] = op_state
-        stage_of = _stage_id_map(dag)
-        if stage_of[op] == 0:
-            op.start(options)  # only start stage-0 operators now
+        should_start_now = len(op.input_dependencies) == 0 or not any(
+            isinstance(dep, (AllToAllOperator, HashShufflingOperatorBase))
+            for dep in op.input_dependencies
+        )
+        if should_start_now:
+            op.start(options)
         return op_state
 
     setup_state(dag)
@@ -589,10 +600,7 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        # An operator that has not been started yet cannot be completed.
-        if not op._started:
-            continue
-        if op.completed():
+        if op._started and op.completed():
             continue
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
@@ -600,19 +608,18 @@ def update_operator_states(topology: Topology) -> None:
         if dependents_completed:
             op.mark_execution_finished()
 
-    # Start the next stage if a barrier operator finished.
+    # Start operators that were blocked by a barrier once their upstream AllToAlls finish.
     for op, op_state in topology.items():
-        if (
-            isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
-            and op.completed()
+        if op._started:
+            continue
+        # If any immediate upstream is an unfinished AllToAll, keep it blocked.
+        if any(
+            isinstance(dep, AllToAllOperator) and not dep.execution_finished()
+            for dep in op.input_dependencies
         ):
-            # Use the same ExecutionOptions object that the driver is using.
-            options = DataContext.get_current().execution_options
-            for child in op.output_dependencies:
-                if not child._started and all(
-                    p.completed() for p in child.input_dependencies
-                ):
-                    child.start(options)
+            continue
+        # Otherwise it's unblocked now — start it.
+        op.start(op_state._options)
 
 
 def get_eligible_operators(
@@ -826,38 +833,3 @@ def dedupe_schemas_with_validation(
         ),
         diverged,
     )
-
-
-def _stage_id_map(root: PhysicalOperator) -> Dict[PhysicalOperator, int]:
-    """Stage number = number of completed AllToAll barriers *before* the op.
-
-    Leaves (InputDataBuffer) are stage 0; the first operator *after*
-    a barrier is stage N + 1.
-    """
-    stage: Dict[PhysicalOperator, int] = {}
-
-    def compute(op: PhysicalOperator) -> int:
-        # memoised
-        if op in stage:
-            return stage[op]
-
-        if not op.input_dependencies:  # leaf
-            stage_val = 0
-        else:
-            # maximum stage among all parents
-            parent_stages = []
-            for parent in op.input_dependencies:
-                s = compute(parent)
-                # crossing a barrier increments the stage
-                is_barrier = isinstance(
-                    parent, (AllToAllOperator, HashShufflingOperatorBase)
-                )
-                next_stage = s + 1 if is_barrier else s
-                parent_stages.append(next_stage)
-            stage_val = max(parent_stages)
-
-        stage[op] = stage_val
-        return stage_val
-
-    compute(root)
-    return stage
