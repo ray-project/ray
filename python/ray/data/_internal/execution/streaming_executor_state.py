@@ -31,6 +31,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
+    HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
@@ -433,7 +434,9 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options)
+        stage_of = _stage_id_map(dag)
+        if stage_of[op] == 0:
+            op.start(options)  # only start stage-0 operators now
         return op_state
 
     setup_state(dag)
@@ -586,6 +589,9 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
+        # An operator that has not been started yet cannot be completed.
+        if not op._started:
+            continue
         if op.completed():
             continue
         dependents_completed = len(op.output_dependencies) > 0 and all(
@@ -593,6 +599,20 @@ def update_operator_states(topology: Topology) -> None:
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+    # Start the next stage if a barrier operator finished.
+    for op, op_state in topology.items():
+        if (
+            isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
+            and op.completed()
+        ):
+            # Use the same ExecutionOptions object that the driver is using.
+            options = DataContext.get_current().execution_options
+            for child in op.output_dependencies:
+                if not child._started and all(
+                    p.completed() for p in child.input_dependencies
+                ):
+                    child.start(options)
 
 
 def get_eligible_operators(
@@ -806,3 +826,38 @@ def dedupe_schemas_with_validation(
         ),
         diverged,
     )
+
+
+def _stage_id_map(root: PhysicalOperator) -> Dict[PhysicalOperator, int]:
+    """Stage number = number of completed AllToAll barriers *before* the op.
+
+    Leaves (InputDataBuffer) are stage 0; the first operator *after*
+    a barrier is stage N + 1.
+    """
+    stage: Dict[PhysicalOperator, int] = {}
+
+    def compute(op: PhysicalOperator) -> int:
+        # memoised
+        if op in stage:
+            return stage[op]
+
+        if not op.input_dependencies:  # leaf
+            stage_val = 0
+        else:
+            # maximum stage among all parents
+            parent_stages = []
+            for parent in op.input_dependencies:
+                s = compute(parent)
+                # crossing a barrier increments the stage
+                is_barrier = isinstance(
+                    parent, (AllToAllOperator, HashShufflingOperatorBase)
+                )
+                next_stage = s + 1 if is_barrier else s
+                parent_stages.append(next_stage)
+            stage_val = max(parent_stages)
+
+        stage[op] = stage_val
+        return stage_val
+
+    compute(root)
+    return stage
