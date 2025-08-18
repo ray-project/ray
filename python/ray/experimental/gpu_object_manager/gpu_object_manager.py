@@ -4,13 +4,13 @@ import threading
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-from ray.util.collective.types import TensorTransportMetadata
 from ray._private import ray_constants
 
 if TYPE_CHECKING:
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
     )
+    from ray.util.collective.types import TensorTransportMetadata
     import torch
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -24,7 +24,7 @@ class GPUObjectMeta(NamedTuple):
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
-    tensor_transport_meta: TensorTransportMetadata
+    tensor_transport_meta: "TensorTransportMetadata"
 
 
 # TODO(swang): Uncomment and add an API docs page and example usage.
