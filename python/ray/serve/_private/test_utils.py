@@ -306,9 +306,12 @@ def check_num_replicas_eq(
     if use_controller:
         dep = serve.status().applications[app_name].deployments[name]
         num_running_replicas = dep.replica_states.get(ReplicaState.RUNNING, 0)
+        print("num_running_replicas", num_running_replicas)
         assert num_running_replicas == target
     else:
-        assert get_num_alive_replicas(name, app_name) == target
+        num_alive_replicas = get_num_alive_replicas(name, app_name)
+        print("num_alive_replicas", num_alive_replicas)
+        assert num_alive_replicas == target
 
     return True
 

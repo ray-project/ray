@@ -351,10 +351,12 @@ class RouterMetricsManager:
                 for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
             }
 
-        return {
+        result = {
             "queued_requests": self.num_queued_requests,
             "running_requests": running_requests,
         }
+        print(f"AGGREGATED REQUESTS: {result=}")
+        return result
 
     async def shutdown(self):
         """Shutdown metrics manager gracefully."""

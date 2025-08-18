@@ -44,6 +44,7 @@ def _calculate_desired_num_replicas(
         autoscaling_config.get_target_ongoing_requests() * num_running_replicas
     )
     error_ratio: float = total_num_requests / target_num_requests
+    print(f"ERROR RATIO: {error_ratio=} {total_num_requests=} {target_num_requests=}")
 
     # If error ratio >= 1, then the number of ongoing requests per
     # replica exceeds the target and we will make an upscale decision,
@@ -125,6 +126,7 @@ def replica_queue_length_autoscaling_policy(
         override_min_replicas=capacity_adjusted_min_replicas,
         override_max_replicas=capacity_adjusted_max_replicas,
     )
+    print(f"DECISION HERE: {decision_num_replicas=} {desired_num_replicas=} {decision_counter=}")
     # Scale up.
     if desired_num_replicas > curr_target_num_replicas:
         # If the previous decision was to scale down (the counter was
