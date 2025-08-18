@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 # Represents a generic tensor type.
 # This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Union[np.array, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
+TensorType = Union[np.ndarray, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
