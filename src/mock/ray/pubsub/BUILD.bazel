@@ -2,9 +2,7 @@ load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "mock_publisher",
-    hdrs = glob(
-        ["publisher.h"],
-    ),
+    hdrs = ["publisher.h"],
     deps = [
         "//src/ray/pubsub:publisher_interface",
     ],
@@ -12,9 +10,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "mock_subscriber",
-    hdrs = glob(
-        ["subscriber.h"],
-    ),
+    hdrs = ["subscriber.h"],
     deps = [
         "//src/ray/pubsub:subscriber_interface",
     ],
