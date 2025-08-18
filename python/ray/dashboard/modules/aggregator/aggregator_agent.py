@@ -93,7 +93,7 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 )
 # Destination publisher queues and retry controls
 PUBLISHER_QUEUE_MAX_SIZE = ray_constants.env_integer(
-    f"{env_var_prefix}_PUBLISH_DEST_QUEUE_MAX_SIZE", 100
+    f"{env_var_prefix}_PUBLISH_DEST_QUEUE_MAX_SIZE", 50
 )
 PUBLISHER_MAX_RETRIES = ray_constants.env_integer(
     f"{env_var_prefix}_PUBLISH_MAX_RETRIES", 5
@@ -163,8 +163,8 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_failed_to_publish_to_external = Counter(
-        f"{metrics_prefix}_events_failed_to_publish_to_external",
+    events_failed_to_publish_to_external_svc = Counter(
+        f"{metrics_prefix}_events_failed_to_publish_to_external_svc",
         "Total number of events failed to publish to the external service after retries.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
@@ -175,8 +175,8 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_dropped_in_external_publish_queue = Counter(
-        f"{metrics_prefix}_events_dropped_in_external_publish_queue",
+    events_dropped_in_external_svc_publish_queue = Counter(
+        f"{metrics_prefix}_events_dropped_in_external_svc_publish_queue",
         "Total number of events dropped due to the external publish queue being full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
@@ -203,7 +203,7 @@ class AggregatorAgent(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
         )
-        # Dedicated publisher loop thread (single loop)
+        # Dedicated publisher event loop thread
         self._publisher_thread = None
 
         self._gcs_channel = create_gcs_channel(self.gcs_address, True)
@@ -230,7 +230,7 @@ class AggregatorAgent(
             if event_type.strip()
         }
 
-        # Publishers
+        # initialize publishers
         if PUBLISH_EVENTS_TO_GCS:
             self._gcs_publisher = GCSPublisher(
                 gcs_event_stub=self._gcs_event_stub,
@@ -315,6 +315,7 @@ class AggregatorAgent(
     # We need to find a better way to do this.
     async def _drain_event_buffer_to_publishers(self) -> None:
         """Drain remaining events from the internal buffer and enqueue to publishers."""
+        # Drain events
         draining_event_batch = []
         while True:
             try:
@@ -388,11 +389,11 @@ class AggregatorAgent(
                 await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
 
     async def _publisher_event_loop(self):
-        # Start destination publisher workers
+        # Start destination specific publishers
         self._gcs_publisher.start()
         self._external_publisher.start()
 
-        # Launch one batching task
+        # Launch one batching task to continuously build batches of events and enqueue to publishers
         batching_task = asyncio.create_task(
             self._publish_events(),
             name="event_aggregator_agent_publish_events",
@@ -403,28 +404,18 @@ class AggregatorAgent(
         finally:
             # Drain any remaining items and shutdown publishers
             await self._drain_event_buffer_to_publishers()
-            await self._gcs_publisher.shutdown()
-            await self._external_publisher.shutdown()
+            await asyncio.gather(
+                self._gcs_publisher.shutdown(), self._external_publisher.shutdown()
+            )
             self._update_metrics()
 
     def _create_and_start_publisher_loop(self) -> None:
         """Creates and starts a dedicated asyncio event loop with multiple async publisher workers."""
         loop = get_or_create_event_loop()
-
         try:
             loop.run_until_complete(self._publisher_event_loop())
         finally:
-            try:
-                pending = asyncio.all_tasks(loop)
-                for t in pending:
-                    t.cancel()
-                loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-            except Exception:
-                pass
-            finally:
-                loop.close()
+            loop.close()
 
     def _update_metrics(self) -> None:
         """
@@ -487,13 +478,13 @@ class AggregatorAgent(
         events_failed_to_publish_to_gcs.labels(**labels).inc(
             _events_failed_to_publish_to_gcs
         )
-        events_failed_to_publish_to_external.labels(**labels).inc(
+        events_failed_to_publish_to_external_svc.labels(**labels).inc(
             _events_failed_to_publish_to_external
         )
         events_dropped_in_gcs_publish_queue.labels(**labels).inc(
             _events_dropped_in_gcs_publish_queue
         )
-        events_dropped_in_external_publish_queue.labels(**labels).inc(
+        events_dropped_in_external_svc_publish_queue.labels(**labels).inc(
             _events_dropped_in_external_publish_queue
         )
         metadata_dropped_at_event_aggregator.labels(**labels).inc(

@@ -21,11 +21,14 @@ class PublishResult:
     """A Data class that represents the result of publishing an item."""
 
     def __init__(
-        self, publish_status: bool, events_published: int, events_filtered_out: int
+        self,
+        publish_status: bool,
+        num_events_published: int,
+        num_events_filtered_out: int,
     ):
         self.publish_status = publish_status
-        self.events_published = events_published
-        self.events_filtered_out = events_filtered_out
+        self.num_events_published = num_events_published
+        self.num_events_filtered_out = num_events_filtered_out
 
 
 class RayEventsPublisherBase(ABC):
@@ -62,7 +65,8 @@ class RayEventsPublisherBase(ABC):
         self._jitter_ratio = float(jitter_ratio)
         self._publish_worker_task = None
 
-        # Internal metrics (since last get_and_reset_stats call)
+        # Internal metrics (since last get_and_reset_metrics call)
+        # using thread lock as non publisher threads can also call get_and_reset_metrics
         self._metrics_lock = threading.Lock()
         self._metric_events_published_since_last: int = 0
         self._metric_events_filtered_out_since_last: int = 0
@@ -85,7 +89,7 @@ class RayEventsPublisherBase(ABC):
         except asyncio.QueueFull:
             # Drop oldest then try once more
             oldest = self._queue.get_nowait()
-            drop_count = self._estimate_item_size(oldest)
+            drop_count = self._count_num_events(oldest)
             with self._metrics_lock:
                 self._metric_queue_dropped_since_last += drop_count
             self._queue.put_nowait(item)
@@ -93,7 +97,7 @@ class RayEventsPublisherBase(ABC):
     async def shutdown(self) -> None:
         """Send sentinel to stop worker and wait for completion."""
         if self._publish_worker_task:
-            # Send sentinel value to stop worker
+            # Send sentinel (None) value to stop worker
             self.enqueue(None)
             # Wait for worker to complete
             await self._publish_worker_task
@@ -136,16 +140,16 @@ class RayEventsPublisherBase(ABC):
         Will retry failed publishes up to max_retries times with increasing delays.
         """
         attempts = 0
-        batch_size = self._estimate_item_size(item)
+        batch_size = self._count_num_events(item)
         while True:
             result = await self._async_publish(item)
             if result.publish_status:
                 with self._metrics_lock:
                     self._metric_events_published_since_last += int(
-                        result.events_published
+                        result.num_events_published
                     )
                     self._metric_events_filtered_out_since_last += int(
-                        result.events_filtered_out
+                        result.num_events_filtered_out
                     )
                 return
             if attempts >= self._max_retries:
@@ -181,7 +185,7 @@ class RayEventsPublisherBase(ABC):
         pass
 
     @abstractmethod
-    def _estimate_item_size(self, item) -> int:
+    def _count_num_events(self, item) -> int:
         """
         Estimates the size of an item to track number of items that failed to publish.
         Used to increment failure metrics when publishing fails or queue is full.
@@ -217,14 +221,23 @@ class GCSPublisher(RayEventsPublisherBase):
         self._gcs_event_stub = gcs_event_stub
         self._timeout = timeout
 
-    async def _async_publish(self, item) -> PublishResult:
+    async def _async_publish(
+        self,
+        item: tuple[
+            list[events_base_event_pb2.RayEvent],
+            Optional[events_event_aggregator_service_pb2.TaskEventsMetadata],
+        ],
+    ) -> PublishResult:
         # item: (event_batch, task_events_metadata)
         events, task_events_metadata = item
         if not events and (
             not task_events_metadata
             or len(task_events_metadata.dropped_task_attempts) == 0
         ):
-            return PublishResult(True, 0, 0)
+            # nothing to publish
+            return PublishResult(
+                publish_status=True, num_events_published=0, num_events_filtered_out=0
+            )
         try:
             events_data = self._create_ray_events_data(events, task_events_metadata)
             request = events_event_aggregator_service_pb2.AddEventsRequest(
@@ -235,13 +248,23 @@ class GCSPublisher(RayEventsPublisherBase):
             )
             if response.status.code != 0:
                 logger.error(f"GCS AddEvents failed: {response.status.message}")
-                return PublishResult(False, 0, 0)
-            return PublishResult(True, len(events), 0)
+                return PublishResult(
+                    publish_status=False,
+                    num_events_published=0,
+                    num_events_filtered_out=0,
+                )
+            return PublishResult(
+                publish_status=True,
+                num_events_published=len(events),
+                num_events_filtered_out=0,
+            )
         except Exception as e:
             logger.error(f"Failed to send events to GCS: {e}")
-            return PublishResult(False, 0, 0)
+            return PublishResult(
+                publish_status=False, num_events_published=0, num_events_filtered_out=0
+            )
 
-    def _estimate_item_size(self, item) -> int:
+    def _count_num_events(self, item) -> int:
         try:
             events, _ = item
             return len(events)
@@ -307,12 +330,14 @@ class ExternalPublisher(RayEventsPublisherBase):
         # Wait for worker to complete (processes all queued items)
         await super().shutdown()
 
-        # Now safe to close session since worker is done
+        # close the http session
         if self._session:
             await self._session.close()
             self._session = None
 
-    async def _async_publish(self, item) -> PublishResult:
+    async def _async_publish(
+        self, item: list[events_base_event_pb2.RayEvent]
+    ) -> PublishResult:
         # item: event_batch
         events = item
         if not events:
@@ -339,7 +364,7 @@ class ExternalPublisher(RayEventsPublisherBase):
             logger.error("Failed to send events to external service. Error: %s", e)
             return PublishResult(False, 0, 0)
 
-    def _estimate_item_size(self, item) -> int:
+    def _count_num_events(self, item) -> int:
         try:
             return len(item)
         except Exception:
