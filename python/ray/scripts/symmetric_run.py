@@ -57,8 +57,7 @@ def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
             return True
         else:
             click.echo(
-                f"Waiting for nodes to start... {current_nodes}/{nnodes} nodes started",
-                err=True,
+                f"Waiting for nodes to start... {current_nodes}/{nnodes} nodes started"
             )
     return False
 
@@ -79,14 +78,9 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
         if gcs_client.check_alive([], timeout=1):
-            click.echo("Ray cluster is ready!", err=True)
+            click.echo("Ray cluster is ready!")
             return True
         time.sleep(5)
-
-    click.echo(
-        f"Timeout: Ray cluster at {address} not ready after {timeout}s",
-        err=True,
-    )
     return False
 
 
@@ -276,7 +270,7 @@ def symmetric_run(
     try:
         if is_head:
             # On the head node, start Ray, run the command, then stop Ray.
-            click.echo("On head node. Starting Ray cluster head...", err=True)
+            click.echo("On head node. Starting Ray cluster head...")
 
             # Build the ray start command with all parameters
             ray_start_cmd = [
@@ -304,8 +298,8 @@ def symmetric_run(
             )
             # Start Ray head. This runs in the background and hides output.
             subprocess.run(ray_start_cmd, check=True, capture_output=True)
-            click.echo("Head node started.", err=True)
-            click.echo("=======================", err=True)
+            click.echo("Head node started.")
+            click.echo("=======================")
             if min_nodes > 1 and not check_cluster_ready(min_nodes):
                 raise click.ClickException(
                     "Timed out waiting for other nodes to start."
@@ -315,16 +309,13 @@ def symmetric_run(
             if entrypoint_on_head:
                 click.echo(
                     f"Running command on head node: {' '.join(entrypoint_on_head)}",
-                    err=True,
                 )
-                click.echo("=======================", err=True)
+                click.echo("=======================")
                 result = subprocess.run(entrypoint_on_head)
-                click.echo("=======================", err=True)
+                click.echo("=======================")
         else:
             # On a worker node, start Ray and connect to the head.
-            click.echo(
-                f"On worker node. Connecting to Ray cluster at {address}...", err=True
-            )
+            click.echo(f"On worker node. Connecting to Ray cluster at {address}...")
 
             if not check_head_node_ready(address):
                 raise click.ClickException("Timed out waiting for head node to start.")
