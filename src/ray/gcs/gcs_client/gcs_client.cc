@@ -48,6 +48,8 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
       const rpc::PubsubCommandBatchRequest &request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
 
+  std::string DebugString() const final { return ""; }
+
  private:
   const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;
 };
