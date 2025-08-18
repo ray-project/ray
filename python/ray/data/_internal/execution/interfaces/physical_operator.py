@@ -556,10 +556,8 @@ class PhysicalOperator(Operator):
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        if self._shutdown:
+        if self._shutdown or not self._started:
             return
-        elif not self._started:
-            raise ValueError("Operator must be started before being shutdown.")
 
         # Mark operator as shut down
         self._shutdown = True

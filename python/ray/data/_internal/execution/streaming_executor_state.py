@@ -569,6 +569,8 @@ def process_completed_tasks(
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
+        if not op._started:
+            continue
         while op.has_next():
             op_state.add_output(op.get_next())
 
