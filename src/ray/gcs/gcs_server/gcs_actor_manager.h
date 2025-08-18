@@ -156,23 +156,24 @@ class GcsActor {
 
     TaskSpecification dummy_task_spec(*task_spec_);
     LeaseSpecBuilder builder;
-    builder.BuildCommonLeaseSpec(JobID::FromBinary(task_spec_->job_id()),
-                                 task_spec_->caller_address(),
-                                 task_spec_->required_resources(),
-                                 task_spec_->required_placement_resources(),
-                                 task_spec_->scheduling_strategy(),
-                                 task_spec_->label_selector(),
-                                 task_spec_->depth(),
-                                 dummy_task_spec.GetDependencies(),
-                                 task_spec_->language(),
-                                 task_spec_->runtime_env_info(),
-                                 TaskID::FromBinary(task_spec_->parent_task_id()),
-                                 task_spec_->function_descriptor(),
-                                 task_spec_->name(),
-                                 task_spec_->attempt_number());
+    builder.BuildCommonLeaseSpec(
+        JobID::FromBinary(task_spec_->job_id()),
+        task_spec_->caller_address(),
+        task_spec_->required_resources(),
+        task_spec_->required_placement_resources(),
+        task_spec_->scheduling_strategy(),
+        task_spec_->label_selector(),
+        task_spec_->depth(),
+        dummy_task_spec.GetDependencies(),
+        task_spec_->language(),
+        task_spec_->runtime_env_info(),
+        TaskID::FromBinary(task_spec_->parent_task_id()),
+        task_spec_->function_descriptor(),
+        task_spec_->name(),
+        task_spec_->attempt_number(),
+        ActorID::FromBinary(task_spec_->root_detached_actor_id()));
     builder.SetActorCreationLeaseSpec(
         ActorID::FromBinary(task_spec_->actor_creation_task_spec().actor_id()),
-        ActorID::FromBinary(task_spec_->root_detached_actor_id()),
         task_spec_->actor_creation_task_spec().max_actor_restarts(),
         task_spec_->actor_creation_task_spec().is_detached(),
         task_spec_->actor_creation_task_spec().dynamic_worker_options());

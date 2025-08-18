@@ -58,7 +58,8 @@ class LeaseSpecBuilder {
       const TaskID &parent_task_id,
       const ray::rpc::FunctionDescriptor &function_descriptor,
       const std::string &task_name,
-      uint64_t attempt_number);
+      uint64_t attempt_number,
+      const ActorID &root_detached_actor_id);
 
   /// Set the actor creation lease spec attributes.
   /// These are fields specific to actor creation leases.
@@ -66,7 +67,6 @@ class LeaseSpecBuilder {
   /// \return Reference to the builder object itself.
   LeaseSpecBuilder &SetActorCreationLeaseSpec(
       const ActorID &actor_id,
-      const ActorID &root_detached_actor_id,
       int64_t max_restarts,
       bool is_detached_actor,
       const google::protobuf::RepeatedPtrField<std::string> &dynamic_worker_options);

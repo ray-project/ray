@@ -30,7 +30,8 @@ LeaseSpecBuilder &LeaseSpecBuilder::BuildCommonLeaseSpec(
     const TaskID &parent_task_id,
     const ray::rpc::FunctionDescriptor &function_descriptor,
     const std::string &task_name,
-    uint64_t attempt_number) {
+    uint64_t attempt_number,
+    const ActorID &root_detached_actor_id) {
   // Set basic task information
   message_->set_job_id(job_id.Binary());
   message_->mutable_caller_address()->CopyFrom(caller_address);
@@ -64,12 +65,12 @@ LeaseSpecBuilder &LeaseSpecBuilder::BuildCommonLeaseSpec(
 
   message_->set_task_name(task_name);
   message_->set_attempt_number(attempt_number);
+  message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
   return *this;
 }
 
 LeaseSpecBuilder &LeaseSpecBuilder::SetActorCreationLeaseSpec(
     const ActorID &actor_id,
-    const ActorID &root_detached_actor_id,
     int64_t max_restarts,
     bool is_detached_actor,
     const google::protobuf::RepeatedPtrField<std::string> &dynamic_worker_options) {
@@ -82,7 +83,6 @@ LeaseSpecBuilder &LeaseSpecBuilder::SetActorCreationLeaseSpec(
   // Create actor creation task spec to store actor-specific information
   message_->set_max_actor_restarts(max_restarts);
   message_->set_is_detached_actor(is_detached_actor);
-  message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
   for (const auto &option : dynamic_worker_options) {
     message_->add_dynamic_worker_options(option);
   }

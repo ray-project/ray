@@ -85,7 +85,8 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                    TaskID::FromBinary(message.parent_task_id()),
                                    message.function_descriptor(),
                                    message.name(),
-                                   message.attempt_number());
+                                   message.attempt_number(),
+                                   ActorID::FromBinary(message.root_detached_actor_id()));
       builder.SetNormalLeaseSpec(message.max_retries());
       scheduling_key_entry.resource_spec = std::move(builder).ConsumeAndBuild();
     }
