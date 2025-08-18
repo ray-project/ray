@@ -14,12 +14,11 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
-    Depset,
-    _append_uv_flags,
     _flatten_flags,
+    _get_depset,
     _override_uv_flags,
     _uv_binary,
-    load,
+    build,
 )
 from ci.raydepsets.tests.utils import (
     append_to_file,
@@ -27,6 +26,9 @@ from ci.raydepsets.tests.utils import (
     replace_in_file,
     save_file_as,
     save_packages_to_file,
+)
+from ci.raydepsets.workspace import (
+    Depset,
 )
 
 _REPO_NAME = "io_ray"
@@ -49,7 +51,7 @@ def _create_test_manager(
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
-            load,
+            build,
             [
                 "fake_path/test.depsets.yaml",
                 "--workspace-dir",
@@ -74,12 +76,12 @@ class TestCli(unittest.TestCase):
             ]
             assert manager.config.depsets[0].output == "requirements_compiled.txt"
 
-    def test_dependency_set_manager_get_depset(self):
+    def test_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                _get_depset(manager.config.depsets, "fake_depset")
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -91,7 +93,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.7.20" in result.stdout.decode("utf-8")
+        assert "uv 0.8.10" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -148,13 +150,34 @@ class TestCli(unittest.TestCase):
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
+    def test_compile_with_append_and_override_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--python-version 3.10"],
+                override_flags=["--extra-index-url https://dummyurl.com"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            output_text = output_file.read_text()
+            assert "--python-version 3.10" in output_text
+            assert "--extra-index-url https://dummyurl.com" in output_text
+            assert (
+                "--extra-index-url https://download.pytorch.org/whl/cu128"
+                not in output_text
+            )
+
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             uv_cache_dir = Path(tmpdir) / "uv_cache"
 
             result = CliRunner().invoke(
-                load,
+                build,
                 [
                     "test.depsets.yaml",
                     "--workspace-dir",
@@ -273,10 +296,35 @@ class TestCli(unittest.TestCase):
                 == f"{tmpdir}/requirements_test.txt"
             )
 
-    def test_append_uv_flags(self):
-        assert _append_uv_flags(
-            ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
-        ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
+    def test_append_uv_flags_exist_in_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                append_flags=["--python-version=3.10"],
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--python-version=3.10" in output_text
+
+    def test_append_uv_flags_with_space_in_flag(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                append_flags=["--python-version 3.10"],
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--python-version 3.10" in output_text
 
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
@@ -486,7 +534,9 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("build_args_test_depset__py311_cpu")
+            depset = _get_depset(
+                manager.config.depsets, "build_args_test_depset__py311_cpu"
+            )
             assert depset.name == "build_args_test_depset__py311_cpu"
 
     def test_get_depset_without_build_arg_set(self):
@@ -496,7 +546,7 @@ depsets:
                 config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
-            depset = manager.get_depset("ray_base_test_depset")
+            depset = _get_depset(manager.config.depsets, "ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
 
     def test_get_depset_with_build_arg_set_and_no_build_arg_set_provided(self):
@@ -507,7 +557,7 @@ depsets:
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("build_args_test_depset_py311")
+                _get_depset(manager.config.depsets, "build_args_test_depset_py311")
 
 
 if __name__ == "__main__":

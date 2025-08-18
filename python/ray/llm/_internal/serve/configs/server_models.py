@@ -29,6 +29,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
 )
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
@@ -139,15 +140,15 @@ EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 class LLMConfig(BaseModelExtended):
 
     runtime_env: Optional[Dict[str, Any]] = Field(
-        None,
+        default=None,
         description=(
             "The runtime_env to use for the model deployment replica "
             "and the engine workers."
         ),
     )
 
-    model_loading_config: ModelLoadingConfig = Field(
-        description="The settings for how to download and expose the model."
+    model_loading_config: Union[Dict[str, Any], ModelLoadingConfig] = Field(
+        description="The settings for how to download and expose the model. Validated against ModelLoadingConfig."
     )
 
     llm_engine: str = Field(
@@ -177,8 +178,9 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[LoraConfig] = Field(
-        default=None, description="Settings for LoRA adapter."
+    lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
+        default=None,
+        description="Settings for LoRA adapter. Validated against LoraConfig.",
     )
 
     deployment_config: Dict[str, Any] = Field(
@@ -190,7 +192,7 @@ class LLMConfig(BaseModelExtended):
             `autoscaling_config`, `max_queued_requests`, `user_config`,
             `health_check_period_s`, `health_check_timeout_s`,
             `graceful_shutdown_wait_loop_s`, `graceful_shutdown_timeout_s`,
-            `logging_config`.
+            `logging_config`, `request_router_config`.
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
@@ -209,7 +211,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        False,
+        default=False,
         description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
     )
 
@@ -223,8 +225,16 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        try:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            self._supports_vision = hasattr(hf_config, "vision_config")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                f"Original error: {repr(e)}"
+            ) from e
 
     def _set_model_architecture(
         self,
@@ -236,9 +246,23 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures") and hf_config.architectures:
-                self._model_architecture = hf_config.architectures[0]
+            try:
+                hf_config = transformers.PretrainedConfig.from_pretrained(
+                    model_id_or_path
+                )
+                if (
+                    hf_config
+                    and hasattr(hf_config, "architectures")
+                    and hf_config.architectures
+                ):
+                    self._model_architecture = hf_config.architectures[0]
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                    f"Original error: {repr(e)}"
+                ) from e
 
         if model_architecture:
             self._model_architecture = model_architecture
@@ -310,6 +334,36 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
+    @field_validator("model_loading_config")
+    def validate_model_loading_config(
+        cls, value: Union[Dict[str, Any], ModelLoadingConfig]
+    ) -> ModelLoadingConfig:
+        """Validates the model loading config dictionary."""
+        if isinstance(value, ModelLoadingConfig):
+            return value
+
+        try:
+            model_loading_config = ModelLoadingConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid model_loading_config: {value}") from e
+
+        return model_loading_config
+
+    @field_validator("lora_config")
+    def validate_lora_config(
+        cls, value: Optional[Union[Dict[str, Any], LoraConfig]]
+    ) -> Optional[LoraConfig]:
+        """Validates the lora config dictionary."""
+        if value is None or isinstance(value, LoraConfig):
+            return value
+
+        try:
+            lora_config = LoraConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid lora_config: {value}") from e
+
+        return lora_config
+
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
         # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
@@ -357,6 +411,18 @@ class LLMConfig(BaseModelExtended):
             raise ValueError(f"Unsupported engine: {self.llm_engine}")
 
         return self._engine_config
+
+    def update_engine_kwargs(self, **kwargs: Any) -> None:
+        """Update the engine_kwargs and the engine_config engine_kwargs.
+
+        This is typically called during engine starts, when certain engine_kwargs
+        (e.g., data_parallel_rank) become available.
+        """
+        self.engine_kwargs.update(kwargs)
+        # engine_config may be created before engine starts, this makes sure
+        # the engine_config is updated with the latest engine_kwargs.
+        if self._engine_config:
+            self._engine_config.engine_kwargs.update(kwargs)
 
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config
@@ -434,7 +500,7 @@ class LLMConfig(BaseModelExtended):
             The dictionary to use in .options() when creating the deployment.
         """
 
-        deployment_config = self._set_deployment_placement_options()
+        deployment_options = self._set_deployment_placement_options()
 
         default_runtime_env = ray.get_runtime_context().runtime_env
         if ENABLE_WORKER_PROCESS_SETUP_HOOK:
@@ -442,28 +508,53 @@ class LLMConfig(BaseModelExtended):
                 "worker_process_setup_hook"
             ] = "ray.llm._internal.serve._worker_process_setup_hook"
 
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
         ray_actor_options["runtime_env"] = {
             **default_runtime_env,
             # Existing runtime_env should take precedence over the default.
             **ray_actor_options.get("runtime_env", {}),
             **(self.runtime_env if self.runtime_env else {}),
         }
-        deployment_config["ray_actor_options"] = ray_actor_options
+        deployment_options["ray_actor_options"] = ray_actor_options
 
         # Set the name of the deployment config to map to the model ID.
-        if "name" not in deployment_config:
-            deployment_config["name"] = self._get_deployment_name()
+        if "name" not in deployment_options:
+            deployment_options["name"] = self._get_deployment_name()
         if name_prefix:
-            deployment_config["name"] = name_prefix + deployment_config["name"]
+            deployment_options["name"] = name_prefix + deployment_options["name"]
 
-        return deployment_config
+        # Configure DP deployment options.
+        # TODO(rui): move the following to DPServer, e.g.,
+        # deployment_options = DPServer.get_deployment_options(llm_config)
+        dp_size = self.engine_kwargs.get("data_parallel_size", None)
+        if dp_size is not None:
+            if "num_replicas" in deployment_options:
+                raise ValueError(
+                    "num_replicas should not be specified for DP deployment, "
+                    "use engine_kwargs.data_parallel_size instead."
+                )
+            if "autoscaling_config" in deployment_options:
+                raise ValueError(
+                    "autoscaling_config is not supported for DP deployment, "
+                    "use engine_kwargs.data_parallel_size to set a fixed number "
+                    "of replicas instead."
+                )
+            deployment_options["num_replicas"] = dp_size
+            deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
+            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
+                logger.warning(
+                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
+                    "is not supported. Using STRICT_PACK instead."
+                )
+                deployment_options["placement_group_strategy"] = "STRICT_PACK"
+
+        return deployment_options
 
     def setup_engine_backend(self):
         self._setup_kv_connector_backend()
 
     def _setup_kv_connector_backend(self):
-        """Private method to setup kv connector dependning on the local deployment state"""
+        """Private method to setup kv connector depending on the local deployment state"""
         # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
         kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
         if not kv_transfer_config:
