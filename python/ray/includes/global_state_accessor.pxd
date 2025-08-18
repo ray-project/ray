@@ -107,7 +107,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       RAY_CHECK_OK(status) << "Failed to connect to redis.";
 
       auto cli = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(std::move(redis_client)));
+        std::make_unique<RedisStoreClient>(std::move(redis_client), io_service));
 
       bool ret_val = false;
       cli->Get("session", key, {[&](std::optional<std::string> result) {
