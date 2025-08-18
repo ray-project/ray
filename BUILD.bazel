@@ -116,8 +116,9 @@ ray_cc_library(
     hdrs = glob(
         ["src/mock/**/*.h"],
         exclude = [
-          "src/mock/ray/common/pubsub/*",
-          "src/mock/ray/common/ray_syncer/ray_syncer.h",
+            "src/mock/ray/common/pubsub/publisher.h",
+            "src/mock/ray/common/pubsub/subscriber.h",
+            "src/mock/ray/common/ray_syncer/ray_syncer.h",
         ],
     ),
 )
