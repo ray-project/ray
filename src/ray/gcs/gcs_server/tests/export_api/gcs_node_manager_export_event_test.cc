@@ -22,6 +22,7 @@
 
 #include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
 
@@ -50,7 +51,8 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
+    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
+        std::make_unique<gcs::InMemoryStoreClient>());
 
     RayConfig::instance().initialize(
         R"(

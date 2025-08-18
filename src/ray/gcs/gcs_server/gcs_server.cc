@@ -129,8 +129,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
     break;
   case StorageType::REDIS_PERSIST: {
-    store_client =
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context), io_context);
+    store_client = CreateRedisStoreClient(io_context);
     break;
   }
   default:
@@ -586,8 +585,7 @@ void GcsServer::InitKVManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context), io_context));
+    instance = std::make_unique<StoreClientInternalKV>(CreateRedisStoreClient(io_context));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
@@ -864,17 +862,13 @@ std::string GcsServer::GetDebugState() const {
   return stream.str();
 }
 
-std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
+std::unique_ptr<RedisStoreClient> GcsServer::CreateRedisStoreClient(
     instrumented_io_context &io_service) {
-  auto redis_client =
-      std::make_shared<RedisClient>(RedisClientOptions(config_.redis_address,
-                                                       config_.redis_port,
-                                                       config_.redis_username,
-                                                       config_.redis_password,
-                                                       config_.enable_redis_ssl));
-  auto status = redis_client->Connect(io_service);
-  RAY_CHECK_OK(status) << "Failed to init redis gcs client";
-  return redis_client;
+  return std::make_unique<RedisStoreClient>(io_service, RedisClientOptions(config_.redis_address,
+                                            config_.redis_port,
+                                            config_.redis_username,
+                                            config_.redis_password,
+                                            config_.enable_redis_ssl));
 }
 
 void GcsServer::PrintAsioStats() {
