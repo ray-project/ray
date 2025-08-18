@@ -556,12 +556,7 @@ void GcsNodeManager::UpdateAliveNode(
     // Update total resources
     *resources_total = new_resources;
     // Publish the updated node info to notify subscribers
-    auto status =
-        gcs_publisher_->PublishNodeInfo(node_id, *maybe_node_info.value(), nullptr);
-    if (!status.ok()) {
-      RAY_LOG(WARNING).WithField(node_id)
-          << "Failed to publish node info update: " << status.ToString();
-    }
+    gcs_publisher_->PublishNodeInfo(node_id, *maybe_node_info.value());
   }
 }
 
