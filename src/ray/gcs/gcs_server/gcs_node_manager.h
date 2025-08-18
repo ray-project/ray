@@ -96,7 +96,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_table_updated_callback The status callback function after
   /// faled node info is updated to gcs node table.
   void OnNodeFailure(const NodeID &node_id,
-                     const StatusCallback &node_table_updated_callback);
+                     const std::function<void()> &node_table_updated_callback);
 
   /// Add an alive node.
   ///
@@ -287,6 +287,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
+
+  /// Ray metrics
+  ray::stats::Count ray_metric_node_failures_total_{
+      /*name=*/"node_failure_total",
+      /*description=*/"Number of node failures that have happened in the cluster.",
+      /*unit=*/""};
 
   friend GcsAutoscalerStateManagerTest;
   friend GcsStateTest;
