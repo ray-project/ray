@@ -1351,7 +1351,7 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
         check_job_failed,
         job_manager=job_manager,
         job_id=job_id,
-        expected_error_type=JobErrorType.JOB_START_TIMEOUT,
+        expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
     )
 
     # Check that the job timed out.
