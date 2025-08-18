@@ -405,6 +405,9 @@ py_test(
     name = "test_buildkite",
     size = "small",
     srcs = ["ray_release/tests/test_buildkite.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
@@ -421,6 +424,24 @@ py_test(
     name = "test_byod_build",
     size = "small",
     srcs = ["ray_release/tests/test_byod_build.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_custom_byod_build",
+    size = "small",
+    srcs = ["ray_release/tests/test_custom_byod_build.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
@@ -680,6 +701,15 @@ py_binary(
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_binary(
+    name = "custom_byod_build",
+    srcs = ["ray_release/scripts/custom_byod_build.py"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":ray_release",

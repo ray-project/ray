@@ -23,7 +23,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
@@ -32,6 +31,8 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
@@ -49,6 +50,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
@@ -138,6 +140,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       gcs::GcsClient &gcs_client,
       rpc::ClientCallManager &client_call_manager,
       rpc::CoreWorkerClientPool &worker_rpc_pool,
+      rpc::RayletClientPool &raylet_client_pool,
       pubsub::SubscriberInterface &core_worker_subscriber,
       ClusterResourceScheduler &cluster_resource_scheduler,
       ILocalTaskManager &local_task_manager,
@@ -168,15 +171,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that sent the message.
   /// \param message_type The message type (e.g., a flatbuffer enum).
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
                             int64_t message_type,
                             const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
-  ///
-  /// \return Status indicating whether this was done successfully or not.
-  ray::Status RegisterGcs();
+  void RegisterGcs();
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
@@ -245,14 +245,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// does not write to any global accounting in the GCS.
   ///
   /// \param object_info The info about the object that is locally available.
-  /// \return Void.
   void HandleObjectLocal(const ObjectInfo &object_info);
 
   /// Handle an object that is no longer local. This updates any local
   /// accounting, but does not write to any global accounting in the GCS.
   ///
   /// \param object_id The object that has been evicted locally.
-  /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
   /// Handle a `WorkerLease` request.
@@ -321,12 +319,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handler for the addition of a new node.
   ///
   /// \param data Data associated with the new node.
-  /// \return Void.
   void NodeAdded(const GcsNodeInfo &data);
 
   /// Handler for the removal of a GCS node.
   /// \param node_id Id of the removed node.
-  /// \return Void.
   void NodeRemoved(const NodeID &node_id);
 
   /// Handler for the addition or updation of a resource in the GCS
@@ -345,7 +341,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
-  /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
   /// Write out debug state to a file.
@@ -369,40 +364,29 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker that finished the task.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
+  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
-  /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
+  void FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
+                                       const RayTask &task);
 
-  /// Handle blocking gets of objects. This could be a task assigned to a worker,
-  /// an out-of-band task (e.g., a thread created by the application), or a
-  /// driver task. This can be triggered when a client starts a get call or a
-  /// wait call.
+  /// Start a get or wait request for the requested objects.
   ///
-  /// \param client The client that is executing the blocked task.
-  /// \param required_object_refs The objects that the client is blocked waiting for.
-  /// \param current_task_id The task that is blocked.
-  /// \param ray_get Whether the task is blocked in a `ray.get` call.
-  /// \return Void.
-  void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<rpc::ObjectReference> &required_object_refs,
-                           const TaskID &current_task_id,
-                           bool ray_get);
+  /// \param client The client that is requesting the objects.
+  /// \param object_refs The objects that are requested.
+  /// \param is_get_request If this is a get request, else it's a wait request.
+  void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
+                      const std::vector<rpc::ObjectReference> &object_refs,
+                      bool is_get_request);
 
-  /// Handle end of a blocking object get. This could be a task assigned to a
-  /// worker, an out-of-band task (e.g., a thread created by the application),
-  /// or a driver task. This can be triggered when a client finishes a get call
-  /// or a wait call. The given task must be blocked, via a previous call to
-  /// AsyncResolveObjects.
+  /// Cancel all ongoing get requests from the client.
   ///
-  /// \param client The client that is executing the unblocked task.
-  /// \param current_task_id The task that is unblocked.
-  /// \return Void.
-  void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id);
+  /// This does *not* cancel ongoing wait requests.
+  ///
+  /// \param client The client whose get requests will be canceled.
+  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -425,7 +409,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_detail The detailed reason for a given exit.
   /// \param force true to destroy immediately, false to give time for the worker to
   /// clean up and exit gracefully.
-  /// \return Void.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
@@ -435,34 +418,31 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// treat them as failed.
   ///
   /// \param job_id The job that exited.
-  /// \return Void.
   void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handles the event that a job is started.
   ///
   /// \param job_id ID of the started job.
   /// \param job_data Data associated with the started job.
-  /// \return Void
+
   void HandleJobStarted(const JobID &job_id, const JobTableData &job_data);
 
   /// Handles the event that a job is finished.
   ///
   /// \param job_id ID of the finished job.
   /// \param job_data Data associated with the finished job.
-  /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
   /// Process client message of RegisterClientRequest
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+
   Status ProcessRegisterClientRequestMessageImpl(
       const std::shared_ptr<ClientConnection> &client,
-      const ray::protocol::RegisterClientRequest *message,
-      std::optional<int> port);
+      const ray::protocol::RegisterClientRequest *message);
 
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
@@ -480,29 +460,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
                                         const uint8_t *message_data);
   void ProcessAnnounceWorkerPortMessageImpl(
       const std::shared_ptr<ClientConnection> &client,
       const ray::protocol::AnnounceWorkerPort *message);
 
-  // Send status of client registration and port announcement to client side.
-  void SendRegisterClientAndAnnouncePortResponse(
-      const std::shared_ptr<ClientConnection> &client, Status status);
-
   // Send status of port announcement to client side.
   void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
                                     Status status);
 
-  /// Process client registration and port announcement.
-  void ProcessRegisterClientAndAnnouncePortMessage(
-      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
-
   /// Handle the case that a worker is available.
   ///
   /// \param worker The pointer to the worker
-  /// \return Void.
   void HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a client that has disconnected. This can be called multiple times
@@ -512,23 +482,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       const uint8_t *message_data);
 
-  /// Process client message of FetchOrReconstruct
+  /// Handle client request AsyncGetObjects.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessFetchOrReconstructMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
+  void HandleAsyncGetObjectsRequest(const std::shared_ptr<ClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessWaitRequestMessage(const std::shared_ptr<ClientConnection> &client,
                                  const uint8_t *message_data);
 
@@ -536,14 +503,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessWaitForActorCallArgsRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of PushErrorRequest
   ///
   /// \param message_data A pointer to the message data.
-  /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
   /// Process worker subscribing to a given plasma object become available. This handler
@@ -552,7 +517,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
-  /// \return void.
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
 
@@ -725,7 +689,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
-  /// \return Void.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                         bool graceful,
                         rpc::WorkerExitType disconnect_type,
@@ -782,6 +745,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   rpc::ClientCallManager &client_call_manager_;
   /// Pool of RPC client connections to core workers.
   rpc::CoreWorkerClientPool &worker_rpc_pool_;
+  // Pool of RPC client connections to raylets.
+  rpc::RayletClientPool &raylet_client_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
   pubsub::SubscriberInterface &core_worker_subscriber_;

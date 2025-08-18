@@ -239,18 +239,16 @@ message ObjectStoreStats {
   int64 object_store_bytes_fallback = 10;
   // The number of local objects total.
   int64 num_local_objects = 11;
-  // The number of plasma object bytes that are consumed by core workers.
-  int64 consumed_bytes = 12;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory.
-  bool object_pulls_queued = 13;
+  bool object_pulls_queued = 12;
   // The number of primary copies of objects in the local node.
-  int64 num_object_store_primary_copies = 14;
+  int64 num_object_store_primary_copies = 13;
   // The total number of objects that have been allocated to plasma.
-  int64 cumulative_created_objects = 15;
+  int64 cumulative_created_objects = 14;
   // The total number of bytes that have been allocated to plasma objects.
-  int64 cumulative_created_bytes = 16;
+  int64 cumulative_created_bytes = 15;
 }
 
 message GetNodeStatsReply {
@@ -512,6 +510,7 @@ service NodeManagerService {
       returns (RegisterMutableObjectReply);
   // Failure: TODO: Handle network failure for cgraphs.
   rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
-  // Failure: Uses retryable grpc client for retries.
+  // Failure: Is currently only used when grpc channel is unavailable for retryable core
+  // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
 }

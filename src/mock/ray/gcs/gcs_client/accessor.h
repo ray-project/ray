@@ -132,7 +132,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(void,
               AsyncCheckAlive,
-              (const std::vector<std::string> &raylet_addresses,
+              (const std::vector<NodeID> &node_ids,
                int64_t timeout_ms,
                const MultiItemCallback<bool> &callback),
               (override));
@@ -140,12 +140,12 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               AsyncGetAll,
               (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                int64_t timeout_ms,
-               std::optional<NodeID> node_id),
+               const std::vector<NodeID> &node_ids),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
-              ((const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe),
-               const StatusCallback &done),
+              (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+               StatusCallback done),
               (override));
   MOCK_METHOD(const rpc::GcsNodeInfo *,
               Get,
@@ -157,11 +157,11 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const, override));
   MOCK_METHOD(Status,
               CheckAlive,
-              (const std::vector<std::string> &raylet_addresses,
+              (const std::vector<NodeID> &node_ids,
                int64_t timeout_ms,
                std::vector<bool> &nodes_alive),
               (override));
-  MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
+  MOCK_METHOD(bool, IsNodeDead, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
 };
 
@@ -192,11 +192,7 @@ namespace gcs {
 
 class MockErrorInfoAccessor : public ErrorInfoAccessor {
  public:
-  MOCK_METHOD(void,
-              AsyncReportJobError,
-              (const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
+  MOCK_METHOD(void, AsyncReportJobError, (rpc::ErrorTableData data), (override));
 };
 
 }  // namespace gcs

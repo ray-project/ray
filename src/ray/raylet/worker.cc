@@ -19,7 +19,7 @@
 #include <string>
 #include <utility>
 
-#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -48,20 +48,23 @@ Worker::Worker(const JobID &job_id,
       assigned_job_id_(job_id),
       runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
-      dead_(false),
       killing_(false),
       blocked_(false),
       client_call_manager_(client_call_manager) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
-void Worker::MarkDead() { dead_ = true; }
+void Worker::MarkDead() {
+  bool expected = false;
+  killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+}
 
-bool Worker::IsDead() const { return dead_; }
+bool Worker::IsDead() const { return killing_.load(std::memory_order_acquire); }
 
 void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
-  if (killing_.exchange(true)) {  // TODO(rueian): could we just reuse the dead_ flag?
-    return;  // This is not the first time calling KillAsync, do nothing.
+  bool expected = false;
+  if (!killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    return;  // This is not the first time calling KillAsync or MarkDead, do nothing.
   }
   const auto worker = shared_from_this();
   if (force) {

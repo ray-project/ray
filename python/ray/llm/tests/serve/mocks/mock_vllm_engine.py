@@ -4,6 +4,7 @@ import random
 from random import randint
 from typing import AsyncGenerator, Dict, Union
 
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -18,9 +19,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
 class MockVLLMEngine(LLMEngine):
@@ -49,6 +48,11 @@ class MockVLLMEngine(LLMEngine):
 
     async def check_health(self) -> None:
         """Check the health of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the mock engine."""
         if not self.started:
             raise RuntimeError("Engine not started")
 
@@ -265,15 +269,26 @@ class MockVLLMEngine(LLMEngine):
 
 
 class FakeLoraModelLoader(LoraModelLoader):
-    """Fake LoRA model loader for testing."""
+    """Fake LoRA model loader for testing that bypasses S3 entirely."""
+
+    async def load_model_from_config(
+        self, lora_model_id: str, llm_config
+    ) -> DiskMultiplexConfig:
+        """Load a fake LoRA model without any S3 access."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=llm_config.max_request_context_length,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
+        )
 
     async def load_model(
-        self, lora_model_id: str, llm_config: LLMConfig
+        self, lora_model_id: str, lora_mirror_config: LoraMirrorConfig
     ) -> DiskMultiplexConfig:
         """Load a fake LoRA model."""
         return DiskMultiplexConfig(
             model_id=lora_model_id,
-            max_total_tokens=llm_config.max_request_context_length,
+            max_total_tokens=lora_mirror_config.max_total_tokens,
             local_path="/fake/local/path",
             lora_assigned_int_id=random.randint(1, 100),
         )

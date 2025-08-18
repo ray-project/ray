@@ -532,11 +532,9 @@ void NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
 
 void NodeInfoAccessor::AsyncCheckSelfAlive(
     const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
-  std::vector<std::string> raylet_addresses = {
-      local_node_info_.node_manager_address() + ":" +
-      std::to_string(local_node_info_.node_manager_port())};
+  std::vector<NodeID> node_ids = {local_node_id_};
 
-  AsyncCheckAlive(raylet_addresses,
+  AsyncCheckAlive(node_ids,
                   timeout_ms,
                   [callback](const Status &status, const std::vector<bool> &nodes_alive) {
                     if (!status.ok()) {
@@ -549,14 +547,14 @@ void NodeInfoAccessor::AsyncCheckSelfAlive(
                   });
 }
 
-void NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
                                        int64_t timeout_ms,
                                        const MultiItemCallback<bool> &callback) {
   rpc::CheckAliveRequest request;
-  for (const auto &raylet_address : raylet_addresses) {
-    request.add_raylet_address(raylet_address);
+  for (const auto &node_id : node_ids) {
+    request.add_node_ids(node_id.Binary());
   }
-  size_t num_raylets = raylet_addresses.size();
+  size_t num_raylets = node_ids.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
       request,
       [num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
@@ -596,11 +594,11 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
 
 void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                                    int64_t timeout_ms,
-                                   std::optional<NodeID> node_id) {
+                                   const std::vector<NodeID> &node_ids) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
-  if (node_id) {
-    request.mutable_filters()->set_node_id(node_id->Binary());
+  for (const auto &node_id : node_ids) {
+    request.add_node_selectors()->set_node_id(node_id.Binary());
   }
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request,
@@ -617,36 +615,43 @@ void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &ca
       timeout_ms);
 }
 
-Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
-    const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
+void NodeInfoAccessor::AsyncSubscribeToNodeChange(
+    std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+    StatusCallback done) {
+  /**
+  1. Subscribe to node info
+  2. Once the subscription is made, ask for all node info.
+  3. Once all node info is received, call done callback.
+  4. HandleNotification can handle conflicts between the subscription updates and
+     GetAllNodeInfo because nodes can only go from alive to dead, never back to alive.
+     Note that this only works because state is the only mutable field, otherwise we'd
+     have to queue processing subscription updates until the initial population from
+     AsyncGetAll is done.
+  */
+
   RAY_CHECK(node_change_callback_ == nullptr);
-  node_change_callback_ = subscribe;
+  node_change_callback_ = std::move(subscribe);
+  RAY_CHECK(node_change_callback_ != nullptr);
 
   fetch_node_data_operation_ = [this](const StatusCallback &done) {
-    auto callback = [this, done](const Status &status,
-                                 std::vector<rpc::GcsNodeInfo> &&node_info_list) {
-      for (auto &node_info : node_info_list) {
-        HandleNotification(std::move(node_info));
-      }
-      if (done) {
-        done(status);
-      }
-    };
-    AsyncGetAll(callback, /*timeout_ms=*/-1);
+    AsyncGetAll(
+        [this, done](const Status &status,
+                     std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+          for (auto &node_info : node_info_list) {
+            HandleNotification(std::move(node_info));
+          }
+          if (done) {
+            done(status);
+          }
+        },
+        /*timeout_ms=*/-1);
   };
 
-  subscribe_node_operation_ = [this](const StatusCallback &done) {
-    auto on_subscribe = [this](rpc::GcsNodeInfo &&data) {
-      HandleNotification(std::move(data));
-    };
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(on_subscribe, done);
-  };
-
-  return subscribe_node_operation_([this, subscribe, done](const Status &status) {
-    fetch_node_data_operation_(done);
-  });
+  client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
+      /*subscribe=*/[this](
+                        rpc::GcsNodeInfo &&data) { HandleNotification(std::move(data)); },
+      /*done=*/[this, done = std::move(done)](
+                   const Status &) { fetch_node_data_operation_(done); });
 }
 
 const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
@@ -666,33 +671,29 @@ const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &NodeInfoAccessor::GetAll() 
   return node_cache_;
 }
 
-Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
-                                       std::vector<rpc::GcsNodeInfo> &nodes) {
-  RAY_LOG(DEBUG) << "Getting information of all nodes.";
+StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
+    int64_t timeout_ms,
+    std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
+    std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector) {
   rpc::GetAllNodeInfoRequest request;
-  rpc::GetAllNodeInfoReply reply;
-  RAY_RETURN_NOT_OK(
-      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
-  nodes = VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
-  return Status::OK();
-}
-
-StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilters(
-    int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters) {
-  rpc::GetAllNodeInfoRequest request;
-  *request.mutable_filters() = std::move(filters);
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
+  }
+  if (node_selector.has_value()) {
+    *request.add_node_selectors() = std::move(node_selector.value());
+  }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(
       client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
   return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
 }
 
-Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
+Status NodeInfoAccessor::CheckAlive(const std::vector<NodeID> &node_ids,
                                     int64_t timeout_ms,
                                     std::vector<bool> &nodes_alive) {
   std::promise<Status> ret_promise;
   AsyncCheckAlive(
-      raylet_addresses,
+      node_ids,
       timeout_ms,
       [&ret_promise, &nodes_alive](Status status, const std::vector<bool> &alive) {
         nodes_alive = alive;
@@ -701,8 +702,10 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addre
   return ret_promise.get_future().get();
 }
 
-bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
-  return removed_nodes_.count(node_id) == 1;
+bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
+  auto node_iter = node_cache_.find(node_id);
+  return node_iter != node_cache_.end() &&
+         node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
 }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
@@ -746,35 +749,30 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
   } else {
     node.set_node_id(node_info.node_id());
     node.set_state(rpc::GcsNodeInfo::DEAD);
+    node.mutable_death_info()->CopyFrom(node_info.death_info());
     node.set_end_time_ms(node_info.end_time_ms());
   }
 
   // If the notification is new, call registered callback.
-  if (is_notif_new) {
-    if (is_alive) {
-      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
-    } else {
-      removed_nodes_.insert(node_id);
-    }
-    if (node_change_callback_) {
-      // Copy happens!
-      rpc::GcsNodeInfo cache_data_copied = node_cache_[node_id];
-      node_change_callback_(node_id, std::move(cache_data_copied));
-    }
+  if (is_notif_new && node_change_callback_ != nullptr) {
+    node_change_callback_(node_id, node_cache_[node_id]);
   }
 }
 
 void NodeInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
-  auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
-                     "server or pub-sub server is restarted.";
-  };
-
-  if (subscribe_node_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_node_operation_([this, fetch_all_done](const Status &status) {
-      fetch_node_data_operation_(fetch_all_done);
-    }));
+  if (IsSubscribedToNodeChange()) {
+    client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
+        /*subscribe=*/[this](rpc::GcsNodeInfo
+                                 &&data) { HandleNotification(std::move(data)); },
+        /*done=*/
+        [this](const Status &) {
+          fetch_node_data_operation_([](const Status &) {
+            RAY_LOG(INFO)
+                << "Finished fetching all node information from gcs server after gcs "
+                   "server or pub-sub server is restarted.";
+          });
+        });
   }
 }
 
@@ -875,19 +873,13 @@ void TaskInfoAccessor::AsyncGetTaskEvents(
 ErrorInfoAccessor::ErrorInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-void ErrorInfoAccessor::AsyncReportJobError(
-    const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  auto job_id = JobID::FromBinary(data_ptr->job_id());
+void ErrorInfoAccessor::AsyncReportJobError(rpc::ErrorTableData data) {
+  auto job_id = JobID::FromBinary(data.job_id());
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
   rpc::ReportJobErrorRequest request;
-  request.mutable_job_error()->CopyFrom(*data_ptr);
+  *request.mutable_job_error() = std::move(data);
   client_impl_->GetGcsRpcClient().ReportJobError(
-      request,
-      [job_id, callback](const Status &status, rpc::ReportJobErrorReply &&reply) {
-        if (callback) {
-          callback(status);
-        }
+      request, [job_id](const Status &status, rpc::ReportJobErrorReply &&reply) {
         RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
       });
 }

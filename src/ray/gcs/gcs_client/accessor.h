@@ -341,7 +341,7 @@ class NodeInfoAccessor {
   ///
   /// \param callback The callback function once the request is finished.
   /// \param timeout_ms The timeout for this request.
-  virtual void AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+  virtual void AsyncCheckAlive(const std::vector<NodeID> &node_ids,
                                int64_t timeout_ms,
                                const MultiItemCallback<bool> &callback);
 
@@ -349,10 +349,11 @@ class NodeInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \param timeout_ms The timeout for this request.
-  /// \param node_id If not nullopt, only return the node info of the specified node.
+  /// \param node_ids If this is not empty, only return the node info of the specified
+  /// nodes.
   virtual void AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                            int64_t timeout_ms,
-                           std::optional<NodeID> node_id = std::nullopt);
+                           const std::vector<NodeID> &node_ids = {});
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -360,10 +361,9 @@ class NodeInfoAccessor {
   /// added or a node is removed. The callback needs to be idempotent because it will also
   /// be called for existing nodes.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
-      const StatusCallback &done);
+  virtual void AsyncSubscribeToNodeChange(
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+      StatusCallback done);
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -385,16 +385,14 @@ class NodeInfoAccessor {
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
 
-  /// Get information of all nodes from an RPC to GCS synchronously.
-  ///
-  /// \return All nodes from gcs without cache.
-  virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
-
-  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
   /// \return All nodes that match the given filters from the gcs without the cache.
-  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
-      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters);
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCache(
+      int64_t timeout_ms,
+      std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
+      std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector =
+          std::nullopt);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -402,7 +400,7 @@ class NodeInfoAccessor {
   /// \param timeout_ms The timeout for this request.
   /// \param nodes_alive The liveness of the nodes. Only valid if the status is OK.
   /// \return Status
-  virtual Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+  virtual Status CheckAlive(const std::vector<NodeID> &node_ids,
                             int64_t timeout_ms,
                             std::vector<bool> &nodes_alive);
 
@@ -419,14 +417,16 @@ class NodeInfoAccessor {
                             int64_t timeout_ms,
                             std::vector<std::string> &drained_node_ids);
 
-  /// Search the local cache to find out if the given node is removed.
+  /// Search the local cache to find out if the given node is dead.
+  /// If the node is not confirmed to be dead (this returns false), it could be that:
+  /// 1. We haven't even received a node alive publish for it yet.
+  /// 2. The node is alive and we have that information in the cache.
+  /// 3. The GCS has evicted the node from its dead node cache based on
+  ///    maximum_gcs_dead_node_cached_count
   /// Non-thread safe.
-  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
-  /// is called before.
-  ///
-  /// \param node_id The id of the node to check.
-  /// \return Whether the node is removed.
-  virtual bool IsRemoved(const NodeID &node_id) const;
+  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange` is called
+  /// before.
+  virtual bool IsNodeDead(const NodeID &node_id) const;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -443,29 +443,24 @@ class NodeInfoAccessor {
   }
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_node_operation_;
-
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
 
   GcsClient *client_impl_;
 
-  using NodeChangeCallback =
-      std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>;
-
   rpc::GcsNodeInfo local_node_info_;
   NodeID local_node_id_;
 
   /// The callback to call when a new node is added or a node is removed.
-  NodeChangeCallback node_change_callback_{nullptr};
+  std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
-  /// The set of removed nodes.
-  std::unordered_set<NodeID> removed_nodes_;
+
+  // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
+  // https://github.com/ray-project/ray/issues/54805
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
 };
 
 /// \class NodeResourceInfoAccessor
@@ -545,10 +540,8 @@ class ErrorInfoAccessor {
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param data_ptr The error message that will be reported to GCS.
-  /// \param callback Callback that will be called when report is complete.
-  virtual void AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                                   const StatusCallback &callback);
+  /// \param data The error message that will be reported to GCS.
+  virtual void AsyncReportJobError(rpc::ErrorTableData data);
 
  private:
   GcsClient *client_impl_;
