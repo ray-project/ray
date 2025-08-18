@@ -14,7 +14,6 @@ from xgboost.collective import CommunicatorContext
 import ray
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
-from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +41,7 @@ class XGBoostConfig(BackendConfig):
     def train_func_context(self):
         @contextmanager
         def collective_communication_context():
-            xgboost_args = _get_xgboost_args()
-            # only set up collective communication if we are running in distributed mode
-            if get_train_fn_utils().is_running_in_distributed_mode():
-                with CommunicatorContext(**xgboost_args):
-                    yield
-            else:
+            with CommunicatorContext(**_get_xgboost_args()):
                 yield
 
         return collective_communication_context
