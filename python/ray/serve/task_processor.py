@@ -556,26 +556,35 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             f"Task failure detected for task_id: {task_id}, args: {args}, kwargs: {kwargs}, einfo: {einfo}"
         )
 
-        if isinstance(getattr(einfo.exception, "exc", einfo.exception), TypeError):
-            if self._config.unprocessable_task_queue_name:
-                _move_task_to_queue(
-                    self._app,
-                    self._config.unprocessable_task_queue_name,
-                    sender.name,
-                    [task_id, str(einfo.exception), args, kwargs, str(einfo)],
-                )
-        else:
-            if self._config.failed_task_queue_name:
-                _move_task_to_queue(
-                    self._app,
-                    self._config.failed_task_queue_name,
-                    sender.name,
-                    [task_id, str(einfo.exception), args, kwargs, str(einfo)],
-                )
+        dlq_args = [
+            task_id,
+            str(einfo.exception),
+            _make_json_serializable(args),
+            _make_json_serializable(kwargs),
+            str(einfo),
+        ]
 
-        logger.error(
-            f"Task {task_id} failed after max retries. Exception: {einfo}. Moved it to the failed queue."
-        )
+        dlq_name = None
+        # Check if the exception is a TypeError
+        if (
+            isinstance(getattr(einfo.exception, "exc", einfo.exception), TypeError)
+            and self._config.unprocessable_task_queue_name
+        ):
+            dlq_name = self._config.unprocessable_task_queue_name
+        elif self._config.failed_task_queue_name:
+            dlq_name = self._config.failed_task_queue_name
+
+        if dlq_name:
+            _move_task_to_queue(
+                self._app,
+                dlq_name,
+                sender.name,
+                dlq_args,
+            )
+
+            logger.error(
+                f"Task {task_id} failed after max retries. Exception: {einfo}. Moved it to the {dlq_name} queue."
+            )
 
     def handle_unknown_task(
         self, sender=None, name=None, id=None, message=None, exc=None, **kwargs
@@ -590,5 +599,11 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
                 self._app,
                 self._config.unprocessable_task_queue_name,
                 name,
-                [name, id, str(message), str(exc), str(kwargs)],
+                [
+                    name,
+                    id,
+                    _make_json_serializable(message),
+                    str(exc),
+                    _make_json_serializable(kwargs),
+                ],
             )

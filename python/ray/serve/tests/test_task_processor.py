@@ -349,10 +349,41 @@ class TestTaskConsumerWithRayServe:
 class TestTaskConsumerWithDLQsConfiguration:
     """Test task consumer with dead letter queues."""
 
+    def _assert_queue_counts(
+        self,
+        temp_queue_directory,
+        processor_config,
+        expected_main=0,
+        expected_unprocessable=0,
+        expected_failed=0,
+        timeout=15,
+    ):
+        """Helper to assert expected task counts in different queues."""
+
+        def check_counts():
+            queue_path = Path(temp_queue_directory["queue_path"])
+            counts = _get_task_counts_by_routing_key(queue_path)
+
+            main_count = counts.get(processor_config.queue_name, 0)
+            unprocessable_count = counts.get(
+                getattr(processor_config, "unprocessable_task_queue_name", ""), 0
+            )
+            failed_count = counts.get(
+                getattr(processor_config, "failed_task_queue_name", ""), 0
+            )
+
+            return (
+                main_count == expected_main
+                and unprocessable_count == expected_unprocessable
+                and failed_count == expected_failed
+            )
+
+        wait_for_condition(check_counts, timeout=timeout)
+
     def test_task_consumer_as_serve_deployment_with_unknown_task(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
-        """Test that task consumers can be used as Ray Serve deployments."""
+        """Test that unknown tasks are sent to the unprocessable task queue."""
         processor_config = create_processor_config()
         processor_config.unprocessable_task_queue_name = "unprocessable_task_queue"
 
@@ -364,28 +395,24 @@ class TestTaskConsumerWithDLQsConfiguration:
                 pass
 
         serve.run(ServeTaskConsumer.bind())
+
+        # Send a task with an unknown name
         send_request_to_queue.remote(
             processor_config, "test_data_1", task_name="unregistered_task"
         )
 
-        def assert_queue_task_counts():
-            queue_path = Path(temp_queue_directory["queue_path"])
-            counts = _get_task_counts_by_routing_key(queue_path)
-
-            main_queue_tasks = counts.get(processor_config.queue_name, 0)
-            unprocessable_tasks = counts.get(
-                processor_config.unprocessable_task_queue_name, 0
-            )
-            # The initial unknown task should be gone from the main queue and one new
-            # task should be in the unprocessable queue.
-            return main_queue_tasks == 0 and unprocessable_tasks == 1
-
-        wait_for_condition(assert_queue_task_counts, timeout=10)
+        self._assert_queue_counts(
+            temp_queue_directory,
+            processor_config,
+            expected_main=0,
+            expected_unprocessable=1,
+            timeout=10,
+        )
 
     def test_task_consumer_as_serve_deployment_with_failed_task_and_dead_letter_queue(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
-        """Test that task consumers can be used as Ray Serve deployments."""
+        """Test that failed tasks are sent to the failed task queue."""
         processor_config = create_processor_config()
         processor_config.failed_task_queue_name = "failed_task_queue"
 
@@ -399,22 +426,14 @@ class TestTaskConsumerWithDLQsConfiguration:
         serve.run(ServeTaskConsumer.bind())
         send_request_to_queue.remote(processor_config, "test_data_1")
 
-        def assert_queue_task_counts():
-            queue_path = Path(temp_queue_directory["queue_path"])
-            counts = _get_task_counts_by_routing_key(queue_path)
-
-            main_queue_tasks = counts.get(processor_config.queue_name, 0)
-            failed_tasks = counts.get(processor_config.failed_task_queue_name, 0)
-            # The initial unknown task should be gone from the main queue and one new
-            # task should be in the failed queue.
-            return main_queue_tasks == 0 and failed_tasks == 1
-
-        wait_for_condition(assert_queue_task_counts, timeout=15)
+        self._assert_queue_counts(
+            temp_queue_directory, processor_config, expected_main=0, expected_failed=1
+        )
 
     def test_task_consumer_with_mismatched_arguments(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
-        """Test that tasks with mismatched arguments are sent to the failed task queue."""
+        """Test that tasks with mismatched arguments are sent to the unprocessable task queue."""
         processor_config = create_processor_config()
         processor_config.unprocessable_task_queue_name = "unprocessable_task_queue"
         processor_config.failed_task_queue_name = "failed_task_queue"
@@ -428,25 +447,20 @@ class TestTaskConsumerWithDLQsConfiguration:
 
         serve.run(ServeTaskConsumer.bind())
 
-        # Send a task with only one argument, which should cause a TypeError.
+        # Send a task with only one argument, which should cause a TypeError
         send_request_to_queue.remote(processor_config, ["test_data_1"])
 
-        def assert_queue_task_counts():
-            queue_path = Path(temp_queue_directory["queue_path"])
-            counts = _get_task_counts_by_routing_key(queue_path)
-            main_queue_tasks = counts.get(processor_config.queue_name, 0)
-            unprocessable_tasks = counts.get(
-                processor_config.unprocessable_task_queue_name, 0
-            )
-
-            return main_queue_tasks == 0 and unprocessable_tasks == 1
-
-        wait_for_condition(assert_queue_task_counts, timeout=15)
+        self._assert_queue_counts(
+            temp_queue_directory,
+            processor_config,
+            expected_main=0,
+            expected_unprocessable=1,
+        )
 
     def test_task_consumer_with_argument_type_mismatch(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
-        """Test that tasks with argument type mismatches are sent to the failed task queue."""
+        """Test that tasks with argument type mismatches are sent to the unprocessable task queue."""
         processor_config = create_processor_config()
         processor_config.unprocessable_task_queue_name = "unprocessable_task_queue"
         processor_config.failed_task_queue_name = "failed_task_queue"
@@ -459,20 +473,16 @@ class TestTaskConsumerWithDLQsConfiguration:
                 return len(data)  # This will fail if data is not a sequence
 
         serve.run(ServeTaskConsumer.bind())
-        # Send an integer, for which len() is undefined, causing a TypeError.
+
+        # Send an integer, for which len() is undefined, causing a TypeError
         send_request_to_queue.remote(processor_config, 12345)
 
-        def assert_queue_task_counts():
-            queue_path = Path(temp_queue_directory["queue_path"])
-            counts = _get_task_counts_by_routing_key(queue_path)
-            main_queue_tasks = counts.get(processor_config.queue_name, 0)
-            unprocessable_tasks = counts.get(
-                processor_config.unprocessable_task_queue_name, 0
-            )
-
-            return main_queue_tasks == 0 and unprocessable_tasks == 1
-
-        wait_for_condition(assert_queue_task_counts, timeout=15)
+        self._assert_queue_counts(
+            temp_queue_directory,
+            processor_config,
+            expected_main=0,
+            expected_unprocessable=1,
+        )
 
 
 if __name__ == "__main__":
