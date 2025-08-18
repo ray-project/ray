@@ -34,7 +34,7 @@ using SubscriptionItemCallback = std::function<void(rpc::PubMessage &&)>;
 using SubscriptionFailureCallback =
     std::function<void(const std::string &, const Status &)>;
 
-/// Interface for the pubsub client.
+/// Interface for a subscriber to one or more pubsub channels from a publisher.
 class SubscriberInterface {
  public:
   /// There are two modes of subscriptions. Each channel can only be subscribed in one
@@ -119,15 +119,15 @@ class SubscriberInterface {
   virtual ~SubscriberInterface() {}
 };
 
-/// The grpc client that the subscriber needs.
+/// Interface for the client used by a subscriber.
 class SubscriberClientInterface {
  public:
-  /// Send a long polling request to a core worker for pubsub operations.
+  /// Send a long polling request to a publisher.
   virtual void PubsubLongPolling(
       const rpc::PubsubLongPollingRequest &request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
 
-  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  /// Send a pubsub command batch to a publisher.
   virtual void PubsubCommandBatch(
       const rpc::PubsubCommandBatchRequest &request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
