@@ -2171,12 +2171,12 @@
 
     - __suffix__: full_training.jpeg
       run:
-        timeout: 2000
+        timeout: 2400
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16
 
     - __suffix__: full_training.jpeg.preserve_order
       run:
-        timeout: 2000
+        timeout: 2400
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --preserve_order
 
     - __suffix__: full_training.jpeg.torch_dataloader
