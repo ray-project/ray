@@ -4,7 +4,9 @@ import collections
 import os
 import signal
 import sys
+import tempfile
 import time
+from typing import Callable, Generator
 
 import pytest
 import numpy as np
@@ -27,6 +29,32 @@ def ray_init_with_task_retry_delay():
     address = ray.init(_system_config={"task_retry_delay_ms": 100})
     yield address
     ray.shutdown()
+
+
+@pytest.fixture
+def tempfile_factory() -> Generator[Callable[[], str], None, None]:
+    """Yields a factory function to generate tempfiles that will be deleted after the test run."""
+    files = []
+
+    def create_temp_file():
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        files.append(temp_file.name)
+        return temp_file.name
+
+    yield create_temp_file
+
+    # Cleanup all created files
+    for file_path in files:
+        try:
+            os.unlink(file_path)
+        except Exception:
+            pass
+
+
+def check_file_exists_and_not_empty(file_path):
+    """Helper to check if file exists and has content."""
+    return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
 
 @pytest.mark.parametrize(
@@ -1246,6 +1274,131 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
     os.kill(pid, signal.SIGKILL)
     ray.get(signal_actor_2.send.remote())
     assert ray.get(refs) == [3, 4, 5]
+
+
+def test_actor_user_shutdown_method(ray_start_regular_shared, tempfile_factory):
+    """Test that __ray_shutdown__ method is called during actor termination."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class UserShutdownActor:
+        def __init__(self):
+            pass
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_called")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+    actor = UserShutdownActor.remote()
+    ray.get(actor.get_ready.remote())
+    actor.__ray_terminate__.remote()
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(shutdown_file))
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "ray_shutdown_called"
+
+
+def test_actor_ray_shutdown_handles_exceptions(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that Ray handles unhandled exceptions in __ray_shutdown__ gracefully."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class ExceptionActor:
+        def __ray_shutdown__(self):
+            # Write to file before raising exception
+            with open(shutdown_file, "w") as f:
+                f.write("cleanup_started")
+                f.flush()
+
+            # Let exception propagate to Ray's machinery
+            raise ValueError("Unhandled exception in __ray_shutdown__")
+
+        def get_ready(self):
+            return "ready"
+
+    actor = ExceptionActor.remote()
+    ray.get(actor.get_ready.remote())
+    actor.__ray_terminate__.remote()
+
+    # Verify that despite the exception:
+    # 1. File was written (cleanup started)
+    # 2. Actor shuts down properly (no system crash)
+    wait_for_condition(lambda: check_file_exists_and_not_empty(shutdown_file))
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "cleanup_started"
+
+
+def test_actor_atexit_handler_dont_conflict_with_ray_shutdown(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that atexit handler methods don't conflict with __ray_shutdown__ and both run."""
+    shutdown_file = tempfile_factory()
+    atexit_file = tempfile_factory()
+
+    @ray.remote
+    class CleanupActor:
+        def __init__(self):
+            atexit.register(self.cleanup)
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_called")
+                f.flush()
+
+        def cleanup(self):
+            with open(atexit_file, "w") as f:
+                f.write("atexit_cleanup_called")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+    actor = CleanupActor.remote()
+    ray.get(actor.get_ready.remote())
+    actor.__ray_terminate__.remote()
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(shutdown_file))
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "ray_shutdown_called"
+    wait_for_condition(lambda: check_file_exists_and_not_empty(atexit_file))
+    with open(atexit_file, "r") as f:
+        assert f.read() == "atexit_cleanup_called"
+
+
+def test_actor_ray_shutdown_dont_interfere_with_kill(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test __ray_shutdown__ is not called when actor is killed with ray.kill()."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class KillableActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_kill")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+        def sleep_forever(self):
+            time.sleep(3600)
+
+    actor = KillableActor.remote()
+    ray.get(actor.get_ready.remote())
+    _ = actor.sleep_forever.remote()
+    ray.kill(actor)
+
+    wait_for_condition(lambda: not check_file_exists_and_not_empty(shutdown_file))
 
 
 if __name__ == "__main__":
