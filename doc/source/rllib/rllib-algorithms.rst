@@ -361,7 +361,7 @@ Conservative Q-Learning (CQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
 
-**CQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+**CQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
    :members: training
@@ -386,7 +386,7 @@ Implicit Q-Learning (IQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/iql/pendulum_iql.py>`__
 
-**IQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+**IQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.iql.iql.IQLConfig
    :members: training
