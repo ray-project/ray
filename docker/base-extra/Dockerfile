@@ -41,8 +41,23 @@ wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
     | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
 
 # Add gdb since ray dashboard uses `memray attach`, which requires gdb.
+
+APT_PKGS=(
+    google-cloud-sdk
+    supervisor
+    vim
+    zsh
+    nfs-common
+    zip
+    unzip
+    build-essential
+    ssh
+    curl
+    gdb
+)
+
 sudo apt-get update -y
-sudo apt-get install -y google-cloud-sdk supervisor vim zsh nfs-common zip unzip build-essential ssh curl gdb
+sudo apt-get install -y "${APT_PKGS[@]}"
 sudo apt-get autoclean
 
 # Install azcopy
