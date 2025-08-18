@@ -301,6 +301,7 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         "//src/ray/common:test_util",
         "//src/ray/gcs/gcs_server:gcs_table_storage",
+        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
