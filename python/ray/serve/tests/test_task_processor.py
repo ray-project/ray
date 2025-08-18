@@ -100,6 +100,9 @@ def _get_task_counts_by_routing_key(queue_path):
     if not queue_path.exists():
         return counts
 
+    # Celery doesn't provide a way to get the queue size.
+    # so we've to levarage the broker's API to get the queue size.
+    # Since we are using the filesystem broker in tests, we can read the files in the queue directory to get the queue size.
     for msg_file in queue_path.iterdir():
         if msg_file.is_file():
             try:
