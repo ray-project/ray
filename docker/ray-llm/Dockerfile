@@ -3,7 +3,7 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-COPY python/requirements_*.txt ./
+COPY python/lock_files/llm/requirements_compiled_rayllm_*.txt ./
 
 ARG KVER="5.15.0-139-generic"
 ARG ROOT_DIR="/usr/local"
