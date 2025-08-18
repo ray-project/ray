@@ -565,7 +565,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
-        self.log_gradients = True
+        self.log_gradients = False
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -3653,7 +3653,7 @@ class AlgorithmConfig(_Config):
                 executed. Set to 0 or None for no minimum timesteps.
             log_gradients: Log gradients to results. If this is `True` the global norm
                 of the gradients dictionariy for each optimizer is logged to results.
-                The default is `True`.
+                The default is `False`.
 
         Returns:
             This updated AlgorithmConfig object.
