@@ -20,7 +20,7 @@ class MockPublisher : public Publisher {
   MOCK_METHOD(bool,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
-               const SubscriberID &subscriber_id,
+               const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
   MOCK_METHOD(void, Publish, (rpc::PubMessage pub_message), (override));
@@ -31,7 +31,7 @@ class MockPublisher : public Publisher {
   MOCK_METHOD(bool,
               UnregisterSubscription,
               (const rpc::ChannelType channel_type,
-               const SubscriberID &subscriber_id,
+               const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
   MOCK_METHOD(std::string,

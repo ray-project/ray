@@ -55,17 +55,17 @@ class EntityState {
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
-  bool RemoveSubscriber(const SubscriberID &id);
+  bool RemoveSubscriber(const UniqueID &subscriber_id);
 
   /// Gets the current set of subscribers, keyed by subscriber IDs.
-  const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
+  const absl::flat_hash_map<UniqueID, SubscriberState *> &Subscribers() const;
 
   size_t GetNumBufferedBytes() const { return total_size_; }
 
  protected:
   // Subscribers of this entity.
   // The underlying SubscriberState is owned by Publisher.
-  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
+  absl::flat_hash_map<UniqueID, SubscriberState *> subscribers_;
 
  private:
   // Tracks inflight messages. The messages have shared ownership by
@@ -106,11 +106,11 @@ class SubscriptionIndex {
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
-  bool EraseSubscriber(const SubscriberID &subscriber_id);
+  bool EraseSubscriber(const UniqueID &subscriber_id);
 
   /// Erases the subscriber from the particular key.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
-  bool EraseEntry(const std::string &key_id, const SubscriberID &subscriber_id);
+  bool EraseEntry(const std::string &key_id, const UniqueID &subscriber_id);
 
   /// Test only.
   /// Returns true if the entity id exists in the index.
@@ -120,11 +120,11 @@ class SubscriptionIndex {
   /// Test only.
   /// Returns true if the subscriber id exists in the index, including both per-entity
   /// and all-entity subscribers.
-  bool HasSubscriber(const SubscriberID &subscriber_id) const;
+  bool HasSubscriber(const UniqueID &subscriber_id) const;
 
   /// Returns a vector of subscriber ids that are subscribing to the given object ids.
   /// Test only.
-  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+  std::vector<UniqueID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
 
   int64_t GetNumBufferedBytes() const;
 
@@ -142,7 +142,7 @@ class SubscriptionIndex {
   absl::flat_hash_map<std::string, std::unique_ptr<EntityState>> entities_;
   // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
-  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
+  absl::flat_hash_map<UniqueID, absl::flat_hash_set<std::string>>
       subscribers_to_key_id_;
 };
 
@@ -162,11 +162,11 @@ struct LongPollConnection {
 /// Keeps the state of each connected subscriber.
 class SubscriberState {
  public:
-  SubscriberState(SubscriberID subscriber_id,
+  SubscriberState(UniqueID subscriber_id,
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
                   int64_t publish_batch_size,
-                  PublisherID publisher_id)
+                  UniqueID publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
@@ -212,11 +212,11 @@ class SubscriberState {
   bool IsActive() const;
 
   /// Returns the ID of this subscriber.
-  const SubscriberID &id() const { return subscriber_id_; }
+  const UniqueID &id() const { return subscriber_id_; }
 
  private:
   /// Subscriber ID, for logging and debugging.
-  const SubscriberID subscriber_id_;
+  const UniqueID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
@@ -265,7 +265,7 @@ class Publisher : public PublisherInterface {
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
-            PublisherID publisher_id = NodeID::FromRandom())
+            UniqueID publisher_id = NodeID::FromRandom())
       : periodical_runner_(&periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
@@ -288,7 +288,7 @@ class Publisher : public PublisherInterface {
       rpc::SendReplyCallback send_reply_callback) override;
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
-                            const SubscriberID &subscriber_id,
+                            const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id) override;
 
   void Publish(rpc::PubMessage pub_message) override;
@@ -297,7 +297,7 @@ class Publisher : public PublisherInterface {
                       const std::string &key_id) override;
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                              const SubscriberID &subscriber_id,
+                              const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
 
   std::string DebugString() const override;
@@ -306,7 +306,7 @@ class Publisher : public PublisherInterface {
   /// to it anymore.
   ///
   /// \param subscriber_id The node id of the subscriber to unsubscribe.
-  void UnregisterSubscriber(const SubscriberID &subscriber_id);
+  void UnregisterSubscriber(const UniqueID &subscriber_id);
 
   /// Flushes all inflight pollings and unregisters all subscribers.
   void UnregisterAll();
@@ -359,7 +359,7 @@ class Publisher : public PublisherInterface {
   /// Private fields
   ///
 
-  void UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
+  void UnregisterSubscriberInternal(const UniqueID &subscriber_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
@@ -378,7 +378,7 @@ class Publisher : public PublisherInterface {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::unique_ptr<pub_internal::SubscriberState>>
+  absl::flat_hash_map<UniqueID, std::unique_ptr<pub_internal::SubscriberState>>
       subscribers_ ABSL_GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
@@ -407,8 +407,7 @@ class Publisher : public PublisherInterface {
   ///    of a channel.
   int64_t next_sequence_id_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  /// A unique identifier identifies the publisher_id.
-  const PublisherID publisher_id_;
+  const UniqueID publisher_id_;
 };
 
 }  // namespace pubsub

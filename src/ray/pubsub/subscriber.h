@@ -215,7 +215,7 @@ class SubscriberChannel {
 class Subscriber : public SubscriberInterface {
  public:
   Subscriber(
-      const SubscriberID subscriber_id,
+      const UniqueID subscriber_id,
       const std::vector<rpc::ChannelType> &channels,
       const int64_t max_command_batch_size,
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
@@ -345,7 +345,7 @@ class Subscriber : public SubscriberInterface {
   }
 
   /// Self node's identifying information.
-  const SubscriberID subscriber_id_;
+  const UniqueID subscriber_id_;
 
   /// The command batch size for the subscriber.
   const int64_t max_command_batch_size_;

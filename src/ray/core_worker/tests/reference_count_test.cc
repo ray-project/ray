@@ -129,7 +129,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
                             SubscriptionCallbackMap *sub_callback_map,
                             SubscriptionFailureCallbackMap *sub_failure_callback_map,
-                            pubsub::SubscriberID subscriber_id,
+                            UniqueID subscriber_id,
                             PublisherFactoryFn client_factory)
       : directory_(dict),
         subscription_callback_map_(sub_callback_map),
@@ -225,7 +225,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
-  pubsub::SubscriberID subscriber_id_;
+  UniqueID subscriber_id_;
   std::unique_ptr<pubsub::pub_internal::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
@@ -243,7 +243,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   ~MockDistributedPublisher() = default;
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
-                            const pubsub::SubscriberID &subscriber_id,
+                            const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
@@ -272,7 +272,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   }
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                              const pubsub::SubscriberID &subscriber_id,
+                              const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id_binary) override {
     return true;
   }

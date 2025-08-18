@@ -27,9 +27,6 @@
 namespace ray {
 namespace pubsub {
 
-using SubscriberID = UniqueID;
-using PublisherID = UniqueID;
-
 /// Publisher interface. Note that message ids are passed as a string to avoid templated
 /// definition which doesn't go well with virtual methods.
 class PublisherInterface {
@@ -55,7 +52,7 @@ class PublisherInterface {
   /// subscribing to all.
   /// \return True if registration is new. False otherwise.
   virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
-                                    const SubscriberID &subscriber_id,
+                                    const UniqueID &subscriber_id,
                                     const std::optional<std::string> &key_id) = 0;
 
   /// Publish the given object id to subscribers.
@@ -80,7 +77,7 @@ class PublisherInterface {
   /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
   /// \return True if erased. False otherwise.
   virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                                      const SubscriberID &subscriber_id,
+                                      const UniqueID &subscriber_id,
                                       const std::optional<std::string> &key_id) = 0;
 
   virtual std::string DebugString() const  = 0;

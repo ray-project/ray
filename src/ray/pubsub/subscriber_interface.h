@@ -29,8 +29,6 @@ namespace ray {
 
 namespace pubsub {
 
-using SubscriberID = UniqueID;
-using PublisherID = UniqueID;
 using SubscribeDoneCallback = std::function<void(const Status &)>;
 using SubscriptionItemCallback = std::function<void(rpc::PubMessage &&)>;
 using SubscriptionFailureCallback =
