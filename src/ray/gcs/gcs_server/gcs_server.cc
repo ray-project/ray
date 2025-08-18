@@ -315,9 +315,6 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
-    if (redis_health_check_periodical_runner_) {
-      redis_health_check_periodical_runner_.reset();
-    }
 
     RAY_LOG(INFO) << "GCS server stopped.";
   }
