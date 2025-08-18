@@ -548,6 +548,16 @@ void GcsNodeManager::UpdateAliveNode(
   if (resource_view_sync_message.is_draining()) {
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
   }
+
+  auto resources_total = maybe_node_info.value()->mutable_resources_total();
+  auto &new_resources = resource_view_sync_message.resources_total();
+  // Check if resources_total has changed
+  if (!MapEqual(*resources_total, new_resources)) {
+    // Update total resources
+    *resources_total = new_resources;
+    // Publish the updated node info to notify subscribers
+    gcs_publisher_->PublishNodeInfo(node_id, *maybe_node_info.value());
+  }
 }
 
 }  // namespace gcs
