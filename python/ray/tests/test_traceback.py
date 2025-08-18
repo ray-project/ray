@@ -40,9 +40,9 @@ def scrub_traceback(ex):
     ex = re.sub(r"\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
-    # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.
+    # Also remove the "io_ray" prefix, which may appear on Windows.
     ex = re.sub(
-        r"(com_github_ray_project_ray.)?python\.ray\.tests\.test_traceback",
+        r"(io_ray.)?python\.ray\.tests\.test_traceback",
         "test_traceback",
         ex,
     )
@@ -54,6 +54,13 @@ def scrub_traceback(ex):
     )
     # Clean up underscore in stack trace, which is new in python 3.12
     ex = re.sub("^\\s+~*\\^+~*\n", "", ex, flags=re.MULTILINE)
+    # Remove internal Cython frames from ray._raylet that can appear on Windows.
+    ex = re.sub(
+        r"^\s*File \"FILE\", line ZZ, in ray\._raylet\.[^\n]+\n",
+        "",
+        ex,
+        flags=re.MULTILINE,
+    )
     return ex
 
 

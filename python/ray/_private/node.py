@@ -211,27 +211,12 @@ class Node:
                 node_ip_address = ray.util.get_node_ip_address()
 
         assert node_ip_address is not None
-        ray_params.update_if_absent(
-            node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
-        )
+        ray_params.update_if_absent(node_ip_address=node_ip_address)
         self._node_ip_address = node_ip_address
         if not connect_only:
             ray._private.services.write_node_ip_address(
                 self.get_session_dir_path(), node_ip_address
             )
-
-        if ray_params.raylet_ip_address:
-            raylet_ip_address = ray_params.raylet_ip_address
-        else:
-            raylet_ip_address = node_ip_address
-
-        if raylet_ip_address != node_ip_address and (not connect_only or head):
-            raise ValueError(
-                "The raylet IP address should only be different than the node "
-                "IP address when connecting to an existing raylet; i.e., when "
-                "head=False and connect_only=True."
-            )
-        self._raylet_ip_address = raylet_ip_address
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(
@@ -272,7 +257,7 @@ class Node:
                 # from Redis or GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
                     self.gcs_address,
-                    self._raylet_ip_address,
+                    self._node_ip_address,
                 )
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
@@ -553,18 +538,13 @@ class Node:
 
     @property
     def session_name(self):
-        """Get the session name (cluster ID)."""
+        """Get the current Ray session name."""
         return self._session_name
 
     @property
     def node_ip_address(self):
         """Get the IP address of this node."""
         return self._node_ip_address
-
-    @property
-    def raylet_ip_address(self):
-        """Get the IP address of the raylet that this node connects to."""
-        return self._raylet_ip_address
 
     @property
     def address(self):
@@ -633,7 +613,7 @@ class Node:
     @property
     def runtime_env_agent_address(self):
         """Get the address that exposes runtime env agent as http"""
-        return f"http://{build_address(self._raylet_ip_address, self._runtime_env_agent_port)}"
+        return f"http://{build_address(self._node_ip_address, self._runtime_env_agent_port)}"
 
     @property
     def dashboard_agent_listen_port(self):
@@ -653,7 +633,6 @@ class Node:
         """Get a dictionary of addresses."""
         return {
             "node_ip_address": self._node_ip_address,
-            "raylet_ip_address": self._raylet_ip_address,
             "redis_address": self.redis_address,
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
