@@ -82,7 +82,9 @@ async def test_http_proxy_requests_work_when_router_in_same_loop(
 
 
 @pytest.mark.asyncio
-async def test_deployment_handle_configured_for_same_loop_via_init(serve_instance_async):
+async def test_deployment_handle_configured_for_same_loop_via_init(
+    serve_instance_async,
+):
     @serve.deployment
     class F:
         def __call__(self):
@@ -97,7 +99,9 @@ async def test_deployment_handle_configured_for_same_loop_via_init(serve_instanc
 
 
 @pytest.mark.asyncio
-async def test_child_deployment_handle_configured_for_same_loop_communication(serve_instance_async):
+async def test_child_deployment_handle_configured_for_same_loop_communication(
+    serve_instance_async,
+):
     @serve.deployment
     class Child:
         def __call__(self):
