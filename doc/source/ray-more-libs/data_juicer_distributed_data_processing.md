@@ -10,7 +10,7 @@ With a dedicated design, you can seamlessly execute almost all operators that Da
 
 For reference, in experiments with 25 to 100 Alibaba Cloud nodes, Data-Juicer in Ray mode processes datasets containing 70 billion samples on 6400 CPU cores in 2 hours and 7 billion samples on 3200 CPU cores in 0.45 hours. Additionally, a MinHash-LSH-based deduplication operator in Ray mode can deduplicate terabyte-sized datasets on 8 nodes with 1280 CPU cores in 3 hours.
 
-See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Models](http://dail-wlcb.oss-cn-wulanchabu.aliyuncs.com/data_juicer/DJ2.0_arXiv_preview.pdf) paper for more details.
+See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Models](https://dail-wlcb.oss-cn-wulanchabu.aliyuncs.com/data_juicer/DJ2.0_arXiv_preview.pdf) paper for more details.
 
 <img src="https://img.alicdn.com/imgextra/i2/O1CN01EteoQ31taUweAW1UE_!!6000000005918-2-tps-4034-4146.png" align="center" width="600" />
 

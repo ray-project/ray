@@ -77,7 +77,7 @@ zoomable ``.svg`` image displaying the call graph annotated with hot paths.
 Below is a snapshot of an example SVG output, from the official
 documentation:
 
-.. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
+.. image:: https://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
 Memory profiling
 ----------------
@@ -159,6 +159,6 @@ You can find the microbenchmark results for Ray releases in the `GitHub release 
 References
 ----------
 
-- The `pprof documentation <http://goog-perftools.sourceforge.net/doc/cpu_profiler.html>`_.
+- The `pprof documentation <https://goog-perftools.sourceforge.net/doc/cpu_profiler.html>`_.
 - A `Go version of pprof <https://github.com/google/pprof>`_.
 - The `gperftools <https://github.com/gperftools/gperftools>`_, including libprofiler, tcmalloc, and other useful tools.

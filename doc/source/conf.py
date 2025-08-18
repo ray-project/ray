@@ -291,6 +291,8 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
