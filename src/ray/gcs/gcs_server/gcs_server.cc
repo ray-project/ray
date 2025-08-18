@@ -30,6 +30,10 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/observable_store_client.h"
+#include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/network_util.h"
 #include "ray/util/util.h"
@@ -121,22 +125,24 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    store_client = std::make_unique<InMemoryStoreClient>();
+    store_client =
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);
-    store_client = std::make_unique<RedisStoreClient>(redis_client);
+    auto redis_store_client = std::make_unique<RedisStoreClient>(redis_client);
 
     // Health check Redis periodically and crash if it becomes unavailable.
     redis_health_check_periodical_runner_ = PeriodicalRunner::Create(io_context);
     redis_health_check_periodical_runner_->RunFnPeriodically(
-        [&store_client] {
-          store_client->AsyncCheckHealth([](const Status &status) {
+        [&redis_store_client] {
+          redis_store_client->AsyncCheckHealth([](const Status &status) {
             RAY_CHECK_OK(status) << "Redis connection failed.";
           })
         },
         RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
         "GcsServer.deadline_timer.redis_health_check");
+    store_client = std::move(redis_store_client);
     break;
   }
   default:

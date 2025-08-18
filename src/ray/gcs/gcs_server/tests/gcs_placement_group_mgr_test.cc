@@ -85,7 +85,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         cluster_resource_manager_(io_service_) {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
+    gcs_table_storage_ =
+        std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());

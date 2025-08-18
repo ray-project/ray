@@ -153,7 +153,8 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
-    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
+    gcs_table_storage_ =
+        std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto actor_scheduler = std::make_unique<MockActorScheduler>();

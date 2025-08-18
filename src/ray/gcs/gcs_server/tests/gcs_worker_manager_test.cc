@@ -39,7 +39,8 @@ class GcsWorkerManagerTest : public Test {
   GcsWorkerManagerTest() {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
+    gcs_table_storage_ =
+        std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
   }
 
   void SetUp() override {
