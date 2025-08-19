@@ -154,12 +154,12 @@ class ReadTask(Callable[[], Iterable[Block]]):
         read_fn: Callable[[], Iterable[Block]],
         metadata: BlockMetadata,
         schema: Optional["Schema"] = None,
-        per_block_limit: Optional[int] = None,  # New parameter
+        per_block_limit: Optional[int] = None,
     ):
         self._metadata = metadata
         self._read_fn = read_fn
         self._schema = schema
-        self._per_block_limit = per_block_limit  # New: store per-block limit
+        self._per_block_limit = per_block_limit
 
     @property
     def metadata(self) -> BlockMetadata:

@@ -181,7 +181,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        per_block_limit: Optional[int] = None,  # Add this parameter
+        per_block_limit: Optional[int] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
