@@ -10,3 +10,6 @@ fi
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   bazel build //java:ray_java_pkg
 fi
+
+# Build dashboard
+bash ./ci/build/build-dashboard.sh

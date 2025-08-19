@@ -83,4 +83,4 @@ npm run build
 
 # Archive the output to be used in the wheel build
 tar -czf dashboard_build.tar.gz -C build .
-mv dashboard_build.tar.gz /ray/dashboard_build.tar.gz
+mv dashboard_build.tar.gz "$HOME"/dashboard_build.tar.gz
