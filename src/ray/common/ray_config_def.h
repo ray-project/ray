@@ -334,9 +334,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(uint64_t,
-           object_manager_max_bytes_in_flight,
-           ((uint64_t)2) * 1024 * 1024 * 1024)
+RAY_CONFIG(int64_t, object_manager_max_bytes_in_flight, (int64_t)2 * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -520,16 +518,9 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
 RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
-/// Whether enable OpenTelemetry as the metrics collection backend on the driver
-/// component. This flag is only used during the migration of the  metric collection
-/// backend from OpenCensus to OpenTelemetry. It will be removed in the future.
-RAY_CONFIG(bool, experimental_enable_open_telemetry_on_agent, false)
-
-/// Whether enable OpenTelemetry as the metrics collection backend on the core
-/// components (core workers, gcs server, raylet, etc.). This flag is only used during
-/// the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
-/// It will be removed in the future.
-RAY_CONFIG(bool, experimental_enable_open_telemetry_on_core, false)
+/// Whether enable OpenTelemetry as the metrics collection backend. The default is
+/// using OpenCensus.
+RAY_CONFIG(bool, enable_open_telemetry, false)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
