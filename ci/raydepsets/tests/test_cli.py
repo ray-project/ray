@@ -344,8 +344,6 @@ class TestCli(unittest.TestCase):
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
         expected_flags.remove("--unsafe-package")
-        expected_flags.remove("ray")
-        expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
         assert (
