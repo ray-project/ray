@@ -309,19 +309,14 @@ def _set_ippr_status_for_pod(
     ippr_group_spec: Dict[str, Any],
     pod: Dict[str, Any],
 ) -> tuple[Optional[IPPRStatus], Optional[Dict[str, Any]]]:
-    if not ippr_group_spec or not pod["status"].get("containerStatuses"):
+    if not ippr_group_spec:
         return (None, None)
 
-    container_status = None
-    for status in pod["status"]["containerStatuses"]:
+    container_status = {}
+    for status in pod.get("status", {}).get("containerStatuses", []):
         if status["name"] == pod["spec"]["containers"][0]["name"]:
             container_status = status
             break
-    if container_status is None:
-        return (None, None)
-
-    if "running" not in container_status["state"]:
-        return (None, None)
 
     pod_spec_requests = (
         pod["spec"]["containers"][0].get("resources", {}).get("requests", {})
@@ -351,12 +346,16 @@ def _set_ippr_status_for_pod(
         desired_memory=spec_memory,
         current_cpu=float(
             parse_quantity(
-                pod_status_limits.get("cpu") or pod_status_requests.get("cpu", 0)
+                pod_status_limits.get("cpu")
+                or pod_status_requests.get("cpu")
+                or spec_cpu
             )
         ),
         current_memory=float(
             parse_quantity(
-                pod_status_limits.get("memory") or pod_status_requests.get("memory", 0)
+                pod_status_limits.get("memory")
+                or pod_status_requests.get("memory")
+                or spec_memory
             )
         ),
         resize_timeout=ippr_group_spec.get("resize-timeout", 0),
@@ -376,7 +375,7 @@ def _set_ippr_status_for_pod(
         )
         ippr_status.resized_at = pod_ippr_status.get("resized-at")
 
-    for condition in pod["status"]["conditions"]:
+    for condition in pod.get("status", {}).get("conditions", []):
         if condition["type"] == "PodResizePending" and condition["status"] == "True":
             ippr_status.resized_message = condition.get("message")
             ippr_status.resized_status = condition.get("reason", "").lower()

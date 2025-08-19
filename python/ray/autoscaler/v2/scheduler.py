@@ -1514,23 +1514,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                             "memory": node.ippr_status.desired_memory,
                         }
                     )
-            elif node.ippr_capacity is not None:
-                node.update_total_resources(
-                    {
-                        "CPU": float(
-                            max(
-                                node.ippr_capacity["CPU"],
-                                node.total_resources["CPU"],
-                            )
-                        ),
-                        "memory": float(
-                            max(
-                                node.ippr_capacity["memory"],
-                                node.total_resources["memory"],
-                            )
-                        ),
-                    }
-                )
 
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
