@@ -36,8 +36,10 @@ fi
 # Check the wheel content
 echo "📦 Checking metadata files in $PYTHON_WHEEL"
 
+DIST=ray-3.0.0.dev0.dist-info
+
 # Allowed files
-ALLOWED=("entry_points.txt" "METADATA" "RECORD" "top_level.txt" "WHEEL")
+ALLOWED=("${DIST}/entry_points.txt" "${DIST}/METADATA" "${DIST}/RECORD" "${DIST}/top_level.txt" "${DIST}/WHEEL")
 
 # List files inside the wheel (without extracting)
 FILES=$(unzip -Z1 "$PYTHON_WHEEL")
