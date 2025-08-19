@@ -158,16 +158,16 @@ class KubeRayIPPRProvider:
 
     def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
         for resize in resizes:
+            logger.info(
+                f"Resizing pod {resize.cloud_instance_id} to cpu={resize.desired_cpu} memory={resize.desired_memory} from cpu={resize.current_cpu} memory={resize.current_memory}"
+            )
             if (
                 resize.desired_cpu > resize.current_cpu
                 or resize.desired_memory > resize.current_memory
             ):
-                logger.info(
-                    f"Resizing pod {resize.cloud_instance_id} to cpu={resize.desired_cpu} memory={resize.desired_memory}"
-                )
                 self._patch_ippr_resize(resize)
             else:
-                raylet_addr = _get_raylet_address(resize.raylet_id)
+                raylet_addr = _get_raylet_address(self._gcs_client, resize.raylet_id)
                 if not raylet_addr:
                     continue
                 try:
