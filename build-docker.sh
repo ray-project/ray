@@ -90,6 +90,7 @@ mkdir -p "$RAY_BUILD_DIR/.whl"
 wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
 wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
+cp python/lock_files/ray_img/requirements_compiled_ray_img_*.txt "${RAY_BUILD_DIR}/."
 
 WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
 
