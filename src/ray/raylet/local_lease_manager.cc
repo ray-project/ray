@@ -754,14 +754,14 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
     }
     for (size_t i = 0; i < deps.size(); i++) {
       if (args[i] == nullptr) {
-        // This can happen if the task's arguments were all local at some
-        // point, but then at least one was evicted before the task could
-        // be dispatched to a worker.
+        // This can happen if the lease's arguments were all local at some
+        // point, but then at least one was evicted before the lease could
+        // be granted to a worker.
         RAY_LOG(DEBUG)
             << "RayLease " << lease_spec.LeaseId() << " argument " << deps[i]
-            << " was evicted before the task could be dispatched. This can happen "
-               "when there are many objects needed on this node. The task will be "
-               "scheduled once all of its dependencies are local.";
+            << " was evicted before the lease could be granted. This can happen "
+               "when there are many objects needed on this node. The lease will be "
+               "granted once all of its dependencies are local.";
         *args_missing = true;
         return false;
       }
@@ -784,13 +784,13 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
 
   if (lease_arg_bytes > max_pinned_lease_arguments_bytes_) {
     RAY_LOG(WARNING)
-        << "Dispatched lease " << lease_spec.LeaseId() << " has arguments of size "
+        << "Granted lease " << lease_spec.LeaseId() << " has arguments of size "
         << lease_arg_bytes
-        << ", but the max memory allowed for arguments of executing tasks is only "
+        << ", but the max memory allowed for arguments of granted leases is only "
         << max_pinned_lease_arguments_bytes_;
   } else if (pinned_lease_arguments_bytes_ > max_pinned_lease_arguments_bytes_) {
     ReleaseLeaseArgs(lease_spec.LeaseId());
-    RAY_LOG(DEBUG) << "Cannot dispatch lease " << lease_spec.LeaseId()
+    RAY_LOG(DEBUG) << "Cannot grant lease " << lease_spec.LeaseId()
                    << " with arguments of size " << lease_arg_bytes
                    << " current pinned bytes is " << pinned_lease_arguments_bytes_;
     return false;
@@ -897,13 +897,13 @@ void LocalLeaseManager::CancelLeaseToGrant(
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   const LeaseID lease_id = work->lease.GetLeaseSpecification().LeaseId();
-  RAY_LOG(DEBUG) << "Canceling lease " << lease_id << " from dispatch queue.";
+  RAY_LOG(DEBUG) << "Canceling lease " << lease_id << " from leases_to_grant_queue.";
   ReplyCancelled(work, failure_type, scheduling_failure_message);
   if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
         work->allocated_instances);
-    // Release pinned task args.
+    // Release pinned lease args.
     ReleaseLeaseArgs(lease_id);
   }
   if (!work->lease.GetLeaseSpecification().GetDependencies().empty()) {
@@ -1192,8 +1192,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
          << "\n";
   buffer << "Resource usage {\n";
 
-  // Calculates how much resources are occupied by tasks or actors.
-  // Only iterate upto this number to avoid excessive CPU usage.
+  // Calculates how much resources are occupied by leases.
+  // Only iterate up to this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
   uint32_t iteration = 0;
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers(
@@ -1204,19 +1204,21 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
     if (worker->IsDead()        // worker is dead
         || worker->IsBlocked()  // worker is blocked by blocking Ray API
         || (worker->GetGrantedLeaseId().IsNil() &&
-            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
+            worker->GetActorId().IsNil())) {  // Lease not assigned
+      // TODO(joshlee) probably don't need to above check for ActorId since LeaseId is not
+      // reset for actors either
       // Then this shouldn't have allocated resources.
       continue;
     }
 
-    const auto &task_or_actor_name = worker->GetGrantedLease()
-                                         .GetLeaseSpecification()
-                                         .FunctionDescriptor()
-                                         ->CallString();
+    const auto &lease_name = worker->GetGrantedLease()
+                                 .GetLeaseSpecification()
+                                 .FunctionDescriptor()
+                                 ->CallString();
     buffer << "    - (language="
            << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
            << " "
-           << "actor_or_task=" << task_or_actor_name << " "
+           << "lease_name=" << lease_name << " "
            << "pid=" << worker->GetProcess().GetId() << " "
            << "worker_id=" << worker->WorkerId() << "): "
            << worker->GetGrantedLease()

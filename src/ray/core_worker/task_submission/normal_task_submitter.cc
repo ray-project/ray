@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "ray/common/lease/lease_spec.h"
-#include "ray/common/lease/lease_spec_builder.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -70,25 +69,8 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
     // Only set resource_spec if this is a new scheduling key entry
     if (new_scheduling_key_entry) {
-      LeaseSpecBuilder builder;
-      const auto &message = task_spec.GetMessage();
-      builder.BuildCommonLeaseSpec(JobID::FromBinary(message.job_id()),
-                                   message.caller_address(),
-                                   message.required_resources(),
-                                   message.required_placement_resources(),
-                                   message.scheduling_strategy(),
-                                   message.label_selector(),
-                                   message.depth(),
-                                   task_spec.GetDependencies(),
-                                   message.language(),
-                                   message.runtime_env_info(),
-                                   TaskID::FromBinary(message.parent_task_id()),
-                                   message.function_descriptor(),
-                                   message.name(),
-                                   message.attempt_number(),
-                                   ActorID::FromBinary(message.root_detached_actor_id()));
-      builder.SetNormalLeaseSpec(message.max_retries());
-      scheduling_key_entry.resource_spec = std::move(builder).ConsumeAndBuild();
+      scheduling_key_entry.resource_spec =
+          LeaseSpecification(task_spec.GetMessage(), false);
     }
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 

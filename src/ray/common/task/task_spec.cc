@@ -401,6 +401,17 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   return dependencies;
 }
 
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
+    const rpc::TaskSpec &task_spec) {
+  std::vector<rpc::ObjectReference> dependencies;
+  for (size_t i = 0; i < static_cast<size_t>(task_spec.args_size()); ++i) {
+    if (task_spec.args(i).has_object_ref() && !task_spec.args(i).is_inlined()) {
+      dependencies.push_back(task_spec.args(i).object_ref());
+    }
+  }
+  return dependencies;
+}
+
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }

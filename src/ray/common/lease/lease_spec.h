@@ -35,6 +35,9 @@ namespace ray {
 // leasing, scheduling, dependency resolution, and cancellation.
 class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
  public:
+  explicit LeaseSpecification(const rpc::TaskSpec &task_spec,
+                              bool is_actor_creation_task);
+
   /// Construct an empty task specification. This should not be used directly.
   LeaseSpecification() { ComputeResources(); }
 
@@ -42,11 +45,9 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   explicit LeaseSpecification(const rpc::LeaseSpec &message);
   explicit LeaseSpecification(std::shared_ptr<rpc::LeaseSpec> message);
 
-  // Identity/provenance
   LeaseID LeaseId() const;
   JobID JobId() const;
 
-  // Scheduling class and inputs raylet consumes
   const ResourceSet &GetRequiredResources() const;
   const ResourceSet &GetRequiredPlacementResources() const;
   const LabelSelector &GetLabelSelector() const;
@@ -54,41 +55,29 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   bool IsNodeAffinitySchedulingStrategy() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
   bool GetNodeAffinitySchedulingStrategySoft() const;
-
-  // Dependencies interface
   std::vector<ObjectID> GetDependencyIds() const;
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
-  // Task/actor type helpers used by raylet
   bool IsNormalTask() const;
   bool IsActorCreationTask() const;
   bool IsActorTask() const;
   ActorID ActorId() const;
 
-  // Ownership and lifetime
   const rpc::Address &CallerAddress() const;
   WorkerID CallerWorkerId() const;
   NodeID CallerNodeId() const;
-
-  // Placement group bundle where applicable
   const BundleID PlacementGroupBundleId() const;
-
-  // Retriable
   bool IsRetriable() const;
   int64_t MaxActorRestarts() const;
   int32_t MaxRetries() const;
   TaskID ParentTaskId() const;
   bool IsDetachedActor() const;
   std::string DebugString() const;
-
-  // Worker pool matching
   int GetRuntimeEnvHash() const;
   Language GetLanguage() const;
   bool HasRuntimeEnv() const;
   const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
   const std::string &SerializedRuntimeEnv() const;
-
-  // Additional getters used by raylet
   int64_t GetDepth() const;
   ActorID RootDetachedActorId() const;
   bool IsDriverTask() const;
@@ -101,23 +90,20 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   const rpc::RuntimeEnvConfig &RuntimeEnvConfig() const;
   bool IsSpreadSchedulingStrategy() const;
   SchedulingClass GetSchedulingClass() const;
+  const rpc::LeaseSpec &GetMessage() const;
 
  private:
-  // Helper method to compute cached resources and dependencies
   void ComputeResources();
 
   SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
-  // Scheduling
   SchedulingClass sched_cls_id_ = 0;
   std::shared_ptr<ResourceSet> required_resources_;
   std::shared_ptr<ResourceSet> required_placement_resources_;
   std::shared_ptr<LabelSelector> label_selector_;
 
-  // Dependencies
   std::vector<rpc::ObjectReference> dependencies_;
 
-  // Runtime environment hash
   int runtime_env_hash_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to

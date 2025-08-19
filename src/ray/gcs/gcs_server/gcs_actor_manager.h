@@ -23,7 +23,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
-#include "ray/common/lease/lease_spec_builder.h"
+#include "ray/common/lease/lease_spec.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -76,31 +76,8 @@ class GcsActor {
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()) {
-    TaskSpecification dummy_task_spec(*task_spec_);
-    LeaseSpecBuilder builder;
-    builder.BuildCommonLeaseSpec(
-        JobID::FromBinary(task_spec_->job_id()),
-        task_spec_->caller_address(),
-        task_spec_->required_resources(),
-        task_spec_->required_placement_resources(),
-        task_spec_->scheduling_strategy(),
-        task_spec_->label_selector(),
-        task_spec_->depth(),
-        dummy_task_spec.GetDependencies(),
-        task_spec_->language(),
-        task_spec_->runtime_env_info(),
-        TaskID::FromBinary(task_spec_->parent_task_id()),
-        task_spec_->function_descriptor(),
-        task_spec_->name(),
-        task_spec_->attempt_number(),
-        ActorID::FromBinary(task_spec_->root_detached_actor_id()));
-    builder.SetActorCreationLeaseSpec(
-        ActorID::FromBinary(task_spec_->actor_creation_task_spec().actor_id()),
-        task_spec_->actor_creation_task_spec().max_actor_restarts(),
-        task_spec_->actor_creation_task_spec().is_detached(),
-        task_spec_->actor_creation_task_spec().dynamic_worker_options());
-    LeaseSpecification lease_spec(std::move(builder).ConsumeAndBuild());
-    lease_spec_ = std::make_unique<rpc::LeaseSpec>(std::move(lease_spec.GetMessage()));
+    lease_spec_ = std::make_unique<rpc::LeaseSpec>(
+        LeaseSpecification(*task_spec_, true).GetMessage());
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
   }
@@ -179,31 +156,8 @@ class GcsActor {
           task_spec_->label_selector().begin(), task_spec_->label_selector().end());
     }
 
-    TaskSpecification dummy_task_spec(*task_spec_);
-    LeaseSpecBuilder builder;
-    builder.BuildCommonLeaseSpec(
-        JobID::FromBinary(task_spec_->job_id()),
-        task_spec_->caller_address(),
-        task_spec_->required_resources(),
-        task_spec_->required_placement_resources(),
-        task_spec_->scheduling_strategy(),
-        task_spec_->label_selector(),
-        task_spec_->depth(),
-        dummy_task_spec.GetDependencies(),
-        task_spec_->language(),
-        task_spec_->runtime_env_info(),
-        TaskID::FromBinary(task_spec_->parent_task_id()),
-        task_spec_->function_descriptor(),
-        task_spec_->name(),
-        task_spec_->attempt_number(),
-        ActorID::FromBinary(task_spec_->root_detached_actor_id()));
-    builder.SetActorCreationLeaseSpec(
-        ActorID::FromBinary(task_spec_->actor_creation_task_spec().actor_id()),
-        task_spec_->actor_creation_task_spec().max_actor_restarts(),
-        task_spec_->actor_creation_task_spec().is_detached(),
-        task_spec_->actor_creation_task_spec().dynamic_worker_options());
-    LeaseSpecification lease_spec(std::move(builder).ConsumeAndBuild());
-    lease_spec_ = std::make_unique<rpc::LeaseSpec>(std::move(lease_spec.GetMessage()));
+    lease_spec_ = std::make_unique<rpc::LeaseSpec>(
+        LeaseSpecification(*task_spec_, true).GetMessage());
     RefreshMetrics();
   }
 

@@ -193,12 +193,10 @@ ray_cc_library(
     srcs = [
         "lease/lease.cc",
         "lease/lease_spec.cc",
-        "lease/lease_spec_builder.cc",
     ],
     hdrs = [
         "lease/lease.h",
         "lease/lease_spec.h",
-        "lease/lease_spec_builder.h",
     ],
     deps = [
         ":id",

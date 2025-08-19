@@ -462,6 +462,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
+  // static "overload" for LeaseSpecification constructor.
+  static std::vector<rpc::ObjectReference> GetDependencies(
+      const rpc::TaskSpec &task_spec);
+
   std::string GetDebuggerBreakpoint() const;
 
   /// Return the depth of this task. The depth of a graph, is the number of

@@ -247,10 +247,12 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
   bool IsAvailableForScheduling() const {
-    return !IsDead()                       // Not dead
-           && GetGrantedLeaseId().IsNil()  // No assigned lease
-           && !IsBlocked()                 // Not blocked
-           && GetActorId().IsNil();        // No assigned actor
+    return !IsDead()                        // Not dead
+           && !GetGrantedLeaseId().IsNil()  // No assigned lease
+           // TODO(joshlee): this seems like it's broken in the above line, did this ever
+           // work?
+           && !IsBlocked()           // Not blocked
+           && GetActorId().IsNil();  // No assigned actor
   }
 
   rpc::CoreWorkerClientInterface *rpc_client() {

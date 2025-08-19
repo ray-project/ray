@@ -20,6 +20,48 @@
 
 namespace ray {
 
+LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
+                                       bool is_actor_creation_task)
+    : MessageWrapper(std::make_shared<rpc::LeaseSpec>()) {
+  message_->set_job_id(task_spec.job_id());
+  message_->mutable_caller_address()->CopyFrom(task_spec.caller_address());
+  message_->mutable_required_resources()->insert(task_spec.required_resources().begin(),
+                                                 task_spec.required_resources().end());
+  message_->mutable_required_placement_resources()->insert(
+      task_spec.required_placement_resources().begin(),
+      task_spec.required_placement_resources().end());
+  message_->mutable_scheduling_strategy()->CopyFrom(task_spec.scheduling_strategy());
+  message_->mutable_label_selector()->insert(task_spec.label_selector().begin(),
+                                             task_spec.label_selector().end());
+  message_->set_depth(task_spec.depth());
+  message_->set_parent_task_id(task_spec.parent_task_id());
+  for (const auto &dep : TaskSpecification::GetDependencies(task_spec)) {
+    rpc::ObjectReference *dependency = message_->add_dependencies();
+    dependency->CopyFrom(dep);
+  }
+  message_->mutable_function_descriptor()->CopyFrom(task_spec.function_descriptor());
+  message_->set_language(task_spec.language());
+  message_->mutable_runtime_env_info()->CopyFrom(task_spec.runtime_env_info());
+  message_->set_task_name(task_spec.name());
+  message_->set_attempt_number(task_spec.attempt_number());
+  message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
+  if (is_actor_creation_task) {
+    message_->set_type(TaskType::ACTOR_CREATION_TASK);
+    message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
+    message_->set_max_actor_restarts(
+        task_spec.actor_creation_task_spec().max_actor_restarts());
+    message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
+    for (const auto &option :
+         task_spec.actor_creation_task_spec().dynamic_worker_options()) {
+      message_->add_dynamic_worker_options(option);
+    }
+  } else {
+    message_->set_type(TaskType::NORMAL_TASK);
+    message_->set_max_retries(task_spec.max_retries());
+  }
+  ComputeResources();
+}
+
 LeaseSpecification::LeaseSpecification(rpc::LeaseSpec &&lease_spec)
     : MessageWrapper(std::move(lease_spec)) {
   ComputeResources();
@@ -330,5 +372,7 @@ SchedulingClass LeaseSpecification::GetSchedulingClass() const {
   }
   return sched_cls_id_;
 }
+
+const rpc::LeaseSpec &LeaseSpecification::GetMessage() const { return *message_; }
 
 }  // namespace ray

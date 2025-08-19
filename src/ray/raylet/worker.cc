@@ -173,7 +173,12 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignLeaseId(const LeaseID &lease_id) { lease_id_ = lease_id; };
+void Worker::AssignLeaseId(const LeaseID &lease_id) {
+  if (!lease_id.IsNil()) {
+    lease_assign_time_ = absl::Now();
+  }
+  lease_id_ = lease_id;
+};
 
 const LeaseID &Worker::GetGrantedLeaseId() const { return lease_id_; }
 
