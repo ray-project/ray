@@ -7,7 +7,6 @@ import pytest
 import requests
 
 import ray
-import ray.dashboard.utils as dashboard_utils
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.tests.conftest import *  # noqa
