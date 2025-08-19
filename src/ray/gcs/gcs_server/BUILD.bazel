@@ -19,7 +19,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/gcs:gcs_callback",
-        "//src/ray/gcs/store_client:store_client",
+        "//src/ray/gcs/store_client",
         "//src/ray/protobuf:gcs_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -80,7 +80,7 @@ ray_cc_library(
     hdrs = ["store_client_kv.h"],
     deps = [
         ":gcs_kv_manager",
-        "//src/ray/gcs/store_client:store_client",
+        "//src/ray/gcs/store_client",
     ],
 )
 
@@ -231,10 +231,10 @@ ray_cc_library(
         ":gcs_usage_stats_client",
         ":gcs_worker_manager",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/gcs/store_client",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
-        "//src/ray/gcs/store_client:store_client",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/pubsub:publisher",
