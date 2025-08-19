@@ -302,22 +302,25 @@ class vLLMEngineWrapper:
 
     async def generate_async(
         self, row: Dict[str, Any]
-    ) -> Tuple[vLLMEngineRequest, Dict[str, Any]]:
+    ) -> Tuple[vLLMEngineRequest, Dict[str, Any], float]:
         """Process a single request.
 
         Args:
             request: The request.
 
         Returns:
-            A tuple of index in batch, request output and bypassed custom fields.
+            A tuple of index in batch, request output and bypassed custom fields, and time taken.
         """
         request = await self._prepare_llm_request(row)
+        t = time.perf_counter()
 
         async with self.semaphore:
             output = await self._generate_async(request)
 
+        time_taken = time.perf_counter() - t
+
         output_data = vLLMOutputData.from_vllm_engine_output(output)
-        return request, output_data.model_dump()
+        return request, output_data.model_dump(), time_taken
 
     async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
@@ -539,31 +542,30 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             The response of the vLLM engine.
         """
         batch_uuid = uuid.uuid4()
-        t = time.perf_counter()
+        batch_start_time = time.perf_counter()
 
         tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
 
-        time_taken = -1.0
         for resp in asyncio.as_completed(tasks):
-            request, output = await resp
-            time_taken = time.perf_counter() - t
+            request, output, time_taken_llm = await resp
 
             yield {
                 **output,
                 "request_id": request.request_id,
                 self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken,
+                "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
             }
 
+        batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need
         # timer in UDFs anymore.
         logger.info(
             "[vLLM] Elapsed time for batch %s with size %d: %s",
             batch_uuid.hex,
             len(batch),
-            time_taken,
+            batch_time_taken,
         )
 
         # Log engine stats after each batch is done conditioned on the flag
