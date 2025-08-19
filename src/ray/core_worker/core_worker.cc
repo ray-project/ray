@@ -359,6 +359,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
+      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {

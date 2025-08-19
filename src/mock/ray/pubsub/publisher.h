@@ -12,15 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/pubsub/publisher_interface.h"
+
 namespace ray {
 namespace pubsub {
 
-class MockPublisher : public Publisher {
+class MockPublisher : public PublisherInterface {
  public:
+  MOCK_METHOD(void,
+              ConnectToSubscriber,
+              (const rpc::PubsubLongPollingRequest &request,
+               std::string *publisher_id,
+               google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
   MOCK_METHOD(bool,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
-               const SubscriberID &subscriber_id,
+               const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
   MOCK_METHOD(void, Publish, (rpc::PubMessage pub_message), (override));
@@ -31,9 +40,11 @@ class MockPublisher : public Publisher {
   MOCK_METHOD(bool,
               UnregisterSubscription,
               (const rpc::ChannelType channel_type,
-               const SubscriberID &subscriber_id,
+               const UniqueID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
+  MOCK_METHOD(void, UnregisterSubscriber, (const UniqueID &subscriber_id), (override));
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
 }  // namespace pubsub
