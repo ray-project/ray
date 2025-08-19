@@ -968,6 +968,7 @@ class Worker:
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
                     else:
+                        print("== Raise exception to user ==")
                         raise value
 
         return values, debugger_breakpoint

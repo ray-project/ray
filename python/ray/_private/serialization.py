@@ -536,7 +536,9 @@ class SerializationContext:
                     object_tensors,
                 )
             except Exception as e:
+                logger.error("=== START logging exception ===")
                 logger.exception(e)
+                logger.error("=== END logging exception ===")
                 obj = RaySystemError(e, traceback.format_exc())
             finally:
                 # Must clear ObjectRef to not hold a reference.
