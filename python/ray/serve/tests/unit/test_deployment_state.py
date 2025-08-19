@@ -95,7 +95,7 @@ class MockReplicaActorWrapper:
         self._node_instance_id = None
         self._node_id_is_set = False
         self._actor_id = None
-        self._port = None
+        self._internal_grpc_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path = None
