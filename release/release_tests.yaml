@@ -4604,6 +4604,55 @@
       pytest -sv test_batch_sglang.py
 
 
+- name: text_embeddings_benchmark_{{scaling}}
+  frequency: nightly
+  python: "3.11"  # necessary for the llm-cu128 image
+  working_dir: nightly_tests
+  team: data
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/text_embeddings_benchmark.py --embed-concurrency 15
+
+# Note: release tests do not support specifying both 'matrix' and 'variations'
+# in a test definition, so split off preemptible tests here.
+- name: text_embeddings_benchmark_{{scaling}}_preemptible
+  frequency: nightly
+  python: "3.11"
+  working_dir: nightly_tests
+  team: data
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    # Notes:
+    # - Not using true spot instances. We simulate spot preemption using TerminateEC2InstanceWithGracePeriod to soft-kill the workers. This is so that we can
+    # control the kill schedule.
+    # - Batch size is always fixed, so kill schedule is deterministic.
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+      --batch-size-to-kill 5 --max-to-kill 15 --kill-delay 30 --kill-interval 100
+    script: >
+      python dataset/text_embeddings_benchmark.py --chaos-test --embed-concurrency 15
+
 #######################
 # Ray examples tests
 #######################
