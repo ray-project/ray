@@ -31,9 +31,13 @@ steps:
       - export RAYCI_DISABLE_JAVA=true
       - export BUILD_PLACEHOLDER_WHEEL=true
       - export TEST_PLACEHOLDER_WHEEL=true
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
       - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
     depends_on:
       - manylinux
       - forge
