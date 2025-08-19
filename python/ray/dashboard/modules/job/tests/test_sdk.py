@@ -181,7 +181,6 @@ def get_register_agents_number(gcs_client):
                 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
                 "RAY_health_check_initial_delay_ms": "0",
                 "RAY_health_check_period_ms": "1000",
-                "RAY_JOB_AGENT_USE_HEAD_NODE_ONLY": "0",
             },
         }
     ],

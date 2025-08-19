@@ -17,7 +17,7 @@ import ray
 from ray import NodeID
 from ray._common.utils import get_or_create_event_loop, load_class
 from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
-from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, env_bool
+from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -54,12 +54,6 @@ from ray.dashboard.subprocesses.utils import ResponseType
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-# Feature flag controlling whether critical Ray Job control operations are performed
-# exclusively by the Job Agent running on the Head node (or randomly sampled Worker one)
-#
-# NOTE: This flag serves as a temporary kill-switch and should be eventually cleaned up
-RAY_JOB_AGENT_USE_HEAD_NODE_ONLY = env_bool("RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True)
 
 
 class RayActivityStatus(str, enum.Enum):
