@@ -71,7 +71,7 @@ def instantiate_adapter_from_config(
         )
 
     try:
-        adapter_instance.initialize(config=task_processor_config)
+        adapter_instance.initialize()
     except Exception as e:
         raise RuntimeError(f"Failed to initialize {adapter_class.__name__}: {e}")
 
