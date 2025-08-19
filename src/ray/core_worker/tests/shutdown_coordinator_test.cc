@@ -129,10 +129,8 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_IdempotentBehavior) {
   // First graceful request should succeed
   EXPECT_TRUE(coordinator->RequestShutdown(
       false, ShutdownReason::kGracefulExit, "test_graceful"));
-  {
-    auto st = coordinator->GetState();
-    EXPECT_TRUE(st == ShutdownState::kDisconnecting || st == ShutdownState::kShutdown);
-  }
+  const auto state = coordinator->GetState();
+  EXPECT_TRUE(state == ShutdownState::kDisconnecting || state == ShutdownState::kShutdown);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
   // A second graceful request should be ignored
@@ -153,11 +151,8 @@ TEST_F(ShutdownCoordinatorTest,
   auto coordinator = CreateCoordinator();
 
   EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
-  {
-    auto st = coordinator->GetState();
-    EXPECT_TRUE(st == ShutdownState::kShuttingDown ||
-                st == ShutdownState::kDisconnecting);
-  }
+  const auto state = coordinator->GetState();
+  EXPECT_TRUE(state == ShutdownState::kShuttingDown || state == ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
@@ -174,7 +169,7 @@ TEST_F(ShutdownCoordinatorTest,
   EXPECT_TRUE(
       coordinator->RequestShutdown(false /*graceful*/, ShutdownReason::kGracefulExit));
 
-  // Deterministic: worker path enters Disconnecting and requires explicit final step.
+  // worker path enters Disconnecting and requires explicit final step.
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
@@ -237,11 +232,8 @@ TEST_F(ShutdownCoordinatorTest,
 
   // Only one thread should have succeeded
   EXPECT_EQ(success_count.load(), 1);
-  {
-    auto st = coordinator->GetState();
-    EXPECT_TRUE(st == ShutdownState::kShuttingDown ||
-                st == ShutdownState::kDisconnecting);
-  }
+  const auto state = coordinator->GetState();
+  EXPECT_TRUE(state == ShutdownState::kShuttingDown || state == ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 }
 

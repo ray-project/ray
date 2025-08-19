@@ -528,7 +528,7 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
+  shutdown_coordinator_->RequestShutdown(/*force_shutdown=*/false,
                                          ShutdownReason::kGracefulExit,
                                          "ray.shutdown() called");
 }
@@ -638,12 +638,12 @@ void CoreWorker::Exit(
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Preserve actor creation failure details by marking a distinct shutdown reason
-  // when initialization raised an exception and an exception payload is provided.
+  // when initialization raised an exception. An exception payload is provided.
   ShutdownReason reason = creation_task_exception_pb_bytes != nullptr
                               ? ShutdownReason::kActorCreationFailed
                               : ConvertExitTypeToShutdownReason(exit_type);
 
-  shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
+  shutdown_coordinator_->RequestShutdown(/*force_shutdown=*/false,
                                          reason,
                                          detail,
                                          ShutdownCoordinator::kInfiniteTimeout,
@@ -657,7 +657,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 
   ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type, true);
   shutdown_coordinator_->RequestShutdown(
-      true, reason, detail, std::chrono::milliseconds{0}, nullptr);
+      /*force_shutdown=*/true, reason, detail, std::chrono::milliseconds{0}, nullptr);
 
   RAY_LOG(DEBUG) << "ForceExit: shutdown request completed";
 }
@@ -4193,19 +4193,16 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  const size_t num_objects_with_references = reference_counter_->Size();
-  const size_t num_pending_tasks = task_manager_->NumPendingTasks();
-  const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
-  // We consider the worker to be idle if it doesn't have object references and it doesn't
-  // have any object pinning RPCs in flight and it doesn't have pending tasks.
-  bool is_idle = IsIdle(num_objects_with_references, pins_in_flight, num_pending_tasks);
+  bool is_idle = IsIdle();
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle) {
-    RAY_LOG_EVERY_MS(INFO, 60000)
-        << "Worker is not idle: reference counter: " << reference_counter_->DebugString()
-        << " # pins in flight: " << pins_in_flight
-        << " # pending tasks: " << num_pending_tasks;
+    const size_t num_pending_tasks = task_manager_->NumPendingTasks();
+    const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
+    RAY_LOG_EVERY_MS(INFO, 60000) << "Worker is not idle: reference counter: "
+                                  << reference_counter_->DebugString()
+                                  << " # pins in flight: " << pins_in_flight
+                                  << " # pending tasks: " << num_pending_tasks;
     if (force_exit) {
       RAY_LOG(INFO) << "Force exiting worker that's not idle. "
                     << "reference counter: " << reference_counter_->DebugString()
@@ -4233,14 +4230,14 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
           detail = "Worker exited because it was idle for a long time";
         }
 
-        shutdown_coordinator_->RequestShutdown(force_exit,  // force flag from request
+        shutdown_coordinator_->RequestShutdown(force_exit,
                                                reason,
                                                detail);
       },
       // Fallback on RPC failure - still attempt shutdown
       [this]() {
         shutdown_coordinator_->RequestShutdown(
-            false,  // graceful fallback
+            /*force_shutdown=*/false,
             ShutdownReason::kIdleTimeout,
             "Worker exited due to RPC failure during idle exit");
       });
@@ -4412,21 +4409,18 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
 
 bool CoreWorker::IsExiting() const { return shutdown_coordinator_->ShouldEarlyExit(); }
 
-bool CoreWorker::ShouldWorkerExit() const {
-  // Use the same idle checking logic as HandleExit
-  const size_t num_objects_with_references = reference_counter_->Size();
-  const size_t num_pending_tasks = task_manager_->NumPendingTasks();
-  const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
-  // We consider the worker to be idle if it doesn't have object references and it doesn't
-  // have any object pinning RPCs in flight and it doesn't have pending tasks.
-  return IsIdle(num_objects_with_references, pins_in_flight, num_pending_tasks);
-}
-
 bool CoreWorker::IsIdle(size_t num_objects_with_references,
                         int64_t pins_in_flight,
                         size_t num_pending_tasks) const {
   return (num_objects_with_references == 0) && (pins_in_flight == 0) &&
          (num_pending_tasks == 0);
+}
+
+bool CoreWorker::IsIdle() const {
+  const size_t num_objects_with_references = reference_counter_->Size();
+  const size_t num_pending_tasks = task_manager_->NumPendingTasks();
+  const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
+  return IsIdle(num_objects_with_references, pins_in_flight, num_pending_tasks);
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {

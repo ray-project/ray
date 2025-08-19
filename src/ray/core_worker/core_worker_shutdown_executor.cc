@@ -70,7 +70,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   // it up.
   if (core_worker_->gcs_client_) {
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
-    // TODO(hjiang): Move the Disconnect() logic to GcsClient destructor.
+    // TODO(55607): Move the Disconnect() logic to GcsClient destructor.
     // https://github.com/ray-project/ray/issues/55607
     core_worker_->gcs_client_->Disconnect();
     core_worker_->gcs_client_.reset();
@@ -240,9 +240,7 @@ void CoreWorkerShutdownExecutor::KillChildProcessesImmediately() {
   }
 }
 
-bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
-  return core_worker_->ShouldWorkerExit();
-}
+bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const { return core_worker_->IsIdle(); }
 
 void CoreWorkerShutdownExecutor::DisconnectServices(
     std::string_view exit_type,

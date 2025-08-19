@@ -167,7 +167,7 @@ class ShutdownCoordinator {
                            &creation_task_exception_pb_bytes = nullptr);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
-  /// TODO: This is public for now to ease incremental migration and testing.
+  /// TODO (codope): This is public for now to ease incremental migration and testing.
   /// Consider removing or making private once all call sites are wired to
   /// RequestShutdown directly.
   /// \param reason The reason for shutdown initiation
@@ -180,8 +180,11 @@ class ShutdownCoordinator {
   /// valid from kShuttingDown.
   ///
   /// \return true if transition succeeded, false if invalid state
-  /// TODO: Public-for-now to support targeted tests; make private when tests
+  /// TODO (codope): Public-for-now to support targeted tests; make private when tests
   /// drive behavior exclusively via RequestShutdown.
+  /// TODO (codope): Once private, we can consider removing the internal mutex acquisition
+  /// here and in TryTransitionToShutdown(), since RequestShutdown serializes the
+  /// execution path and only a single thread invokes transitions.
   bool TryTransitionToDisconnecting();
 
   /// Attempt to transition to final shutdown state.
@@ -190,8 +193,11 @@ class ShutdownCoordinator {
   /// (force path).
   ///
   /// \return true if transition succeeded, false if invalid state
-  /// TODO: Public-for-now to support targeted tests; make private when tests
+  /// TODO (codope): Public-for-now to support targeted tests; make private when tests
   /// drive behavior exclusively via RequestShutdown.
+  /// TODO (codope): Once private, we can consider removing the internal mutex acquisition
+  /// here and in TryTransitionToDisconnecting(), since RequestShutdown serializes the
+  /// execution path and only a single thread invokes transitions.
   bool TryTransitionToShutdown();
 
   /// Get the current shutdown state (mutex-protected, fast path safe).

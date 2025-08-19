@@ -148,7 +148,7 @@ std::string ShutdownCoordinator::GetStateString() const {
   }
 }
 
-// Shutdown execution methods
+// Methods that execute shutdown logic
 
 void ShutdownCoordinator::ExecuteShutdownSequence(
     bool force_shutdown,
@@ -166,7 +166,9 @@ void ShutdownCoordinator::ExecuteShutdownSequence(
         force_shutdown, detail, timeout_ms, creation_task_exception_pb_bytes);
     break;
   default:
-    RAY_LOG(FATAL) << "Unknown worker type: " << static_cast<int>(worker_type_);
+    RAY_LOG(FATAL) << "Unknown worker type: " << static_cast<int>(worker_type_)
+                   << ". This should be unreachable. Please file a bug at "
+                   << "https://github.com/ray-project/ray/issues.";
     break;
   }
 }
