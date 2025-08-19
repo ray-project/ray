@@ -54,9 +54,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
@@ -99,9 +97,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
         lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
     )
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
