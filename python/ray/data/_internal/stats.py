@@ -948,6 +948,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
         self.iter_finalize_batch_s: Timer = Timer()
+        self.iter_first_batch_blocked_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
@@ -1003,6 +1004,7 @@ class DatasetStats:
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
             self.iter_finalize_batch_s,
+            self.iter_first_batch_blocked_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_initialize_s,
@@ -1642,6 +1644,8 @@ class IterStatsSummary:
     collate_time: Timer
     # Time spent in finalize_fn, in seconds
     finalize_batch_time: Timer
+    # Time user thread is blocked waiting for first batch
+    first_batch_block_time: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
@@ -1665,6 +1669,7 @@ class IterStatsSummary:
         out = ""
         if (
             self.block_time.get()
+            or self.first_batch_block_time.get()
             or self.total_time.get()
             or self.get_time.get()
             or self.next_time.get()
@@ -1684,6 +1689,11 @@ class IterStatsSummary:
                 out += (
                     "    * Total time user thread is blocked by Ray Data iter_batches: "
                     "{}\n".format(fmt(self.block_time.get()))
+                )
+            if self.first_batch_block_time.get():
+                out += (
+                    "    * Total time user thread is blocked waiting for first batch: "
+                    "{}\n".format(fmt(self.first_batch_block_time.get()))
                 )
             if self.user_time.get():
                 out += "    * Total execution time for user thread: {}\n".format(

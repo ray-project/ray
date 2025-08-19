@@ -395,6 +395,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time user thread is blocked waiting for first batch: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -577,6 +578,7 @@ def test_dataset_stats_basic(
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time user thread is blocked waiting for first batch: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -618,6 +620,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time user thread is blocked waiting for first batches: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -1363,6 +1366,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time user thread is blocked waiting for first batches: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total

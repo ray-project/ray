@@ -135,6 +135,7 @@ class BatchIterator:
             if actor_prefetcher_enabled
             else WaitBlockPrefetcher()
         )
+        self.waiting_for_first_batch = True
 
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
@@ -242,8 +243,22 @@ class BatchIterator:
 
     @contextmanager
     def get_next_batch_context(self):
-        with self._stats.iter_total_blocked_s.timer() if self._stats else nullcontext():
-            yield
+        if self._stats:
+            # Always track total blocked time
+            total_timer = self._stats.iter_total_blocked_s.timer()
+            # Also track first batch blocked time if this is the first batch
+            first_batch_timer = (
+                self._stats.iter_first_batch_blocked_s.timer()
+                if self.waiting_for_first_batch
+                else nullcontext()
+            )
+            with total_timer, first_batch_timer:
+                yield
+                self.waiting_for_first_batch = False
+        else:
+            with nullcontext():
+                yield
+                self.waiting_for_first_batch = False
 
     @contextmanager
     def yield_batch_context(self, batch: Batch):
