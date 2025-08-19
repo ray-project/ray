@@ -91,8 +91,15 @@ static inline void Init(
                                   static_cast<uint64_t>(500))));
   // Register the metric recorder.
   if (RayConfig::instance().enable_open_telemetry()) {
+    std::string otlp_exporter_host = "127.0.0.1";
+    for (const auto &tag_pair : global_tags) {
+      if (tag_pair.first == NodeAddressKey) {
+        otlp_exporter_host = tag_pair.second;
+        break;
+      }
+    }
     OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        BuildAddress("127.0.0.1", metrics_agent_port),
+        BuildAddress(otlp_exporter_host, metrics_agent_port),
         std::chrono::milliseconds(
             absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
         std::chrono::milliseconds(
