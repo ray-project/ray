@@ -58,13 +58,17 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
 class RayEventRecorderTest : public ::testing::Test {
  public:
   RayEventRecorderTest() {
-    fake_client_ = std::make_unique<FakeEventAggregatorClient>();
-    recorder_ = std::make_unique<RayEventRecorder>(*fake_client_, io_service_);
+    recorder_ = std::make_unique<RayEventRecorder>(io_service_, 12345);
+    recorder_->event_aggregator_client_ = std::make_unique<FakeEventAggregatorClient>();
     recorder_->StartExportingEvents();
   }
 
+  FakeEventAggregatorClient *GetFakeClient() {
+    return static_cast<FakeEventAggregatorClient *>(
+        recorder_->event_aggregator_client_.get());
+  }
+
   instrumented_io_context io_service_;
-  std::unique_ptr<FakeEventAggregatorClient> fake_client_;
   std::unique_ptr<RayEventRecorder> recorder_;
 };
 
@@ -95,7 +99,8 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 
-  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  std::vector<rpc::events::RayEvent> recorded_events =
+      GetFakeClient()->GetRecordedEvents();
   // Verify first event
   ASSERT_EQ(recorded_events.size(), 2);
   ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);

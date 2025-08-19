@@ -51,7 +51,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
 
  private:
-  rpc::EventAggregatorClient &event_aggregator_client_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
