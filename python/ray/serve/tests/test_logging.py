@@ -1201,16 +1201,13 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
                         elif "this\nis\nmultiline\nlog\n" in message:
                             multiline_log = True
 
-        return all(
-            [
-                from_serve_logger_check,
-                from_print_check,
-                from_error_check,
-                direct_from_stdout,
-                direct_from_stderr,
-                multiline_log,
-            ]
-        )
+        assert from_serve_logger_check
+        assert from_print_check
+        assert from_error_check
+        assert direct_from_stdout
+        assert direct_from_stderr
+        assert multiline_log
+        return True
 
     wait_for_condition(_all_expected_logs_exist)
 
