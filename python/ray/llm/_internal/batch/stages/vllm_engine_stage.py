@@ -462,15 +462,18 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        runai_streamer = self.engine_kwargs.get("load_format") == "runai_streamer"
+        exclude_safetensors = self.engine_kwargs.get("load_format") == "runai_streamer"
+        if exclude_safetensors:
+            download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        else:
+            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Download the model if needed.
         model_source = download_model_files(
             model_id=self.model,
             mirror_config=None,
-            download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
-            download_extra_files=False,
-            runai_streamer=runai_streamer
+            download_model=download_model,
+            download_extra_files=False
         )
 
         # Create an LLM engine.

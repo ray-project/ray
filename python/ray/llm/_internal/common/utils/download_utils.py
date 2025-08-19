@@ -24,6 +24,7 @@ class NodeModelDownloadable(enum.Enum):
 
     MODEL_AND_TOKENIZER = enum.auto()
     TOKENIZER_ONLY = enum.auto()
+    EXCLUDE_SAFETENSORS = enum.auto()
     NONE = enum.auto()
 
     def __bool__(self):
@@ -36,7 +37,11 @@ class NodeModelDownloadable(enum.Enum):
             or other == NodeModelDownloadable.MODEL_AND_TOKENIZER
         ):
             return NodeModelDownloadable.MODEL_AND_TOKENIZER
-
+        if (
+            self == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            or other == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        ):
+            return NodeModelDownloadable.EXCLUDE_SAFETENSORS
         if (
             self == NodeModelDownloadable.TOKENIZER_ONLY
             or other == NodeModelDownloadable.TOKENIZER_ONLY
@@ -111,13 +116,13 @@ class CloudModelDownloader(CloudModelAccessor):
     def get_model(
         self,
         tokenizer_only: bool,
-        runai_streamer: bool=False,
+        exclude_safetensors: bool=False,
     ) -> str:
         """Gets a model from cloud storage and stores it locally.
 
         Args:
             tokenizer_only: whether to download only the tokenizer files.
-            runai_streamer: whether to use streamer to stream model weights into memory.
+            exclude_safetensors: whether to download safetensors files to disk.
 
         Returns: file path of model if downloaded, else the model id.
         """
@@ -137,13 +142,13 @@ class CloudModelDownloader(CloudModelAccessor):
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
                 try:
-                    if runai_streamer:
-                        logger.info("Using RunAI streamer, skipping download of safetensor files.")
+                    if exclude_safetensors:
+                        logger.info("Skipping download of safetensors files.")
                     CloudFileSystem.download_model(
                         destination_path=path,
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
-                        runai_streamer=runai_streamer
+                        exclude_safetensors=exclude_safetensors
                     )
                     logger.info(
                         "Finished downloading %s for %s from %s storage",
@@ -226,8 +231,7 @@ def download_model_files(
     model_id: Optional[str] = None,
     mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
-    download_extra_files: bool = True,
-    runai_streamer: bool = False
+    download_extra_files: bool = True
 ) -> Optional[str]:
     """
     Download the model files from the cloud storage. We support two ways to specify
@@ -247,7 +251,6 @@ def download_model_files(
         mirror_config: Config for downloading model from cloud storage.
         download_model: What parts of the model to download.
         download_extra_files: Whether to download extra files specified in the mirror config.
-        runai_streamer: Whether we are using RunAI streamer to stream model weights directly to memory.
 
     Returns:
         The local path to the downloaded model, or the original model ID
@@ -290,7 +293,7 @@ def download_model_files(
     if download_model != NodeModelDownloadable.NONE:
         model_path_or_id = downloader.get_model(
             tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY,
-            runai_streamer=runai_streamer
+            exclude_safetensors=download_model == NodeModelDownloadable.EXCLUDE_SAFETENSORS
         )
 
     if download_extra_files:

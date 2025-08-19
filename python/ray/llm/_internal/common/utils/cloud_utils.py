@@ -284,7 +284,7 @@ class CloudFileSystem:
 
     @staticmethod
     def download_model(
-        destination_path: str, bucket_uri: str, tokenizer_only: bool, runai_streamer: bool=False
+        destination_path: str, bucket_uri: str, tokenizer_only: bool, exclude_safetensors: bool=False
     ) -> None:
         """Download a model from cloud storage.
 
@@ -295,7 +295,7 @@ class CloudFileSystem:
             destination_path: Path where the model will be stored
             bucket_uri: URI of the cloud directory containing the model
             tokenizer_only: If True, only download tokenizer-related files
-            runai_streamer: If True, skip download of safetensor files
+            exclude_safetensors: If True, skip download of safetensor files
         """
         try:
             fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
@@ -336,7 +336,7 @@ class CloudFileSystem:
                 ["tokenizer", "config.json"] if tokenizer_only else []
             )
 
-            safetensors_to_exclude = [".safetensors"] if runai_streamer else None
+            safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
 
             CloudFileSystem.download_files(
                 path=destination_dir,
