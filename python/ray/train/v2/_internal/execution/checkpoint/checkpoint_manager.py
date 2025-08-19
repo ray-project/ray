@@ -2,7 +2,6 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-import ray
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -300,8 +299,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         )
         train_context_args = {
             "checkpoint": [latest_checkpoint] * len(workers),
-            "controller_actor": [ray.get_runtime_context().current_actor]
-            * len(workers),
         }
         return train_context_args
 

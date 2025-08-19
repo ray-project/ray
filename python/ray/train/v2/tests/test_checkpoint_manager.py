@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 from typing import List, Optional
-from unittest.mock import create_autospec, patch
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -146,14 +146,7 @@ def test_load_state_error(tmp_path, json_state):
         checkpoint_manager._load_state(json_state)
 
 
-@patch.object(ray, "get_runtime_context", autospec=True)
-async def test_before_init_train_context(mock_get_runtime_context, tmp_path):
-    mock_runtime_context = create_autospec(
-        ray.runtime_context.RuntimeContext, instance=True
-    )
-    mock_actor = create_autospec(ray.actor.ActorHandle, instance=True)
-    mock_runtime_context.current_actor = mock_actor
-    mock_get_runtime_context.return_value = mock_runtime_context
+async def test_before_init_train_context(tmp_path):
 
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -168,7 +161,6 @@ async def test_before_init_train_context(mock_get_runtime_context, tmp_path):
     # Assert without a checkpoint.
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [None] * 4,
-        "controller_actor": [mock_actor] * 4,
     }
 
     # Assert with a checkpoint
@@ -176,7 +168,6 @@ async def test_before_init_train_context(mock_get_runtime_context, tmp_path):
     checkpoint_manager.register_checkpoint(latest_checkpoint_result)
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
-        "controller_actor": [mock_actor] * 4,
     }
 
 

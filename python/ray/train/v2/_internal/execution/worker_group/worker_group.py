@@ -57,6 +57,7 @@ from ray.train.v2._internal.logging.logging import get_train_application_worker_
 from ray.train.v2._internal.util import (
     ObjectRefWrapper,
     bundle_to_remote_args,
+    get_current_actor,
     invoke_context_managers,
     ray_get_safe,
     time_monotonic,
@@ -437,6 +438,7 @@ class WorkerGroup:
                 synchronization_actor=sync_actor,
                 storage_context=self._storage_context,
                 worker_callbacks=self._worker_callbacks_to_propagate,
+                controller_actor=get_current_actor(),
                 **{
                     arg: arg_values[i] for arg, arg_values in train_context_args.items()
                 },
