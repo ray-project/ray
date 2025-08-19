@@ -125,8 +125,8 @@ def _hash_file_content_or_directory_name(
 
     BUF_SIZE = 4096 * 1024
 
-    sha1 = hashlib.sha1()
-    sha1.update(str(filepath.relative_to(relative_path)).encode())
+    sha256 = hashlib.sha256()
+    sha256.update(str(filepath.relative_to(relative_path)).encode())
     if not filepath.is_dir():
         try:
             f = filepath.open("rb")
@@ -139,12 +139,12 @@ def _hash_file_content_or_directory_name(
             try:
                 data = f.read(BUF_SIZE)
                 while len(data) != 0:
-                    sha1.update(data)
+                    sha256.update(data)
                     data = f.read(BUF_SIZE)
             finally:
                 f.close()
 
-    return sha1.digest()
+    return sha256.digest()
 
 
 def _hash_file(
@@ -469,7 +469,7 @@ def get_uri_for_package(package: Path) -> str:
             protocol=Protocol.GCS.value, whl_filename=package.name
         )
     else:
-        hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
+        hash_val = hashlib.sha256(package.read_bytes()).hexdigest()
         return "{protocol}://{pkg_name}.zip".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )
