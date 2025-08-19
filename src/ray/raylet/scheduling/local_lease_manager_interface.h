@@ -71,8 +71,7 @@ class LocalLeaseManagerInterface {
 
   virtual void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) = 0;
 
-  virtual void LeaseFinished(std::shared_ptr<WorkerInterface> worker,
-                             RayLease *lease) = 0;
+  virtual void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) = 0;
 
   virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 
@@ -100,13 +99,11 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
  public:
   NoopLocalLeaseManager() = default;
 
-  /// Queue lease and schedule.
   void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override {
     RAY_CHECK(false)
         << "This function should never be called by gcs' local task manager.";
   }
 
-  // Schedule and grant leases.
   void ScheduleAndGrantLeases() override {}
 
   bool CancelLeases(
@@ -145,7 +142,7 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
 
   void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override {}
 
-  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override {}
+  void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override {}
 
   void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override {}
 

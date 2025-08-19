@@ -123,7 +123,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
   // leases from being granted.
   for (auto shapes_it = leases_to_grant_.begin(); shapes_it != leases_to_grant_.end();) {
     auto &scheduling_class = shapes_it->first;
-    auto &grant_queue = shapes_it->second;
+    auto &leases_to_grant_queue = shapes_it->second;
 
     auto sched_cls_iter = info_by_sched_cls_.find(scheduling_class);
     if (sched_cls_iter == info_by_sched_cls_.end()) {
@@ -132,48 +132,48 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           info_by_sched_cls_
               .emplace(scheduling_class,
                        SchedulingClassInfo(
-                           MaxRunningLeasesPerSchedulingClass(scheduling_class)))
+                           MaxGrantedLeasesPerSchedulingClass(scheduling_class)))
               .first;
     }
     auto &sched_cls_info = sched_cls_iter->second;
 
     // Fair scheduling is applied only when the total CPU requests exceed the node's
-    // capacity. This skips scheduling classes whose number of running tasks exceeds the
-    // average number of tasks per scheduling class.
+    // capacity. This skips scheduling classes whose number of granted leases exceeds the
+    // average number of granted leases per scheduling class.
 
     // The purpose of fair scheduling is to ensure that each scheduling class has an
-    // equal chance of being selected for dispatch. For instance, in a pipeline with both
-    // data producers and consumers, we aim for consumers to have the same chance to be
-    // dispatched as producers. This prevents memory peak caused by dispatching all
-    // producer tasks first.
-    // A scheduling class is skipped from dispatching if its number of running tasks
-    // exceeds the fair_share, which is the average number of running tasks among all
+    // equal chance of being selected for lease granting. For instance, in a pipeline with
+    // both data producers and consumers, we aim for consumers to have the same chance to
+    // be granted a lease as producers. This prevents memory peak caused by granting all
+    // producer leases first.
+    // A scheduling class is skipped from lease granting if its number of granted leases
+    // exceeds the fair_share, which is the average number of granted leases among all
     // scheduling classes. For example, consider a scenario where we have 3 CPUs and 2
-    // scheduling classes, `f` and `g`, each with 4 tasks.
-    // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 running tasks.
-    // Status 2: We dispatch 3 `f` tasks. Now the queue is [f, g, g, g, g],
-    //           with 3 `f` tasks running.
-    // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
-    //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
+    // scheduling classes, `f` and `g`, each with 4 leases.
+    // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 granted leases.
+    // Status 2: We grant 3 `f` leases. Now the queue is [f, g, g, g, g],
+    //           with 3 `f` leases granted.
+    // Status 3: Suppose 1 `f` lease finishes. When choosing the next lease to grant,
+    //           the queue is [f, g, g, g, g], and there are 2 `f` leases granted.
     //           We calculate fair_share as follows:
-    //           fair_share = number of running tasks / number of scheduling classes
+    //           fair_share = number of granted leases / number of scheduling classes
     //                       = 2 / 2 = 1.
-    //           Since the number of running `f` tasks (2) is greater than the
-    //           fair_share (1), we skip `f` and choose to dispatch `g`.
-    // Note 1: Fair_share is calculated as (total number of running tasks with >0 CPU)
+    //           Since the number of granted `f` leases (2) is greater than the
+    //           fair_share (1), we skip `f` and choose to grant `g`.
+    // Note 1: Fair_share is calculated as (total number of granted leases with >0 CPU)
     //         / (number of scheduling classes in leases_to_dispatch_).
     // Note 2: The decision to skip a scheduling class happens when loop through the
-    //         scheduling classes (keys of leases_to_dispatch_). This means we check for
+    //         scheduling classes (keys of leases_to_grant_). This means we check for
     //         fair dispatching when looping through the scheduling classes rather than
-    //         for each individual task, reducing the number of checks required.
-    //         This is why in Status 2 of the example, we dispatch 3 `f` tasks because
-    //         we chose `f` for dispatch,and we continue dispatching all `f`
-    //         tasks until resources are fully utilized.
+    //         for each individual lease, reducing the number of checks required.
+    //         This is why in Status 2 of the example, we grant 3 `f` leases because
+    //         we chose `f` for grant, and we continue granting all `f`
+    //         leases until resources are fully utilized.
 
-    // Currently, fair dispatching is implemented only for tasks that require CPU
+    // Currently, fair granting is implemented only for leases that require CPU
     // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
 
-    // Calculate the total CPU requests for all tasks in the tasks_to_dispatch queue.
+    // Calculate the total CPU requests for all leases in the leases_to_grant queue.
     double total_cpu_requests_ = 0.0;
 
     // Count the number of scheduling classes that require CPU and sum their total CPU
@@ -198,14 +198,14 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
 
     // Compare total CPU requests with the node's total CPU capacity. If the requests
-    // exceed the capacity, check if fair dispatching is needed.
+    // exceed the capacity, check if fair granting is needed.
     if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
         total_cpu_requests_ > total_cpus) {
       RAY_LOG(DEBUG)
-          << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
+          << "Applying fairness policy. Total CPU requests in leases_to_grant_ ("
           << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
           << ").";
-      // Get the total number of running tasks requires CPU.
+      // Get the total number of granted leases that require CPU.
       size_t total_cpu_granted_leases = 0;
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
@@ -220,33 +220,36 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       // 1. We have confirmed that this is a scheduling class that requires CPU resources,
       //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is in
       //    leases_to_grant_.
-      // 2. We will compute fair_share as the ideal distribution of tasks among all
+      // 2. We will compute fair_share as the ideal distribution of leases among all
       //    scheduling classes in leases_to_grant_. Then, we will check if the number
-      //    of running tasks for this scheduling class exceeds its ideal fair_share.
+      //    of granted leases for this scheduling class exceeds its ideal fair_share.
       // 3. Note: We should get the num_classes_with_cpu from leases_to_grant_
-      //    instead of the info_by_sched_cls_ although total_cpu_running_tasks gets from
-      //    the task running. First, info_by_sched_cls_ may not be initialized yet for
-      //    some scheduling classes (as we initialize it in the loop). Second, we expect
-      //    the number of running tasks for this scheduling class to not be much. However,
-      //    if no tasks of this scheduling class are running, it will not be skipped.
+      //    instead of the info_by_sched_cls_ although total_cpu_granted_leases is
+      //    obtained from the granted leases. First, info_by_sched_cls_ may not be
+      //    initialized yet for some scheduling classes (as we initialize it in the loop).
+      //    Second, we expect the number of granted leases for this scheduling class to
+      //    not be much. However, if no leases of this scheduling class are granted, it
+      //    will not be skipped.
 
       size_t fair_share = total_cpu_granted_leases / num_classes_with_cpu;
       if (sched_cls_info.granted_leases.size() > fair_share) {
-        RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
-                       << ". Running tasks (" << sched_cls_info.granted_leases.size()
-                       << ") exceed fair share (" << fair_share << ").";
+        RAY_LOG(DEBUG) << "Skipping lease granting for scheduling class "
+                       << scheduling_class << ". Granted leases ("
+                       << sched_cls_info.granted_leases.size() << ") exceed fair share ("
+                       << fair_share << ").";
         shapes_it++;
         continue;
       }
     }
 
-    /// We cap the maximum running tasks of a scheduling class to avoid
-    /// scheduling too many tasks of a single type/depth, when there are
+    /// We cap the maximum granted leases of a scheduling class to avoid
+    /// granting too many leases of a single type/depth, when there are
     /// deeper/other functions that should be run. We need to apply back
     /// pressure to limit the number of worker processes started in scenarios
     /// with nested tasks.
     bool is_infeasible = false;
-    for (auto work_it = grant_queue.begin(); work_it != grant_queue.end();) {
+    for (auto work_it = leases_to_grant_queue.begin();
+         work_it != leases_to_grant_queue.end();) {
       auto &work = *work_it;
       const auto &lease = work->lease;
       const auto &spec = lease.GetLeaseSpecification();
@@ -263,8 +266,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
                        << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_ms_() < sched_cls_info.next_update_time) {
-          // We're over capacity and it's not time to admit a new task yet.
-          // Calculate the next time we should admit a new task.
+          // We're over capacity and it's not time to grant a new lease yet.
+          // Calculate the next time we should grant a new lease.
           int64_t current_capacity = sched_cls_info.granted_leases.size();
           int64_t allowed_capacity = sched_cls_info.capacity;
           int64_t exp = current_capacity - allowed_capacity;
@@ -279,11 +282,11 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
 
-          // While we're over capacity and cannot run the task,
-          // try to spill to a node that can run it.
+          // While we're over capacity and cannot grant the lease,
+          // try to spill to a node that can.
           bool did_spill = TrySpillback(work, is_infeasible);
           if (did_spill) {
-            work_it = grant_queue.erase(work_it);
+            work_it = leases_to_grant_queue.erase(work_it);
             continue;
           }
 
@@ -293,31 +296,32 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
 
       bool args_missing = false;
       bool success = PinLeaseArgsIfMemoryAvailable(spec, &args_missing);
-      // An argument was evicted since this task was added to the dispatch
+      // An argument was evicted since this lease was added to the grant
       // queue. Move it back to the waiting queue. The caller is responsible
-      // for notifying us when the task is unblocked again.
+      // for notifying us when the lease is unblocked again.
       if (!success) {
         if (args_missing) {
-          // Insert the task at the head of the waiting queue because we
+          // Insert the lease at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
           // TODO(scv119): where does pulling happen?
           auto it = waiting_lease_queue_.insert(waiting_lease_queue_.begin(),
                                                 std::move(*work_it));
           RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
-          work_it = grant_queue.erase(work_it);
+          work_it = leases_to_grant_queue.erase(work_it);
         } else {
-          // The task's args cannot be pinned due to lack of memory. We should
-          // retry dispatching the task once another task finishes and releases
+          // The lease's args cannot be pinned due to lack of memory. We should
+          // retry granting the lease once another lease finishes and releases
           // its arguments.
-          RAY_LOG(DEBUG) << "Dispatching lease " << lease_id
+          RAY_LOG(DEBUG) << "Granting lease " << lease_id
                          << " would put this node over the max memory allowed for "
-                            "arguments of executing tasks ("
+                            "arguments of granted leases ("
                          << max_pinned_lease_arguments_bytes_
-                         << "). Waiting to dispatch task until other tasks complete";
+                         << "). Waiting to grant lease until other leases are returned";
           RAY_CHECK(!granted_lease_args_.empty() && !pinned_lease_arguments_.empty())
-              << "Cannot dispatch lease " << lease_id
-              << " until another task finishes and releases its arguments, but no other "
-                 "task is running";
+              << "Cannot grant lease " << lease_id
+              << " until another lease is returned and releases its arguments, but no "
+                 "other "
+                 "lease is granted";
           work->SetStateWaiting(
               internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
           work_it++;
@@ -335,18 +339,18 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                                           allocated_instances);
       if (!schedulable) {
         ReleaseLeaseArgs(lease_id);
-        // The local node currently does not have the resources to run the task, so we
+        // The local node currently does not have the resources to grant the lease, so we
         // should try spilling to another node.
         bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
-          // There must not be any other available nodes in the cluster, so the task
+          // There must not be any other available nodes in the cluster, so the lease
           // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
           work->SetStateWaiting(
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
-        work_it = grant_queue.erase(work_it);
+        work_it = leases_to_grant_queue.erase(work_it);
       } else {
         // Force us to recalculate the next update time the next time a task
         // comes through this queue. We should only do this when we're
@@ -354,13 +358,13 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         // passed.
         sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
         sched_cls_info.granted_leases.insert(lease_id);
-        // The local node has the available resources to run the task, so we should run
-        // it.
+        // The local node has the available resources to grant the lease, so we should
+        // grant it.
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
         auto &owner_address = spec.CallerAddress();
-        /// TODO(scv119): if a worker is not started, the resources is leaked and
+        /// TODO(scv119): if a worker is not started, the resources are leaked and
         // task might be hanging.
         worker_pool_.PopWorker(
             spec,
@@ -368,7 +372,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and task id, we're
+              // TODO(hjiang): After getting the ready-to-use worker and lease id, we're
               // able to get physical execution context.
               //
               // ownership chain: raylet has-a node manager, node manager has-a local task
@@ -393,26 +397,28 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     // In the beginning of the loop, we add scheduling_class
     // to the `info_by_sched_cls_` map.
     // In cases like dead owners, we may not add any tasks
-    // to `running_tasks` so we can remove the map entry
+    // to `granted_leases` so we can remove the map entry
     // for that scheduling_class to prevent memory leaks.
     if (sched_cls_info.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      const auto &front_task = grant_queue.front()->lease.GetLeaseSpecification();
-      RAY_LOG(ERROR) << "A task got scheduled to a node even though it was infeasible. "
-                        "Please report an issue on GitHub.\nTask: "
-                     << front_task.DebugString();
-      auto grant_queue_iter = grant_queue.begin();
-      while (grant_queue_iter != grant_queue.end()) {
+      const auto &front_lease =
+          leases_to_grant_queue.front()->lease.GetLeaseSpecification();
+      RAY_LOG(ERROR) << "A lease got granted to a node even though it was infeasible. "
+                        "Please report an issue on GitHub.\nLease: "
+                     << front_lease.DebugString();
+      auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
+      while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
         CancelLeaseToGrant(
-            *grant_queue_iter,
+            *leases_to_grant_queue_iter,
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-            "Scheduling failed due to the task becoming infeasible.");
-        grant_queue_iter = grant_queue.erase(grant_queue_iter);
+            "Lease granting failed due to the lease becoming infeasible.");
+        leases_to_grant_queue_iter =
+            leases_to_grant_queue.erase(leases_to_grant_queue_iter);
       }
       leases_to_grant_.erase(shapes_it++);
-    } else if (grant_queue.empty()) {
+    } else if (leases_to_grant_queue.empty()) {
       leases_to_grant_.erase(shapes_it++);
     } else {
       shapes_it++;
@@ -421,18 +427,18 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
 }
 
 void LocalLeaseManager::SpillWaitingLeases() {
-  // Try to spill waiting tasks to a remote node, prioritizing those at the end
-  // of the queue. Waiting tasks are spilled if there are enough remote
+  // Try to spill waiting leases to a remote node, prioritizing those at the end
+  // of the queue. Waiting leases are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
-  // dependencies are not being fetched). We should not spill tasks whose
+  // dependencies are not being fetched). We should not spill leases whose
   // dependencies are actively being fetched because some of their dependencies
   // may already be local or in-flight to this node.
   //
   // NOTE(swang): We do not iterate by scheduling class here, so if we break
-  // due to lack of remote resources, it is possible that a waiting task that
+  // due to lack of remote resources, it is possible that a waiting lease that
   // is earlier in the queue could have been scheduled to a remote node.
   // TODO(scv119): this looks very aggressive: we will try to spillback
-  // all the tasks in the waiting queue regardless of the wait time.
+  // all the leases in the waiting queue regardless of the wait time.
   auto it = waiting_lease_queue_.end();
   while (it != waiting_lease_queue_.begin()) {
     it--;
@@ -463,7 +469,7 @@ void LocalLeaseManager::SpillWaitingLeases() {
           &is_infeasible);
     } else {
       // If scheduling strategy is spread, we prefer honoring spread decision
-      // and waiting for task dependencies to be pulled
+      // and waiting for lease dependencies to be pulled
       // locally than spilling back and causing uneven spread.
       scheduling_node_id = self_scheduling_node_id_;
     }
@@ -550,40 +556,43 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   // Erases the work from lease_to_grant_ queue, also removes the lease dependencies.
   //
   // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
-  // requests task dependency upon ctor, and remove task dependency upon dtor.
+  // requests lease dependency upon ctor, and remove lease dependency upon dtor.
   // I tried this, it works, but we expose the map via GetLeasesToGrant() used in
   // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
   // a view of the Work ptrs, but I got dependency issues
   // (can't include boost/range/any_range.hpp).
-  auto erase_from_grant_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
-                                          const SchedulingClass &scheduling_class) {
-    auto shapes_it = leases_to_grant_.find(scheduling_class);
-    RAY_CHECK(shapes_it != leases_to_grant_.end());
-    auto &grant_queue = shapes_it->second;
-    bool erased = false;
-    for (auto work_it = grant_queue.begin(); work_it != grant_queue.end(); work_it++) {
-      if (*work_it == work) {
-        grant_queue.erase(work_it);
-        erased = true;
-        break;
-      }
-    }
-    if (grant_queue.empty()) {
-      leases_to_grant_.erase(shapes_it);
-    }
-    RAY_CHECK(erased);
+  auto erase_from_leases_to_grant_queue_fn =
+      [this](const std::shared_ptr<internal::Work> &work,
+             const SchedulingClass &scheduling_class) {
+        auto shapes_it = leases_to_grant_.find(scheduling_class);
+        RAY_CHECK(shapes_it != leases_to_grant_.end());
+        auto &leases_to_grant_queue = shapes_it->second;
+        bool erased = false;
+        for (auto work_it = leases_to_grant_queue.begin();
+             work_it != leases_to_grant_queue.end();
+             work_it++) {
+          if (*work_it == work) {
+            leases_to_grant_queue.erase(work_it);
+            erased = true;
+            break;
+          }
+        }
+        if (leases_to_grant_queue.empty()) {
+          leases_to_grant_.erase(shapes_it);
+        }
+        RAY_CHECK(erased);
 
-    const auto &lease = work->lease;
-    if (!lease.GetLeaseSpecification().GetDependencies().empty()) {
-      lease_lease_dependency_manager_.RemoveLeaseDependencies(
-          lease.GetLeaseSpecification().LeaseId());
-    }
-  };
+        const auto &lease = work->lease;
+        if (!lease.GetLeaseSpecification().GetDependencies().empty()) {
+          lease_lease_dependency_manager_.RemoveLeaseDependencies(
+              lease.GetLeaseSpecification().LeaseId());
+        }
+      };
 
   if (canceled) {
     // Task has been canceled.
     RAY_LOG(DEBUG) << "Lease " << lease_id << " has been canceled when worker popped";
-    RemoveFromRunningLeasesIfExists(work->lease);
+    RemoveFromGrantedLeasesIfExists(work->lease);
     // All the cleaning work has been done when canceled lease. Just return
     // false without doing anything.
     return false;
@@ -597,7 +606,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseLeaseArgs(lease_id);
-    RemoveFromRunningLeasesIfExists(work->lease);
+    RemoveFromGrantedLeasesIfExists(work->lease);
 
     // Empty worker popped.
     RAY_LOG(DEBUG).WithField(lease_id)
@@ -619,7 +628,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       // The task job finished.
       // Just remove the task from dispatch queue.
       RAY_LOG(DEBUG) << "Call back to a job finished lease, lease id = " << lease_id;
-      erase_from_grant_queue_fn(work, scheduling_class);
+      erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     } else {
       // In other cases, set the work status `WAITING` to make this task
       // could be re-dispatched.
@@ -643,7 +652,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
 
     Grant(
         worker, leased_workers_, work->allocated_instances, work->lease, reply, callback);
-    erase_from_grant_queue_fn(work, scheduling_class);
+    erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     dispatched = true;
   }
 
@@ -706,11 +715,11 @@ void LocalLeaseManager::LeasesUnblocked(const std::vector<LeaseID> &ready_ids) {
   ScheduleAndGrantLeases();
 }
 
-void LocalLeaseManager::RemoveFromRunningLeasesIfExists(const RayLease &lease) {
+void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   auto sched_cls = lease.GetLeaseSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
-    // TODO(hjiang): After remove the task id from `running_tasks`, corresponding cgroup
+    // TODO(hjiang): After remove the lease id from `granted_leases`, corresponding cgroup
     // will be updated.
     it->second.granted_leases.erase(lease.GetLeaseSpecification().LeaseId());
     if (it->second.granted_leases.size() == 0) {
@@ -719,11 +728,11 @@ void LocalLeaseManager::RemoveFromRunningLeasesIfExists(const RayLease &lease) {
   }
 }
 
-void LocalLeaseManager::LeaseFinished(std::shared_ptr<WorkerInterface> worker,
-                                      RayLease *lease) {
+void LocalLeaseManager::CleanupLease(std::shared_ptr<WorkerInterface> worker,
+                                     RayLease *lease) {
   RAY_CHECK(worker != nullptr && lease != nullptr);
   *lease = worker->GetGrantedLease();
-  RemoveFromRunningLeasesIfExists(*lease);
+  RemoveFromGrantedLeasesIfExists(*lease);
 
   ReleaseLeaseArgs(lease->GetLeaseSpecification().LeaseId());
   if (worker->GetAllocatedInstances() != nullptr) {
@@ -901,7 +910,7 @@ void LocalLeaseManager::CancelLeaseToGrant(
     lease_lease_dependency_manager_.RemoveLeaseDependencies(
         work->lease.GetLeaseSpecification().LeaseId());
   }
-  RemoveFromRunningLeasesIfExists(work->lease);
+  RemoveFromGrantedLeasesIfExists(work->lease);
   work->SetStateCancelled();
 }
 
@@ -1154,7 +1163,7 @@ ResourceSet LocalLeaseManager::CalcNormalLeaseResources() const {
   return total_normal_lease_resources;
 }
 
-uint64_t LocalLeaseManager::MaxRunningLeasesPerSchedulingClass(
+uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
@@ -1227,7 +1236,7 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
     buffer << "\t}\n";
   }
   buffer << "\n";
-  buffer << "Running tasks by scheduling class:\n";
+  buffer << "Granted leases by scheduling class:\n";
 
   for (const auto &pair : info_by_sched_cls_) {
     const auto &sched_cls = pair.first;

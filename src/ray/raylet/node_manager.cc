@@ -708,31 +708,31 @@ void NodeManager::QueryAllWorkerStates(
 
 // This warns users that there could be the resource deadlock. It works this way;
 // - If there's no available workers for scheduling
-// - But if there are still pending tasks waiting for resource acquisition
+// - But if there are still pending leases waiting for resource acquisition
 // It means the cluster might not have enough resources to be in progress.
 // Note that this can print the false negative messages
 // e.g., there are many actors taking up resources for a long time.
 void NodeManager::WarnResourceDeadlock() {
   int pending_actor_creations = 0;
-  int pending_tasks = 0;
+  int pending_leases = 0;
 
   // Check if any progress is being made on this raylet.
   if (worker_pool_.IsWorkerAvailableForScheduling()) {
-    // Progress is being made in a task, don't warn.
+    // Progress is being made in a lease, don't warn.
     resource_deadlock_warned_ = 0;
     return;
   }
 
   auto exemplar = cluster_lease_manager_.AnyPendingLeasesForResourceAcquisition(
-      &pending_actor_creations, &pending_tasks);
-  // Check if any tasks are blocked on resource acquisition.
+      &pending_actor_creations, &pending_leases);
+  // Check if any leases are blocked on resource acquisition.
   if (exemplar == nullptr) {
-    // No pending tasks, no need to warn.
+    // No pending leases, no need to warn.
     resource_deadlock_warned_ = 0;
     return;
   }
 
-  // Push an warning to the driver that a task is blocked trying to acquire resources.
+  // Push an warning to the driver that a lease is blocked trying to acquire resources.
   // To avoid spurious triggers, only take action starting with the second time.
   // case resource_deadlock_warned_:  0 => first time, don't do anything yet
   // case resource_deadlock_warned_:  1 => second time, print a warning
@@ -748,25 +748,25 @@ void NodeManager::WarnResourceDeadlock() {
     }
 
     RAY_LOG(WARNING)
-        << "The actor or task with ID " << exemplar->GetLeaseSpecification().LeaseId()
+        << "The lease with ID " << exemplar->GetLeaseSpecification().LeaseId()
         << " cannot be scheduled right now. You can ignore this message if this "
         << "Ray cluster is expected to auto-scale or if you specified a "
-        << "runtime_env for this actor or task, which may take time to install.  "
+        << "runtime_env for this actor or lease, which may take time to install.  "
         << "Otherwise, this is likely due to all cluster resources being claimed "
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
-        << "Required resources for this actor or task: "
+        << "Required resources for this lease: "
         << exemplar->GetLeaseSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_.GetClusterResourceManager()
                .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()))
-        << " In total there are " << pending_tasks << " pending tasks and "
+        << " In total there are " << pending_leases << " pending leases and "
         << pending_actor_creations << " pending actors on this node.";
     RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_lease_manager_.DebugStr();
   }
-  // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
-  // tasks are never be scheduled.
+  // Try scheduling leases. Without this, if there's no more leases coming in, deadlocked
+  // leases are never be scheduled.
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
@@ -1156,7 +1156,7 @@ Status NodeManager::RegisterForNewWorker(
   Status status =
       worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
   if (!status.ok()) {
-    // If the worker failed to register to Raylet, trigger task dispatching here to
+    // If the worker failed to register to Raylet, trigger lease granting here to
     // allow new worker processes to be started (if capped by
     // maximum_startup_concurrency).
     cluster_lease_manager_.ScheduleAndGrantLeases();
@@ -1171,8 +1171,8 @@ Status NodeManager::RegisterForNewDriver(
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
   worker->SetProcess(Process::FromPid(pid));
-  // Compute a dummy driver task id from a given driver.
-  // The task id set in the worker here should be consistent with the task
+  // Compute a dummy driver lease id from a given driver.
+  // The lease id set in the worker here should be consistent with the lease
   // id set in the core worker.
   const LeaseID driver_lease_id = LeaseID::DriverLeaseID(worker->WorkerId());
   worker->AssignLeaseId(driver_lease_id);
@@ -1275,9 +1275,9 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
   bool worker_idle = true;
 
-  // If the worker was assigned a task, mark it as finished.
+  // If the worker was granted a lease, clean up any lease resources and state
   if (!worker->GetGrantedLeaseId().IsNil()) {
-    worker_idle = ReturnGrantedLease(worker);
+    worker_idle = CleanupLease(worker);
   }
 
   if (worker_idle) {
@@ -1363,14 +1363,14 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const LeaseID &lease_id = worker->GetGrantedLeaseId();
-    // If the worker was running a task or actor, clean up the task and push an
+    // If the worker was granted a lease, clean up the lease and push an
     // error to the driver, unless the worker is already dead.
     if ((!lease_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         // Return the resources that were being used by this worker.
         RayLease lease;
-        local_lease_manager_.LeaseFinished(worker, &lease);
+        local_lease_manager_.CleanupLease(worker, &lease);
       }
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -2089,31 +2089,27 @@ void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &clie
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 }
 
-bool NodeManager::ReturnGrantedLease(const std::shared_ptr<WorkerInterface> &worker) {
+bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
   LeaseID lease_id = worker->GetGrantedLeaseId();
-  RAY_LOG(DEBUG).WithField(lease_id) << "Finished lease ";
+  RAY_LOG(DEBUG).WithField(lease_id) << "Cleaning up lease ";
 
   RayLease lease;
-  local_lease_manager_.LeaseFinished(worker, &lease);
+  local_lease_manager_.CleanupLease(worker, &lease);
 
-  const auto &lease_spec = lease.GetLeaseSpecification();  //
+  const auto &lease_spec = lease.GetLeaseSpecification();
   if ((lease_spec.IsActorCreationTask())) {
-    // If this was an actor or actor creation task, handle the actor's new
-    // state.
+    // If this was an actor or actor creation task, convert the worker to an actor.
     ConvertWorkerToActor(worker, lease);
   } else {
-    // If this was a non-actor task, then cancel any ray.wait calls that were
-    // made during the task execution.
+    // If this was a non-actor lease, cancel any ray.wait calls that were
+    // made during the lease execution.
     lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
   }
 
-  // Notify the task dependency manager that this task has finished execution.
+  // Notify the lease dependency manager that this lease has returned.
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (!lease_spec.IsActorCreationTask()) {
-    // Unset the worker's assigned task. We keep the assigned task ID for
-    // actor creation calls because this ID is used later if the actor
-    // requires objects from plasma.
     worker->AssignLeaseId(LeaseID::Nil());
     worker->SetOwnerAddress(rpc::Address());
   }
@@ -2192,7 +2188,7 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
 }
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
-  // Notify the task dependency manager that this object is no longer local.
+  // Notify the lease dependency manager that this object is no longer local.
   const auto waiting_lease_ids = lease_dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
   result << "Object missing " << object_id << ", "

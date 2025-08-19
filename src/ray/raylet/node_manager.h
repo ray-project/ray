@@ -353,12 +353,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const NodeID &id,
       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
-  /// Handle a worker returning its granted lease.
+  /// Cleanup any lease resources and state for a worker that was granted a lease.
   ///
   /// \param worker The worker that was granted the lease.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool ReturnGrantedLease(const std::shared_ptr<WorkerInterface> &worker);
+  bool CleanupLease(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Convert a worker to an actor since it's finished an actor creation task.
   /// \param worker The worker that finished the task.

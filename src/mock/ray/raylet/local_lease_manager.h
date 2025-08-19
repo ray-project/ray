@@ -53,7 +53,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (int *num_pending_actor_creation, int *num_pending_leases),
               (const, override));
   MOCK_METHOD(void,
-              LeaseFinished,
+              CleanupLease,
               (std::shared_ptr<WorkerInterface> worker, RayLease *lease),
               (override));
   MOCK_METHOD(void, LeasesUnblocked, (const std::vector<LeaseID> &ready_ids), (override));

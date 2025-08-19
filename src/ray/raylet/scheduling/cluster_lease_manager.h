@@ -166,7 +166,8 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
  private:
   void TryScheduleInfeasibleLease();
 
-  // Schedule the task onto a node (which could be either remote or local).
+  // Schedule the lease onto a node (which could be to a worker thats in a local or remote
+  // node).
   void ScheduleOnNode(const NodeID &node_to_schedule,
                       const std::shared_ptr<internal::Work> &work);
 

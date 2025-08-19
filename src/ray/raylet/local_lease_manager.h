@@ -49,7 +49,7 @@ namespace raylet {
 /// 4. If all resources are acquired, we start a worker and return the worker
 ///    address to the client once worker starts up.
 /// 5. When a worker finishes executing its task(s), the requester will return
-///    it and we should release the resources in our view of the node's state.
+///    the lease and we should release the resources in our view of the node's state.
 /// 6. If a lease has been waiting for arguments for too long, it will also be
 ///    spilled back to a different node.
 ///
@@ -103,15 +103,15 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// \param ready_ids: The leases which are now ready to be granted.
   void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override;
 
-  /// Return the finished lease and release the worker resources.
+  /// Cleanup the lease and release the worker resources.
   /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
   /// once we remove the legacy scheduler.
   ///
-  /// \param worker: The worker which was running the lease.
+  /// \param worker: The worker which was granted the lease.
   /// \param lease: Output parameter.
-  void LeaseFinished(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override;
+  void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override;
 
-  /// Attempt to cancel all queued tasks that match the predicate.
+  /// Attempt to cancel all queued leases that match the predicate.
   ///
   /// \param predicate: A function that returns true if a lease needs to be cancelled.
   /// \param failure_type: The reason for cancellation.
@@ -133,11 +133,11 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   /// Call once a lease finishes (i.e. a worker is returned).
   ///
-  /// \param worker: The worker which was running the lease.
+  /// \param worker: The worker which was granted the lease.
   void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
 
   /// When a lease is blocked in ray.get or ray.wait, the worker who is executing the
-  /// lease should give up the CPU resources allocated for the running lease for the time
+  /// lease should give up the CPU resources allocated for the granted lease for the time
   /// being and the worker itself should also be marked as blocked.
   ///
   /// \param worker: The worker who will give up the CPU resources.
@@ -189,7 +189,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
  private:
   struct SchedulingClassInfo;
 
-  void RemoveFromRunningLeasesIfExists(const RayLease &lease);
+  void RemoveFromGrantedLeasesIfExists(const RayLease &lease);
 
   /// Handle the popped worker from worker pool.
   bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
@@ -229,13 +229,13 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   // queue.
   void SpillWaitingLeases();
 
-  /// Calculate the maximum number of running leases for a given scheduling
+  /// Calculate the maximum number of granted leases for a given scheduling
   /// class. https://github.com/ray-project/ray/issues/16973
   ///
   /// \param sched_cls_id The scheduling class in question.
   /// \returns The maximum number instances of that scheduling class that
-  ///          should be running (or blocked) at once.
-  uint64_t MaxRunningLeasesPerSchedulingClass(SchedulingClass sched_cls_id) const;
+  ///          should be granted (or blocked) at once.
+  uint64_t MaxGrantedLeasesPerSchedulingClass(SchedulingClass sched_cls_id) const;
 
   /// Recompute the debug stats.
   /// It is needed because updating the debug state is expensive for
@@ -254,14 +254,14 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
-  // Helper function to pin a lease's args immediately before dispatch. This
+  // Helper function to pin a lease's args immediately before being granted. This
   // returns false if there are missing args (due to eviction) or if there is
-  // not enough memory available to dispatch the lease, due to other executing
-  // tasks' arguments.
+  // not enough memory available to grant the lease, due to other granted
+  // leases' arguments.
   bool PinLeaseArgsIfMemoryAvailable(const LeaseSpecification &lease_spec,
                                      bool *args_missing);
 
-  // Helper functions to pin and release an executing lease's args.
+  // Helper functions to pin and release a granted lease's args.
   void PinLeaseArgs(const LeaseSpecification &lease_spec,
                     std::vector<std::unique_ptr<RayObject>> args);
   void ReleaseLeaseArgs(const LeaseID &lease_id);
@@ -347,14 +347,13 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Callback to get references to lease arguments. These will be pinned while
-  /// the lease is running.
+  /// the lease is granted.
   std::function<bool(const std::vector<ObjectID> &object_ids,
                      std::vector<std::unique_ptr<RayObject>> *results)>
       get_lease_arguments_;
 
   /// Arguments needed by currently granted leases. These should be pinned before
-  /// the lease is granted to ensure that the arguments are not evicted before
-  /// the lease(s) start running.
+  /// the lease is granted to ensure that the arguments are not evicted.
   absl::flat_hash_map<LeaseID, std::vector<ObjectID>> granted_lease_args_;
 
   /// All arguments of granted leases, which are also pinned in the object store.
@@ -368,7 +367,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// Used for debug purposes.
   size_t pinned_lease_arguments_bytes_ = 0;
 
-  /// The maximum amount of bytes that can be used by executing lease arguments.
+  /// The maximum amount of bytes that can be used by granted lease arguments.
   size_t max_pinned_lease_arguments_bytes_;
 
   /// Returns the current time in milliseconds.

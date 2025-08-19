@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/local_lease_manager.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -29,7 +31,6 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 
