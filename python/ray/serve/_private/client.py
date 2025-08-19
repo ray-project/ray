@@ -376,6 +376,9 @@ class ServeControllerClient:
                         StatusOverviewProto.FromString(cur_status_bytes)
                     )
                     if cur_status.app_status.status != ApplicationStatus.NOT_STARTED:
+                        print(f'@@@@@@@ cur_status: {cur_status}')
+                        print(f'@@@@@@@ cur_status.app_status: {cur_status.app_status}')
+                        print(f'@@@@@@@ cur_status.app_status.status: {cur_status.app_status.status}')
                         all_deleted = False
                 if all_deleted:
                     return
