@@ -1,9 +1,11 @@
+import threading
 import time
 
 import pytest
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
+from ray.train.v2._internal.util import construct_user_exception_with_traceback
 
 
 @pytest.fixture()
@@ -31,6 +33,45 @@ def test_error(thread_runner):
     def target():
         def nested():
             raise ValueError
+
+        nested()
+
+    thread_runner.run(target)
+    assert not thread_runner.join()
+
+    assert thread_runner.get_return_value() is None
+    assert not thread_runner.is_running()
+
+    error = thread_runner.get_error()
+
+    assert isinstance(error, UserExceptionWithTraceback)
+    assert isinstance(error._base_exc, ValueError)
+    print(error._traceback_str)
+    assert "_run_target" not in error._traceback_str
+
+
+def test_nested_thread_error(thread_runner):
+    """Checks that we capture exceptions from threads kicked off by target function."""
+
+    def target():
+        def nested():
+            # Use the same target() + nested() structure as test_error to simulate
+            # `ThreadRunner._run_target` and `construct_train_func`
+            def nested_nested():
+                try:
+                    raise ValueError
+                except ValueError as e:
+                    thread_runner.get_exception_queue().put(
+                        construct_user_exception_with_traceback(e)
+                    )
+                    raise e
+
+            threading.Thread(target=nested_nested).start()
+
+            # Even when this thread waits forever ThreadRunner should still finish.
+            dummy_condition = threading.Condition()
+            with dummy_condition:
+                dummy_condition.wait()
 
         nested()
 
