@@ -1919,6 +1919,9 @@ class CoreWorker {
   /// Worker's PID
   uint32_t pid_;
 
+  /// Callback to cleanup actor instance before shutdown
+  std::function<void()> actor_shutdown_callback_;
+
   // Guards generator_ids_pending_deletion_.
   absl::Mutex generator_ids_pending_deletion_mutex_;
 
