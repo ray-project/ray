@@ -161,6 +161,17 @@ class SerializationContext:
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
+
+            # Check if this is a GPU ObjectRef being serialized inside a collection
+            if (
+                self.is_in_band_serialization()
+                and worker.gpu_object_manager.is_managed_object(obj.hex())
+            ):
+                raise ValueError(
+                    "Passing GPU ObjectRefs inside data structures is not yet supported. "
+                    "Pass GPU ObjectRefs directly as task arguments instead. For example, use `foo.remote(ref)` instead of `foo.remote([ref])`."
+                )
+
             self.add_contained_object_ref(
                 obj,
                 allow_out_of_band_serialization=(
