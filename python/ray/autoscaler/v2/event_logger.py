@@ -29,7 +29,7 @@ class AutoscalerEventLogger:
 
     def log_cluster_scheduling_update(
         self,
-        cluster_resources: Dict[str, int],
+        cluster_resources: Dict[str, float],
         launch_requests: Optional[List[LaunchRequest]] = None,
         terminate_requests: Optional[List[TerminationRequest]] = None,
         infeasible_requests: Optional[List[ResourceRequest]] = None,
@@ -39,7 +39,29 @@ class AutoscalerEventLogger:
         ] = None,
     ) -> None:
         """
-        Log any update of the cluster scheduling state.
+        Log updates to the autoscaler scheduling state.
+
+        Emits:
+        - info logs for node launches and terminations (counts grouped by node type).
+        - an info log summarizing the cluster size after a resize (CPUs/GPUs/TPUs).
+        - warnings describing infeasible single resource requests, infeasible gang
+          (placement group) requests, and infeasible cluster resource constraints.
+
+        Args:
+            cluster_resources: Mapping of resource name to total resources for the
+                current cluster state.
+            launch_requests: Node launch requests issued in this scheduling step.
+            terminate_requests: Node termination requests issued in this scheduling
+                step.
+            infeasible_requests: Resource requests that could not be satisfied by
+                any available node type.
+            infeasible_gang_requests: Gang/placement group requests that could not
+                be scheduled.
+            infeasible_cluster_resource_constraints: Cluster-level resource
+                constraints that could not be satisfied.
+
+        Returns:
+            None
         """
 
         # Log any launch events.

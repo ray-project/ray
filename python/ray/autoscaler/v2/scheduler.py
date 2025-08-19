@@ -826,6 +826,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             return cluster_shape
 
         def get_cluster_resources(self) -> Dict[str, float]:
+            """
+            Aggregate total cluster resources.
+
+            Sums each node's `total_resources` across the current context,
+            excluding nodes marked `TO_TERMINATE`.
+
+            Returns:
+                A dict mapping resource names to their summed resources.
+            """
             cluster_resources = defaultdict(float)
             for node in self._nodes:
                 if node.status == SchedulingNodeStatus.TO_TERMINATE:
