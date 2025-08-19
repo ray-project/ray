@@ -647,7 +647,6 @@ void CoreWorker::Exit(
                                          reason,
                                          detail,
                                          ShutdownCoordinator::kInfiniteTimeout,
-                                         false,
                                          creation_task_exception_pb_bytes);
 }
 
@@ -658,7 +657,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 
   ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type, true);
   shutdown_coordinator_->RequestShutdown(
-      true, reason, detail, std::chrono::milliseconds{0}, true, nullptr);
+      true, reason, detail, std::chrono::milliseconds{0}, nullptr);
 
   RAY_LOG(DEBUG) << "ForceExit: shutdown request completed";
 }

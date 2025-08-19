@@ -157,16 +157,12 @@ class ShutdownCoordinator {
   /// \param force_shutdown If true, force immediate shutdown; if false, graceful shutdown
   /// \param reason The reason for shutdown initiation
   /// \param detail Optional detailed explanation
-  /// \param timeout_ms Timeout for graceful shutdown (-1 = no timeout, 0 = immediate
-  /// force fallback)
-  /// \param force_on_timeout If true, fallback to force shutdown on
-  /// timeout; if false, wait indefinitely \return true if this call initiated shutdown,
-  /// false if already shutting down
+  /// \param timeout_ms Timeout for graceful shutdown (-1 = no timeout)
+  /// \return true if this call initiated shutdown, false if already shutting down
   bool RequestShutdown(bool force_shutdown,
                        ShutdownReason reason,
                        std::string_view detail = "",
                        std::chrono::milliseconds timeout_ms = kInfiniteTimeout,
-                       bool force_on_timeout = false,
                        const std::shared_ptr<::ray::LocalMemoryBuffer>
                            &creation_task_exception_pb_bytes = nullptr);
 
@@ -252,7 +248,6 @@ class ShutdownCoordinator {
       bool force_shutdown,
       std::string_view detail,
       std::chrono::milliseconds timeout_ms,
-      bool force_on_timeout,
       const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Executes graceful path; transitions to Disconnecting/Shutdown
@@ -264,8 +259,7 @@ class ShutdownCoordinator {
 
   void ExecuteDriverShutdown(bool force_shutdown,
                              std::string_view detail,
-                             std::chrono::milliseconds timeout_ms,
-                             bool force_on_timeout);
+                             std::chrono::milliseconds timeout_ms);
   /// Worker-type specific shutdown behavior
   /// - Honors kActorCreationFailed with serialized exception payloads
   /// - Uses worker-idle checks for idle exits
@@ -274,7 +268,6 @@ class ShutdownCoordinator {
       bool force_shutdown,
       std::string_view detail,
       std::chrono::milliseconds timeout_ms,
-      bool force_on_timeout,
       const std::shared_ptr<::ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   // Executor and configuration
@@ -286,6 +279,7 @@ class ShutdownCoordinator {
   ShutdownState state_ = ShutdownState::kRunning;
   ShutdownReason reason_ = ShutdownReason::kNone;
   bool force_executed_ = false;
+  bool force_started_ = false;
 
   /// Shutdown detail for observability (set once during shutdown initiation)
   std::string shutdown_detail_;

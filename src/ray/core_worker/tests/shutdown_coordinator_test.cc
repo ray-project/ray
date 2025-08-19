@@ -165,29 +165,26 @@ TEST_F(ShutdownCoordinatorTest,
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);  // unchanged
 }
 
-TEST_F(ShutdownCoordinatorTest, GracefulShutdown_TransitionsToDisconnectingThenShutdown) {
-  auto coordinator = CreateCoordinator();
+TEST_F(ShutdownCoordinatorTest,
+       GracefulShutdown_WithNoOpExecutor_DeterministicFinalState) {
+  auto coordinator = std::make_unique<ShutdownCoordinator>(
+      std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
 
   // Running -> ShuttingDown -> Disconnecting
-  EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
-                                           ShutdownReason::kGracefulExit));
-  auto s = coordinator->GetState();
-  EXPECT_TRUE(s == ShutdownState::kDisconnecting || s == ShutdownState::kShutdown);
+  EXPECT_TRUE(
+      coordinator->RequestShutdown(false /*graceful*/, ShutdownReason::kGracefulExit));
 
-  if (s == ShutdownState::kDisconnecting) {
-    // Disconnecting -> Shutdown
-    EXPECT_TRUE(coordinator->TryTransitionToShutdown());
-    EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
-  } else {
-    // Already in shutdown
-    EXPECT_FALSE(coordinator->TryTransitionToShutdown());
-  }
+  // Deterministic: worker path enters Disconnecting and requires explicit final step.
+  EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
+  EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
-  // Manual transitions should fail since already in shutdown state
-  EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
+  // Disconnecting -> Shutdown
+  EXPECT_TRUE(coordinator->TryTransitionToShutdown());
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 
-  EXPECT_TRUE(coordinator->IsShutdown());
+  // Further transitions are no-ops.
+  EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
+  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
 }
 
 TEST_F(ShutdownCoordinatorTest, InvalidTransitions_FromRunning_Fail) {

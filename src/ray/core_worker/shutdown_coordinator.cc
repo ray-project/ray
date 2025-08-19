@@ -43,39 +43,49 @@ bool ShutdownCoordinator::RequestShutdown(
     ShutdownReason reason,
     std::string_view detail,
     std::chrono::milliseconds timeout_ms,
-    bool force_on_timeout,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  bool should_execute = false;
+  bool execute_force = force_shutdown;
   {
     std::lock_guard<std::mutex> lock(mu_);
     if (state_ == ShutdownState::kShutdown) {
       return false;
     }
-    if (!force_shutdown && state_ != ShutdownState::kRunning) {
-      // Graceful shutdown is only allowed from the `Running` state.
-      return false;
-    }
-    if (state_ == ShutdownState::kRunning) {
+    // If a force request arrives, latch it immediately to guarantee single execution.
+    if (force_shutdown) {
+      if (force_started_) {
+        return false;
+      }
+      force_started_ = true;
+      reason_ = reason;
+      shutdown_detail_ = std::string(detail);
+      if (state_ == ShutdownState::kRunning) {
+        state_ = ShutdownState::kShuttingDown;
+      }
+      should_execute = true;
+    } else {
+      if (state_ != ShutdownState::kRunning) {
+        return false;
+      }
       state_ = ShutdownState::kShuttingDown;
       reason_ = reason;
       shutdown_detail_ = std::string(detail);
-    } else if (force_shutdown) {
-      // Allow force to override reason mid-shutdown.
-      reason_ = reason;
-      shutdown_detail_ = std::string(detail);
+      should_execute = true;
     }
   }
 
-  ExecuteShutdownSequence(force_shutdown,
-                          detail,
-                          timeout_ms,
-                          force_on_timeout,
-                          creation_task_exception_pb_bytes);
+  if (!should_execute) {
+    return false;
+  }
+
+  ExecuteShutdownSequence(
+      execute_force, detail, timeout_ms, creation_task_exception_pb_bytes);
   return true;
 }
 
 bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
   // Legacy compatibility - delegate to graceful shutdown by default
-  return RequestShutdown(false, reason, "", kInfiniteTimeout, false, nullptr);
+  return RequestShutdown(false, reason, "", kInfiniteTimeout, nullptr);
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
@@ -144,20 +154,16 @@ void ShutdownCoordinator::ExecuteShutdownSequence(
     bool force_shutdown,
     std::string_view detail,
     std::chrono::milliseconds timeout_ms,
-    bool force_on_timeout,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   switch (worker_type_) {
   case WorkerType::DRIVER:
-    ExecuteDriverShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
+    ExecuteDriverShutdown(force_shutdown, detail, timeout_ms);
     break;
   case WorkerType::WORKER:
   case WorkerType::SPILL_WORKER:
   case WorkerType::RESTORE_WORKER:
-    ExecuteWorkerShutdown(force_shutdown,
-                          detail,
-                          timeout_ms,
-                          force_on_timeout,
-                          creation_task_exception_pb_bytes);
+    ExecuteWorkerShutdown(
+        force_shutdown, detail, timeout_ms, creation_task_exception_pb_bytes);
     break;
   default:
     RAY_LOG(FATAL) << "Unknown worker type: " << static_cast<int>(worker_type_);
@@ -191,17 +197,11 @@ void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
 
 void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown,
                                                 std::string_view detail,
-                                                std::chrono::milliseconds timeout_ms,
-                                                bool force_on_timeout) {
+                                                std::chrono::milliseconds timeout_ms) {
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
-    // Handle timeout fallback if needed
-    if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-      ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") +
-                           std::string(detail));
-    }
   }
 }
 
@@ -209,7 +209,6 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(
     bool force_shutdown,
     std::string_view detail,
     std::chrono::milliseconds timeout_ms,
-    bool force_on_timeout,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
@@ -236,11 +235,6 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(
     executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
-  }
-
-  if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-    ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") +
-                         std::string(detail));
   }
 }
 
