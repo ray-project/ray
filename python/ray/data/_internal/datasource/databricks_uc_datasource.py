@@ -115,7 +115,9 @@ class DatabricksUCDatasource(Datasource):
         self.num_chunks = num_chunks
         self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
 
-        def get_read_task(task_index, parallelism):
+        def get_read_task(
+            task_index: int, parallelism: int, per_block_limit: Optional[int] = None
+        ):
             # Handle empty chunk list by yielding an empty PyArrow table
             if num_chunks == 0:
                 import pyarrow as pa
@@ -187,7 +189,9 @@ class DatabricksUCDatasource(Datasource):
                 else:
                     yield from _read_fn()
 
-            return ReadTask(read_fn=read_fn, metadata=metadata)
+            return ReadTask(
+                read_fn=read_fn, metadata=metadata, per_block_limit=per_block_limit
+            )
 
         self._get_read_task = get_read_task
 
