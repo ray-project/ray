@@ -151,7 +151,6 @@ def main(args):
         concurrency=args.chunk_concurrency,
         num_cpus=args.chunk_cpus,
     )
-    ds = ds.repartition(target_num_rows_per_block=1_000)
     ds = ds.map_batches(
         Embedder,
         fn_constructor_kwargs={"model_name": args.model_name},
