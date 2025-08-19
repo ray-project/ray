@@ -10,6 +10,7 @@ srcs:
   - python/requirements.txt
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
+  - python/lock_files/base_deps/requirements_compiled_base_deps_*.txt
 build_args:
   - DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test-aarch64
 tags:
