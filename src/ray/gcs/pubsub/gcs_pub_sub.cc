@@ -319,16 +319,6 @@ Status PythonGcsSubscriber::PollLogs(std::string *key_id,
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollActor(std::string *key_id,
-                                      int64_t timeout_ms,
-                                      rpc::ActorTableData *data) {
-  rpc::PubMessage message;
-  RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
-  *key_id = std::move(*message.mutable_key_id());
-  *data = std::move(*message.mutable_actor_message());
-  return Status::OK();
-}
-
 Status PythonGcsSubscriber::Close() {
   std::shared_ptr<grpc::ClientContext> current_polling_context;
   {
