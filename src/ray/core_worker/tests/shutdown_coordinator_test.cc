@@ -130,7 +130,8 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_IdempotentBehavior) {
   EXPECT_TRUE(coordinator->RequestShutdown(
       false, ShutdownReason::kGracefulExit, "test_graceful"));
   const auto state = coordinator->GetState();
-  EXPECT_TRUE(state == ShutdownState::kDisconnecting || state == ShutdownState::kShutdown);
+  EXPECT_TRUE(state == ShutdownState::kDisconnecting ||
+              state == ShutdownState::kShutdown);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
   // A second graceful request should be ignored
@@ -152,7 +153,8 @@ TEST_F(ShutdownCoordinatorTest,
 
   EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
   const auto state = coordinator->GetState();
-  EXPECT_TRUE(state == ShutdownState::kShuttingDown || state == ShutdownState::kDisconnecting);
+  EXPECT_TRUE(state == ShutdownState::kShuttingDown ||
+              state == ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
@@ -233,7 +235,8 @@ TEST_F(ShutdownCoordinatorTest,
   // Only one thread should have succeeded
   EXPECT_EQ(success_count.load(), 1);
   const auto state = coordinator->GetState();
-  EXPECT_TRUE(state == ShutdownState::kShuttingDown || state == ShutdownState::kDisconnecting);
+  EXPECT_TRUE(state == ShutdownState::kShuttingDown ||
+              state == ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 }
 

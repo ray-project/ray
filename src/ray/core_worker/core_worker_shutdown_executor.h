@@ -30,12 +30,14 @@ class CoreWorker;
 /// shutdown operations for `CoreWorker`.
 ///
 /// Semantics overview:
-/// - Graceful shutdown (ExecuteGracefulShutdown): stop accepting new work, drain ongoing work, flush task
+/// - Graceful shutdown (ExecuteGracefulShutdown): stop accepting new work, drain ongoing
+/// work, flush task
 ///   events, stop services (task execution service, gRPC server, IO service),
 ///   disconnect from the GCS/raylet, and join the IO thread if safe. This path
 ///   attempts best-effort cleanup to preserve observability and avoid resource
 ///   leaks. It may take up to `timeout_ms` for certain steps.
-/// - Force shutdown (ExecuteForceShutdown): immediately kill child processes, disconnect services, and
+/// - Force shutdown (ExecuteForceShutdown): immediately kill child processes, disconnect
+/// services, and
 ///   terminate the process without draining or cleanup. This path is used to
 ///   break out of hung or long-running shutdowns and should be considered
 ///   preemptive; it sacrifices cleanup for determinism.

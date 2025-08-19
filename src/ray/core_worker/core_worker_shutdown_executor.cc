@@ -240,7 +240,9 @@ void CoreWorkerShutdownExecutor::KillChildProcessesImmediately() {
   }
 }
 
-bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const { return core_worker_->IsIdle(); }
+bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
+  return core_worker_->IsIdle();
+}
 
 void CoreWorkerShutdownExecutor::DisconnectServices(
     std::string_view exit_type,

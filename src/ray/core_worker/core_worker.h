@@ -1676,8 +1676,8 @@ class CoreWorker {
 
   /// Helper to compute idleness from precomputed counters.
   ///
-  /// We consider the worker to be idle if it doesn't have object references and it doesn't
-  /// have any object pinning RPCs in flight and it doesn't have pending tasks.
+  /// We consider the worker to be idle if it doesn't have object references and it
+  /// doesn't have any object pinning RPCs in flight and it doesn't have pending tasks.
   bool IsIdle(size_t num_objects_with_references,
               int64_t pins_in_flight,
               size_t num_pending_tasks) const;

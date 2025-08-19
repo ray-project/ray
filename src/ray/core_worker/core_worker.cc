@@ -528,9 +528,8 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  shutdown_coordinator_->RequestShutdown(/*force_shutdown=*/false,
-                                         ShutdownReason::kGracefulExit,
-                                         "ray.shutdown() called");
+  shutdown_coordinator_->RequestShutdown(
+      /*force_shutdown=*/false, ShutdownReason::kGracefulExit, "ray.shutdown() called");
 }
 
 void CoreWorker::ConnectToRayletInternal() {
@@ -4199,10 +4198,10 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   if (!is_idle) {
     const size_t num_pending_tasks = task_manager_->NumPendingTasks();
     const int64_t pins_in_flight = local_raylet_rpc_client_->GetPinsInFlight();
-    RAY_LOG_EVERY_MS(INFO, 60000) << "Worker is not idle: reference counter: "
-                                  << reference_counter_->DebugString()
-                                  << " # pins in flight: " << pins_in_flight
-                                  << " # pending tasks: " << num_pending_tasks;
+    RAY_LOG_EVERY_MS(INFO, 60000)
+        << "Worker is not idle: reference counter: " << reference_counter_->DebugString()
+        << " # pins in flight: " << pins_in_flight
+        << " # pending tasks: " << num_pending_tasks;
     if (force_exit) {
       RAY_LOG(INFO) << "Force exiting worker that's not idle. "
                     << "reference counter: " << reference_counter_->DebugString()
@@ -4230,9 +4229,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
           detail = "Worker exited because it was idle for a long time";
         }
 
-        shutdown_coordinator_->RequestShutdown(force_exit,
-                                               reason,
-                                               detail);
+        shutdown_coordinator_->RequestShutdown(force_exit, reason, detail);
       },
       // Fallback on RPC failure - still attempt shutdown
       [this]() {
