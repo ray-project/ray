@@ -75,6 +75,7 @@ ray_cc_test(
     srcs = ["task_manager_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//:ray_fakes",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/mock/ray/pubsub:mock_subscriber",

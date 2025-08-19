@@ -129,7 +129,7 @@ class SubscriberChannel {
   }
 
   /// Return the channel type of this subscribe channel.
-  const rpc::ChannelType GetChannelType() const { return channel_type_; }
+  rpc::ChannelType GetChannelType() const { return channel_type_; }
 
   /// Return the statistics of the specific channel.
   std::string DebugString() const;
@@ -223,39 +223,26 @@ class Subscriber : public SubscriberInterface {
       instrumented_io_context *callback_service)
       : subscriber_id_(subscriber_id),
         max_command_batch_size_(max_command_batch_size),
-        get_client_(get_client) {
+        get_client_(std::move(get_client)) {
     for (auto type : channels) {
       channels_.emplace(type,
                         std::make_unique<SubscriberChannel>(type, callback_service));
     }
   }
 
-  ~Subscriber();
-
   bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
-                 const rpc::ChannelType channel_type,
+                 rpc::ChannelType channel_type,
                  const rpc::Address &publisher_address,
-                 const std::string &key_id,
+                 const std::optional<std::string> &key_id,
                  SubscribeDoneCallback subscribe_done_callback,
                  SubscriptionItemCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
-  bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message,
-      rpc::ChannelType channel_type,
-      const rpc::Address &publisher_address,
-      SubscribeDoneCallback subscribe_done_callback,
-      SubscriptionItemCallback subscription_callback,
-      SubscriptionFailureCallback subscription_failure_callback) override;
-
-  bool Unsubscribe(const rpc::ChannelType channel_type,
+  bool Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::string &key_id) override;
+                   const std::optional<std::string> &key_id) override;
 
-  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
-                          const rpc::Address &publisher_address) override;
-
-  bool IsSubscribed(const rpc::ChannelType channel_type,
+  bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::string &key_id) const override;
 

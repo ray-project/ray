@@ -80,10 +80,11 @@ Status GcsSubscriber::SubscribeAllJobs(
     RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
   };
   // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
+  RAY_UNUSED(subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_JOB_CHANNEL,
       gcs_address_,
+      /*key_id=*/std::nullopt,
       [done](const Status &status) {
         if (done != nullptr) {
           done(status);
@@ -115,7 +116,7 @@ Status GcsSubscriber::SubscribeActor(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_ACTOR_CHANNEL,
       gcs_address_,
-      id.Binary(),
+      /*key_id=*/id.Binary(),
       [done](const Status &status) {
         if (done != nullptr) {
           done(status);
@@ -148,10 +149,11 @@ void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &s
     RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: " << status.ToString();
   };
   // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
+  RAY_UNUSED(subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
       gcs_address_,
+      /*key_id=*/std::nullopt,
       [done](const Status &status) {
         if (done != nullptr) {
           done(status);
@@ -172,10 +174,11 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
                      << status.ToString();
   };
   // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
+  RAY_UNUSED(subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
       gcs_address_,
+      /*key_id=*/std::nullopt,
       /*subscribe_done_callback=*/
       [done](const Status &status) {
         if (done != nullptr) {
@@ -216,9 +219,7 @@ Status PythonGcsSubscriber::Subscribe() {
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
   request.set_sender_id(worker_id_);
-  auto *cmd = request.add_commands();
-  cmd->set_channel_type(channel_type_);
-  cmd->mutable_subscribe_message();
+  request.add_commands()->set_channel_type(channel_type_);
 
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status =

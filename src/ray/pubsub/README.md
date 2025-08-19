@@ -49,17 +49,13 @@ situation.
 
 ## Limitation
 
-- If messages are published before it is subscribed from the publisher, they
-  are lost.
-- It doesn't handle the fault tolerance by design because raylet -> core_worker
-  (the most common use case) doesn't require it. The fault tolerance needs to
-  be implemented in the higher layer.
+If messages are published before a subscription, they're lost.
 
 ## Implementation
 
 The pubsub module doesn't have a broker like traditional pubsub systems because
 there's no use case. In the pubsub module, all publishers are also brokers. The
-performance, especially a throughput is not a requirement when developed, and
+performance, especially a throughput was not a requirement when developed, and
 the module is not designed for high throughput.
 
 ### Basic mechanism
@@ -71,10 +67,42 @@ they are batched to the reply of the long polling request in FIFO order.
 
 ### Commands
 
-A command is an operation from a subscriber to publisher. For example,
-Subscribe or Unsubscribe could be a command. Commands are served by a separate
-RPC, which also batches them in the FIFO order. Subscriber keeps sending
-commands until they are not queued. There's no backpressure mechanism here.
+A command is an operation from a subscriber to publisher. Subscribe and
+Unsubscribe are the only commands. Commands are served by a separate
+RPC, which also batches them in the FIFO order.
+
+### What will actually happen / How it actually works
+1. The subscriber sends a PubsubCommandBatchRequest with its own subscriber_id
+and a SubMessage Command with a channel_type and possibly a key_id. It also sends
+over a PubsubLongPollingRequest with its own subscriber_id.
+2. The publisher receives the PubsubCommandBatchRequest, creates a SubscriberState
+for the subscriber if it doesn't exist, registers the subscription for the subscriber
+for the given channel + key, and sends a reply back. Registering the subscription means
+setting up the relation between appropriate EntityState and SubscriberState.
+The Publisher has a SubscriptionIndex for each channel and each SubscriptionIndex holds
+EntityState's for each key in the channel. Each EntityState holds SubscriberState
+pointers so it can insert into its mailbox. There's a special EntityState for
+"subscribing to all" in every SubscriptionIndex.
+3. The publisher receives the PubsubLongPollingRequest, creates a SubscriberState if
+it doesn't exist, creates a "LongPollConnection" in the SubscriberState, and tries
+to Publish by responding to the request if there were already things in its SubscriberState
+mailbox. Note that 2 and 3 can happen out of order as well.
+4. If the mailbox was empty at the time the PubsubLongPollingRequest was received, the
+publisher will wait until the next relevant Publish to reply and send the publish over.
+5. When the subscriber gets the reply to the PubsubCommandBatchRequest, it just runs
+a callback for the command if the subscriber passed one in. It will also send new
+commands to the publisher if they'd been queued up. We only allow one in-flight
+PubsubCommandBatchRequest to a publisher to ensure ordering of commands.
+6. When the subscriber gets the reply to the PubsubLongPollingRequest, it will process
+the published messages and then send another PubsubLongPollingRequest if a subscription
+still exists.
+7. The publisher once again receives the PubsubLongPollingRequest, check the mailbox and
+publish it if it's not empty or wait for a relevant publish to publish and reply.
+8. When unsubscribing, the subscriber sends another PubsubCommandBatchRequest with an
+UnsubscribeMessage.
+9. The publisher receives the PubsubCommandBatchRequest and unregisters the SubscriberState from
+the appropriate EntityState. If the EntityState doesn't have any more SubscriberState's, it will
+be erased. Later on we'll clean up inactive SubscriberState's on an interval.
 
 ### Fault detection
 
@@ -93,4 +121,4 @@ as there are subscribing entries from them. If subscribers are failed, they are
 not sending any more long polling requests. Publishers refreshes the long
 polling request every 30 seconds to check if the subscriber is still alive. If
 the subscriber doesn't initiate a long polling request for more than certain
-threshold, subscriber is condiered to be failed and all metadata is cleaned up.
+threshold, the subscriber is considered failed and all metadata is cleaned up.

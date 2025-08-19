@@ -25,7 +25,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "pubsub_integration_test",
+    name = "integration_test",
     size = "small",
     srcs = ["integration_test.cc"],
     tags = ["team:core"],
