@@ -1,7 +1,7 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
-    name = "gcs_store_client",
+    name = "store_client",
     hdrs = ["store_client.h"],
     deps = [
         "//src/ray/common:asio",
@@ -12,7 +12,7 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_redis_store_client",
+    name = "redis_store_client",
     srcs = [
         "redis_async_context.cc",
         "redis_context.cc",
@@ -24,7 +24,7 @@ ray_cc_library(
         "redis_store_client.h",
     ],
     deps = [
-        ":gcs_store_client",
+        ":store_client",
         "//:hiredis",
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
@@ -41,11 +41,11 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_in_memory_store_client",
+    name = "in_memory_store_client",
     srcs = ["in_memory_store_client.cc"],
     hdrs = ["in_memory_store_client.h"],
     deps = [
-        ":gcs_store_client",
+        ":store_client",
         "//src/ray/common:asio",
         "//src/ray/gcs:gcs_callback",
         "//src/ray/util:concurrent_flat_map",
@@ -54,11 +54,11 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_observable_store_client",
+    name = "observable_store_client",
     srcs = ["observable_store_client.cc"],
     hdrs = ["observable_store_client.h"],
     deps = [
-        ":gcs_store_client",
+        ":store_client",
         "//src/ray/gcs:gcs_callback",
         "//src/ray/util",
     ],
