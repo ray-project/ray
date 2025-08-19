@@ -90,6 +90,32 @@ def get_event_aggregator_grpc_stub(gcs_address, head_node_id):
     return EventAggregatorServiceStub(channel)
 
 
+@pytest.mark.parametrize("event_processing_enabled", [True, False])
+def test_receive_events(fake_timestamp, event_processing_enabled):
+    aggregator_agent = AggregatorAgent(MagicMock())
+    aggregator_agent._event_processing_enabled = event_processing_enabled
+    aggregator_agent._receive_events(
+        AddEventsRequest(
+            events_data=RayEventsData(
+                events=[
+                    RayEvent(
+                        event_id=b"1",
+                        source_type=RayEvent.SourceType.CORE_WORKER,
+                        event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                        timestamp=fake_timestamp[0],
+                        severity=RayEvent.Severity.INFO,
+                        message="hello",
+                    ),
+                ],
+            )
+        )
+    )
+    if event_processing_enabled:
+        assert aggregator_agent._event_buffer.qsize() == 1
+    else:
+        assert aggregator_agent._event_buffer.qsize() == 0
+
+
 @pytest.mark.parametrize(
     (
         "export_addr",

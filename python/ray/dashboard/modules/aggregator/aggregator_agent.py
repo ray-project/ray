@@ -202,12 +202,14 @@ class AggregatorAgent(
             self._grpc_executor, self._receive_events, request
         )
 
-    def _receive_events(self, request):
+    def _receive_events(
+        self, request: events_event_aggregator_service_pb2.AddEventsRequest
+    ):
         """
         Receives events from the request, adds them to the event buffer,
         """
         if not self._event_processing_enabled:
-            return events_event_aggregator_service_pb2.AddEventReply()
+            return events_event_aggregator_service_pb2.AddEventsReply()
 
         # TODO(myan) #54515: Considering adding a mechanism to also send out the events
         # metadata (e.g. dropped task attempts) to help with event processing at the
