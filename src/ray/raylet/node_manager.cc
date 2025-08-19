@@ -1848,7 +1848,7 @@ void NodeManager::HandleResizeLocalResourceInstances(
     rpc::ResizeLocalResourceInstancesRequest request,
     rpc::ResizeLocalResourceInstancesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto target_resource_map = request.resources();
+  const auto &target_resource_map = request.resources();
 
   // Check if any resource is a unit instance resource
   // Unit instance resources (e.g., GPU) cannot be resized with this API
@@ -1866,11 +1866,11 @@ void NodeManager::HandleResizeLocalResourceInstances(
   // Get current local resources and convert to resource maps
   const auto &current_resources =
       cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
-  auto current_total_map =
+  const auto &current_total_map =
       current_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
-  auto current_available_map = current_resources.GetAvailableResourceInstances()
-                                   .ToNodeResourceSet()
-                                   .GetResourceMap();
+  const auto &current_available_map = current_resources.GetAvailableResourceInstances()
+                                          .ToNodeResourceSet()
+                                          .GetResourceMap();
 
   // Calculate delta resource map (target - current) and validate
   absl::flat_hash_map<std::string, double> delta_resource_map;
@@ -1926,29 +1926,21 @@ void NodeManager::HandleResizeLocalResourceInstances(
   }
 
   // Get updated resource state and populate reply
-  const auto updated_resources =
+  const auto &updated_resources =
       cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
-  auto updated_total_map =
+  const auto &updated_total_map =
       updated_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
-  auto updated_available_map = updated_resources.GetAvailableResourceInstances()
-                                   .ToNodeResourceSet()
-                                   .GetResourceMap();
+  const auto &updated_available_map = updated_resources.GetAvailableResourceInstances()
+                                          .ToNodeResourceSet()
+                                          .GetResourceMap();
 
   if (!delta_resource_map.empty()) {
     // Log the updated resources
-    RAY_LOG(INFO) << "Successfully resized local resources. Current total resources:";
-    for (const auto &[resource_name, updated_value] : updated_total_map) {
-      RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
-    }
-    RAY_LOG(INFO) << "Available resources:";
-    for (const auto &[resource_name, updated_value] : updated_available_map) {
-      RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
-    }
+    RAY_LOG(INFO) << "Successfully resized local resources. Current total resources: "
+                  << debug_string(updated_total_map);
+    RAY_LOG(INFO) << "Available resources: " << debug_string(updated_available_map);
     // Trigger scheduling to account for the new resources
     cluster_task_manager_.ScheduleAndDispatchTasks();
-    // Trigger immediate resource broadcasting to GCS
-    // instead of waiting for the periodic report (which happens every 100ms by default)
-    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW);
   }
 
   // Populate the reply with the current resource state

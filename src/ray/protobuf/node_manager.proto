@@ -466,7 +466,7 @@ service NodeManagerService {
   // Failure: Returns INVALID_ARGUMENT if the request attempts to resize a unit instance
   // resource (e.g., GPU), as these cannot be resized by this API.
   // Returns FAILED_PRECONDITION if downsizing would result in negative available
-  // resources. Otherwise, succeeds unless a network error occurs.
+  // resources. In the cases of network errors, the caller should retry.
   rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
       returns (ResizeLocalResourceInstancesReply);
   // Cancel a pending lease request. This only returns success if the
