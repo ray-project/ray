@@ -94,7 +94,7 @@ OVERVIEW_AND_HEALTH_PANELS = [
     ),
     Panel(
         id=44,
-        title="Node Out of Memory Failures by Name",
+        title="Ray OOM Kills (Tasks and Actors)",
         description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
         unit="failures",
         targets=[
@@ -109,8 +109,8 @@ OVERVIEW_AND_HEALTH_PANELS = [
 RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     Panel(
         id=26,
-        title="Scheduler Task State",
-        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+        title="All Tasks by State",
+        description="Current count of tasks, grouped by scheduler state (e.g., pending, running, finished).\n\nState: the task state, as described by rpc::TaskStatus proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
@@ -127,8 +127,8 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=35,
-        title="Requested Live Tasks by Name",
-        description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+        title="Active Tasks by Name",
+        description="Current count of active tasks (i.e. pending or running; not finished), grouped by task name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
@@ -146,7 +146,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     Panel(
         id=38,
         title="Running Tasks by Name",
-        description="Current number of (running) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+        description="Current count of tasks that are currently executing, grouped by task name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
@@ -163,8 +163,8 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=33,
-        title="Scheduler Actor State",
-        description='Note: not impacted by "Instance" variable.\n\nCurrent number of actors in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.',
+        title="All Actors by State",
+        description='Note: not impacted by "Instance" variable.\n\nCurrent count of actors, grouped by lifecycle state (e.g., alive, restarting, dead/terminated).\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.',
         unit="actors",
         targets=[
             Target(
@@ -175,8 +175,8 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=42,
-        title="Live Actor State",
-        description="Current number of alive actors in a particular state.\n\nState: IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT",
+        title="Active Actors by State",
+        description="Current count of alive actors (i.e. not dead/terminated), grouped by state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
         unit="actors",
         targets=[
             Target(
@@ -187,8 +187,8 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=36,
-        title="Live Actors by Name",
-        description="Current number of alive actors with a particular name.",
+        title="Active Actors by Name",
+        description="Current count of alive actors, grouped by actor name.",
         unit="actors",
         targets=[
             Target(
@@ -199,8 +199,8 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=40,
-        title="Scheduler Placement Groups",
-        description='Note: not impacted by "Instance" variable.\n\nCurrent number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.',
+        title="All Placement Groups by State",
+        description='Note: not impacted by "Instance" variable.\n\nCurrent count of placement groups, grouped by state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTableData proto in gcs.proto.',
         unit="placement groups",
         targets=[
             Target(
@@ -214,7 +214,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
 RAY_RESOURCES_PANELS = [
     Panel(
         id=27,
-        title="Scheduler CPUs (logical slots)",
+        title="Logical CPUs used",
         description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. PENDING means the number of CPUs that will be available when new nodes are up after the autoscaler scales up.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
         unit="cores",
         targets=[
@@ -236,7 +236,7 @@ RAY_RESOURCES_PANELS = [
     ),
     Panel(
         id=28,
-        title="Scheduler GPUs (logical slots)",
+        title="Logical GPUs used",
         description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.",
         unit="GPUs",
         targets=[
