@@ -17,6 +17,9 @@ ARG PYTHON_VERSION=3.9
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
+ARG PYTHON_VERSION=3.9
+ARG LOCK_FILE="requirements_compiled_base_deps_${PYTHON_VERSION}.txt"
+
 RUN <<EOF
 #!/bin/bash
 
@@ -55,7 +58,7 @@ EOF
 USER $RAY_UID
 ENV HOME=/home/ray
 
-COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY python/lock_files/base_deps/${LOCK_FILE} /home/ray/${LOCK_FILE}
 
 SHELL ["/bin/bash", "-c"]
 
@@ -117,9 +120,7 @@ export PATH=$HOME/anaconda3/bin:$PATH
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
 # to ensure that the best match is chosen from the available indices.
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c $HOME/requirements_compiled.txt \
-    "${PIP_PKGS[@]}"
+uv pip install --no-deps $LOCK_FILE
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
