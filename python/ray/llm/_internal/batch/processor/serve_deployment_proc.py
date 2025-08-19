@@ -1,14 +1,13 @@
 """The processor that runs serve deployment."""
 
-from typing import Optional, Type, Any, Tuple
+from typing import Optional
 from pydantic import Field
 
-import ray
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor.base import (
-    ProcessorConfig,
     Processor,
     ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages import (
     ServeDeploymentStage,

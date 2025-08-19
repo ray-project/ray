@@ -1,24 +1,25 @@
 """The stage that runs serve deployment."""
 
+import asyncio
 import logging
 import time
 import uuid
-from typing import Any, AsyncIterator, Dict, List, Type, Union, Tuple, Optional
-import asyncio
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+
 from pydantic import BaseModel
 
+from ray import serve
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray import serve
 
 # The following imports are necessary to resolve class references in the global namespace
 from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionRequest,
     ChatCompletionRequest,
     EmbeddingRequest,
-)
+)  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,8 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             raise ValueError(f"Method {method} not found in the serve deployment.")
 
         t = time.perf_counter()
-        output_data = await anext(getattr(self._dh, method).remote(request_obj))
+        # Directly using anext() requires python3.10 and above
+        output_data = await getattr(self._dh, method).remote(request_obj).__anext__()
         time_taken = time.perf_counter() - t
 
         # Convert the output data to a dict if it is a Pydantic model.

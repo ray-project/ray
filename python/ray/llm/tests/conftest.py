@@ -222,7 +222,9 @@ def create_model_opt_125m_deployment(gpu_type, model_opt_125m):
         ),
     )
 
-    llm_app = build_llm_deployment(llm_config, deployment_name=deployment_name)
+    llm_app = build_llm_deployment(
+        llm_config, override_serve_options=dict(name=deployment_name)
+    )
     serve.run(llm_app, name=app_name)
     yield deployment_name, app_name
     serve.shutdown()

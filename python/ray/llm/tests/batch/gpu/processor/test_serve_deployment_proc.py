@@ -1,11 +1,11 @@
 import sys
-from typing import Dict, Any
+from typing import Any, Dict
+
 import pytest
 
 import ray
 from ray import serve
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.llm._internal.batch.processor.serve_deployment_proc import (
     ServeDeploymentProcessorConfig,
 )

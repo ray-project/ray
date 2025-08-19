@@ -5,9 +5,9 @@ from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
     Processor,
     ProcessorConfig as _ProcessorConfig,
+    ServeDeploymentProcessorConfig as _ServeDeploymentProcessorConfig,
     SGLangEngineProcessorConfig as _SGLangEngineProcessorConfig,
     vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
-    ServeDeploymentProcessorConfig as _ServeDeploymentProcessorConfig,
 )
 from ray.util.annotations import PublicAPI
 
@@ -296,8 +296,9 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 
             APP_NAME = "facebook_opt_app"
             DEPLOYMENT_NAME = "facebook_deployment"
+            override_serve_options = dict(name=DEPLOYMENT_NAME)
 
-            llm_app = build_llm_deployment(llm_config, deployment_name=DEPLOYMENT_NAME)
+            llm_app = build_llm_deployment(llm_config, override_serve_options=override_serve_options)
             app = serve.run(llm_app, name=APP_NAME)
 
             config=ServeDeploymentProcessorConfig(
