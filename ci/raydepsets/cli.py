@@ -113,7 +113,7 @@ class DependencySetManager:
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
-        click.echo(f"Executing command: {cmd}")
+        click.echo(f"Executing command: {' '.join(cmd)}")
         status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
