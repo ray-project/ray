@@ -1570,7 +1570,7 @@ class DeploymentState:
 
     @property
     def replicas(self) -> ReplicaStateContainer:
-        return self._replicas
+        return copy.deepcopy(self._replicas)
 
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
