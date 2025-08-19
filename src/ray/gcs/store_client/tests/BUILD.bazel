@@ -5,7 +5,7 @@ ray_cc_library(
     hdrs = ["store_client_test_base.h"],
     deps = [
         "//src/ray/common:test_util",
-        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/gcs/store_client:store_client",
     ],
 )
 
