@@ -77,7 +77,11 @@ def build_dp_deployment(
         raise ValueError(
             "data_parallel_size should be greater than 1 for DP deployment."
         )
-    dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size)
+    # NOTE: we cannot use engine_kwargs.data_parallel_size_local because
+    # that has special semantics in vLLM.
+    # TODO(rui): figure out a better way to pass in dp_size_local.
+    dp_size_local = llm_config.experimental_configs.get("dp_size_local", None)
+    dp_rank_assigner = DPRankAssigner.bind(dp_size=dp_size, dp_size_local=dp_size_local)
     name_prefix = name_prefix or "DPLLMDeployment:"
     name = name_prefix + llm_config._get_deployment_name()
     if "num_replicas" in llm_config.deployment_config:
