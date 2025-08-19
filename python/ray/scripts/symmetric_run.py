@@ -45,17 +45,6 @@ def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
     return False
 
 
-def is_port_open(host: str, port: int, timeout: int = 5) -> bool:
-    """Check if a port is open on a given host."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(timeout)
-            result = s.connect_ex((host, port))
-            return result == 0
-    except (socket.error, OSError):
-        return False
-
-
 def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     gcs_client = GcsClient(address=address)
@@ -67,15 +56,10 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     return False
 
 
-def clean_and_validate_ray_start_args(ray_start_args: List[str]) -> List[str]:
-    cleaned_args = ray_start_args.copy()
-    symmetric_run_args = [opt for param in symmetric_run.params for opt in param.opts]
-    for existing_arg in symmetric_run_args:
-        if existing_arg in cleaned_args:
-            address_index = cleaned_args.index(existing_arg)
-            # remove the argument and the value
-            cleaned_args.pop(address_index)
-            cleaned_args.pop(address_index)
+def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[str]:
+    # Reparse the arguments to remove symmetric_run arguments.
+    ctx = symmetric_run.make_context("_", run_and_start_args, resilient_parsing=True)
+    cleaned_args = list(ctx.params["ray_args_and_entrypoint"])
 
     for arg in cleaned_args:
         if arg == "--head":
@@ -153,9 +137,13 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
     if separator == -1:
         raise click.ClickException("No separator '--' found in arguments.")
 
-    ray_start_args, entrypoint_on_head = all_args[:separator], all_args[separator + 1 :]
+    run_and_start_args, entrypoint_on_head = (
+        all_args[:separator],
+        all_args[separator + 1 :],
+    )
 
-    ray_start_args = clean_and_validate_ray_start_args(ray_start_args)
+    ray_start_args = curate_and_validate_ray_start_args(run_and_start_args)
+
     min_nodes = 1 if wait_for_nnodes is None else wait_for_nnodes
 
     if check_ray_already_started():
