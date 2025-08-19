@@ -232,8 +232,8 @@ class IPPRStatus:
     current_cpu: float
     current_memory: float
     resize_timeout: int
-    desired_cpu: Optional[float] = None
-    desired_memory: Optional[float] = None
+    desired_cpu: float
+    desired_memory: float
     resized_at: Optional[int] = None
     resized_status: Optional[str] = None
     resized_message: Optional[str] = None
@@ -257,12 +257,17 @@ class IPPRStatus:
         self.resized_message = None
 
     def is_ready_to_resize(self) -> bool:
-        return self.resized_status == "new" and self.raylet_id
+        return (
+            self.raylet_id
+            and self.resized_status == "new"
+            and (
+                self.desired_cpu != self.current_cpu
+                or self.desired_memory != self.current_memory
+            )
+        )
 
     def is_in_progress(self) -> bool:
-        return (
-            self.resized_status == "inprogress" or self.resized_status == "deferred"
-        ) and self.resized_at is not None
+        return self.resized_at is not None or self.is_ready_to_resize()
 
     def is_finished(self) -> bool:
         return self.resized_status is None
@@ -274,12 +279,12 @@ class IPPRStatus:
 
     def is_timeout(self) -> bool:
         return (
-            self.is_in_progress()
+            self.resized_at is not None
             and self.resized_at + self.resize_timeout < time.time()
         )
 
     def is_failed(self) -> bool:
-        return self.resized_status == "error" or self.resized_status == "infeasible"
+        return self.resized_status == "error"
 
 
 @dataclass
