@@ -30,7 +30,7 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
 
   void SetUp() override {
     auto &io_service = *io_service_pool_->Get();
-    gcs::RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
+    gcs::RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(
         std::make_unique<gcs::RedisStoreClient>(io_service, options));
   }

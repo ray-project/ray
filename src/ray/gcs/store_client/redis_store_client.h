@@ -103,16 +103,10 @@ struct RedisClientOptions {
   // Whether to use TLS/SSL for the connection.
   bool enable_ssl = false;
 
-  RedisClientOptions(const std::string &ip,
-                     int port,
-                     const std::string &username = "",
-                     const std::string &password = "",
-                     bool enable_ssl = false)
-      : ip(ip),
-        port(port),
-        username(username),
-        password(password),
-        enable_ssl(enable_ssl) {}
+  // The interval between health checks to Redis.
+  // If a health check fails, the client will crash the process.
+  // Set to 0 to disable health checking.
+  uint64_t heartbeat_interval_ms = 1000;
 };
 
 // StoreClient using Redis as persistence backend.

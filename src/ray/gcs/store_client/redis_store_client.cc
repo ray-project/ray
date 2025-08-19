@@ -142,16 +142,15 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
       << kClusterSeparator << ".";
 
   // Health check Redis periodically and crash if it becomes unavailable.
-  // XXX: remove RayConfig dep.
   periodic_health_check_runner_ = PeriodicalRunner::Create(io_service_);
   periodic_health_check_runner_->RunFnPeriodically(
       [this] {
         AsyncCheckHealth({[](const Status &status) {
-                            RAY_CHECK_OK(status) << "Redis connection failed.";
+                            RAY_CHECK_OK(status) << "Redis connection failed unexpectedly.";
                           },
                           io_service_});
       },
-      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+      options.heartbeat_interval_ms,
       "RedisStoreClient.redis_health_check");
 }
 
@@ -550,7 +549,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                            const std::string &external_storage_namespace) {
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
-  RedisClientOptions options(host, port, username, password, use_ssl);
+  RedisClientOptions options{host, port, username, password, use_ssl};
   std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options);
 
   auto thread = std::make_unique<std::thread>([&]() {

@@ -98,7 +98,8 @@ cdef extern from * namespace "ray::gcs" nogil:
       RayConfig::instance().initialize(config_list);
 
       instrumented_io_context io_service{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
-      RedisClientOptions options(host, port, username, password, use_ssl);
+      // Set heartbeat_interval_ms to 0 to disable health checking for this temporary client.
+      RedisClientOptions options{host, port, username, password, use_ssl, /*heartbeat_interval_ms=*/0};
 
       auto client = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(io_service, options));

@@ -36,8 +36,8 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
           io_service.get_executor());
       io_service.run();
     });
-    ray::gcs::RedisClientOptions options("127.0.0.1",
-                                         ray::TEST_REDIS_SERVER_PORTS.front());
+    ray::gcs::RedisClientOptions options{"127.0.0.1",
+                                         ray::TEST_REDIS_SERVER_PORTS.front()};
     if (GetParam() == "redis") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
           std::make_unique<ray::gcs::RedisStoreClient>(io_service, options));

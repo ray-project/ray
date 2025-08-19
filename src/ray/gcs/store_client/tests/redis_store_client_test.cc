@@ -72,8 +72,8 @@ class RedisStoreClientTest : public StoreClientTestBase {
   }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "");
     auto &io_context = *io_service_pool_->Get();
+    RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
     store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
   }
 
