@@ -630,6 +630,7 @@ py_test_module_list(
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
         "test_gpu_objects_nccl.py",
+        "test_gpu_objects_nixl.py",
     ],
     tags = [
         "exclusive",

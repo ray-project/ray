@@ -1,4 +1,5 @@
 """APIs exposed under the namespace ray.util.collective."""
+
 import logging
 import os
 from typing import List
@@ -36,6 +37,13 @@ try:
 except ImportError:
     _TORCH_DISTRIBUTED_AVAILABLE = False
 
+try:
+    from ray.util.collective.collective_group.nixl_backend import NixlBackend
+
+    _NIXL_AVAILABLE = True
+except ImportError:
+    _NIXL_AVAILABLE = False
+
 
 def nccl_available():
     global _LOG_NCCL_WARNING
@@ -55,6 +63,10 @@ def gloo_available():
 
 def torch_distributed_available():
     return _TORCH_DISTRIBUTED_AVAILABLE
+
+
+def nixl_available():
+    return _NIXL_AVAILABLE
 
 
 class GroupManager(object):
@@ -98,6 +110,10 @@ class GroupManager(object):
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
             g = TorchGLOOGroup(world_size, rank, group_name)
+        elif backend == types.Backend.NIXL:
+            _check_backend_availability(backend)
+            logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
+            g = NixlBackend()
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 
@@ -719,19 +735,24 @@ def get_group_handle(group_name: str = "default"):
     if not is_group_initialized(group_name):
         # try loading from remote info store
         try:
-            # if the information is stored in an Info object,
-            # get and create the group.
-            name = "info_" + group_name
-            mgr = ray.get_actor(name=name)
-            ids, world_size, rank, backend, gloo_timeout = ray.get(
-                mgr.get_info.remote()
-            )
-            worker = ray._private.worker.global_worker
-            id_ = worker.core_worker.get_actor_id()
-            r = rank[ids.index(id_)]
-            _group_mgr.create_collective_group(
-                backend, world_size, r, group_name, gloo_timeout
-            )
+            if group_name == types.NIXL_GROUP_NAME:
+                _group_mgr.create_collective_group(
+                    types.Backend.NIXL, None, None, group_name, None
+                )
+            else:
+                # if the information is stored in an Info object,
+                # get and create the group.
+                name = "info_" + group_name
+                mgr = ray.get_actor(name=name)
+                ids, world_size, rank, backend, gloo_timeout = ray.get(
+                    mgr.get_info.remote()
+                )
+                worker = ray._private.worker.global_worker
+                id_ = worker.core_worker.get_actor_id()
+                r = rank[ids.index(id_)]
+                _group_mgr.create_collective_group(
+                    backend, world_size, r, group_name, gloo_timeout
+                )
         except ValueError as exc:
             # check if this group is initialized using options()
             if (
@@ -781,6 +802,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.TORCH_GLOO:
         if not torch_distributed_available():
             raise RuntimeError("torch.distributed is not available.")
+    elif backend == types.Backend.NIXL:
+        if not nixl_available():
+            raise RuntimeError("NIXL is not available.")
 
 
 def _check_inside_actor():
