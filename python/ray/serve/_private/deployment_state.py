@@ -2571,7 +2571,7 @@ class DeploymentStateManager:
 
     @property
     def deployment_states(self) -> Dict[DeploymentID, DeploymentState]:
-        return self._deployment_states
+        return self._deployment_states.copy()
 
     def _create_deployment_state(self, deployment_id):
         self._deployment_scheduler.on_deployment_created(
