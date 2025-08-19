@@ -746,3 +746,11 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+
+
+# This error is used to raise when a by-value DeploymentResponse is converted to an
+# ObjectRef.
+OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
+    "Use handle.options(_by_reference=True) to enable it."
+)

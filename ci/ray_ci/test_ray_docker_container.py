@@ -29,7 +29,7 @@ class TestRayDockerContainer(RayCITestBase):
             side_effect=_mock_run_script,
         ):
             sha = "123456"
-            ray_ci_build_id = "123"
+            ray_ci_build_id = "a1b2c3d4"
             cuda = "cu12.4.1-cudnn"
 
             # Run with default python version and ray image
@@ -99,7 +99,7 @@ class TestRayDockerContainer(RayCITestBase):
         ):
             formatted_date = datetime.now().strftime("%y%m%d")
             sha = "123456"
-            ray_ci_build_id = "123"
+            ray_ci_build_id = "a1b2c3d4"
 
             # Run with default python version and ray image
             self.cmds = []
@@ -195,7 +195,7 @@ class TestRayDockerContainer(RayCITestBase):
             os.environ, {"RAYCI_SCHEDULE": "daytime"}
         ):
             sha = "123456"
-            ray_ci_build_id = "123"
+            ray_ci_build_id = "a1b2c3d4"
             cuda = "cu11.8.0-cudnn8"
 
             # Run with default python version and ray image
@@ -280,6 +280,7 @@ class TestRayDockerContainer(RayCITestBase):
         # bulk logic of _get_image_tags is tested in its callers (get_image_name and
         # get_canonical_tag), so we only test the basic cases here
         sha = "123456"
+        rayci_build_id = "a1b2c3d4"
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray")
@@ -290,6 +291,10 @@ class TestRayDockerContainer(RayCITestBase):
                 f"{sha}-cpu",
                 f"{sha}-{pv}",
                 f"{sha}",
+                f"{rayci_build_id}-{pv}-cpu",
+                f"{rayci_build_id}-cpu",
+                f"{rayci_build_id}-{pv}",
+                f"{rayci_build_id}",
             ]
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
             assert container._get_image_tags(external=True) == [
@@ -305,6 +310,7 @@ class TestRayDockerContainer(RayCITestBase):
 
     def test_get_image_name(self) -> None:
         sha = "123456"
+        rayci_build_id = "a1b2c3d4"
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
         formatted_date = datetime.now().strftime("%y%m%d")
@@ -315,6 +321,10 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray:{sha}-cpu",
                 f"rayproject/ray:{sha}-{pv}",
                 f"rayproject/ray:{sha}",
+                f"rayproject/ray:{rayci_build_id}-{pv}-cpu",
+                f"rayproject/ray:{rayci_build_id}-cpu",
+                f"rayproject/ray:{rayci_build_id}-{pv}",
+                f"rayproject/ray:{rayci_build_id}",
             ]
 
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
@@ -335,6 +345,7 @@ class TestRayDockerContainer(RayCITestBase):
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
             assert container._get_image_names() == [
                 f"rayproject/ray-llm:{sha}-{pv}-cu124",
+                f"rayproject/ray-llm:{rayci_build_id}-{pv}-cu124",
             ]
 
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
@@ -351,6 +362,9 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:{sha}-{pv}-cu121",
                 f"rayproject/ray-ml:{sha}-{pv}-gpu",
                 f"rayproject/ray-ml:{sha}-{pv}",
+                f"rayproject/ray-ml:{rayci_build_id}-{pv}-cu121",
+                f"rayproject/ray-ml:{rayci_build_id}-{pv}-gpu",
+                f"rayproject/ray-ml:{rayci_build_id}-{pv}",
             ]
 
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):

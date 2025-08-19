@@ -1,10 +1,8 @@
 import pytest
 
 import ray
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ActorPoolScalingRequest,
-)
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
