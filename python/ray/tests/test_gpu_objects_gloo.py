@@ -248,7 +248,7 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
 
     if has_tensor_transport_method:
         # Test tensor transport annotation via ray.method.
-        @ray.remote()
+        @ray.remote
         class GPUTestActor(_GPUTestActor):
             @ray.method(tensor_transport="gloo")
             def echo(self, data):

@@ -2281,6 +2281,8 @@ class ActorHandle(Generic[T]):
                         self._ray_method_generator_backpressure_num_objects
                     ),
                     "method_enable_task_events": self._ray_method_enable_task_events,
+                    "enable_tensor_transport": self._ray_enable_tensor_transport,
+                    "method_name_to_tensor_transport": self._ray_method_name_to_tensor_transport,
                     "actor_method_cpus": self._ray_actor_method_cpus,
                     "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
@@ -2330,6 +2332,8 @@ class ActorHandle(Generic[T]):
                 state["method_retry_exceptions"],
                 state["method_generator_backpressure_num_objects"],
                 state["method_enable_task_events"],
+                state["enable_tensor_transport"],
+                state["method_name_to_tensor_transport"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
                 state["current_cluster_and_job"],
