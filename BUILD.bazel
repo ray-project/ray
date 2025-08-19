@@ -279,22 +279,6 @@ filegroup(
     ],
 )
 
-alias(
-    name = "redis-server",
-    actual = select({
-        "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
-        "//conditions:default": "@com_github_antirez_redis//:redis-server",
-    }),
-)
-
-alias(
-    name = "redis-cli",
-    actual = select({
-        "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
-        "//conditions:default": "@com_github_antirez_redis//:redis-cli",
-    }),
-)
-
 filegroup(
     name = "core_py_proto",
     srcs = ["//src/ray/protobuf:core_py_proto"],
@@ -361,17 +345,6 @@ pkg_zip(
 )
 
 pkg_files(
-    name = "redis_files",
-    srcs = [
-        ":redis-cli",
-        ":redis-server",
-    ],
-    attributes = pkg_attributes(mode = "755"),
-    prefix = "ray/core/src/ray/thirdparty/redis/src",
-    visibility = ["//visibility:private"],
-)
-
-pkg_files(
     name = "raylet_files",
     srcs = ["//src/ray/raylet"],
     attributes = pkg_attributes(mode = "755"),
@@ -401,7 +374,6 @@ pkg_zip(
         ":gcs_server_files",
         ":raylet_files",
         ":raylet_so_files",
-        ":redis_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
         "//conditions:default": [],

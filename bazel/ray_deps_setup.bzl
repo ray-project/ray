@@ -105,18 +105,6 @@ def ray_deps_setup():
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
     # all of http/git_repository should add prefix for patches defined in ray directory.
     auto_http_archive(
-        name = "com_github_antirez_redis",
-        build_file = "@io_ray//bazel:redis.BUILD",
-        patch_args = ["-p1"],
-        url = "https://github.com/redis/redis/archive/refs/tags/7.2.3.tar.gz",
-        sha256 = "afd656dbc18a886f9a1cc08a550bf5eb89de0d431e713eba3ae243391fb008a6",
-        patches = [
-            "@io_ray//thirdparty/patches:redis-quiet.patch",
-        ],
-        workspace_file_content = 'workspace(name = "com_github_antirez_redis")',
-    )
-
-    auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "@io_ray//bazel:hiredis.BUILD",
         url = "https://github.com/redis/hiredis/archive/60e5075d4ac77424809f855ba3e398df7aacefe8.tar.gz",
@@ -136,14 +124,6 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:spdlog-rotation-file-format.patch",
         ],
         patch_args = ["-p1"],
-    )
-
-    auto_http_archive(
-        name = "com_github_tporadowski_redis_bin",
-        build_file = "@io_ray//bazel:redis.BUILD",
-        strip_prefix = None,
-        url = "https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.zip",
-        sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
     )
 
     auto_http_archive(
@@ -281,16 +261,6 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
         ],
-    )
-
-    http_archive(
-        name = "openssl",
-        strip_prefix = "openssl-1.1.1f",
-        sha256 = "186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35",
-        urls = [
-            "https://openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz",
-        ],
-        build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
     )
 
     http_archive(
