@@ -35,23 +35,28 @@ class AbstractMap(AbstractOneToOne):
         per_block_limit: Optional[int] = None,
     ):
         """
+        Initialize an ``AbstractMap`` logical operator that will later
+        be converted into a physical ``MapOperator``.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
+            input_op: The operator preceding this operator in the plan DAG. The
+                outputs of ``input_op`` will be the inputs to this operator.
             num_outputs: Number of outputs for this operator.
-            min_rows_per_bundled_input: Min number of rows a single bundle of blocks
-                passed on to the task must possess.
+            min_rows_per_bundled_input: Minimum number of rows a single bundle of
+                blocks passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
-            ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
-            compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
-                Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
+            ray_remote_args_fn: A function that returns a dictionary of remote
+                args passed to each map worker. The purpose of this argument is
+                to generate dynamic arguments for each actor/task, and it will
+                be called each time prior to initializing the worker. Args
+                returned from this dict always override the args in
+                ``ray_remote_args``. Note: this is an advanced, experimental
+                feature.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default)
+                to use Ray tasks, or ``ActorPoolStrategy`` to use an
+                autoscaling actor pool.
             per_block_limit: The per-block limit for the map operation.
         """
         super().__init__(name, input_op, num_outputs)

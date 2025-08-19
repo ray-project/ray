@@ -225,6 +225,8 @@ class RandomIntRowDatasource(Datasource):
 
     def __init__(self, n: int, num_columns: int):
         """
+        Initialize the datasource that generates random‐integer rows.
+
         Args:
             n: The number of rows to generate.
             num_columns: The number of columns to generate.

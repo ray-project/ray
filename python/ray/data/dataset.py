@@ -6429,6 +6429,8 @@ class Schema:
         data_context: Optional[DataContext] = None,
     ):
         """
+        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+
         Args:
             base_schema: The underlying Arrow or Pandas schema.
             data_context: The data context to use for this schema.

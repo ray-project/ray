@@ -267,7 +267,10 @@ class ClickHouseDatasource(Datasource):
             parallelism: The desired number of partitions to read the data into.
                 - If ``order_by`` is not set, parallelism will be forced to 1.
                 - If ``filter`` is set, parallelism will also be forced to 1
-                  to ensure deterministic results.
+                    to ensure deterministic results.
+            per_block_limit: Maximum number of rows allowed in each emitted
+                block.  Blocks larger than this limit will be sliced before
+                being yielded downstream.
 
         Returns:
             A list of read tasks to be executed.
