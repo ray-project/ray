@@ -25,9 +25,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "integration_test",
+    name = "pubsub_integration_test",
     size = "small",
-    srcs = ["integration_test.cc"],
+    srcs = ["pubsub_integration_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/ray/protobuf:pubsub_cc_grpc",

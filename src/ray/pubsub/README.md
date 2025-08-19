@@ -1,7 +1,7 @@
 # Pubsub module
 
-The doc is written on June 9th 2021. The implementation can be changed in any
-time, and the documentation could be out of date.
+This doc has last been updated on Aug 19, 2025. This doc should be updated
+as the implementation changes.
 
 ## Motivation
 
@@ -31,6 +31,9 @@ situation.
 - Publisher: A process that publishes messages to subscribers.
 - Subscriber: A process that subscribes channels from publishers.
 - Channel: Equivalent to topic in Kafka.
+- Key/Entity: A specific item you care about in the channel. E.g. in
+  the actor channel, you only care about a specific actor id so that's
+  the key you subscribe to. Not all channels have keys you can subscribe by.
 - Command: Equivalent to Redis pubsub's command. E.g., Subscribe / Unsubscribe.
 
 ## Features
@@ -45,7 +48,7 @@ situation.
   subscribers.
 - Subscriber failure detection. The subscriber failure is tracked by
   publishers.
-- The module is general and can be used in arbitrary two core ray components.
+- The module is general and can be used in two arbitrary Ray components.
 
 ## Limitation
 
@@ -53,56 +56,82 @@ If messages are published before a subscription, they're lost.
 
 ## Implementation
 
-The pubsub module doesn't have a broker like traditional pubsub systems because
-there's no use case. In the pubsub module, all publishers are also brokers. The
-performance, especially a throughput was not a requirement when developed, and
-the module is not designed for high throughput.
+In this pubsub implementation, publishers directly send messages to subscribers.
+There are no intermediary brokers. The performance, especially throughput
+wasn't a requirement when developed, and therefore the module isn't designed
+for high throughput.
 
 ### Basic mechanism
 
-Between the publisher and subscriber, there's only 1 long-polling connection.
-The long polling connection is initiated from the subscriber when there are
-subscribing entries from the publisher. Whenever publisher publishes messages,
-they are batched to the reply of the long polling request in FIFO order.
-
-### Commands
-
+#### PubsubCommandBatch
 A command is an operation from a subscriber to publisher. Subscribe and
-Unsubscribe are the only commands. Commands are served by a separate
-RPC, which also batches them in the FIFO order.
+Unsubscribe are the only commands. Commands are served by `PubsubCommandBatch`,
+which batches them in the FIFO order. We limit to it one in-flight `PubsubCommandBatchRequest`
+at a time to prevent out of order subscribes / unsubscribes. Because of this,
+we have to queue up commands and therefore have to batch commands when sending them.
 
-### What will actually happen / How it actually works
-1. The subscriber sends a PubsubCommandBatchRequest with its own subscriber_id
-and a SubMessage Command with a channel_type and possibly a key_id. It also sends
-over a PubsubLongPollingRequest with its own subscriber_id.
-2. The publisher receives the PubsubCommandBatchRequest, creates a SubscriberState
-for the subscriber if it doesn't exist, registers the subscription for the subscriber
-for the given channel + key, and sends a reply back. Registering the subscription means
-setting up the relation between appropriate EntityState and SubscriberState.
-The Publisher has a SubscriptionIndex for each channel and each SubscriptionIndex holds
-EntityState's for each key in the channel. Each EntityState holds SubscriberState
-pointers so it can insert into its mailbox. There's a special EntityState for
-"subscribing to all" in every SubscriptionIndex.
-3. The publisher receives the PubsubLongPollingRequest, creates a SubscriberState if
-it doesn't exist, creates a "LongPollConnection" in the SubscriberState, and tries
-to Publish by responding to the request if there were already things in its SubscriberState
-mailbox. Note that 2 and 3 can happen out of order as well.
-4. If the mailbox was empty at the time the PubsubLongPollingRequest was received, the
-publisher will wait until the next relevant Publish to reply and send the publish over.
-5. When the subscriber gets the reply to the PubsubCommandBatchRequest, it just runs
-a callback for the command if the subscriber passed one in. It will also send new
-commands to the publisher if they'd been queued up. We only allow one in-flight
-PubsubCommandBatchRequest to a publisher to ensure ordering of commands.
-6. When the subscriber gets the reply to the PubsubLongPollingRequest, it will process
-the published messages and then send another PubsubLongPollingRequest if a subscription
-still exists.
-7. The publisher once again receives the PubsubLongPollingRequest, check the mailbox and
-publish it if it's not empty or wait for a relevant publish to publish and reply.
-8. When unsubscribing, the subscriber sends another PubsubCommandBatchRequest with an
-UnsubscribeMessage.
-9. The publisher receives the PubsubCommandBatchRequest and unregisters the SubscriberState from
-the appropriate EntityState. If the EntityState doesn't have any more SubscriberState's, it will
-be erased. Later on we'll clean up inactive SubscriberState's on an interval.
+#### PubsubLongPolling
+Between the publisher and subscriber, there's only 1 long-polling connection
+(only one in-flight request), no matter how many separate channels / keys the
+subscriber is subscribed to. The subscriber will always have an in-flight
+`PubsubLongPollingRequest` as long as it's subscribed to something. Whenever a
+publisher publishes messages to that subscriber, they're batched to the reply
+of the long polling request in FIFO order.
+
+### Pubsub Code Flow
+Breakdown of the pubsub flow from the subscriber and publisher
+Note that this section ignores fault tolerance.
+
+#### Subscriber Actions
+
+1. **On a Subscribe call**
+   - Sends a `PubsubCommandBatchRequest` with its own `subscriber_id` and a `SubMessage`
+     Command containing `channel_type` and optionally `key_id`
+   - Sends a `PubsubLongPollingRequest` with its own `subscriber_id`
+
+2. **Subscribe done**
+   - Receives `PubsubCommandBatchReply` and runs a callback if provided on subscribe
+   - Sends new commands to publisher if they've been queued up, e.g. another subscribe to
+     something else or an unsubscribe to something
+   - Only allows one in-flight `PubsubCommandBatchRequest` to ensure command ordering
+
+3. **Message Processing**
+   - Receives reply to `PubsubLongPollingRequest` and processes published messages
+   - Sends another `PubsubLongPollingRequest` if subscription still exists
+
+4. **Unsubscribe**
+   - Sends `PubsubCommandBatchRequest` with `UnsubscribeMessage` when unsubscribing
+
+#### Publisher Actions
+
+1. **Subscribe Handling**
+   - Receives `PubsubCommandBatchRequest` and creates a `SubscriberState` for the
+     subscriber if it doesn't exist
+   - Registers subscription for the given channel + key by setting up a relation between
+     an `EntityState` and a `SubscriberState`
+   - Note that the publisher maintains a `SubscriptionIndex` for each channel, and each
+     `SubscriptionIndex` holds `EntityState` objects for each key. Each `EntityState`
+     holds `SubscriberState` pointers to send / queue up messages to send. There's a
+     special `EntityState` in every `SubscriptionIndex` for "subscribing to all"
+
+2. **Initial Long Polling Request**
+   - Receives `PubsubLongPollingRequest` and creates `SubscriberState` if it doesn't exist.
+     Note that the `SubscriberState` might not exist because the initial `PubsubLongPollingRequest`
+     could arrive before the associated `PubsubCommandBatchRequest`.
+   - Creates a `LongPollConnection` in the `SubscriberState` to store the reply + reply callback
+   - Attempts to publish by replying to the request if mailbox already contains messages
+   - If mailbox is empty, waits until next relevant publish to reply and send the publish
+
+3. **Subsequent Long Polling**
+   - Receives a subsequent `PubsubLongPollingRequest` from the subscriber and checks mailbox
+   - Publishes messages if mailbox isn't empty, or waits for relevant publish to reply
+
+4. **Unsubscribe**
+   - Receives unsubscribe command and unregisters `SubscriberState` from the appropriate
+     `EntityState`
+   - Erases the `EntityState` if it no longer contains any `SubscriberState` pointers
+   - Periodically cleans up "Dead" `SubscriberState`'s
+
 
 ### Fault detection
 

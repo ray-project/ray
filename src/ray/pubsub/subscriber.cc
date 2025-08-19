@@ -449,8 +449,8 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
             // This means the publisher has failed.
             // The publisher dead detection & command clean up will be done
             // from the long polling request.
-            RAY_LOG(INFO) << "The command batch request to " << publisher_id
-                          << " has failed";
+            RAY_LOG(WARNING) << "The command batch request to " << publisher_id
+                             << " has failed";
           }
           {
             absl::MutexLock lock(&mutex_);
