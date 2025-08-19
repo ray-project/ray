@@ -399,6 +399,7 @@ TEST_F(ShutdownCoordinatorTest, Concurrent_DoubleForce_ForceExecutesOnce) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);
   EXPECT_EQ(fake_ptr->force_calls.load(), 1);
   EXPECT_EQ(fake_ptr->graceful_calls.load(), 0);
+  EXPECT_EQ(fake_ptr->last_detail, "force1");
 }
 
 }  // namespace core
