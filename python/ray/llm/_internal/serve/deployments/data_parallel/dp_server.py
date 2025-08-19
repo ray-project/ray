@@ -88,7 +88,7 @@ def build_dp_deployment(
     # NOTE: we cannot use engine_kwargs.data_parallel_size_local to specify
     # the number of ranks per node because that has special semantics in vLLM.
     dp_size_per_node = llm_config.experimental_configs.get("dp_size_per_node", None)
-    
+
     deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
     dp_rank_assigner = DPRankAssigner.bind(
         dp_size=dp_size, dp_size_per_node=dp_size_per_node
