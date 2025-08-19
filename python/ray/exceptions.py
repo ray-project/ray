@@ -475,9 +475,13 @@ class RaySystemError(RayError):
         self.traceback_str = traceback_str
 
     def __str__(self):
-        error_msg = f"\n\n== Start of System Error ==\n\n System error: {self.client_exc}"
+        error_msg = (
+            f"\n\n== Start of System Error ==\n\n System error: {self.client_exc}"
+        )
         if self.traceback_str:
-            error_msg += f"\ntraceback: {self.traceback_str} \n == End of System Error == \n"
+            error_msg += (
+                f"\ntraceback: {self.traceback_str} \n == End of System Error == \n"
+            )
         return error_msg
 
 
