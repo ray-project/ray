@@ -69,7 +69,8 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
 
 def clean_and_validate_ray_start_args(ray_start_args: List[str]) -> List[str]:
     cleaned_args = ray_start_args.copy()
-    for existing_arg in ["--address", "--wait-for-nnodes"]:
+    symmetric_run_args = [opt for param in symmetric_run.params for opt in param.opts]
+    for existing_arg in symmetric_run_args:
         if existing_arg in cleaned_args:
             address_index = cleaned_args.index(existing_arg)
             # remove the argument and the value
