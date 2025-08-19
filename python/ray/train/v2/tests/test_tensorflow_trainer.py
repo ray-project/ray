@@ -69,8 +69,7 @@ def test_tensorflow_linear_for_distributed_and_local_mode(
     )
     result = trainer.fit()
     assert not result.error
-    if num_workers > 0:
-        assert result.checkpoint
+    assert result.checkpoint
 
 
 if __name__ == "__main__":

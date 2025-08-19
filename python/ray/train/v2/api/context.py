@@ -223,7 +223,7 @@ class TrainContext(ABC):
 
 
 class DistributedTrainContext(TrainContext):
-    """Implementation of TrainContext for distributed jobs."""
+    """Implementation of TrainContext for distributed mode."""
 
     def get_experiment_name(self) -> str:
         return get_internal_train_context().get_experiment_name()
@@ -276,11 +276,8 @@ class LocalModeTrainContext(TrainContext):
         return self.local_world_size
 
     def get_node_rank(self) -> int:
-        """For non-ray-train-controller jobs, we only use one node."""
+        """For local mode, we only use one node."""
         return 0
 
     def get_storage(self):
-        raise NotImplementedError(
-            "Local storage context not yet implemented. "
-            "Please use TrainContextWithRayTrain for full storage support."
-        )
+        raise NotImplementedError("Local storage context not yet implemented. ")

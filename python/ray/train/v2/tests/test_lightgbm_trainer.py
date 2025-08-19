@@ -109,8 +109,9 @@ def test_fit_with_categoricals_for_distributed_and_local_mode(
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
+    checkpoint = result.checkpoint
+    assert checkpoint is not None
     if num_workers > 0:
-        checkpoint = result.checkpoint
         model = RayTrainReportCallback.get_model(checkpoint)
         assert model.pandas_categorical == [["A", "B"]]
 

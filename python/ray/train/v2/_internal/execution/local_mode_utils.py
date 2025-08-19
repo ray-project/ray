@@ -37,6 +37,7 @@ class LocalModeTrainFnUtils(TrainFnUtils):
         )
         self._dataset_shards = dataset_shards
         self._last_metrics = None
+        self._last_checkpoint = None
 
     def report(
         self,
@@ -45,9 +46,10 @@ class LocalModeTrainFnUtils(TrainFnUtils):
         checkpoint_dir_name: Optional[str] = None,
     ) -> None:
         self._last_metrics = metrics
+        self._last_checkpoint = checkpoint
 
     def get_checkpoint(self) -> Optional[Checkpoint]:
-        return None
+        return self._last_checkpoint
 
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
         assert (
@@ -62,8 +64,8 @@ class LocalModeTrainFnUtils(TrainFnUtils):
         return False
 
     def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
-        """return the last metrics reported by the training function.
-        This function should only be called by TorchBackendWithoutRayTrainController
+        """Return the last metrics reported by the training function.
+        This function should only be called by BackendForLocalMode
         """
         return self._last_metrics
 
@@ -94,7 +96,7 @@ class BackendForLocalMode:
         assert isinstance(train_fn_utils, LocalModeTrainFnUtils)
         return Result(
             metrics=train_fn_utils._get_last_metrics(),
-            checkpoint=None,
+            checkpoint=train_fn_utils.get_checkpoint(),
             path=None,
             error=None,
         )

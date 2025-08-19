@@ -112,9 +112,7 @@ class ScalingConfig:
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
-            ``resources_per_worker`` argument. If the number of workers is 0,
-            the training function will run in local mode, meaning the training
-            function runs in the same process.
+            ``resources_per_worker`` argument.
         use_gpu: If True, training will be done on GPUs (1 per worker).
             Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
@@ -175,11 +173,6 @@ class ScalingConfig:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker."
                 )
-
-        if self.num_workers == 0:
-            warnings.warn(
-                "Running in local mode. The training function will run in the same process."
-            )
 
     def __repr__(self):
         return _repr_dataclass(self)

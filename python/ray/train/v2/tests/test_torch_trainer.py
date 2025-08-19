@@ -49,8 +49,7 @@ def test_torch_linear_for_distributed_and_local_mode(ray_start_4_cpus, num_worke
     assert result.error is None
     assert result.metrics is not None
     assert result.metrics["loss"] is not None
-    if num_workers > 0:
-        assert result.checkpoint
+    assert result.checkpoint
 
 
 if __name__ == "__main__":

@@ -17,7 +17,9 @@ class TrainFnUtils(ABC):
     """Utility class providing an abstraction layer between user-facing APIs
         and :class:`~ray.train.v2.api.context.TrainContext`.
 
-    It should be set before the users' training function is called, like training workers initialization.
+    It should be set before the users' training function is called.
+    For distributed mode, it is set during training workers initialization.
+    For local mode, it is set during the initialization of :class:`~ray.train.v2.api.data_parallel_trainer.DataParallelTrainer`.
     This class can be patched if new user APIs behaviors is wanted.
     """
 

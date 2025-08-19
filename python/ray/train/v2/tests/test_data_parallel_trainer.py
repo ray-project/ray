@@ -112,10 +112,7 @@ def test_report_checkpoint_rank0_for_distributed_and_local_mode(num_workers, tmp
     )
     result = trainer.fit()
     assert result.metrics == {"rank": 0}
-    if num_workers > 0:
-        assert result.checkpoint
-    else:
-        assert result.checkpoint is None
+    assert result.checkpoint
 
 
 def test_report_checkpoint_multirank(tmp_path):
