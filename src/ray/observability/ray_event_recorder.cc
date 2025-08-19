@@ -51,7 +51,7 @@ void RayEventRecorder::ExportEvents() {
   *request.mutable_events_data() = std::move(ray_event_data);
   buffer_.clear();
 
-  event_aggregator_client_.AddEvents(
+  event_aggregator_client_->AddEvents(
       request, [](Status status, rpc::events::AddEventsReply reply) {
         if (!status.ok()) {
           // TODO(#56391): Add a metric to track the number of failed events. Also
