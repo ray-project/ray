@@ -163,7 +163,7 @@ TEST_F(ShutdownCoordinatorTest,
 }
 
 TEST_F(ShutdownCoordinatorTest,
-       GracefulShutdown_WithNoOpExecutor_DeterministicFinalState) {
+       RequestShutdown_Graceful_SetsDisconnecting_ThenTryTransitionToShutdown_Succeeds) {
   auto coordinator = std::make_unique<ShutdownCoordinator>(
       std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
 
@@ -333,40 +333,6 @@ TEST_F(ShutdownCoordinatorTest,
   auto coordinator = CreateCoordinator();
   coordinator->RequestShutdown(false, ShutdownReason::kIdleTimeout);
   EXPECT_EQ(coordinator->GetExitTypeString(), "INTENDED_SYSTEM_EXIT");
-}
-
-TEST_F(ShutdownCoordinatorTest, DISABLED_NullDependencies) {
-  // Test behavior with no-op dependencies (should not crash)
-  auto coordinator = std::make_unique<ShutdownCoordinator>(
-      std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
-
-  EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
-                                           ShutdownReason::kGracefulExit));
-
-  // With no-op dependencies, should stay in shutting down state
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShuttingDown);
-}
-
-TEST_F(ShutdownCoordinatorTest, DISABLED_ManualStateTransitions) {
-  // Use no-op dependencies to manually control transitions
-  auto coordinator = std::make_unique<ShutdownCoordinator>(
-      std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
-
-  // Initial state
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
-
-  // Start shutdown
-  EXPECT_TRUE(coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit));
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShuttingDown);
-
-  // Manual transition to disconnecting
-  EXPECT_TRUE(coordinator->TryTransitionToDisconnecting());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
-
-  // Manual transition to shutdown
-  EXPECT_TRUE(coordinator->TryTransitionToShutdown());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
-  EXPECT_TRUE(coordinator->IsShutdown());
 }
 
 TEST_F(ShutdownCoordinatorTest, ShouldEarlyExit_MemoryOrdering_ConcurrentVisibility) {
