@@ -9,6 +9,8 @@ from ray.experimental.collective.collective import (
     destroy_collective_group,
     destroy_all_collective_groups,
 )
+from ray.experimental.collective.util import get_tensor_transport_manager
+
 
 __all__ = [
     "allgather",
@@ -18,4 +20,5 @@ __all__ = [
     "create_collective_group",
     "destroy_collective_group",
     "destroy_all_collective_groups",
+    "get_tensor_transport_manager",
 ]
