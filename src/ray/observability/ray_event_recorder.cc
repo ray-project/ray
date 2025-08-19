@@ -20,9 +20,9 @@ namespace ray {
 namespace observability {
 
 RayEventRecorder::RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                                   instrumented_io_context &io_service)
-    : event_aggregator_client_(event_aggregator_client),
-      periodical_runner_(PeriodicalRunner::Create(io_service)) {}
+    instrumented_io_context &io_service)
+: event_aggregator_client_(event_aggregator_client),
+periodical_runner_(PeriodicalRunner::Create(io_service)) {}
 
 void RayEventRecorder::StartExportingEvents() {
   absl::MutexLock lock(&mutex_);

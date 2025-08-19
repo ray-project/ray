@@ -37,8 +37,8 @@ namespace observability {
 // This class is thread safe.
 class RayEventRecorder : public RayEventRecorderInterface {
  public:
-  RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                   instrumented_io_context &io_service);
+ RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
+  instrumented_io_context &io_service);
   virtual ~RayEventRecorder() = default;
 
   // Start exporting events to the event aggregator by periodically sending events to
