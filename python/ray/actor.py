@@ -1038,10 +1038,6 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_tensor_transport__
 
-            method_tensor_transport = self.method_name_to_tensor_transport.get(
-                method_name, None
-            )
-
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
         return self

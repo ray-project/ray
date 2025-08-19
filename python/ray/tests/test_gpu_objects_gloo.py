@@ -218,13 +218,12 @@ def test_p2p_errors_before_group_creation(ray_start_regular):
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
-    receiver = actors[1]
 
     with pytest.raises(
         ValueError,
         match="Actor.* does not have tensor transport GLOO available. Please create a communicator with `ray.experimental.collective.create_collective_group` before calling actor tasks with non-default tensor_transport.",
     ):
-        ref = sender.echo.remote(small_tensor)
+        sender.echo.remote(small_tensor)
 
 
 @pytest.mark.parametrize("has_tensor_transport_method", [True, False])
@@ -249,14 +248,15 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
 
     if has_tensor_transport_method:
         # Test tensor transport annotation via ray.method.
-        @ray.remote(num_cpus=0)
+        @ray.remote()
         class GPUTestActor(_GPUTestActor):
             @ray.method(tensor_transport="gloo")
             def echo(self, data):
                 return data
+
     else:
         # Test tensor transport annotation via ray.remote.
-        @ray.remote(num_gpus, enable_tensor_transport=True)
+        @ray.remote(enable_tensor_transport=True)
         class GPUTestActor(_GPUTestActor):
             def echo(self, data):
                 return data
