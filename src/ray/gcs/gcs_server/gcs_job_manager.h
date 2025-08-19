@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -58,7 +59,8 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
                          rpc::CoreWorkerClientPool &worker_client_pool,
-                         observability::RayEventRecorderInterface &ray_event_recorder)
+                         observability::RayEventRecorderInterface &ray_event_recorder,
+                         const std::string &session_name)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
@@ -67,6 +69,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         io_context_(io_context),
         worker_client_pool_(worker_client_pool),
         ray_event_recorder_(ray_event_recorder),
+        session_name_(session_name),
         export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
@@ -149,6 +152,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   instrumented_io_context &io_context_;
   rpc::CoreWorkerClientPool &worker_client_pool_;
   observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;

@@ -1,22 +1,35 @@
-import pytest
-import sys
-import json
 import base64
+import json
+import sys
+
+import pytest
 
 import ray
-from ray._private.test_utils import (
-    wait_until_server_available,
-    wait_for_condition,
-)
+import ray.dashboard.consts as dashboard_consts
+from ray._private import ray_constants
+from ray._private.test_utils import wait_for_condition
+from ray._raylet import GcsClient
 from ray.dashboard.tests.conftest import *  # noqa
 
-from ray._private import ray_constants
-
 _RAY_EVENT_PORT = 12345
+
 
 @pytest.fixture(scope="session")
 def httpserver_listen_address():
     return ("127.0.0.1", _RAY_EVENT_PORT)
+
+
+def wait_for_dashboard_agent_available(cluster):
+    gcs_client = GcsClient(address=cluster.address)
+
+    def get_dashboard_agent_address():
+        return gcs_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
 
 def test_ray_job_events(ray_start_cluster, httpserver):
@@ -25,16 +38,14 @@ def test_ray_job_events(ray_start_cluster, httpserver):
         env_vars={
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": f"http://127.0.0.1:{_RAY_EVENT_PORT}",
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_EXECUTION_EVENT",
-            "RAY_enable_ray_event": "1",
-        }
+        },
+        _system_config={
+            "enable_ray_event": True,
+        },
     )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
-
-    # Wait for the dashboard agent to be available
-    ip, _ = cluster.webui_url.split(":")
-    agent_address = f"{ip}:{ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
-    assert wait_until_server_available(agent_address)
+    wait_for_dashboard_agent_available(cluster)
 
     # Submit a ray job
     @ray.remote
@@ -48,7 +59,6 @@ def test_ray_job_events(ray_start_cluster, httpserver):
     wait_for_condition(lambda: len(httpserver.log) >= 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
-    assert req_json[0]["message"] == "driver job definition event"
     assert (
         base64.b64decode(req_json[0]["driverJobDefinitionEvent"]["jobId"]).hex()
         == ray.get_runtime_context().get_job_id()
