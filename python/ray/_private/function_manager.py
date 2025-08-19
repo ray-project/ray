@@ -600,7 +600,11 @@ class FunctionActorManager:
         self, actor_class_name, actor_method_names, traceback_str
     ):
         class TemporaryActor:
-            pass
+            async def __dummy_method(self):
+                """Dummy method for this fake actor class to work for async actors.
+                Without this method, this temporary actor class fails to initialize
+                if the original actor class was async."""
+                pass
 
         def temporary_actor_method(*args, **kwargs):
             raise RuntimeError(
