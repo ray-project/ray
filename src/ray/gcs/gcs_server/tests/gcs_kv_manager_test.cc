@@ -36,13 +36,11 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
           io_service.get_executor());
       io_service.run();
     });
-    ray::gcs::RedisClientOptions redis_client_options(
-        "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", "", false);
+    ray::gcs::RedisClientOptions options{"127.0.0.1",
+                                         ray::TEST_REDIS_SERVER_PORTS.front()};
     if (GetParam() == "redis") {
-      auto client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
-      RAY_CHECK_OK(client->Connect(io_service));
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::RedisStoreClient>(client));
+          std::make_unique<ray::gcs::RedisStoreClient>(io_service, options));
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
           std::make_unique<ray::gcs::InMemoryStoreClient>());
@@ -52,11 +50,9 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
   void TearDown() override {
     io_service.stop();
     thread_io_service->join();
-    redis_client.reset();
     kv_instance.reset();
   }
 
-  std::unique_ptr<ray::gcs::RedisClient> redis_client;
   std::unique_ptr<std::thread> thread_io_service;
   instrumented_io_context io_service;
   std::unique_ptr<ray::gcs::InternalKVInterface> kv_instance;
