@@ -616,7 +616,11 @@ def update_operator_states(topology: Topology) -> None:
             continue
         # If any immediate upstream is an unfinished AllToAll, keep it blocked.
         if any(
-            isinstance(dep, AllToAllOperator) and not dep.execution_finished()
+            (
+                isinstance(dep, AllToAllOperator)
+                or isinstance(dep, HashShufflingOperatorBase)
+            )
+            and not dep.execution_finished()
             for dep in op.input_dependencies
         ):
             continue
