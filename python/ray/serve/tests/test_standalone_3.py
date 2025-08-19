@@ -293,6 +293,8 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
+    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
     expected_actors = 5 if is_proxy_on_every_node() else 4
     wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
