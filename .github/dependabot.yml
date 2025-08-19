@@ -27,8 +27,6 @@ updates:
     commit-message:
       prefix: "[air/do-not-merge]"
       include: "scope"
-    ignore:
-      - dependency-name: "*"
     open-pull-requests-limit: 0
     reviewers:
       - "ray-project/ray-tune"
