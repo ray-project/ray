@@ -16,6 +16,7 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -715,6 +716,42 @@ def tlog(s: str, level: str = "INFO"):
     print(f"[{level}] {now} {s}")
 
 
+def _wait_for_target_groups(
+    client: ServeControllerClient,
+    app_name: str,
+    protocol: RequestProtocol,
+    route_prefix: str,
+):
+    """Wait for target groups to be ready for the given app and protocol.
+
+    Target groups are ready when there are at least one target for the given protocol. And it's
+    possible that target groups are not ready immediately. An example is when the controller
+    is recovering from a crash.
+    """
+    target_groups: List[TargetGroup] = []
+
+    def check_target_groups_ready():
+        nonlocal target_groups
+        target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+        target_groups = [
+            target_group
+            for target_group in target_groups
+            if target_group.protocol == protocol
+        ]
+        if len(target_groups) == 0:
+            raise ValueError(
+                f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
+            )
+        all_targets = [
+            target for target_group in target_groups for target in target_group.targets
+        ]
+        return len(all_targets) > 0
+
+    wait_for_condition(check_target_groups_ready)
+
+    return target_groups
+
+
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
@@ -747,18 +784,10 @@ def get_application_urls(
         route_prefix = ""
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
-    target_groups: List[TargetGroup] = ray.get(
-        client._controller.get_target_groups.remote(app_name)
+    target_groups: List[TargetGroup] = _wait_for_target_groups(
+        client, app_name, protocol, route_prefix
     )
-    target_groups = [
-        target_group
-        for target_group in target_groups
-        if target_group.protocol == protocol
-    ]
-    if len(target_groups) == 0:
-        raise ValueError(
-            f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
-        )
+
     urls = []
     for target_group in target_groups:
         for target in target_group.targets:

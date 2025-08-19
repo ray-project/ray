@@ -247,7 +247,7 @@ class ActorReplicaWrapper:
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
-        self._port: Optional[int] = None
+        self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -261,6 +261,8 @@ class ActorReplicaWrapper:
         self._node_ip: str = None
         self._node_instance_id: str = None
         self._log_file_path: str = None
+        self._http_port: int = None
+        self._grpc_port: int = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -357,6 +359,14 @@ class ActorReplicaWrapper:
     @property
     def health_check_timeout_s(self) -> float:
         return self.deployment_config.health_check_timeout_s
+
+    @property
+    def http_port(self) -> Optional[int]:
+        return self._http_port
+
+    @property
+    def grpc_port(self) -> Optional[int]:
+        return self._grpc_port
 
     @property
     def request_routing_stats_period_s(self) -> float:
@@ -726,8 +736,10 @@ class ActorReplicaWrapper:
                         _,
                         self._version,
                         self._initialization_latency_s,
-                        self._port,
+                        self._internal_grpc_port,
                         self._docs_path,
+                        self._http_port,
+                        self._grpc_port,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1038,7 +1050,7 @@ class DeploymentReplica:
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
-            port=self._actor._port,
+            port=self._actor._internal_grpc_port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
@@ -1098,6 +1110,14 @@ class DeploymentReplica:
     def actor_node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
+
+    @property
+    def actor_http_port(self) -> Optional[int]:
+        return self._actor.http_port
+
+    @property
+    def actor_grpc_port(self) -> Optional[int]:
+        return self._actor.grpc_port
 
     @property
     def actor_pid(self) -> Optional[int]:
@@ -1547,6 +1567,10 @@ class DeploymentState:
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
+
+    @property
+    def replicas(self) -> ReplicaStateContainer:
+        return self._replicas
 
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
@@ -2502,6 +2526,11 @@ class DeploymentState:
         for replica in running_replicas:
             self._replicas.add(ReplicaState.RUNNING, replica)
 
+    def is_ingress(self) -> bool:
+        if self._target_state.info.ingress:
+            return True
+        return False
+
 
 class DeploymentStateManager:
     """Manages all state for deployments in the system.
@@ -2539,6 +2568,10 @@ class DeploymentStateManager:
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
         )
+
+    @property
+    def deployment_states(self) -> Dict[DeploymentID, DeploymentState]:
+        return self._deployment_states
 
     def _create_deployment_state(self, deployment_id):
         self._deployment_scheduler.on_deployment_created(
