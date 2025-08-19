@@ -133,9 +133,9 @@ std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_se
 
 RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
                                    const RedisClientOptions &options)
-    : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      io_service_(io_service),
+    : io_service_(io_service),
       options_(options),
+      external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
       primary_context_(ConnectRedisContext(io_service, options)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "

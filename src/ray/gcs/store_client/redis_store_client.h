@@ -296,12 +296,11 @@ class RedisStoreClient : public StoreClient {
                   const std::vector<std::string> &keys,
                   Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
-  // XXX: move into options_.
-  std::string external_storage_namespace_;
-
   instrumented_io_context &io_service_;
 
   RedisClientOptions options_;
+
+  std::string external_storage_namespace_;
 
   // The following context writes everything to the primary shard.
   std::shared_ptr<RedisContext> primary_context_;
