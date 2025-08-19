@@ -2523,9 +2523,7 @@ class DeploymentState:
             self._replicas.add(ReplicaState.RUNNING, replica)
 
     def is_ingress(self) -> bool:
-        if self._target_state.info.ingress:
-            return True
-        return False
+        return self._target_state.info.ingress
 
 
 class DeploymentStateManager:
