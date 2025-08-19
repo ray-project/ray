@@ -24,6 +24,7 @@ namespace ray {
 void PushManager::StartPush(const NodeID &dest_id,
                             const ObjectID &obj_id,
                             int64_t num_chunks,
+                            int64_t max_chunk_size,
                             std::function<void(int64_t)> send_chunk_fn) {
   auto push_id = std::make_pair(dest_id, obj_id);
   RAY_CHECK(num_chunks > 0);
@@ -37,18 +38,19 @@ void PushManager::StartPush(const NodeID &dest_id,
         dest_id,
         obj_id,
         num_chunks,
+        max_chunk_size,
         std::move(send_chunk_fn));
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    RAY_CHECK_NE(it->second->num_chunks_to_send, 0);
+    RAY_CHECK_NE(it->second->num_chunks_to_send_, 0);
     chunks_remaining_ += it->second->ResendAllChunks(std::move(send_chunk_fn));
   }
   ScheduleRemainingPushes();
 }
 
-void PushManager::OnChunkComplete() {
-  chunks_in_flight_ -= 1;
+void PushManager::OnChunkComplete(int64_t push_max_chunk_size) {
+  bytes_in_flight_ -= push_max_chunk_size;
   chunks_remaining_ -= 1;
   ScheduleRemainingPushes();
 }
@@ -62,23 +64,23 @@ void PushManager::ScheduleRemainingPushes() {
 
   // Loop over all active pushes for approximate round-robin prioritization.
   bool keep_looping = true;
-  while (chunks_in_flight_ < max_chunks_in_flight_ && keep_looping) {
+  while (bytes_in_flight_ < max_bytes_in_flight_ && keep_looping) {
     // Loop over each active push and try to send another chunk.
-    // If we could push out a chunk and haven't reached the chunks_in_flight_ limit,
+    // If we could push out a chunk and haven't reached the max_bytes_in_flight_ limit,
     // we'll loop again to try to send more chunks.
     keep_looping = false;
     auto iter = push_requests_with_chunks_to_send_.begin();
     while (iter != push_requests_with_chunks_to_send_.end() &&
-           chunks_in_flight_ < max_chunks_in_flight_) {
+           bytes_in_flight_ < max_bytes_in_flight_) {
       auto &push_state = *iter;
       push_state.SendOneChunk();
-      chunks_in_flight_ += 1;
-      if (push_state.num_chunks_to_send == 0) {
-        auto push_state_map_iter = push_state_map_.find(push_state.node_id);
+      bytes_in_flight_ += push_state.max_chunk_size_;
+      if (push_state.num_chunks_to_send_ == 0) {
+        auto push_state_map_iter = push_state_map_.find(push_state.node_id_);
         RAY_CHECK(push_state_map_iter != push_state_map_.end());
 
         auto &dest_map = push_state_map_iter->second;
-        auto dest_map_iter = dest_map.find(push_state.object_id);
+        auto dest_map_iter = dest_map.find(push_state.object_id_);
         RAY_CHECK(dest_map_iter != dest_map.end());
 
         iter = push_requests_with_chunks_to_send_.erase(dest_map_iter->second);
@@ -107,18 +109,16 @@ void PushManager::HandleNodeRemoved(const NodeID &node_id) {
 
 void PushManager::RecordMetrics() const {
   ray::stats::STATS_push_manager_num_pushes_remaining.Record(
-      NumPushRequestsWithChunksToSend());
-  ray::stats::STATS_push_manager_chunks.Record(NumChunksInFlight(), "InFlight");
-  ray::stats::STATS_push_manager_chunks.Record(NumChunksRemaining(), "Remaining");
+      push_requests_with_chunks_to_send_.size());
+  ray::stats::STATS_push_manager_chunks.Record(chunks_remaining_, "Remaining");
 }
 
 std::string PushManager::DebugString() const {
   std::stringstream result;
   result << "PushManager:";
-  result << "\n- num pushes remaining: " << NumPushRequestsWithChunksToSend();
-  result << "\n- num chunks in flight: " << NumChunksInFlight();
-  result << "\n- num chunks remaining: " << NumChunksRemaining();
-  result << "\n- max chunks allowed: " << max_chunks_in_flight_;
+  result << "\n- num pushes remaining: " << push_requests_with_chunks_to_send_.size();
+  result << "\n- num chunks remaining: " << chunks_remaining_;
+  result << "\n- max bytes allowed: " << max_bytes_in_flight_;
   return result.str();
 }
 
