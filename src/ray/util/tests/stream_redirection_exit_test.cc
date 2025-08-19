@@ -21,7 +21,7 @@
 #include <string>
 #include <thread>
 
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/util.h"
