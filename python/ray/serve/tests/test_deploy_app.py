@@ -851,7 +851,8 @@ def test_deploy_nonexistent_deployment(serve_instance):
     config.applications[1].deployments[0].name = "random2"
     client.deploy_apps(config)
     serve_details = client.get_serve_details()
-    print(f'@@@@@@@ serve_details: {serve_details}')
+    print(f"@@@@@@@ serve_details: {serve_details}")
+
     def check_app_message():
         details = ray.get(client._controller.get_serve_instance_details.remote())
         # The error message should be descriptive

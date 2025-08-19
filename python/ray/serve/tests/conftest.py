@@ -162,7 +162,7 @@ def serve_instance(_shared_serve_instance):
     #     from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
     #     from ray.serve._private.application_state import StatusOverview
     #     from ray.serve.schema import ApplicationStatus
-        
+
     #     all_apps = []
     #     for status_bytes in ray.get(_shared_serve_instance._controller.list_serve_statuses.remote()):
     #         proto = StatusOverviewProto.FromString(status_bytes)
@@ -170,7 +170,7 @@ def serve_instance(_shared_serve_instance):
     #         # Only delete apps that aren't in DEPLOY_FAILED state
     #         if status.app_status.status != ApplicationStatus.DEPLOY_FAILED:
     #             all_apps.append(status.name)
-        
+
     #     if all_apps:
     #         _shared_serve_instance.delete_apps(all_apps, blocking=True)
     # except Exception:
