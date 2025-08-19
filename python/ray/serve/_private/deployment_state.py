@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import math
@@ -6,7 +7,6 @@ import random
 import time
 import traceback
 from collections import defaultdict
-from copy import copy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -558,7 +558,7 @@ class ActorReplicaWrapper:
 
         # Perform auto method name translation for java handles.
         # See https://github.com/ray-project/ray/issues/21474
-        deployment_config = copy(self._version.deployment_config)
+        deployment_config = copy.copy(self._version.deployment_config)
         deployment_config.user_config = self._format_user_config(
             deployment_config.user_config
         )
@@ -583,7 +583,7 @@ class ActorReplicaWrapper:
             )
 
     def _format_user_config(self, user_config: Any):
-        temp = copy(user_config)
+        temp = copy.copy(user_config)
         if user_config is not None and self._deployment_is_cross_language:
             if self._is_cross_language:
                 temp = msgpack_serialize(temp)
@@ -603,7 +603,7 @@ class ActorReplicaWrapper:
             # Call into replica actor reconfigure() with updated user config and
             # graceful_shutdown_wait_loop_s
             updating = True
-            deployment_config = copy(version.deployment_config)
+            deployment_config = copy.copy(version.deployment_config)
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
             )
@@ -1570,7 +1570,7 @@ class DeploymentState:
 
     @property
     def replicas(self) -> ReplicaStateContainer:
-        return copy(self._replicas)
+        return copy.deepcopy(self._replicas)
 
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
@@ -1855,7 +1855,7 @@ class DeploymentState:
         ):
             return
 
-        new_info = copy(self._target_state.info)
+        new_info = copy.copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
         old_num = self._target_state.target_num_replicas
