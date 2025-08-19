@@ -49,6 +49,8 @@ class AbstractMap(AbstractOneToOne):
                 prior to initializing the worker. Args returned from this dict
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
+            per_block_limit: The per-block limit for the map operation.
         """
         super().__init__(name, input_op, num_outputs)
         self._min_rows_per_bundled_input = min_rows_per_bundled_input
