@@ -14,6 +14,6 @@ COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
 COPY $LOCK_FILE $LOCK_FILE
 
-RUN $HOME/anaconda3/bin/pip --no-cache-dir install $LOCK_FILE --no-deps
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r $LOCK_FILE --no-deps
 
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
