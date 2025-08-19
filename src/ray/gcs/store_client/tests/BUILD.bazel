@@ -5,7 +5,7 @@ ray_cc_library(
     hdrs = ["store_client_test_base.h"],
     deps = [
         "//src/ray/common:test_util",
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client",
     ],
 )
 
@@ -24,7 +24,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client:redis_store_client",
         "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
@@ -52,7 +52,7 @@ ray_cc_test(
     ],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client:redis_store_client",
         "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
@@ -65,7 +65,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -77,8 +77,40 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
-        "//src/ray/gcs/store_client:gcs_observable_store_client",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:observable_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "redis_callback_reply_test",
+    size = "small",
+    srcs = ["redis_callback_reply_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:redis_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "redis_async_context_test",
+    size = "small",
+    srcs = ["redis_async_context_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_util",
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/util",
         "@com_google_googletest//:gtest_main",
     ],
 )

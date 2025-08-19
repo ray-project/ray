@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/redis_async_context.h"
+#include "ray/gcs/store_client/redis_async_context.h"
 
 #include <memory>
 #include <string>
