@@ -107,9 +107,17 @@ static inline void Init(
         StatsConfig::instance().GetReportInterval());
     opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
         StatsConfig::instance().GetHarvestInterval());
+    // Use node IP address for connecting to the metrics agent when not on loopback.
+    std::string oc_exporter_host = "127.0.0.1";
+    for (const auto &tag_pair : global_tags) {
+      if (tag_pair.first == NodeAddressKey) {
+        oc_exporter_host = tag_pair.second;
+        break;
+      }
+    }
     OpenCensusProtoExporter::Register(metrics_agent_port,
                                       (*metrics_io_service),
-                                      "127.0.0.1",
+                                      oc_exporter_host,
                                       worker_id,
                                       metrics_report_batch_size,
                                       max_grpc_payload_size);
