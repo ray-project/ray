@@ -6,7 +6,7 @@ Ray Tune Examples
 =================
 
 .. tip:: 
-    See :ref:`tune-main` to learn more about Tune features.
+    See :ref:`overview` to learn more about Tune features.
 
 
 Below are examples for using Ray Tune for a variety use cases and sorted by categories:

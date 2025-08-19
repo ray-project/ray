@@ -57,13 +57,7 @@ class TrainFnUtils:
         Returns:
             The DataIterator shard for this worker.
         """
-        from ray.train.v2._internal.callbacks.datasets import DatasetShardMetadata
-
-        dataset_info = DatasetShardMetadata(
-            dataset_name=dataset_name,
-            world_rank=get_internal_train_context().get_world_rank(),
-        )
-        return get_internal_train_context().get_dataset_shard(dataset_info)
+        return get_internal_train_context().get_dataset_shard(dataset_name)
 
     def get_context(self) -> ExternalTrainContext:
         return ExternalTrainContext()
