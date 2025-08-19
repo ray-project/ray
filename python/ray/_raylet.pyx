@@ -1002,7 +1002,6 @@ cdef prepare_args_internal(
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
-
 cdef raise_if_dependency_failed(arg):
     """This method is used to improve the readability of backtrace.
 
@@ -2179,16 +2178,15 @@ cdef execute_task_with_cancellation_handler(
     title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids to restrict availability to this task.
+    # runtime_ids, OMP_NUM_THREADS to restrict availability to this task.
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        ray._private.utils.set_visible_accelerator_ids()
-
-    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
-    # It will be unset after the task execution if it was overwridden here.
-    # No-op if already set.
-    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
+        omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+    else:
+        original_visible_accelerator_env_vars = None
+        omp_num_threads_overriden = False
 
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
@@ -2289,9 +2287,14 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = None
 
-        if omp_num_threads_overriden:
-            # Reset the OMP_NUM_THREADS environ if it was set.
-            os.environ.pop("OMP_NUM_THREADS", None)
+        if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
+            if original_visible_accelerator_env_vars:
+                # Reset the visible accelerator env vars for normal tasks, since they may be reused.
+                ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
+            if omp_num_threads_overriden:
+                # Reset the OMP_NUM_THREADS environ if it was set.
+                os.environ.pop("OMP_NUM_THREADS", None)
+
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -2969,47 +2972,6 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         return result
 
 
-# This class should only be used for tests
-cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
-    """Subscriber to actor updates. Thread safe.
-
-    Usage example:
-        subscriber = GcsActorSubscriber()
-        # Subscribe to the actor channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            actor_data = subscriber.poll()
-            ......
-        # Unsubscribe from the channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address, worker_id=None):
-        self._construct(address, GCS_ACTOR_CHANNEL, worker_id)
-
-    def poll(self, timeout=None):
-        """Polls for new actor messages.
-
-        Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
-        """
-        cdef:
-            CActorTableData actor_data
-            c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-
-        with nogil:
-            check_status(self.inner.get().PollActor(
-                &key_id, timeout_ms, &actor_data))
-
-        info = ActorTableData.FromString(
-            actor_data.SerializeAsString())
-
-        return [(key_id, info)]
-
-
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -3424,6 +3386,30 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
+
+    def put_object(
+            self,
+            serialized_object,
+            *,
+            c_bool pin_object,
+            owner_address,
+            c_bool inline_small_object,
+            c_bool _is_experimental_channel,
+    ):
+        """Create an object reference with the current worker as the owner.
+        """
+        created_object = self.put_serialized_object_and_increment_local_ref(
+            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+        if owner_address is None:
+            owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
+
+        # skip_adding_local_ref is True because it's already added through the call to
+        # put_serialized_object_and_increment_local_ref.
+        return ObjectRef(
+            created_object,
+            owner_address,
+            skip_adding_local_ref=True
+        )
 
     def put_serialized_object_and_increment_local_ref(
             self,
