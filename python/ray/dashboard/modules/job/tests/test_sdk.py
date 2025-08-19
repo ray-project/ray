@@ -187,7 +187,7 @@ def get_register_agents_number(gcs_client):
     indirect=True,
 )
 def test_head_node_job_agent_always_used(ray_start_cluster_head_with_env_vars):
-    """This test creates makes sure that job submission always uses the head node's job agent.
+    """Makes sure that job submission always uses the head node's job agent.
 
     1. Create a cluster with a worker node and a head node.
     2. Submit 10 jobs.
