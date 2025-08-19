@@ -1212,7 +1212,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
             ]
         )
 
-    wait_for_condition(_all_expected_logs_exist, timeout=20)
+    wait_for_condition(_all_expected_logs_exist)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to look for temp dir.")
