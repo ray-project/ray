@@ -54,7 +54,9 @@ class DPRankAssigner:
                 f"with dp_size_per_node {self.dp_size_per_node}"
             )
 
-    async def register(self, replica_ctx: "serve.context.ReplicaContext", node_id: str):
+    async def register(
+        self, replica_ctx: "serve.context.ReplicaContext", node_id: Optional[str] = None
+    ):
         """
         Register a replica and assign a rank to it.
 
@@ -66,13 +68,13 @@ class DPRankAssigner:
             The rank of the replica.
         """
         if self.dp_size_per_node is None:
-            return await self._register_random_placement(replica_ctx, node_id)
+            return await self._register_random_placement()
         else:
-            return await self._register_node_pack_placement(replica_ctx, node_id)
+            if node_id is None:
+                raise ValueError("node_id is required for node pack placement")
+            return await self._register_node_pack_placement(node_id)
 
-    async def _register_random_placement(
-        self, replica_ctx: "serve.context.ReplicaContext", node_id: str
-    ):
+    async def _register_random_placement(self):
         """
         Assign a rank based on random placement.
 
@@ -89,9 +91,7 @@ class DPRankAssigner:
             self.next_rank += 1
             return rank
 
-    async def _register_node_pack_placement(
-        self, replica_ctx: "serve.context.ReplicaContext", node_id: str
-    ):
+    async def _register_node_pack_placement(self, node_id: str):
         """
         Assign a rank based on node pack placement.
 
