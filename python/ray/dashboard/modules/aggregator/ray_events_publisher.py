@@ -58,7 +58,9 @@ class RayEventsPublisherBase(ABC):
             jitter_ratio: Random jitter ratio to add to backoff times
         """
         self._name = name
-        self._queue: asyncio.Queue = asyncio.Queue(maxsize=queue_max_size)
+        # Create the asyncio.Queue within start() on the active event loop thread
+        self._queue = None
+        self._queue_max_size = int(queue_max_size)
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
@@ -75,15 +77,23 @@ class RayEventsPublisherBase(ABC):
 
     def start(self) -> None:
         """Start async worker task."""
+        # Initialize queue on the running event loop in this thread
+        if self._queue is None:
+            self._queue = asyncio.Queue(maxsize=self._queue_max_size)
         self._publish_worker_task = asyncio.create_task(
             self._async_worker_loop(), name=f"ray_events_publisher_{self._name}"
         )
 
     def has_capacity(self) -> bool:
-        return not self._queue.full()
+        return self._queue is None or not self._queue.full()
 
     def enqueue(self, item) -> None:
         """Adds an item to the publisher's queue, dropping oldest item if full."""
+        print("== enqueue: item ==", item)
+        if self._queue is None:
+            # If enqueue is called before start(), drop the item safely.
+            # Aggregator calls start() before enqueuing, so this is a safeguard.
+            return
         try:
             self._queue.put_nowait(item)
         except asyncio.QueueFull:
@@ -96,7 +106,7 @@ class RayEventsPublisherBase(ABC):
 
     async def shutdown(self) -> None:
         """Send sentinel to stop worker and wait for completion."""
-        if self._publish_worker_task:
+        if self._publish_worker_task and self._queue is not None:
             # Send sentinel (None) value to stop worker
             self.enqueue(None)
             # Wait for worker to complete
@@ -125,9 +135,10 @@ class RayEventsPublisherBase(ABC):
 
         Continuously pulls items and publishes them until sentinel value is received.
         """
+        print("== _async_worker_loop: starting ==", self._name)
         while True:
             item = await self._queue.get()
-
+            print("== _async_worker_loop: got item ==", item)
             # Check for sentinel value (None) indicating shutdown
             if item is None:
                 break

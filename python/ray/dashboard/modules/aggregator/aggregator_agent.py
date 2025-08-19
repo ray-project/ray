@@ -351,7 +351,7 @@ class AggregatorAgent(
         building more batches and growing memory.
         """
         event_batch = []
-
+        print("== Start of publish_events ==")
         while True:
             # Check if stop event is set
             if self._stop_event.is_set():
@@ -362,6 +362,7 @@ class AggregatorAgent(
                 not self._gcs_publisher.has_capacity()
                 and not self._external_publisher.has_capacity()
             ):
+                print("== _publish_events: waiting for capacity ==")
                 await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
                 if self._stop_event.is_set():
                     break
@@ -372,10 +373,12 @@ class AggregatorAgent(
                 try:
                     event_proto = self._event_buffer.get(block=False)
                     event_batch.append(event_proto)
+                    print("== _publish_events: got event ==", event_proto)
                 except queue.Empty:
                     break
 
             if event_batch:
+                print("== _publish_events: enqueuing batch ==")
                 task_events_metadata = self._task_metadata_buffer.get()
                 frozen_batch = tuple(event_batch)
                 # Enqueue batch to publishers
@@ -389,15 +392,17 @@ class AggregatorAgent(
                 await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
 
     async def _publisher_event_loop(self):
+        print("== _publisher_event_loop: starting ==")
         # Start destination specific publishers
         self._gcs_publisher.start()
         self._external_publisher.start()
-
+        print("== creating batching_task ==")
         # Launch one batching task to continuously build batches of events and enqueue to publishers
         batching_task = asyncio.create_task(
             self._publish_events(),
             name="event_aggregator_agent_publish_events",
         )
+        print("== awaiting batching_task ==")
         try:
             # Await batching completion (it will exit when stop event is set)
             await batching_task
@@ -411,8 +416,11 @@ class AggregatorAgent(
 
     def _create_and_start_publisher_loop(self) -> None:
         """Creates and starts a dedicated asyncio event loop with multiple async publisher workers."""
-        loop = get_or_create_event_loop()
+        import asyncio
+        print("== Start of create_and_start_publisher_loop ==")
+        loop = asyncio.new_event_loop()
         try:
+            asyncio.set_event_loop(loop)
             loop.run_until_complete(self._publisher_event_loop())
         finally:
             loop.close()
@@ -539,6 +547,7 @@ class AggregatorAgent(
         self._orig_sigterm_handler(signum, frame)
 
     async def run(self, server) -> None:
+        logger.info("== Start of run ==")
         if server:
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
                 self, server
@@ -552,13 +561,12 @@ class AggregatorAgent(
         thread.start()
 
         # Start a dedicated publisher event loop in a separate thread
-        publisher_thread = threading.Thread(
+        self._publisher_thread = threading.Thread(
             target=self._create_and_start_publisher_loop,
             name="event_aggregator_agent_publisher_loop",
             daemon=False,
         )
-        self._publisher_thread = publisher_thread
-        publisher_thread.start()
+        self._publisher_thread.start()
 
         while True:
             self._update_metrics()
