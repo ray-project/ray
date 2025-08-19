@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/redis_async_context.h"
+#include "ray/gcs/store_client/redis_async_context.h"
 
 #include <iostream>
 #include <memory>
@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 #include "ray/util/logging.h"
 #include "ray/util/path_utils.h"
 

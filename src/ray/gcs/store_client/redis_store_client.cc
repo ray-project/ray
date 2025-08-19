@@ -26,7 +26,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
@@ -118,13 +118,44 @@ void RedisStoreClient::MGetValues(
   }
 }
 
-RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-    : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      redis_client_(std::move(redis_client)) {
+std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service,
+                                                  const RedisClientOptions &options) {
+  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
+  auto context = std::make_shared<RedisContext>(io_service);
+  RAY_CHECK_OK(context->Connect(options.ip,
+                                options.port,
+                                /*username=*/options.username,
+                                /*password=*/options.password,
+                                /*enable_ssl=*/options.enable_ssl))
+      << "Failed to connect to Redis.";
+  return context;
+}
+
+RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
+                                   const RedisClientOptions &options)
+    : io_service_(io_service),
+      options_(options),
+      external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
+      primary_context_(ConnectRedisContext(io_service, options)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
+
+  // Health check Redis periodically and crash if it becomes unavailable.
+  periodic_health_check_runner_ = PeriodicalRunner::Create(io_service_);
+  periodic_health_check_runner_->RunFnPeriodically(
+      [this] {
+        AsyncCheckHealth({[](const Status &status) {
+                            RAY_CHECK_OK(status)
+                                << "Redis connection failed unexpectedly.";
+                          },
+                          io_service_});
+      },
+      options.heartbeat_interval_ms,
+      "RedisStoreClient.redis_health_check");
 }
+
+RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
@@ -171,7 +202,7 @@ Status RedisStoreClient::AsyncGet(
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
-  RedisScanner::ScanKeysAndValues(redis_client_,
+  RedisScanner::ScanKeysAndValues(primary_context_,
                                   RedisKey{external_storage_namespace_, table_name},
                                   RedisMatchPattern::Any(),
                                   std::move(callback));
@@ -275,7 +306,7 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
   auto num_ready_keys = std::make_shared<size_t>(0);
   std::function<void()> send_redis = [this,
                                       num_ready_keys = num_ready_keys,
-                                      concurrency_keys,  // Copied!
+                                      concurrency_keys,
                                       command = std::move(command),
                                       redis_callback =
                                           std::move(redis_callback)]() mutable {
@@ -289,23 +320,23 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
       }
     }
     // Send the actual request
-    auto *cxt = redis_client_->GetPrimaryContext();
-    cxt->RunArgvAsync(command.ToRedisArgs(),
-                      [this,
-                       concurrency_keys,  // Copied!
-                       redis_callback = std::move(redis_callback)](auto reply) {
-                        std::vector<std::function<void()>> requests;
-                        {
-                          absl::MutexLock lock(&mu_);
-                          requests = TakeRequestsFromSendingQueue(concurrency_keys);
-                        }
-                        for (auto &request : requests) {
-                          request();
-                        }
-                        if (redis_callback) {
-                          redis_callback(reply);
-                        }
-                      });
+    primary_context_->RunArgvAsync(
+        command.ToRedisArgs(),
+        [this,
+         concurrency_keys,  // Copied!
+         redis_callback = std::move(redis_callback)](auto reply) {
+          std::vector<std::function<void()>> requests;
+          {
+            absl::MutexLock lock(&mu_);
+            requests = TakeRequestsFromSendingQueue(concurrency_keys);
+          }
+          for (auto &request : requests) {
+            request();
+          }
+          if (redis_callback) {
+            redis_callback(reply);
+          }
+        });
   };
 
   {
@@ -353,25 +384,25 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
 
 RedisStoreClient::RedisScanner::RedisScanner(
     PrivateCtorTag ctor_tag,
-    std::shared_ptr<RedisClient> redis_client,
+    std::shared_ptr<RedisContext> primary_context,
     RedisKey redis_key,
     RedisMatchPattern match_pattern,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback)
     : redis_key_(std::move(redis_key)),
       match_pattern_(std::move(match_pattern)),
-      redis_client_(std::move(redis_client)),
+      primary_context_(std::move(primary_context)),
       callback_(std::move(callback)) {
   cursor_ = 0;
   pending_request_count_ = 0;
 }
 
 void RedisStoreClient::RedisScanner::ScanKeysAndValues(
-    std::shared_ptr<RedisClient> redis_client,
+    std::shared_ptr<RedisContext> primary_context,
     RedisKey redis_key,
     RedisMatchPattern match_pattern,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto scanner = std::make_shared<RedisScanner>(PrivateCtorTag(),
-                                                std::move(redis_client),
+                                                std::move(primary_context),
                                                 std::move(redis_key),
                                                 std::move(match_pattern),
                                                 std::move(callback));
@@ -402,8 +433,7 @@ void RedisStoreClient::RedisScanner::Scan() {
   }
   command.args.push_back("COUNT");
   command.args.push_back(std::to_string(batch_count));
-  auto *primary_context = redis_client_->GetPrimaryContext();
-  primary_context->RunArgvAsync(
+  primary_context_->RunArgvAsync(
       command.ToRedisArgs(),
       // self_ref to keep the scanner alive until the callback is called, even if it
       // releases its self_ref in Scan().
@@ -451,14 +481,13 @@ Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   RedisCommand command = {
       "INCRBY", RedisKey{external_storage_namespace_, "JobCounter"}, {"1"}};
 
-  auto *cxt = redis_client_->GetPrimaryContext();
-
-  cxt->RunArgvAsync(command.ToRedisArgs(),
-                    [callback = std::move(callback)](
-                        const std::shared_ptr<CallbackReply> &reply) mutable {
-                      auto job_id = static_cast<int>(reply->ReadAsInteger());
-                      std::move(callback).Post("GcsStore.GetNextJobID", job_id);
-                    });
+  primary_context_->RunArgvAsync(
+      command.ToRedisArgs(),
+      [callback =
+           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
+        auto job_id = static_cast<int>(reply->ReadAsInteger());
+        std::move(callback).Post("GcsStore.GetNextJobID", job_id);
+      });
 
   return Status::OK();
 }
@@ -467,7 +496,7 @@ Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
                                       const std::string &prefix,
                                       Postable<void(std::vector<std::string>)> callback) {
   RedisScanner::ScanKeysAndValues(
-      redis_client_,
+      primary_context_,
       RedisKey{external_storage_namespace_, table_name},
       RedisMatchPattern::Prefix(prefix),
       std::move(callback).TransformArg(
@@ -497,6 +526,21 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
   return Status::OK();
 }
 
+void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
+  auto redis_callback = [callback = std::move(callback)](
+                            const std::shared_ptr<CallbackReply> &reply) mutable {
+    Status status = Status::OK();
+    if (reply->IsNil()) {
+      status = Status::IOError("Unexpected connection error.");
+    } else if (reply->IsError()) {
+      status = reply->ReadAsStatus();
+    }
+    std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
+  };
+
+  primary_context_->RunArgvAsync({"PING"}, redis_callback);
+}
+
 // Returns True if at least 1 key is deleted, False otherwise.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
@@ -504,11 +548,10 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                            const std::string &password,
                            bool use_ssl,
                            const std::string &external_storage_namespace) {
-  RedisClientOptions options(host, port, username, password, use_ssl);
-  auto cli = std::make_unique<RedisClient>(options);
-
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
+  RedisClientOptions options{host, port, username, password, use_ssl};
+  std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options);
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -521,10 +564,6 @@ bool RedisDelKeyPrefixSync(const std::string &host,
     thread->join();
   });
 
-  auto status = cli->Connect(io_service);
-  RAY_CHECK_OK(status) << "Failed to connect to redis";
-
-  auto *context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",
@@ -540,7 +579,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                   << external_storage_namespace;
     return true;
   }
-  auto delete_one_sync = [context](const std::string &key) {
+  auto delete_one_sync = [&context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
     std::promise<std::shared_ptr<CallbackReply>> promise;
     context->RunArgvAsync(del_cmd,

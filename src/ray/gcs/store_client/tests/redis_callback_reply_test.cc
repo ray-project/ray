@@ -16,7 +16,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
