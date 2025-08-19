@@ -21,12 +21,3 @@ ray_cc_library(
         "//src/ray/common:status",
     ],
 )
-
-ray_cc_library(
-    name = "gcs",
-    deps = [
-        ":gcs_callback",
-        ":gcs_pb_util",
-        "//src/ray/rpc:node_manager_client",
-    ],
-)
