@@ -80,6 +80,7 @@ def main(
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
+    test_name_prefix = settings["test_name_prefix"]
     priority = settings["priority"]
 
     logger.info(
@@ -87,6 +88,7 @@ def main(
         f"  frequency =               {settings['frequency']}\n"
         f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
         f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
+        f"  test_name_prefix =        {settings['test_name_prefix']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
         f"  ray_test_branch =         {settings['ray_test_branch']}\n"
         f"  priority =                {settings['priority']}\n"
@@ -115,6 +117,7 @@ def main(
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,
+        test_name_prefix=test_name_prefix,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
