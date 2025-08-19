@@ -852,15 +852,12 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return ray.ObjectRef(
-            self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value,
-                pin_object=pin_object,
-                owner_address=owner_address,
-                _is_experimental_channel=_is_experimental_channel,
-            ),
-            # The initial local reference is already acquired internally.
-            skip_adding_local_ref=True,
+        return self.core_worker.put_object(
+            serialized_value,
+            pin_object=pin_object,
+            owner_address=owner_address,
+            inline_small_object=True,
+            _is_experimental_channel=_is_experimental_channel,
         )
 
     def raise_errors(self, serialized_objects, object_refs):
