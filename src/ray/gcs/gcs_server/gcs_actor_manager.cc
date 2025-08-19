@@ -980,7 +980,7 @@ void GcsActorManager::RemoveActorNameFromRegistry(
     auto namespace_it = named_actors_.find(actor->GetRayNamespace());
     if (namespace_it != named_actors_.end()) {
       auto it = namespace_it->second.find(actor->GetName());
-      if (it != namespace_it->second.end() && it->second == actor->GetActorID()) {
+      if (it != namespace_it->second.end()) {
         RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleaned up.";
         namespace_it->second.erase(it);
       }
