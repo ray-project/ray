@@ -865,13 +865,15 @@ std::string GcsServer::GetDebugState() const {
 
 std::unique_ptr<RedisStoreClient> GcsServer::CreateRedisStoreClient(
     instrumented_io_context &io_service) {
-  return std::make_unique<RedisStoreClient>(io_service,
-                                            RedisClientOptions{config_.redis_address,
-                                                               config_.redis_port,
-                                                               config_.redis_username,
-                                                               config_.redis_password,
-                                                               config_.enable_redis_ssl,
-                                                               RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds()});
+  return std::make_unique<RedisStoreClient>(
+      io_service,
+      RedisClientOptions{
+          config_.redis_address,
+          config_.redis_port,
+          config_.redis_username,
+          config_.redis_password,
+          config_.enable_redis_ssl,
+          RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds()});
 }
 
 void GcsServer::PrintAsioStats() {

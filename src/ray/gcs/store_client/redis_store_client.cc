@@ -146,7 +146,8 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
   periodic_health_check_runner_->RunFnPeriodically(
       [this] {
         AsyncCheckHealth({[](const Status &status) {
-                            RAY_CHECK_OK(status) << "Redis connection failed unexpectedly.";
+                            RAY_CHECK_OK(status)
+                                << "Redis connection failed unexpectedly.";
                           },
                           io_service_});
       },
