@@ -60,18 +60,17 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 std::shared_ptr<StatsHandle> EventTracker::RecordStart(
-    std::string name, int64_t expected_queueing_delay_ns) {
+    std::string name, const int64_t expected_queueing_delay_ns, const bool emit_metrics) {
   auto stats = GetOrCreate(name);
-  int64_t cum_count = 0;
   int64_t curr_count = 0;
   {
     absl::MutexLock lock(&(stats->mutex));
-    cum_count = ++stats->stats.cum_count;
+    ++stats->stats.cum_count;
     curr_count = ++stats->stats.curr_count;
   }
 
-  if (RayConfig::instance().event_stats_metrics()) {
-    ray::stats::STATS_operation_count.Record(cum_count, name);
+  if (emit_metrics) {
+    ray::stats::STATS_operation_count.Record(1, name);
     ray::stats::STATS_operation_active_count.Record(curr_count, name);
   }
 
@@ -82,14 +81,15 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
       global_stats_);
 }
 
-void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
+void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle,
+                             const bool emit_metrics) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   absl::MutexLock lock(&(handle->handler_stats->mutex));
   const auto curr_count = --handle->handler_stats->stats.curr_count;
   const auto execution_time_ns = absl::GetCurrentTimeNanos() - handle->start_time;
   handle->handler_stats->stats.cum_execution_time += execution_time_ns;
 
-  if (RayConfig::instance().event_stats_metrics()) {
+  if (emit_metrics) {
     // Update event-specific stats.
     ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
                                                    handle->event_name);
@@ -99,8 +99,10 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
   handle->end_or_execution_recorded = true;
 }
 
-void EventTracker::RecordExecution(const std::function<void()> &fn,
-                                   std::shared_ptr<StatsHandle> handle) {
+void EventTracker::RecordExecution(
+    const std::function<void()> &fn,  // emit_good_stats (these emit the good ones)
+    std::shared_ptr<StatsHandle> handle,
+    bool emit_metrics) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
@@ -134,7 +136,7 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
     stats->stats.running_count--;
   }
 
-  if (RayConfig::instance().event_stats_metrics()) {
+  if (emit_metrics) {
     // Update event-specific stats.
     ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
                                                    handle->event_name);
@@ -186,6 +188,7 @@ GlobalStats EventTracker::get_global_stats() const {
   return to_global_stats_view(global_stats_);
 }
 
+// Testing only method
 std::optional<EventStats> EventTracker::get_event_stats(
     const std::string &event_name) const {
   absl::ReaderMutexLock lock(&mutex_);
@@ -196,6 +199,7 @@ std::optional<EventStats> EventTracker::get_event_stats(
   return to_event_stats_view(it->second);
 }
 
+// Logging only method
 std::vector<std::pair<std::string, EventStats>> EventTracker::get_event_stats() const {
   // We lock the stats table while copying the table into a vector.
   absl::ReaderMutexLock lock(&mutex_);

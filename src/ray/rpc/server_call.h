@@ -208,7 +208,7 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    stats_handle_ = io_service_.stats().RecordStart(call_name_);
+    stats_handle_ = io_service_.stats().RecordStart(call_name_, 0, record_metrics_);
     bool auth_success = true;
     if (::RayConfig::instance().enable_cluster_auth()) {
       if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
@@ -327,7 +327,7 @@ class ServerCallImpl : public ServerCall {
  private:
   /// Log the duration this query used
   void LogProcessTime() {
-    EventTracker::RecordEnd(std::move(stats_handle_));
+    EventTracker::RecordEnd(std::move(stats_handle_), record_metrics_);
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_process_time_ms.Record(

@@ -34,8 +34,13 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param enable_lag_probe If true, and if related Ray configs are set, schedule a
   /// probe to measure the event loop lag. After a probe is done, it schedules another one
   /// so a io_context.run() call will never return.
+  /// \param running_on_single_thread hints to the underlying io_context if locking should
+  /// be enabled or not (that is, if running on multiple threads is true, then concurrency
+  /// controls will engage) \param emit_metrics enables or disables metric emission on
+  /// this io_context
   explicit instrumented_io_context(bool enable_lag_probe = false,
-                                   bool running_on_single_thread = false);
+                                   bool running_on_single_thread = false,
+                                   bool emit_metrics = false);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -59,4 +64,5 @@ class instrumented_io_context : public boost::asio::io_context {
  private:
   /// The event stats tracker to use to record asio handler stats to.
   std::shared_ptr<EventTracker> event_stats_;
+  bool emit_metrics_;
 };

@@ -74,10 +74,12 @@ void ScheduleLagProbe(instrumented_io_context &io_context) {
 }  // namespace
 
 instrumented_io_context::instrumented_io_context(bool enable_lag_probe,
-                                                 bool running_on_single_thread)
+                                                 bool running_on_single_thread,
+                                                 bool emit_metrics)
     : boost::asio::io_context(
           running_on_single_thread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT),
-      event_stats_(std::make_shared<EventTracker>()) {
+      event_stats_(std::make_shared<EventTracker>()),
+      emit_metrics_(emit_metrics) {
   if (enable_lag_probe) {
     ScheduleLagProbe(*this);
   }
@@ -95,8 +97,9 @@ void instrumented_io_context::post(std::function<void()> handler,
     // readers lock in the callback.
     auto stats_handle = event_stats_->RecordStart(std::move(name));
     handler = [handler = std::move(handler),
-               stats_handle = std::move(stats_handle)]() mutable {
-      EventTracker::RecordExecution(handler, std::move(stats_handle));
+               stats_handle = std::move(stats_handle),
+               emit_metrics = emit_metrics_]() mutable {
+      EventTracker::RecordExecution(handler, std::move(stats_handle), emit_metrics);
     };
   }
 
@@ -117,9 +120,11 @@ void instrumented_io_context::dispatch(std::function<void()> handler, std::strin
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::dispatch(
-      *this,
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() mutable {
-        EventTracker::RecordExecution(handler, std::move(stats_handle));
-      });
+  boost::asio::dispatch(*this,
+                        [handler = std::move(handler),
+                         stats_handle = std::move(stats_handle),
+                         emit_metrics = emit_metrics_]() mutable {
+                          EventTracker::RecordExecution(
+                              handler, std::move(stats_handle), emit_metrics);
+                        });
 }

@@ -109,23 +109,28 @@ class EventTracker {
   /// \param name A human-readable name to which collected stats will be associated.
   /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
   ///  in nanoseconds.
+  ///  \param emit_metrics Emit the underlying stat as a service metric
   /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
   std::shared_ptr<StatsHandle> RecordStart(std::string name,
-                                           int64_t expected_queueing_delay_ns = 0);
+                                           int64_t expected_queueing_delay_ns = 0,
+                                           bool emit_metrics = false);
 
   /// Records stats about the provided function's execution. This is used in conjunction
   /// with RecordStart() to manually instrument an event loop handler that calls .post().
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
+  /// \param emit_metrics Emit the underlying stat as a service metric
   static void RecordExecution(const std::function<void()> &fn,
-                              std::shared_ptr<StatsHandle> handle);
+                              std::shared_ptr<StatsHandle> handle,
+                              const bool emit_metrics);
 
   /// Records the end of an event. This is used in conjunction
   /// with RecordStart() to manually instrument an event.
   ///
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordEnd(std::shared_ptr<StatsHandle> handle);
+  /// \param emit_metrics Emit the underlying stat as a service metric
+  static void RecordEnd(std::shared_ptr<StatsHandle> handle, const bool emit_metrics);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.

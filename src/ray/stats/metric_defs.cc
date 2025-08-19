@@ -156,16 +156,19 @@ DEFINE_stats(io_context_event_loop_lag_ms,
              ray::stats::GAUGE);
 
 /// Event stats
-DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(
-    operation_run_time_ms, "operation execution time", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(
-    operation_queue_time_ms, "operation queuing time", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(operation_active_count,
-             "activate operation number",
+DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::COUNT);
+DEFINE_stats(operation_run_time_ms,
+             "operation execution time",
              ("Method"),
              (),
-             ray::stats::GAUGE);
+             ray::stats::HISTOGRAM);
+DEFINE_stats(operation_queue_time_ms,
+             "operation queuing time",
+             ("Method"),
+             (),
+             ray::stats::HISTOGRAM);
+DEFINE_stats(
+    operation_active_count, "active operation number", ("Method"), (), ray::stats::GAUGE);
 
 /// GRPC server
 DEFINE_stats(grpc_server_req_process_time_ms,

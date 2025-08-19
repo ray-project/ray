@@ -206,6 +206,10 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
+  /// \param record_stats Whether to record stats for calls made with this client
+  /// \param cluster_id UUID of the destination cluster
+  /// \param num_threads The number of threads used for polling for completion events
+  /// \param call_timeout_ms Set's the default call timeout for requests on this client
   ///
   explicit ClientCallManager(instrumented_io_context &main_service,
                              bool record_stats,
@@ -266,7 +270,8 @@ class ClientCallManager {
       const ClientCallback<Reply> &callback,
       std::string call_name,
       int64_t method_timeout_ms = -1) {
-    auto stats_handle = main_service_.stats().RecordStart(std::move(call_name));
+    auto stats_handle =
+        main_service_.stats().RecordStart(std::move(call_name), record_stats_);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
@@ -342,7 +347,7 @@ class ClientCallManager {
               // Implement the delay of the rpc client call as the
               // delay of OnReplyReceived().
               ray::asio::testing::GetDelayUs(stats_handle->event_name));
-          EventTracker::RecordEnd(std::move(stats_handle));
+          EventTracker::RecordEnd(std::move(stats_handle), record_stats_);
         } else {
           delete tag;
         }
