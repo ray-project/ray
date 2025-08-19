@@ -44,7 +44,7 @@ class HttpServerAgent:
             try:
                 site = aiohttp.web.TCPSite(
                     self.runner,
-                    "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                    self.ip,
                     self.listen_port,
                 )
                 await site.start()
