@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
 
 #include <opentelemetry/context/context.h>
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
@@ -33,7 +33,7 @@
 // Anonymous namespace that contains the private callback functions for the
 // OpenTelemetry metrics.
 namespace {
-using ray::telemetry::OpenTelemetryMetricRecorder;
+using ray::observability::OpenTelemetryMetricRecorder;
 
 static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
                                  void *state) {
@@ -50,7 +50,7 @@ static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer
 }  // anonymous namespace
 
 namespace ray {
-namespace telemetry {
+namespace observability {
 
 OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
   // Note: This creates a singleton instance of the OpenTelemetryMetricRecorder. The
@@ -275,5 +275,5 @@ void OpenTelemetryMetricRecorder::SetSynchronousMetricValue(
   }
 }
 
-}  // namespace telemetry
+}  // namespace observability
 }  // namespace ray

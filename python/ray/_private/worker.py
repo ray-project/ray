@@ -852,15 +852,12 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return ray.ObjectRef(
-            self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value,
-                pin_object=pin_object,
-                owner_address=owner_address,
-                _is_experimental_channel=_is_experimental_channel,
-            ),
-            # The initial local reference is already acquired internally.
-            skip_adding_local_ref=True,
+        return self.core_worker.put_object(
+            serialized_value,
+            pin_object=pin_object,
+            owner_address=owner_address,
+            inline_small_object=True,
+            _is_experimental_channel=_is_experimental_channel,
         )
 
     def raise_errors(self, serialized_objects, object_refs):
@@ -1978,6 +1975,20 @@ def init(
 
     for hook in _post_init_hooks:
         hook()
+
+    # Check and show accelerator override warning during driver initialization
+    from ray._private.ray_constants import env_bool
+
+    override_on_zero = env_bool(
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+        True,
+    )
+    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
+        logger.warning(
+            "Tip: In future versions of Ray, Ray will no longer override accelerator "
+            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
+            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0"
+        )
 
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()

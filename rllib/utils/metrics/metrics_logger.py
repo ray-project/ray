@@ -761,7 +761,6 @@ class MetricsLogger:
             key: Optional top-level key under which to log all keys/key sequences
                 found in the n `stats_dicts`.
         """
-        assert isinstance(stats_dicts, list), "stats_dicts must be a list"
         all_keys = set()
 
         def traverse_and_add_paths(d, path=()):
