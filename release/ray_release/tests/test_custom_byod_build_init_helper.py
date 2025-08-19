@@ -3,7 +3,12 @@ import tempfile
 import sys
 import pytest
 
-from ray_release.scripts.custom_byod_build_init import create_custom_build_yaml
+from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
+from ray_release.configs.global_config import init_global_config
+from ray_release.bazel import bazel_runfile
+
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
 def test_create_custom_build_yaml():

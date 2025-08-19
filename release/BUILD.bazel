@@ -457,9 +457,9 @@ py_test(
 )
 
 py_test(
-    name = "test_custom_byod_build_init",
+    name = "test_custom_byod_build_init_helper",
     size = "small",
-    srcs = ["ray_release/tests/test_custom_byod_build_init.py"],
+    srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
         "ray_release/tests/custom_byod_build_expected.yaml",
@@ -732,5 +732,21 @@ py_binary(
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":ray_release",
+    ],
+)
+
+py_library(
+    name = "custom_byod_build_init_helper",
+    srcs = ["ray_release/custom_byod_build_init.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+)
+
+py_binary(
+    name = "custom_byod_build_init",
+    srcs = ["ray_release/scripts/custom_byod_build_init.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+        ":custom_byod_build_init_helper",
     ],
 )

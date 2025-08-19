@@ -6,7 +6,7 @@ steps:
   commands:
   - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin
     029272617770.dkr.ecr.us-west-2.amazonaws.com
-  - python release/ray_release/scripts/custom_byod_build.py --image-name ray-project/ray-ml:abc123-custom
+  - bazelisk run //release:custom_byod_build -- --image-name ray-project/ray-ml:abc123-custom
     --base-image ray-project/ray-ml:abc123-base --post-build-script custom_script.sh
   depends_on: anyscalemlbuild
 - label: ':tapioca: build custom: ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789'
@@ -15,6 +15,6 @@ steps:
   commands:
   - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin
     029272617770.dkr.ecr.us-west-2.amazonaws.com
-  - python release/ray_release/scripts/custom_byod_build.py --image-name ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789
+  - bazelisk run //release:custom_byod_build -- --image-name ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789
     --base-image ray-project/ray-ml:nightly-py37-cpu-base --post-build-script custom_script.sh
   depends_on: anyscalemlbuild
