@@ -2,11 +2,7 @@
 
 set -euo pipefail
 
-CONFIG_PATH=$1
-
-if [[ -z "${CONFIG_PATH}" ]]; then
-	CONFIG_PATH="ci/raydepsets/rayllm.depsets.yaml"
-fi
+CONFIG_PATH="${1:-ci/raydepsets/rayllm.depsets.yaml}"
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 if [[ "${PYTHON_CODE}" != "py311" ]]; then
