@@ -782,12 +782,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
-  // Set node labels when node added.
-  absl::flat_hash_map<std::string, std::string> labels(node_info.labels().begin(),
-                                                       node_info.labels().end());
-  cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-      scheduling::NodeID(node_id.Binary()), labels);
-
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
                                                  syncer::MessageType::RESOURCE_VIEW)) {
@@ -2787,6 +2781,10 @@ void NodeManager::ConsumeSyncMessage(
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(message->node_id());
+    // Set node labels when node added.
+    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
+    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
+        scheduling::NodeID(node_id.Binary()), node_labels);
     ResourceRequest resources;
     for (auto &resource_entry : resource_view_sync_message.resources_total()) {
       resources.Set(scheduling::ResourceID(resource_entry.first),
