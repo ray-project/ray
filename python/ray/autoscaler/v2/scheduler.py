@@ -901,7 +901,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             return [
                 node.ippr_status
                 for node in self._nodes
-                if node.ippr_status is not None and node.ippr_status.is_new()
+                if node.ippr_status is not None
+                and node.ippr_status.is_ready_to_resize()
             ]
 
         def get_launch_requests(self) -> List[LaunchRequest]:

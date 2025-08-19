@@ -256,7 +256,7 @@ class IPPRStatus:
         self.resized_status = "new"
         self.resized_message = None
 
-    def is_new(self) -> bool:
+    def is_ready_to_resize(self) -> bool:
         return self.resized_status == "new" and self.raylet_id
 
     def is_in_progress(self) -> bool:
