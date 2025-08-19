@@ -141,8 +141,6 @@ message ResizeLocalResourceInstancesRequest {
 message ResizeLocalResourceInstancesReply {
   // Current total resources after the resize operation
   map<string, double> total_resources = 1;
-  // Current available resources after the resize operation
-  map<string, double> available_resources = 2;
 }
 
 // Release a worker back to its raylet.

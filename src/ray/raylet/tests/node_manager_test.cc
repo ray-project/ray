@@ -766,8 +766,6 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   // Check that reply contains the updated resources
   EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
   EXPECT_EQ(reply.total_resources().at("memory"), 16000000.0);
-  EXPECT_EQ(reply.available_resources().at("CPU"), 8.0);
-  EXPECT_EQ(reply.available_resources().at("memory"), 16000000.0);
 
   // Test 2: Down scaling (decreasing resources)
   (*request.mutable_resources())["CPU"] = 4.0;
@@ -784,8 +782,6 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   // Check that reply contains the updated (reduced) resources
   EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
   EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
-  EXPECT_EQ(reply.available_resources().at("CPU"), 4.0);
-  EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
 
   // Test 3: No changes (same values)
   reply.Clear();
@@ -799,8 +795,6 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   // Should still succeed and return current state
   EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
   EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
-  EXPECT_EQ(reply.available_resources().at("CPU"), 4.0);
-  EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
 
   // Test 4: Now update only CPU, leaving memory unchanged
   request.mutable_resources()->clear();
@@ -817,8 +811,6 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   // Check that CPU was updated, and memory was unchanged
   EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
   EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
-  EXPECT_EQ(reply.available_resources().at("CPU"), 8.0);
-  EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {

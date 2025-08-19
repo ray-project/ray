@@ -1848,7 +1848,7 @@ void NodeManager::HandleResizeLocalResourceInstances(
     rpc::ResizeLocalResourceInstancesRequest request,
     rpc::ResizeLocalResourceInstancesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto target_resource_map = MapFromProtobuf(request.resources());
+  auto target_resource_map = request.resources();
 
   // Check if any resource is a unit instance resource
   // Unit instance resources (e.g., GPU) cannot be resized with this API
@@ -1864,7 +1864,7 @@ void NodeManager::HandleResizeLocalResourceInstances(
   }
 
   // Get current local resources and convert to resource maps
-  const auto current_resources =
+  const auto &current_resources =
       cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
   auto current_total_map =
       current_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
@@ -1912,7 +1912,7 @@ void NodeManager::HandleResizeLocalResourceInstances(
     }
   }
 
-  // Convert delta resource map to NodeResourceInstanceSet and apply
+  // Convert the delta resource map to NodeResourceInstanceSet and apply
   if (!delta_resource_map.empty()) {
     NodeResourceSet delta_resources(delta_resource_map);
     NodeResourceInstanceSet delta_instances(delta_resources);
@@ -1951,11 +1951,9 @@ void NodeManager::HandleResizeLocalResourceInstances(
     ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW);
   }
 
-  // Populate the reply with current resource state
+  // Populate the reply with the current resource state
   auto *total_resources = reply->mutable_total_resources();
-  auto *available_resources = reply->mutable_available_resources();
   total_resources->insert(updated_total_map.begin(), updated_total_map.end());
-  available_resources->insert(updated_available_map.begin(), updated_available_map.end());
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
