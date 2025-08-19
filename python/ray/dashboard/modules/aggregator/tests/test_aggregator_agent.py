@@ -28,6 +28,17 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
+from ray.core.generated.events_driver_job_definition_event_pb2 import (
+    DriverJobDefinitionEvent,
+)
+from ray.core.generated.events_driver_job_execution_event_pb2 import (
+    DriverJobExecutionEvent,
+)
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvInfo,
+    RuntimeEnvUris,
+    RuntimeEnvConfig,
+)
 
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
@@ -484,6 +495,134 @@ def _verify_profile_event_json(req_json, expected_timestamp):
     assert event_entry["startTime"] == "1751302230130000000"
     assert event_entry["endTime"] == "1751302230131000000"
     assert event_entry["extraData"] == '{"cpu_usage": 0.8}'
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_driver_job_definition_event(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job event",
+                    driver_job_definition_event=DriverJobDefinitionEvent(
+                        job_id=b"1",
+                        config=DriverJobDefinitionEvent.Config(
+                            runtime_env_info=RuntimeEnvInfo(
+                                serialized_runtime_env="{}",
+                                uris=RuntimeEnvUris(
+                                    working_dir_uri="file:///tmp/ray/runtime_env",
+                                    py_modules_uris=[],
+                                ),
+                                runtime_env_config=RuntimeEnvConfig(
+                                    setup_timeout_seconds=10,
+                                    eager_install=True,
+                                    log_files=[],
+                                ),
+                            ),
+                            metadata={},
+                        ),
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job event"
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
+            "serializedRuntimeEnv"
+        ]
+        == "{}"
+    )
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"]["uris"][
+            "workingDirUri"
+        ]
+        == "file:///tmp/ray/runtime_env"
+    )
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
+            "runtimeEnvConfig"
+        ]["setupTimeoutSeconds"]
+        == 10.0
+    )
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_driver_job_execution_event(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job execution event",
+                    driver_job_execution_event=DriverJobExecutionEvent(
+                        job_id=b"1",
+                        states=[
+                            DriverJobExecutionEvent.StateTimestamp(
+                                state=DriverJobExecutionEvent.State.CREATED,
+                                timestamp=Timestamp(seconds=1234567890),
+                            ),
+                            DriverJobExecutionEvent.StateTimestamp(
+                                state=DriverJobExecutionEvent.State.FAILURE,
+                                timestamp=Timestamp(seconds=1234567890),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job execution event"
+    assert (
+        req_json[0]["driverJobExecutionEvent"]["jobId"]
+        == base64.b64encode(b"1").decode()
+    )
+    assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
+    assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
+    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
 
 
 if __name__ == "__main__":
