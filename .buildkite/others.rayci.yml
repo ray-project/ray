@@ -19,11 +19,19 @@ steps:
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
 
-  - label: ":tapioca: build: uv pip compile LLM dependencies"
-    key: uv_pip_compile_llm_dependencies
+  - label: ":tapioca: build: raydepsets: compile LLM dependencies"
+    key: raydepsets_compile_llm_dependencies
     tags: always
     instance_type: small
     command: ./ci/test_compile_llm_requirements.sh
+    job_env: oss-ci-base_test-py3.11
+    depends_on: oss-ci-base_test-multipy
+
+  - label: ":tapioca: build: raydepsets: compile ray img dependencies"
+    key: raydepsets_compile_rayimg_dependencies
+    tags: always
+    instance_type: small
+    command: ./ci/compile_ray_img_requirements.sh
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
 
