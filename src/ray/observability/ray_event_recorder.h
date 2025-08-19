@@ -63,6 +63,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   // Export events to the event aggregator. This is called periodically by the
   // PeriodicalRunner.
   void ExportEvents();
+
+  friend class RayEventRecorderTest;
 };
 
 }  // namespace observability
