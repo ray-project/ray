@@ -377,7 +377,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 },
             )
 
-    def _filter_names_smoke(self, *args, **kwargs):
+    def _filter_names(self, *args, **kwargs):
         filtered = filter_tests(*args, **kwargs)
         return [(t[0]["name"], t[1]) for t in filtered]
 
@@ -430,7 +430,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         ]
 
         # Test filter by prefix alone
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests, frequency=Frequency.ANY, test_name_prefix_filter="test"
         )
         self.assertSequenceEqual(
@@ -444,7 +444,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         # Test filter by prefix and regex together
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
             test_name_prefix_filter="test",
@@ -461,7 +461,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
-        filtered = self._filter_names_smoke(tests, frequency=Frequency.ANY)
+        filtered = self._filter_names(tests, frequency=Frequency.ANY)
         self.assertSequenceEqual(
             filtered,
             [
@@ -476,7 +476,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
         assert not test.get("update_from_s3")
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
             prefer_smoke_tests=True,
@@ -494,7 +494,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
-        filtered = self._filter_names_smoke(tests, frequency=Frequency.NIGHTLY)
+        filtered = self._filter_names(tests, frequency=Frequency.NIGHTLY)
         self.assertSequenceEqual(
             filtered,
             [
@@ -506,7 +506,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
             prefer_smoke_tests=True,
@@ -522,10 +522,10 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
-        filtered = self._filter_names_smoke(tests, frequency=Frequency.WEEKLY)
+        filtered = self._filter_names(tests, frequency=Frequency.WEEKLY)
         self.assertSequenceEqual(filtered, [("test_2", False), ("other_1", False)])
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
             test_attr_regex_filters={"name": "other.*"},
@@ -537,7 +537,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
             test_attr_regex_filters={"name": "test.*"},
@@ -552,19 +552,19 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests, frequency=Frequency.NIGHTLY, test_attr_regex_filters={"name": "test"}
         )
         self.assertSequenceEqual(filtered, [])
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
             test_attr_regex_filters={"name": "test.*", "team": "team_1"},
         )
         self.assertSequenceEqual(filtered, [("test_1", False)])
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
             test_attr_regex_filters={"name": "test_1|test_2"},
@@ -572,7 +572,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
 
         # Filter by nested properties
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
             test_attr_regex_filters={"run/type": "job"},
@@ -581,14 +581,14 @@ class BuildkiteSettingsTest(unittest.TestCase):
             filtered, [("test_1", False), ("other_2", False), ("test_4.kuberay", False)]
         )
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
             test_attr_regex_filters={"run/type": "client"},
         )
         self.assertSequenceEqual(filtered, [("test_2", False)])
 
-        filtered = self._filter_names_smoke(
+        filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
             test_attr_regex_filters={"run/invalid": "xxx"},
