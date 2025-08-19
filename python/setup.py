@@ -761,7 +761,6 @@ if __name__ == "__main__":
         name=setup_spec.name,
         version=setup_spec.version,
         author="Ray Team",
-        author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
         long_description=io.open(
             os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
