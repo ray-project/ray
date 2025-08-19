@@ -98,15 +98,12 @@ class Reader:
         """
         raise NotImplementedError
 
-    def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
-    ) -> List["ReadTask"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
-            per_block_limit: The per-block limit for the read tasks.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -227,6 +224,11 @@ class RandomIntRowDatasource(Datasource):
     """
 
     def __init__(self, n: int, num_columns: int):
+        """
+        Args:
+            n: The number of rows to generate.
+            num_columns: The number of columns to generate.
+        """
         self._n = n
         self._num_columns = num_columns
 

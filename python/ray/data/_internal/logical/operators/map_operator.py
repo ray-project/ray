@@ -40,6 +40,7 @@ class AbstractMap(AbstractOneToOne):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
+            num_outputs: Number of outputs for this operator.
             min_rows_per_bundled_input: Min number of rows a single bundle of blocks
                 passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
@@ -50,6 +51,7 @@ class AbstractMap(AbstractOneToOne):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
+                Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
             per_block_limit: The per-block limit for the map operation.
         """
         super().__init__(name, input_op, num_outputs)

@@ -6428,6 +6428,11 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
+        """
+        Args:
+            base_schema: The underlying Arrow or Pandas schema.
+            data_context: The data context to use for this schema.
+        """
         self.base_schema = base_schema
 
         # Snapshot the current context, so that the config of Datasets is always
