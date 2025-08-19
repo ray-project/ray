@@ -353,7 +353,7 @@ while True:
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("async_actor", [True, False])
 def test_fail_importing_actor(async_actor):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
@@ -381,15 +381,13 @@ def temporary_helper_function():
         def __init__(self):
             self.x = module.temporary_python_file()
 
-        {}def ready(self):
+        {"async " if async_actor else ""}def ready(self):
             pass
 finally:
     os.unlink(f.name)
 
 ray.get(Foo.remote().ready.remote())
-""".format(
-        "async " if async_actor else ""
-    )
+"""
     proc = run_string_as_driver_nonblocking(script)
     err_str = proc.stderr.read().decode("ascii")
     print(err_str)
