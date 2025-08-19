@@ -49,11 +49,6 @@ class GPUTestActor:
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
         return gpu_object_manager.gpu_object_store.get_num_objects()
 
-    def infinite_sleep(self, signal):
-        signal.send.remote()
-        while True:
-            time.sleep(1)
-
     def fail(self, error_message):
         raise Exception(error_message)
 
@@ -250,23 +245,25 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
         def infinite_sleep(self, signal):
             signal.send.remote()
             while True:
-                time.sleep(1)
-
+                time.sleep(0.1)
 
     if has_tensor_transport_method:
         # Test tensor transport annotation via ray.method.
-        @ray.remote
+        @ray.remote(num_cpus=0)
         class GPUTestActor(_GPUTestActor):
             @ray.method(tensor_transport="gloo")
             def echo(self, data):
                 return data
     else:
         # Test tensor transport annotation via ray.remote.
-        @ray.remote(enable_tensor_transport=True)
+        @ray.remote(num_gpus, enable_tensor_transport=True)
         class GPUTestActor(_GPUTestActor):
             def echo(self, data):
                 return data
 
+    sender, receiver = GPUTestActor.remote(), GPUTestActor.remote()
+    signal = SignalActor.remote()
+    create_collective_group([sender, receiver], backend="torch_gloo")
     tensor = torch.randn((500, 500))
     # If the actor does not have a tensor transport method declared, declare it
     # dynamically using .options().
@@ -278,7 +275,6 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
     ref = sender_fn.remote(tensor)
 
     # Start a blocking task on the sender actor.
-    signal = SignalActor.remote()
     sender.infinite_sleep.remote(signal)
     ray.get(signal.wait.remote(), timeout=10)
 
