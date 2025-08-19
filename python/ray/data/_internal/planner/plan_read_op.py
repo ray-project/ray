@@ -74,23 +74,9 @@ def plan_read_op(
         ), "Read parallelism must be set by the optimizer before execution"
 
         # Get the original read tasks
-        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
-
-        # Apply per-block limit if set
-        per_block_limit = op.get_per_block_limit()
-        if per_block_limit is not None:
-            # Create new ReadTasks with the per-block limit
-            limited_read_tasks = []
-            for read_task in read_tasks:
-                # Create a new ReadTask with the same properties but with per-block limit
-                limited_read_task = ReadTask(
-                    read_fn=read_task.read_fn,
-                    metadata=read_task.metadata,
-                    schema=read_task.schema,
-                    per_block_limit=per_block_limit,
-                )
-                limited_read_tasks.append(limited_read_task)
-            read_tasks = limited_read_tasks
+        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
+            parallelism, per_block_limit=op._per_block_limit
+        )
 
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 

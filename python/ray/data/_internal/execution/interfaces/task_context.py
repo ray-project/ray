@@ -50,6 +50,10 @@ class TaskContext:
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
 
+    # This is used to track the number of rows processed within this task.
+    # It is used to implement the per-block limit.
+    _processed_rows: int = 0
+
     @classmethod
     def get_current(cls) -> Optional["TaskContext"]:
         """Get the TaskContext for the current thread.

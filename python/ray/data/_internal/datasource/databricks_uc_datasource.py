@@ -194,10 +194,12 @@ class DatabricksUCDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._estimate_inmemory_data_size
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         # Handle empty dataset case
         if self.num_chunks == 0:
-            return [self._get_read_task(0, 1)]
+            return [self._get_read_task(0, 1, per_block_limit)]
 
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
 
@@ -208,4 +210,7 @@ class DatabricksUCDatasource(Datasource):
                 "insufficient chunk parallelism."
             )
 
-        return [self._get_read_task(index, parallelism) for index in range(parallelism)]
+        return [
+            self._get_read_task(index, parallelism, per_block_limit)
+            for index in range(parallelism)
+        ]

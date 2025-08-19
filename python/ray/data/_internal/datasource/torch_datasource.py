@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
@@ -23,7 +23,7 @@ class TorchDatasource(Datasource):
     ):
         self._dataset = dataset
 
-    def get_read_tasks(self, parallelism):
+    def get_read_tasks(self, parallelism: int, per_block_limit: Optional[int] = None):
         assert parallelism == 1
 
         meta = BlockMetadata(
@@ -39,6 +39,7 @@ class TorchDatasource(Datasource):
                 subset,
             ),
             metadata=meta,
+            per_block_limit=per_block_limit,
         )
 
         return [read_task]

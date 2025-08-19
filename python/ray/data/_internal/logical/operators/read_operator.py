@@ -10,7 +10,7 @@ from ray.data.datasource.datasource import Datasource, Reader
 class Read(AbstractMap, SourceOperator):
     """Logical operator for read."""
 
-    # TODO: make this a frozen dataclass. DATA-1338
+    # TODO: make this a frozen dataclass. https://github.com/ray-project/ray/issues/55747
     def __init__(
         self,
         datasource: Datasource,

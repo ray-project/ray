@@ -121,7 +121,9 @@ class SQLDatasource(Datasource):
             logger.info(f"Database does not support sharding: {str(e)}.")
             return False
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
             """Read all data in a single block when sharding is not supported."""
             with _connect(self.connection_factory) as cursor:
@@ -161,7 +163,7 @@ class SQLDatasource(Datasource):
                 input_files=None,
                 exec_stats=None,
             )
-            tasks.append(ReadTask(read_fn, metadata))
+            tasks.append(ReadTask(read_fn, metadata, per_block_limit=per_block_limit))
 
         return tasks
 

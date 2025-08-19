@@ -257,7 +257,9 @@ class ClickHouseDatasource(Datasource):
         """
         return self._get_estimate_size()
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         """
         Create read tasks for the ClickHouse query.
 
@@ -327,6 +329,7 @@ class ClickHouseDatasource(Datasource):
                     exec_stats=None,
                 ),
                 schema=sample_block_schema,
+                per_block_limit=per_block_limit,
             )
 
         if parallelism == 1:

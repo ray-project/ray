@@ -47,13 +47,15 @@ class Datasource:
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
-
+            per_block_limit: The per-block limit for the read tasks.
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
@@ -96,13 +98,15 @@ class Reader:
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
-            read_args: Additional kwargs to pass to the datasource impl.
+            per_block_limit: The per-block limit for the read tasks.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -232,6 +236,7 @@ class RandomIntRowDatasource(Datasource):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_block_limit: Optional[int] = None,
     ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow
@@ -269,6 +274,7 @@ class RandomIntRowDatasource(Datasource):
                     ],
                     meta,
                     schema=schema,
+                    per_block_limit=per_block_limit,
                 )
             )
             i += block_size

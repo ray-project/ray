@@ -124,7 +124,7 @@ class LimitPushdownRule(Rule):
         # Traverse up the DAG until we reach the first operator that meets
         # one of the stopping conditions
         current_op = limit_op.input_dependency
-        ops_to_recreate: List[LogicalOperator] = []
+        num_rows_preserving_ops: List[LogicalOperator] = []
 
         while (
             isinstance(current_op, AbstractOneToOne)
@@ -133,11 +133,11 @@ class LimitPushdownRule(Rule):
             # We should push past MapBatches, but MapBatches can modify the row count
             # TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
         ):
-            ops_to_recreate.append(current_op)
+            num_rows_preserving_ops.append(current_op)
             current_op = current_op.input_dependency
 
         # If we couldn't push through any operators, return original
-        if not ops_to_recreate:
+        if not num_rows_preserving_ops:
             return limit_op
 
         # Apply per-block limit to the deepest operator if it supports it
@@ -150,7 +150,7 @@ class LimitPushdownRule(Rule):
         result_op = new_limit
 
         # Recreate the intermediate operators and apply per-block limits
-        for op_to_recreate in reversed(ops_to_recreate):
+        for op_to_recreate in reversed(num_rows_preserving_ops):
             recreated_op = self._recreate_operator_with_new_input(
                 op_to_recreate, result_op
             )
@@ -165,8 +165,9 @@ class LimitPushdownRule(Rule):
     ) -> LogicalOperator:
         """Apply per-block limit to operators that support it."""
         if isinstance(op, AbstractMap):
-            op.set_per_block_limit(limit)
-            return op
+            new_op = copy.copy(op)
+            new_op._per_block_limit = limit
+            return new_op
         return op
 
     def _recreate_operator_with_new_input(

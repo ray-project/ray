@@ -157,6 +157,7 @@ class HuggingFaceDatasource(Datasource):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_block_limit: Optional[int] = None,
     ) -> List[ReadTask]:
         # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
         # We always generate a single ReadTask to perform the read.
@@ -176,6 +177,7 @@ class HuggingFaceDatasource(Datasource):
             ReadTask(
                 self._read_dataset,
                 meta,
+                per_block_limit=per_block_limit,
             )
         ]
         return read_tasks

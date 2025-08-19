@@ -32,6 +32,7 @@ class AbstractMap(AbstractOneToOne):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
+        per_block_limit: Optional[int] = None,
     ):
         """
         Args:
@@ -54,20 +55,7 @@ class AbstractMap(AbstractOneToOne):
         self._ray_remote_args = ray_remote_args or {}
         self._ray_remote_args_fn = ray_remote_args_fn
         self._compute = compute or TaskPoolStrategy()
-        self._per_block_limit = None
-
-    def set_per_block_limit(self, limit: int):
-        """
-        Set the per-block limit for this map operation.
-        When set, each block will process at most `limit` rows.
-        """
-        self._per_block_limit = limit
-
-    def get_per_block_limit(self) -> Optional[int]:
-        """
-        Get the per-block limit for this map operation.
-        """
-        return self._per_block_limit
+        self._per_block_limit = per_block_limit
 
 
 class AbstractUDFMap(AbstractMap):

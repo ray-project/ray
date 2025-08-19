@@ -59,7 +59,9 @@ class LanceDatasource(Datasource):
             "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
         }
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         read_tasks = []
         ds_fragments = self.scanner_options.get("fragments")
         if ds_fragments is None:
@@ -79,7 +81,6 @@ class LanceDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 input_files=input_files,
-                size_bytes=None,
                 exec_stats=None,
             )
             scanner_options = self.scanner_options
@@ -95,6 +96,7 @@ class LanceDatasource(Datasource):
                 ),
                 metadata,
                 schema=fragments[0].schema,
+                per_block_limit=per_block_limit,
             )
             read_tasks.append(read_task)
         return read_tasks

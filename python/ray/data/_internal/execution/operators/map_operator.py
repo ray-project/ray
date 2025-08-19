@@ -797,6 +797,8 @@ def _wrap_transformer_with_limit(
     limit_transform_fn = _PerBlockLimitTransformFn(per_block_limit)
 
     # Add the limit transform as the last step
+    # Appending at the end so that the cap applies to the final output
+    # blocks after all prior transforms.
     existing_transform_fns = map_transformer.get_transform_fns()
     new_transform_fns = existing_transform_fns + [limit_transform_fn]
 
@@ -823,35 +825,26 @@ class _PerBlockLimitTransformFn(MapTransformFn):
         """Apply per-block limit to the input blocks."""
         from ray.data.block import BlockAccessor
 
-        # Track rows processed within this task using TaskContext
-        if not hasattr(ctx, "_per_block_limit_rows_processed"):
-            ctx._per_block_limit_rows_processed = 0
-
         for block in input:
-            if ctx._per_block_limit_rows_processed >= self._per_block_limit:
+            if ctx._processed_rows >= self._per_block_limit:
                 # We've hit the limit, stop processing
                 break
 
             block_accessor = BlockAccessor.for_block(block)
             block_rows = block_accessor.num_rows()
 
-            if (
-                ctx._per_block_limit_rows_processed + block_rows
-                <= self._per_block_limit
-            ):
+            if ctx._processed_rows + block_rows <= self._per_block_limit:
                 # Entire block fits within limit
-                ctx._per_block_limit_rows_processed += block_rows
+                ctx._processed_rows += block_rows
                 yield block
             else:
                 # Need to truncate this block
-                remaining_rows = (
-                    self._per_block_limit - ctx._per_block_limit_rows_processed
-                )
+                remaining_rows = self._per_block_limit - ctx._processed_rows
                 if remaining_rows > 0:
                     truncated_block = block_accessor.slice(
                         0, remaining_rows, copy=False
                     )
-                    ctx._per_block_limit_rows_processed += remaining_rows
+                    ctx._processed_rows += remaining_rows
                     yield truncated_block
                 break
 
