@@ -273,7 +273,7 @@ CoreWorker::CoreWorker(
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
     std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client,
+    std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
     std::shared_ptr<ReferenceCounter> reference_counter,
@@ -334,6 +334,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
+      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -498,6 +499,12 @@ void CoreWorker::Shutdown() {
   if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
     RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
     return;
+  }
+
+  // For actors, perform cleanup before shutdown proceeds.
+  if (!GetWorkerContext().GetCurrentActorID().IsNil() && actor_shutdown_callback_) {
+    RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
+    actor_shutdown_callback_();
   }
   RAY_LOG(INFO) << "Shutting down.";
 
@@ -3700,8 +3707,10 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG).WithField(subscriber_id) << "Got a long polling request from a node";
-  object_info_publisher_->ConnectToSubscriber(
-      request, reply, std::move(send_reply_callback));
+  object_info_publisher_->ConnectToSubscriber(request,
+                                              reply->mutable_publisher_id(),
+                                              reply->mutable_pub_messages(),
+                                              std::move(send_reply_callback));
 }
 
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,

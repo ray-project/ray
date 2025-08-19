@@ -1340,7 +1340,7 @@ class ActorClass(Generic[T]):
         """
         return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
-    def options(self, **actor_options):
+    def options(self, **actor_options) -> "ActorClass[T]":
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
