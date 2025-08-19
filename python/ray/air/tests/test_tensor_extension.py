@@ -18,6 +18,8 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data import DataContext
+from ray.data._internal.pandas_block import PandasBlockBuilder
+from ray.data.block import BlockAccessor
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
@@ -477,6 +479,28 @@ def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
     arr = np.arange(1).reshape((1, 1, 1))
     t_arr = TensorArray(arr)
     assert float(t_arr) == float(arr)
+
+
+def test_tensor_array_conversion_null_safety():
+    data = pa.array([[1.0, 2.0], None], type=pa.list_(pa.float32()))
+    table = pa.Table.from_pydict({"list_float32_col": data})
+
+    builder = PandasBlockBuilder()
+
+    builder.add_block(BlockAccessor.for_block(table).to_pandas())
+    df = builder.build()
+
+    original_ndarray = data.to_numpy(zero_copy_only=False)
+    pandas_converted_ndarray = df["list_float32_col"].to_numpy()
+
+    assert pandas_converted_ndarray.dtype == original_ndarray.dtype
+
+    # NOTE: `array_equal` doesn't work for nested ndarrays, so we have to
+    #       iterate over these explicitly
+    assert all(
+        np.array_equal(a, b)
+        for a, b in zip(df["list_float32_col"].to_numpy(), original_ndarray)
+    )
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
