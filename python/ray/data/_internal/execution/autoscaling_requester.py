@@ -4,6 +4,7 @@ import time
 from typing import Dict, List
 
 import ray
+from ray.data._internal.util import _get_head_node_id
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -115,10 +116,9 @@ def get_or_create_autoscaling_requester_actor():
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     # Pin the stats actor to the local node so it fate-shares with the driver.
-    # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
-    # point to the head node.
+    # Note: for Ray Client, the actor instance of AutoscalingRequester should created to the head node.
     scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
+        _get_head_node_id(),
         soft=False,
     )
     with _autoscaling_requester_lock:

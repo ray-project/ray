@@ -32,7 +32,9 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 import ray
+from ray._private import ray_constants
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._raylet import GcsClient
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil
@@ -1744,3 +1746,19 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
 
     return actual_items_counts == expected_items_counts
+
+
+def _get_head_node_id():
+    """Fetches Head node id persisted in GCS"""
+    try:
+        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        head_node_id_hex_bytes = gcs_client.internal_kv_get(
+            ray_constants.KV_HEAD_NODE_ID_KEY,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=30,
+        )
+        if head_node_id_hex_bytes is None:
+            raise RuntimeError("Head node not found")
+        return head_node_id_hex_bytes.decode()
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error while getting head node ID: {e}") from e

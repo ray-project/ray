@@ -27,7 +27,7 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     get_dataset_metadata_exporter,
 )
-from ray.data._internal.util import capfirst
+from ray.data._internal.util import _get_head_node_id, capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
@@ -658,7 +658,7 @@ def _get_or_create_stats_actor():
         # Pin the stats actor to the local node
         # so it fate-shares with the driver.
         scheduling_strategy = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
+            _get_head_node_id(),
             soft=False,
         )
     with _stats_actor_lock:
