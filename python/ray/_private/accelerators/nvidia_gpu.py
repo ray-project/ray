@@ -78,7 +78,18 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         if name is None:
             return None
         match = NVIDIA_GPU_NAME_PATTERN.match(name)
-        return match.group(1).replace(" ", "-") if match else None
+        if not match:
+            return None
+            
+        accelerator_type = match.group(1).replace(" ", "-")
+        
+        # NOTE: prevent breaking changes
+        if accelerator_type.startswith("A100"):
+            return "A100"
+        if accelerator_type.startswith("H100"):
+            return "H100"
+        
+        return accelerator_type
 
     @staticmethod
     def validate_resource_request_quantity(
