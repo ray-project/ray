@@ -271,7 +271,8 @@ class AggregatorAgent(
 
         # Convert protobuf objects to JSON dictionaries for HTTP POST
         filtered_event_batch_json = [
-            json.loads(MessageToJson(event)) for event in filtered_event_batch
+            json.loads(MessageToJson(event), use_integers_for_enums=True)
+            for event in filtered_event_batch
         ]
 
         try:
