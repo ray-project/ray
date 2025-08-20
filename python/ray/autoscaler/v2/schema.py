@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+import time
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
@@ -219,6 +220,101 @@ class ClusterStatus:
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)
     # We should show them properly in the future.
+
+
+IPPRSpecsSchema = {
+    "type": "object",
+    "properties": {
+        "groups": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "max-cpu": {"type": ["string", "number"]},
+                    "max-memory": {"type": ["string", "integer"]},
+                    "resize-timeout": {"type": "integer"},
+                },
+                "required": ["max-cpu", "max-memory", "resize-timeout"],
+            },
+        }
+    },
+}
+
+
+@dataclass
+class IPPRGroupSpec:
+    min_cpu: float
+    max_cpu: float
+    min_memory: int
+    max_memory: int
+    resize_timeout: int
+
+
+@dataclass
+class IPPRSpecs:
+    groups: Dict[str, IPPRGroupSpec]
+
+
+@dataclass
+class IPPRStatus:
+    cloud_instance_id: str
+    spec: IPPRGroupSpec
+    current_cpu: float
+    current_memory: int
+    desired_cpu: float
+    desired_memory: int
+    resized_at: Optional[int] = None
+    resized_status: Optional[str] = None
+    resized_message: Optional[str] = None
+    suggested_cpu: Optional[float] = None
+    suggested_memory: Optional[int] = None
+    raylet_id: Optional[str] = None
+
+    def update(
+        self,
+        raylet_id: str,
+        desired_cpu: Optional[float],
+        desired_memory: Optional[int],
+    ) -> None:
+        if desired_cpu is not None:
+            self.desired_cpu = desired_cpu
+        if desired_memory is not None:
+            self.desired_memory = desired_memory
+        self.raylet_id = raylet_id
+        self.resized_at = None
+        self.resized_status = "new"
+        self.resized_message = None
+
+    def is_ready_to_resize(self) -> bool:
+        return (
+            self.raylet_id
+            and self.resized_status == "new"
+            and (
+                self.desired_cpu != self.current_cpu
+                or self.desired_memory != self.current_memory
+            )
+        )
+
+    def is_in_progress(self) -> bool:
+        return self.resized_at is not None or self.is_ready_to_resize()
+
+    def is_finished(self) -> bool:
+        return self.resized_status is None
+
+    def can_resize_up(self) -> bool:
+        return self.is_finished() and (
+            self.current_cpu < self.spec.max_cpu
+            or self.current_memory < self.spec.max_memory
+        )
+
+    def is_timeout(self) -> bool:
+        return (
+            self.resized_at is not None
+            and self.resized_at + self.spec.resize_timeout < time.time()
+        )
+
+    def is_failed(self) -> bool:
+        return self.resized_status == "error"
 
 
 @dataclass
