@@ -90,7 +90,7 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
-DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
 // TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
 // CPU and memory resource reservation in the followup PR.
@@ -473,6 +473,8 @@ int main(int argc, char *argv[]) {
     object_manager_config.object_store_memory = object_store_memory;
     object_manager_config.max_bytes_in_flight =
         RayConfig::instance().object_manager_max_bytes_in_flight();
+    RAY_CHECK_GT(object_manager_config.max_bytes_in_flight, 0)
+        << "object_manager_max_bytes_in_flight must be greater than 0";
     object_manager_config.plasma_directory = plasma_directory;
     object_manager_config.fallback_directory = fallback_directory;
     object_manager_config.huge_pages = huge_pages;

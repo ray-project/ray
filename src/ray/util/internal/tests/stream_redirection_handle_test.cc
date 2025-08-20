@@ -22,7 +22,7 @@
 #include <thread>
 #include <vector>
 
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
