@@ -51,7 +51,7 @@ class NixlTensorTransport(TensorTransportManager):
                 serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
                     gpu_object
                 )
-                # We assume all tensors in one GPU object are on the same device.
+                # We assume all tensors in one GPU object have the same device type.
                 device = gpu_object[0].device
                 for t in gpu_object:
                     if t.device.type != device.type:
