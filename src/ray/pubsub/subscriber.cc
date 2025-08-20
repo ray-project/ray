@@ -432,9 +432,9 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
             Status status, const rpc::PubsubCommandBatchReply &reply) {
           {
             absl::MutexLock lock(&mutex_);
-            auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
-            RAY_CHECK(command_batch_sent_it != command_batch_sent_.end());
-            command_batch_sent_.erase(command_batch_sent_it);
+            auto command_batch_sent_iter = command_batch_sent_.find(publisher_id);
+            RAY_CHECK(command_batch_sent_iter != command_batch_sent_.end());
+            command_batch_sent_.erase(command_batch_sent_iter);
           }
           for (const auto &done : done_cb) {
             if (done) {
