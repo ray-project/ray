@@ -40,5 +40,6 @@ Deploy models that can switch between reasoning and non-reasoning modes for flex
 notebooks/small-size-llm.ipynb
 notebooks/medium-size-llm.ipynb
 notebooks/vision-llm.ipynb
+notebooks/reasoning-llm.ipynb
 ```
 
