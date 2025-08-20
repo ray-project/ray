@@ -50,8 +50,9 @@ class ThreadRunner:
                     construct_user_exception_with_traceback(e, exclude_frames=2)
                 )
 
-            if not self._exc:
-                self._exc_queue.put(None)
+            with self._lock:
+                if not self._exc:
+                    self._exc_queue.put(None)
 
         self._thread = threading.Thread(
             target=_run_target,
