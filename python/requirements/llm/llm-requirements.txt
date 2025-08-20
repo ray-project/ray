@@ -15,4 +15,4 @@ pybind11
 hf_transfer
 
 # nixl version Needs to be in sync with the one in ray-llm/Dockerfile
-nixl==0.3.1
+nixl==0.4.1
