@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
+#include "ray/common/id.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
