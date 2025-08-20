@@ -38,7 +38,7 @@ def test_serve_deployment_processor():
     }
 
 
-def test_simple_serve_deployment():
+def test_simple_serve_deployment(serve_cleanup):
     @serve.deployment
     class SimpleServeDeployment:
         # ServeDeploymentStageUDF expects a generator
@@ -64,7 +64,10 @@ def test_simple_serve_deployment():
             dtype=None,  # Empty dtype since output is already dict format
             request_kwargs=dict(x=row["id"]),
         ),
-        postprocess=lambda row: dict(resp=row["result"]),
+        postprocess=lambda row: dict(
+            resp=row["result"],
+            id=row["id"],
+        ),
     )
 
     ds = ray.data.range(60)
@@ -74,11 +77,7 @@ def test_simple_serve_deployment():
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
-
-    for i, out in enumerate(outs):
-        assert out["resp"] == i + 1
-
-    serve.shutdown()
+    assert all(out["resp"] == out["id"] + 1 for out in outs)
 
 
 def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):

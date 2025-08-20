@@ -173,7 +173,13 @@ def gpu_type():
 
 
 @pytest.fixture
-def create_model_opt_125m_deployment(gpu_type, model_opt_125m):
+def serve_cleanup():
+    yield
+    serve.shutdown()
+
+
+@pytest.fixture
+def create_model_opt_125m_deployment(gpu_type, model_opt_125m, serve_cleanup):
     """Create a serve deployment for testing."""
     app_name = "test_serve_deployment_processor_app"
     deployment_name = "test_deployment_name"
@@ -227,4 +233,3 @@ def create_model_opt_125m_deployment(gpu_type, model_opt_125m):
     )
     serve.run(llm_app, name=app_name)
     yield deployment_name, app_name
-    serve.shutdown()

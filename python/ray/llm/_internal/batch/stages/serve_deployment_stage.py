@@ -16,10 +16,10 @@ from ray.llm._internal.batch.stages.base import (
 
 # The following imports are necessary to resolve class references in the global namespace
 from ray.llm._internal.serve.configs.openai_api_models import (
-    CompletionRequest,
-    ChatCompletionRequest,
-    EmbeddingRequest,
-)  # noqa: F401
+    CompletionRequest,  # noqa: F401
+    ChatCompletionRequest,  # noqa: F401
+    EmbeddingRequest,  # noqa: F401
+)
 
 logger = logging.getLogger(__name__)
 

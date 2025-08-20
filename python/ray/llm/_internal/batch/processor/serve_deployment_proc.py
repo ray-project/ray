@@ -1,6 +1,7 @@
 """The processor that runs serve deployment."""
 
 from typing import Optional
+
 from pydantic import Field
 
 from ray.data.block import UserDefinedFunction
