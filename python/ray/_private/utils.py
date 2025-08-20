@@ -852,6 +852,10 @@ def get_conda_bin_executable(executable_name):
     return executable_name
 
 
+def delete_conda_env(env_name):
+    subprocess.run(["conda", "remove", "--name", env_name, "--all", "-y"])
+
+
 def get_conda_env_dir(env_name):
     """Find and validate the conda directory for a given conda environment.
 
