@@ -26,7 +26,7 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"

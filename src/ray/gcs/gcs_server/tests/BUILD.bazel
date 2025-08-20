@@ -82,6 +82,7 @@ ray_cc_library(
     deps = [
         "//:ray_fakes",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
     ],
 )
 
@@ -112,7 +113,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_server_test_util",
-        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -129,6 +130,8 @@ ray_cc_test(
     deps = [
         ":gcs_server_test_util",
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -164,6 +167,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_test_util",
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -182,7 +186,7 @@ ray_cc_test(
     ],
     deps = [
         ":gcs_server_test_util",
-        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -198,9 +202,10 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_server_test_util",
-        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -235,6 +240,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/pubsub:publisher",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -248,7 +254,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_server_test_util",
-        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:process",
@@ -262,7 +268,7 @@ ray_cc_library(
         "gcs_table_storage_test_base.h",
     ],
     deps = [
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client:redis_store_client",
     ],
 )
 
@@ -299,6 +305,7 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         "//src/ray/common:test_util",
         "//src/ray/gcs/gcs_server:gcs_table_storage",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -363,7 +370,9 @@ ray_cc_test(
     deps = [
         ":gcs_server_test_util",
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -381,6 +390,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -396,8 +406,9 @@ ray_cc_test(
     ],
     deps = [
         ":gcs_server_test_util",
-        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
