@@ -146,7 +146,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
   ~MockDistributedSubscriber() = default;
 
-  bool Subscribe(
+  void Subscribe(
       std::unique_ptr<rpc::SubMessage> sub_message,
       rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
@@ -186,7 +186,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
     const auto oid = ObjectID::FromBinary(*key_id_binary);
     callback_it->second.emplace(oid, subscription_callback);
-    return failure_callback_it->second.emplace(oid, subscription_failure_callback).second;
+    failure_callback_it->second.emplace(oid, subscription_failure_callback);
   }
 
   bool Unsubscribe(rpc::ChannelType channel_type,

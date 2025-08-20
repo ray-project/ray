@@ -32,16 +32,14 @@ class FakeSubscriberClient : public SubscriberClientInterface {
 
 class FakeSubscriber : public SubscriberInterface {
  public:
-  bool Subscribe(
+  void Subscribe(
       std::unique_ptr<rpc::SubMessage> sub_message,
       rpc::ChannelType channel_type,
       const rpc::Address &owner_address,
       const std::optional<std::string> &key_id,
       pubsub::SubscribeDoneCallback subscribe_done_callback,
       pubsub::SubscriptionItemCallback subscription_callback,
-      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
-    return true;
-  }
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {}
 
   bool Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,

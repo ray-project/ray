@@ -47,7 +47,7 @@ using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  bool Subscribe(
+  void Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       rpc::ChannelType channel_type,
       const rpc::Address &owner_address,

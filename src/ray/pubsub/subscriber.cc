@@ -30,7 +30,7 @@ const UniqueID kDefaultUniqueID{};
 /// SubscriberChannel
 ///////////////////////////////////////////////////////////////////////////////
 
-bool SubscriberChannel::Subscribe(
+void SubscriberChannel::Subscribe(
     const rpc::Address &publisher_address,
     const std::optional<std::string> &key_id,
     SubscriptionItemCallback subscription_callback,
@@ -39,21 +39,17 @@ bool SubscriberChannel::Subscribe(
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
-    return subscription_map_[publisher_id]
-        .per_entity_subscription
-        .try_emplace(*key_id,
-                     SubscriptionInfo(std::move(subscription_callback),
-                                      std::move(subscription_failure_callback)))
-        .second;
+    subscription_map_[publisher_id].per_entity_subscription.try_emplace(
+        *key_id,
+        SubscriptionInfo(std::move(subscription_callback),
+                         std::move(subscription_failure_callback)));
   }
   auto &all_entities_subscription =
       subscription_map_[publisher_id].all_entities_subscription;
-  if (all_entities_subscription != nullptr) {
-    return false;
+  if (all_entities_subscription == nullptr) {
+    all_entities_subscription = std::make_unique<SubscriptionInfo>(
+        std::move(subscription_callback), std::move(subscription_failure_callback));
   }
-  all_entities_subscription = std::make_unique<SubscriptionInfo>(
-      std::move(subscription_callback), std::move(subscription_failure_callback));
-  return true;
 }
 
 bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
@@ -262,7 +258,7 @@ bool Subscriber::IsSubscribed(rpc::ChannelType channel_type,
   return channel->IsSubscribed(publisher_address, key_id);
 }
 
-bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::optional<std::string> &key_id,
@@ -285,7 +281,7 @@ bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
   MakeLongPollingConnectionIfNotConnected(publisher_address);
-  return Channel(channel_type)
+  this->Channel(channel_type)
       ->Subscribe(publisher_address,
                   key_id,
                   std::move(subscription_callback),

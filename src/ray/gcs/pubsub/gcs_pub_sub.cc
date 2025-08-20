@@ -79,8 +79,7 @@ Status GcsSubscriber::SubscribeAllJobs(
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
   };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->Subscribe(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_JOB_CHANNEL,
       gcs_address_,
@@ -91,7 +90,7 @@ Status GcsSubscriber::SubscribeAllJobs(
         }
       },
       std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
   return Status::OK();
 }
 
@@ -111,8 +110,7 @@ Status GcsSubscriber::SubscribeActor(
     RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
                      << " failed: " << status.ToString();
   };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->Subscribe(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_ACTOR_CHANNEL,
       gcs_address_,
@@ -123,7 +121,7 @@ Status GcsSubscriber::SubscribeActor(
         }
       },
       std::move(subscription_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
   return Status::OK();
 }
 
@@ -148,8 +146,7 @@ void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &s
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: " << status.ToString();
   };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->Subscribe(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
       gcs_address_,
@@ -160,7 +157,7 @@ void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &s
         }
       },
       std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
@@ -174,7 +171,7 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
                      << status.ToString();
   };
   // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->Subscribe(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
       gcs_address_,
@@ -186,7 +183,7 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
         }
       },
       std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
   return Status::OK();
 }
 

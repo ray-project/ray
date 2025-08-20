@@ -74,7 +74,7 @@ class SubscriberChannel {
   /// information is published.
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
-  bool Subscribe(const rpc::Address &publisher_address,
+  void Subscribe(const rpc::Address &publisher_address,
                  const std::optional<std::string> &key_id,
                  SubscriptionItemCallback subscription_item_callback,
                  SubscriptionFailureCallback subscription_failure_callback);
@@ -230,7 +230,7 @@ class Subscriber : public SubscriberInterface {
     }
   }
 
-  bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+  void Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                  rpc::ChannelType channel_type,
                  const rpc::Address &publisher_address,
                  const std::optional<std::string> &key_id,
