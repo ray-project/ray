@@ -12,6 +12,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "shutdown_coordinator_test",
+    size = "medium",
+    srcs = ["shutdown_coordinator_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker:core_worker_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["memory_store_test.cc"],

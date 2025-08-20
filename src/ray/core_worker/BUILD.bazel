@@ -5,11 +5,15 @@ ray_cc_library(
     srcs = [
         "core_worker.cc",
         "core_worker_process.cc",
+        "core_worker_shutdown_executor.cc",
+        "shutdown_coordinator.cc",
     ],
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
         "core_worker_rpc_proxy.h",
+        "core_worker_shutdown_executor.h",
+        "shutdown_coordinator.h",
     ],
     deps = [
         ":actor_handle",
