@@ -261,7 +261,7 @@ class UDFExpr(Expr):
 
     Example:
         >>> from ray.data.expressions import col, udf
-        >>> from ray.data.types import DataType
+        >>> from ray.data.datatype import DataType
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>>
@@ -353,7 +353,7 @@ def udf(fn: Optional[Callable] = None, *, return_dtype: DataType):
 
     Example:
         >>> from ray.data.expressions import col, udf
-        >>> from ray.data.types import DataType
+        >>> from ray.data.datatype import DataType
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>> import ray
