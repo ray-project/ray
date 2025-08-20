@@ -1472,7 +1472,7 @@ void WorkerPool::PrestartWorkers(const LeaseSpecification &lease_spec,
                  << " backlog_size " << backlog_size << " lease spec "
                  << lease_spec.DebugString() << " has runtime env "
                  << lease_spec.HasRuntimeEnv();
-  if ((lease_spec.IsActorCreationTask() && !lease_spec.DynamicWorkerOptions().empty()) ||
+  if (lease_spec.IsActorCreationTask() && lease_spec.DynamicWorkerOptionsSize() > 0 &&
       lease_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
   }

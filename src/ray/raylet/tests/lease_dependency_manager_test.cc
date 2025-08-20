@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/lease_dependency_manager.h"
+
 #include <list>
 #include <string>
 #include <unordered_set>
@@ -23,7 +25,6 @@
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/raylet/lease_dependency_manager.h"
 
 namespace ray {
 
@@ -142,7 +143,7 @@ TEST_F(LeaseDependencyManagerTest, TestMultipleLeases) {
     LeaseID lease_id = LeaseID::FromRandom();
     dependent_leases.push_back(lease_id);
     bool ready = lease_dependency_manager_.RequestLeaseDependencies(
-      lease_id, ObjectIdsToRefs({argument_id}), {"foo", false});
+        lease_id, ObjectIdsToRefs({argument_id}), {"foo", false});
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each lease.
     ASSERT_EQ(object_manager_mock_.active_lease_requests.size(), i + 1);
@@ -154,7 +155,8 @@ TEST_F(LeaseDependencyManagerTest, TestMultipleLeases) {
   // Tell the lease dependency manager that the object is local.
   auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(argument_id);
   // Check that all leases are now ready to run.
-  std::unordered_set<LeaseID> added_leases(dependent_leases.begin(), dependent_leases.end());
+  std::unordered_set<LeaseID> added_leases(dependent_leases.begin(),
+                                           dependent_leases.end());
   for (auto &id : ready_lease_ids) {
     ASSERT_TRUE(added_leases.erase(id));
   }

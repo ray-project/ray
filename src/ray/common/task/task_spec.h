@@ -283,12 +283,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec &&message)
-      : MessageWrapper(std::move(message)) {
-    ComputeResources();
-  }
-
-  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
@@ -461,10 +456,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// be used if the task spec is mutated.
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
-
-  // static "overload" for LeaseSpecification constructor.
-  static std::vector<rpc::ObjectReference> GetDependencies(
-      const rpc::TaskSpec &task_spec);
 
   std::string GetDebuggerBreakpoint() const;
 

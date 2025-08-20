@@ -99,7 +99,8 @@ void TaskSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+    required_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_resources));
   }
 
   auto &required_placement_resources = message_->required_placement_resources().empty()
@@ -109,8 +110,8 @@ void TaskSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(
-        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+    required_placement_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_placement_resources));
   }
 
   // Set LabelSelector required for scheduling if specified. Parses string map
@@ -396,17 +397,6 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
-    }
-  }
-  return dependencies;
-}
-
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
-    const rpc::TaskSpec &task_spec) {
-  std::vector<rpc::ObjectReference> dependencies;
-  for (size_t i = 0; i < static_cast<size_t>(task_spec.args_size()); ++i) {
-    if (task_spec.args(i).has_object_ref() && !task_spec.args(i).is_inlined()) {
-      dependencies.push_back(task_spec.args(i).object_ref());
     }
   }
   return dependencies;

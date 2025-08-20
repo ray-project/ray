@@ -35,9 +35,11 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
                                              task_spec.label_selector().end());
   message_->set_depth(task_spec.depth());
   message_->set_parent_task_id(task_spec.parent_task_id());
-  for (const auto &dep : TaskSpecification::GetDependencies(task_spec)) {
-    rpc::ObjectReference *dependency = message_->add_dependencies();
-    dependency->CopyFrom(dep);
+  message_->mutable_dependencies()->Reserve(task_spec.args_size());
+  for (size_t i = 0; i < static_cast<size_t>(task_spec.args_size()); ++i) {
+    if (task_spec.args(i).has_object_ref() && !task_spec.args(i).is_inlined()) {
+      message_->add_dependencies()->CopyFrom(task_spec.args(i).object_ref());
+    }
   }
   message_->mutable_function_descriptor()->CopyFrom(task_spec.function_descriptor());
   message_->set_language(task_spec.language());
@@ -59,21 +61,6 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_max_retries(task_spec.max_retries());
   }
-  ComputeResources();
-}
-
-LeaseSpecification::LeaseSpecification(rpc::LeaseSpec &&lease_spec)
-    : MessageWrapper(std::move(lease_spec)) {
-  ComputeResources();
-}
-
-LeaseSpecification::LeaseSpecification(const rpc::LeaseSpec &message)
-    : MessageWrapper(message) {
-  ComputeResources();
-}
-
-LeaseSpecification::LeaseSpecification(std::shared_ptr<rpc::LeaseSpec> message)
-    : MessageWrapper(std::move(message)) {
   ComputeResources();
 }
 
@@ -295,7 +282,8 @@ void LeaseSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+    required_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_resources));
   }
 
   auto &required_placement_resources = message_->required_placement_resources().empty()
@@ -305,8 +293,8 @@ void LeaseSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(
-        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+    required_placement_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_placement_resources));
   }
 
   // Set LabelSelector required for scheduling if specified. Parses string map
@@ -339,8 +327,8 @@ void LeaseSpecification::ComputeResources() {
                                                     GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
+    RAY_CHECK_GT(sched_cls_id_, 0);
   }
-
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
 }
 
@@ -356,6 +344,10 @@ std::vector<std::string> LeaseSpecification::DynamicWorkerOptions() const {
   return VectorFromProtobuf(message_->dynamic_worker_options());
 }
 
+size_t LeaseSpecification::DynamicWorkerOptionsSize() const {
+  return message_->dynamic_worker_options_size();
+}
+
 const rpc::RuntimeEnvConfig &LeaseSpecification::RuntimeEnvConfig() const {
   return message_->runtime_env_info().runtime_env_config();
 }
@@ -365,13 +357,7 @@ bool LeaseSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
-SchedulingClass LeaseSpecification::GetSchedulingClass() const {
-  if (!IsActorTask()) {
-    // Actor task doesn't have scheudling id, so we don't need to check this.
-    RAY_CHECK_GT(sched_cls_id_, 0);
-  }
-  return sched_cls_id_;
-}
+SchedulingClass LeaseSpecification::GetSchedulingClass() const { return sched_cls_id_; }
 
 const rpc::LeaseSpec &LeaseSpecification::GetMessage() const { return *message_; }
 

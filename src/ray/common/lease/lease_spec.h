@@ -41,9 +41,15 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   /// Construct an empty task specification. This should not be used directly.
   LeaseSpecification() { ComputeResources(); }
 
-  explicit LeaseSpecification(rpc::LeaseSpec &&lease_spec);
-  explicit LeaseSpecification(const rpc::LeaseSpec &message);
-  explicit LeaseSpecification(std::shared_ptr<rpc::LeaseSpec> message);
+  explicit LeaseSpecification(rpc::LeaseSpec lease_spec)
+      : MessageWrapper(std::move(lease_spec)) {
+    ComputeResources();
+  }
+
+  explicit LeaseSpecification(std::shared_ptr<rpc::LeaseSpec> message)
+      : MessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
 
   LeaseID LeaseId() const;
   JobID JobId() const;
@@ -87,6 +93,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   std::string GetTaskName() const;
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
   std::vector<std::string> DynamicWorkerOptions() const;
+  size_t DynamicWorkerOptionsSize() const;
   const rpc::RuntimeEnvConfig &RuntimeEnvConfig() const;
   bool IsSpreadSchedulingStrategy() const;
   SchedulingClass GetSchedulingClass() const;

@@ -359,6 +359,7 @@ class LeaseID : public BaseID<LeaseID> {
   static LeaseID DriverLeaseID(const WorkerID &worker_id);
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
+  // Currently it should only be used in the GCS so not a problem.
   static LeaseID FromRandom();
 
   LeaseID() : BaseID() {}
