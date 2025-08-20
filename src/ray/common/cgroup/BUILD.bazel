@@ -16,6 +16,7 @@ ray_cc_library(
         "//src/ray/common:macros",
         "//src/ray/util:filesystem",
         "//src/ray/util:invoke_once_token",
+        "//src/ray/util:logging",
         "//src/ray/util:path_utils",
         "@com_google_absl//absl/strings:str_format",
     ],
