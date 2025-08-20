@@ -14,13 +14,15 @@
 
 #include "ray/util/process.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <boost/process/child.hpp>
 #include <chrono>
 #include <cstdio>
 #include <thread>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "ray/util/logging.h"
 
 namespace ray {
