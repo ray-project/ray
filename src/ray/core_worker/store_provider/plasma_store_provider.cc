@@ -23,8 +23,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/util/time.h"
 #include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
