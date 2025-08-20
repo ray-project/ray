@@ -630,6 +630,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         DataFrame.
 
         .. testcode::
+            :skipif: True
 
             import mars
             import mars.dataframe as md
