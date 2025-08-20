@@ -14,13 +14,6 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStageUDF,
 )
 
-# The following imports are necessary to resolve class references in the global namespace
-from ray.llm._internal.serve.configs.openai_api_models import (
-    CompletionRequest,  # noqa: F401
-    ChatCompletionRequest,  # noqa: F401
-    EmbeddingRequest,  # noqa: F401
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +35,19 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             app_name: The name of the deployment app.
         """
         super().__init__(data_column, expected_input_keys)
+
+        from ray.llm._internal.serve.configs.openai_api_models import (
+            ChatCompletionRequest,
+            CompletionRequest,
+            EmbeddingRequest,
+        )
+
+        self._dtype_classes = {
+            "CompletionRequest": CompletionRequest,
+            "ChatCompletionRequest": ChatCompletionRequest,
+            "EmbeddingRequest": EmbeddingRequest,
+        }
+
         self._dh = serve.get_deployment_handle(deployment_name, app_name).options(
             stream=True
         )
@@ -62,7 +68,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             invoke on the serve deployment.
         """
         method = row.get("method")
-        dtype = globals()[row.get("dtype")] if row.get("dtype") else None
+        dtype = self._dtype_classes.get(row.get("dtype"))
 
         request_kwargs = row.pop("request_kwargs")
         request = {
