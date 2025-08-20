@@ -704,6 +704,18 @@ std::optional<std::error_code> KillProc(pid_t pid) {
 #endif
 }
 
+std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig) {
+#if !defined(_WIN32)
+  std::error_code error;
+  if (killpg(pgid, sig) != 0) {
+    error = std::error_code(errno, std::system_category());
+  }
+  return {error};
+#else
+  return std::nullopt;
+#endif
+}
+
 #if defined(__linux__)
 static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
   std::vector<pid_t> child_pids;

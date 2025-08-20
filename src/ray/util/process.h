@@ -149,6 +149,10 @@ static constexpr char kProcDirectory[] = "/proc";
 // Currently only supported on Linux. Returns nullopt for other platforms.
 std::optional<std::error_code> KillProc(pid_t pid);
 
+// Platform-specific kill for an entire process group. Currently only supported on
+// POSIX (non-Windows). Returns nullopt for other platforms.
+std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig);
+
 // Platform-specific utility to find the process IDs of all processes
 // that have the specified parent_pid as their parent.
 // In other words, find all immediate children of the specified process
