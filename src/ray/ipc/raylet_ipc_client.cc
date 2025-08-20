@@ -290,7 +290,7 @@ void ShutdownIfLocalRayletDisconnected(const Status &status) {
     if (!IsProcessAlive(static_cast<pid_t>(std::stoi(raylet_pid)))) {
       raylet_alive = false;
     }
-  } else if (IsParentProcessAlive()) {
+  } else if (!IsParentProcessAlive()) {
     raylet_alive = false;
   }
 
