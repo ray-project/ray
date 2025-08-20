@@ -140,4 +140,4 @@ class DataType(BaseModel):
         return self.internal_type == other.internal_type
 
     def __hash__(self) -> int:
-        return hash(str(self.internal_type))
+        return hash(repr(self))
