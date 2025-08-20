@@ -281,6 +281,7 @@ pyx_library(
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/thirdparty/setproctitle",
         "//src/ray/util:memory",
+        "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
     ],
