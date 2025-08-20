@@ -22,7 +22,7 @@ class MockGcsActorSchedulerInterface : public GcsActorSchedulerInterface {
   MOCK_METHOD(std::vector<ActorID>, CancelOnNode, (const NodeID &node_id), (override));
   MOCK_METHOD(void,
               CancelOnLeasing,
-              (const NodeID &node_id, const ActorID &actor_id, const TaskID &task_id),
+              (const NodeID &node_id, const ActorID &actor_id, const LeaseID &lease_id),
               (override));
   MOCK_METHOD(ActorID,
               CancelOnWorker,
@@ -62,7 +62,7 @@ class MockGcsActorScheduler : public GcsActorScheduler {
   MOCK_METHOD(std::vector<ActorID>, CancelOnNode, (const NodeID &node_id), (override));
   MOCK_METHOD(void,
               CancelOnLeasing,
-              (const NodeID &node_id, const ActorID &actor_id, const TaskID &task_id),
+              (const NodeID &node_id, const ActorID &actor_id, const LeaseID &lease_id),
               (override));
   MOCK_METHOD(ActorID,
               CancelOnWorker,

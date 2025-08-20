@@ -33,6 +33,7 @@ class RayLease {
  public:
   /// Construct an empty lease. This should only be used to pass a lease
   /// as an out parameter to a function or method.
+  // TODO(joshlee): Remove this constructor and refactor worker.h to use unique_ptr
   RayLease() = default;
 
   /// Construct a `RayLease` object from a protobuf message.

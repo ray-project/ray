@@ -225,7 +225,7 @@ class MockTaskManager : public MockTaskManagerInterface {
 class MockRayletClient : public FakeRayletClient {
  public:
   Status ReturnWorkerLease(int worker_port,
-                           const WorkerID &worker_id,
+                           const LeaseID &lease_id,
                            bool disconnect_worker,
                            const std::string &disconnect_worker_error_detail,
                            bool worker_exiting) override {
@@ -242,7 +242,7 @@ class MockRayletClient : public FakeRayletClient {
   }
 
   void GetTaskFailureCause(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
     std::lock_guard<std::mutex> lock(mu_);
@@ -269,14 +269,14 @@ class MockRayletClient : public FakeRayletClient {
     reported_backlogs.clear();
     for (const auto &backlog_report : backlog_reports) {
       reported_backlog_size += backlog_report.backlog_size();
-      const TaskSpecification resource_spec(backlog_report.resource_spec());
+      const LeaseSpecification resource_spec(backlog_report.resource_spec());
       const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
       reported_backlogs[scheduling_class] = backlog_report.backlog_size();
     }
   }
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,
@@ -448,7 +448,7 @@ class MockLeasePolicy : public LeasePolicyInterface {
  public:
   void SetNodeID(NodeID node_id) { fallback_rpc_address_.set_node_id(node_id.Binary()); }
 
-  std::pair<rpc::Address, bool> GetBestNodeForTask(const TaskSpecification &spec) {
+  std::pair<rpc::Address, bool> GetBestNodeForLease(const LeaseSpecification &spec) {
     num_lease_policy_consults++;
     return std::make_pair(fallback_rpc_address_, is_locality_aware);
   };

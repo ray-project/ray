@@ -68,7 +68,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   MOCK_METHOD3(CancelOnLeasing,
                void(const NodeID &node_id,
                     const ActorID &actor_id,
-                    const TaskID &task_id));
+                    const LeaseID &lease_id));
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
@@ -897,9 +897,8 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
   const auto &actor_id = actor->GetActorID();
-  const auto &task_id = TaskID::FromBinary(
-      registered_actor->GetCreationTaskSpecification().GetMessage().task_id());
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id, task_id));
+  // LeaseID is randomly generated, so we can't check for a specific lease ID.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id, _));
   gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
   io_service_.run_one();
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());

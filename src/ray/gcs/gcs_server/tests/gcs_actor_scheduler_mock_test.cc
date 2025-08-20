@@ -65,7 +65,7 @@ class GcsActorSchedulerMockTest : public Test {
           auto node = gcs_node_manager->GetAliveNode(nid);
           return node.has_value() ? node.value().get() : nullptr;
         },
-        /*announce_infeasible_task=*/nullptr,
+        /*announce_infeasible_lease=*/nullptr,
         /*local_lease_manager=*/*local_lease_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
@@ -121,7 +121,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> cb;
-  EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
+  EXPECT_CALL(*raylet_client,
+              RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
@@ -138,8 +139,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   // Ensure worker is not leak in the following case:
   //   1. Actor is in pending creation
   //   2. Gcs push creation task to run in worker
-  //   3. Cancel the task
-  //   4. Task creating reply received
+  //   3. Cancel the lease
+  //   4. Lease creating reply received
   // We'd like to test the worker got released eventually.
   // Worker is released with actor killing
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
@@ -150,7 +151,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
-  EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
+  EXPECT_CALL(*raylet_client,
+              RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
 
   // Postable is not default constructable, so we use a unique_ptr to hold one.
