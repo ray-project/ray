@@ -157,11 +157,11 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
 
 RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
 
-Status RedisStoreClient::AsyncPut(const std::string &table_name,
-                                  const std::string &key,
-                                  std::string data,
-                                  bool overwrite,
-                                  Postable<void(bool)> callback) {
+void RedisStoreClient::AsyncPut(const std::string &table_name,
+                                const std::string &key,
+                                std::string data,
+                                bool overwrite,
+                                Postable<void(bool)> callback) {
   RedisCommand command{/*command=*/overwrite ? "HSET" : "HSETNX",
                        RedisKey{external_storage_namespace_, table_name},
                        /*args=*/{key, std::move(data)}};
@@ -481,8 +481,6 @@ void RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
         auto job_id = static_cast<int>(reply->ReadAsInteger());
         std::move(callback).Post("GcsStore.GetNextJobID", job_id);
       });
-
-  return Status::OK();
 }
 
 void RedisStoreClient::AsyncGetKeys(const std::string &table_name,

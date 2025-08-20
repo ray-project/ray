@@ -69,7 +69,7 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
                (const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
                const StatusCallback &done),
               (override));
-  MOCK_METHOD(Status, AsyncUnsubscribe, (const ActorID &actor_id), (override));
+  MOCK_METHOD(void, AsyncUnsubscribe, (const ActorID &actor_id), (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(bool, IsActorUnsubscribed, (const ActorID &actor_id), (override));
 };
