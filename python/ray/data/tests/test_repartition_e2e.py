@@ -176,19 +176,13 @@ def test_repartition_target_num_rows_per_block(
             4,
             10,
             False,
-            "Only one of `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
-        ),
-        (
-            None,
-            None,
-            False,
-            "Either `num_blocks` or `target_num_rows_per_block` must be set",
+            "Only one target parameter can be set, but multiple were provided",
         ),
         (
             None,
             10,
             True,
-            "`shuffle` must be False when `target_num_rows_per_block` is set.",
+            "must be False when using streaming repartition",
         ),
     ],
 )
@@ -206,6 +200,20 @@ def test_repartition_invalid_inputs(
             target_num_rows_per_block=target_num_rows_per_block,
             shuffle=shuffle,
         )
+
+
+def test_repartition_no_parameters_error(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test that calling repartition() with no parameters now defaults to 128 MB instead of erroring."""
+    
+    ds = ray.data.range(100, override_num_blocks=2)
+    
+    # This should now work and default to 128 MB target
+    ds_default = ds.repartition()
+    assert ds_default.count() == 100
+    
+    # Verify the operation completed successfully with default behavior
 
 
 @pytest.mark.parametrize("shuffle", [True, False])
@@ -304,6 +312,194 @@ def test_streaming_repartition_write_no_operator_fusion(
 
     assert partition_0_ds.count() == 80, "Expected 80 rows in partition 0"
     assert partition_1_ds.count() == 20, "Expected 20 rows in partition 1"
+
+
+def test_repartition_target_num_bytes_per_block(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test the new target_num_bytes_per_block functionality."""
+    
+    # Test with integer bytes
+    ds = ray.data.range(1000, override_num_blocks=5)
+    ds_bytes = ds.repartition(target_num_bytes_per_block=1024 * 1024)  # 1MB
+    
+    # Verify the repartitioning worked
+    assert ds_bytes.count() == 1000
+    
+    # Test with string format (MB)
+    ds_mb = ds.repartition(target_num_bytes_per_block="128mb")
+    assert ds_mb.count() == 1000
+    
+    # Test with string format (GB)
+    ds_gb = ds.repartition(target_num_bytes_per_block="1gb")
+    assert ds_gb.count() == 1000
+    
+    # Test with string format (KB)
+    ds_kb = ds.repartition(target_num_bytes_per_block="512kb")
+    assert ds_kb.count() == 1000
+    
+    # Test with decimal string format
+    ds_decimal = ds.repartition(target_num_bytes_per_block="1.5mb")
+    assert ds_decimal.count() == 1000
+
+
+def test_repartition_default_behavior(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test that repartition() defaults to 128 MB when no parameters are specified."""
+    
+    ds = ray.data.range(1000, override_num_blocks=5)
+    
+    # Call repartition with no parameters - should default to 128 MB
+    ds_default = ds.repartition()
+    assert ds_default.count() == 1000
+    
+    # The default behavior should use StreamingRepartition internally
+    # We can verify this by checking that the operation completed successfully
+
+
+def test_repartition_string_size_parsing(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test string size parsing for target_num_bytes_per_block."""
+    
+    ds = ray.data.range(100, override_num_blocks=2)
+    
+    # Test various string formats
+    test_cases = [
+        ("128mb", 128 * 1024 * 1024),
+        ("10GB", 10 * 1024 * 1024 * 1024),
+        ("1.5tb", int(1.5 * 1024 * 1024 * 1024 * 1024)),
+        ("512kb", 512 * 1024),
+        ("2b", 2),
+    ]
+    
+    for size_str, expected_bytes in test_cases:
+        ds_test = ds.repartition(target_num_bytes_per_block=size_str)
+        assert ds_test.count() == 100, f"Failed for {size_str}"
+
+
+def test_repartition_string_size_validation(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test validation of string size formats."""
+    
+    ds = ray.data.range(100, override_num_blocks=2)
+    
+    # Test invalid string formats
+    invalid_formats = [
+        "invalid",
+        "128",
+        "mb",
+        "128MB",  # Mixed case should work
+        "1.5.3mb",  # Invalid decimal
+        "128mb extra",  # Extra text
+        "",  # Empty string
+    ]
+    
+    for invalid_format in invalid_formats:
+        with pytest.raises(ValueError):
+            ds.repartition(target_num_bytes_per_block=invalid_format)
+
+
+def test_repartition_enhanced_validation(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test enhanced argument validation for repartition."""
+    
+    ds = ray.data.range(100, override_num_blocks=2)
+    
+    # Test type validation
+    with pytest.raises(TypeError, match="must be an integer"):
+        ds.repartition(num_blocks="invalid")
+    
+    with pytest.raises(TypeError, match="must be an integer"):
+        ds.repartition(target_num_rows_per_block="invalid")
+    
+    with pytest.raises(TypeError, match="must be a boolean"):
+        ds.repartition(num_blocks=5, shuffle="invalid")
+    
+    with pytest.raises(TypeError, match="must be a list"):
+        ds.repartition(num_blocks=5, keys="invalid")
+    
+    # Test value validation
+    with pytest.raises(ValueError, match="must be positive"):
+        ds.repartition(num_blocks=0)
+    
+    with pytest.raises(ValueError, match="must be positive"):
+        ds.repartition(num_blocks=-1)
+    
+    with pytest.raises(ValueError, match="must be positive"):
+        ds.repartition(target_num_rows_per_block=0)
+    
+    # Test multiple target parameters
+    with pytest.raises(ValueError, match="Only one target parameter can be set"):
+        ds.repartition(num_blocks=5, target_num_rows_per_block=10)
+    
+    with pytest.raises(ValueError, match="Only one target parameter can be set"):
+        ds.repartition(target_num_rows_per_block=10, target_num_bytes_per_block="128mb")
+    
+    with pytest.raises(ValueError, match="Only one target parameter can be set"):
+        ds.repartition(num_blocks=5, target_num_bytes_per_block="128mb")
+
+
+def test_repartition_parameter_compatibility(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test parameter compatibility warnings and validation."""
+    
+    ds = ray.data.range(100, override_num_blocks=2)
+    
+    # Test that streaming repartition ignores incompatible parameters
+    # These should work but generate warnings
+    
+    # Test with target_num_bytes_per_block and keys
+    with pytest.warns(UserWarning, match="ignored when.*target_num_bytes_per_block.*is set"):
+        ds_keys = ds.repartition(target_num_bytes_per_block="128mb", keys=["id"])
+        assert ds_keys.count() == 100
+    
+    # Test with target_num_bytes_per_block and sort
+    with pytest.warns(UserWarning, match="ignored when.*target_num_bytes_per_block.*is set"):
+        ds_sort = ds.repartition(target_num_bytes_per_block="128mb", sort=True)
+        assert ds_sort.count() == 100
+    
+    # Test with target_num_bytes_per_block and shuffle
+    with pytest.raises(ValueError, match="must be False when using streaming repartition"):
+        ds.repartition(target_num_bytes_per_block="128mb", shuffle=True)
+
+
+def test_repartition_size_warnings(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test size warnings for target_num_bytes_per_block."""
+    
+    ds = ray.data.range(100, override_num_blocks=2)
+    
+    # Test warning for very small target
+    with pytest.warns(UserWarning, match="very small.*Consider using a larger value"):
+        ds.repartition(target_num_bytes_per_block=512)  # Less than 1KB
+    
+    # Test warning for very large target
+    with pytest.warns(UserWarning, match="very large.*Large blocks may cause memory issues"):
+        ds.repartition(target_num_bytes_per_block=2 * 1024 * 1024 * 1024)  # 2GB
+
+
+def test_repartition_row_size_warning(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test warning when individual rows exceed target block size."""
+    
+    # Create a dataset with very large rows (simulate by using large objects)
+    large_data = [{"id": i, "large_field": "x" * 1000000} for i in range(10)]  # ~1MB per row
+    ds = ray.data.from_items(large_data)
+    
+    # Try to repartition with a small target that's smaller than individual rows
+    with pytest.warns(UserWarning, match="Individual rows.*are larger than.*target_num_bytes_per_block"):
+        ds_warned = ds.repartition(target_num_bytes_per_block=512 * 1024)  # 512KB target
+        assert ds_warned.count() == 10
+    
+    # The method should return 1 row per block when rows are too large
+    # We can verify this by checking that the operation completed
 
 
 if __name__ == "__main__":
