@@ -75,7 +75,6 @@ class SQLValidator:
         exp.Delete: "DELETE statements are not supported. Use ray.data.Dataset.filter() for filtering",
         exp.Create: "CREATE statements are not supported. Use ray.data.from_*() methods to create datasets",
         exp.Drop: "DROP statements are not supported. Use clear_tables() or del operations",
-        exp.Alter: "ALTER statements are not supported",
         exp.Having: "HAVING clauses are not yet supported. Apply filtering after GROUP BY using Dataset.filter()",
         exp.Exists: "EXISTS clauses are not yet supported",
         exp.In: "IN clauses are not yet supported. Use multiple OR conditions or Dataset.filter()",

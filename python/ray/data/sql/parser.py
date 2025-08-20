@@ -4,6 +4,7 @@ SQL parsing and optimization for Ray Data SQL API.
 This module provides SQL parsing, AST optimization, and logical planning
 functionality using SQLGlot for the Ray Data SQL engine.
 """
+
 from typing import Optional
 
 import sqlglot

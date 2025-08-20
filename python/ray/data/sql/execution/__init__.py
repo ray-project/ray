@@ -12,7 +12,7 @@ Key Components:
 
 The execution model follows SQL evaluation order:
 1. FROM clause processing (table resolution)
-2. JOIN operations (if present)  
+2. JOIN operations (if present)
 3. WHERE clause filtering
 4. GROUP BY aggregation (if present)
 5. HAVING clause filtering (if present)

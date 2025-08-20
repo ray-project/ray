@@ -2105,7 +2105,9 @@ sqlalchemy==2.0.32
     #   pyiceberg
     #   pymars
 sqlglot==25.6.1
-    # via fugue
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   fugue
 sqlparse==0.5.1
     # via mlflow-skinny
 sshpubkeys==3.3.1

@@ -176,10 +176,8 @@ class ExpressionCompiler:
         elif isinstance(expr, exp.Div):
             return lambda row: safe_divide(left_func(row), right_func(row))
         elif isinstance(expr, exp.Mod):
-            return (
-                lambda row: left_func(row) % right_func(row)
-                if right_func(row) != 0
-                else None
+            return lambda row: (
+                left_func(row) % right_func(row) if right_func(row) != 0 else None
             )
         else:
             raise NotImplementedError(
@@ -243,15 +241,15 @@ class ExpressionCompiler:
         """Compile string functions."""
         if isinstance(expr, exp.Upper):
             operand_func = self._compile_expression(expr.this)
-            return (
-                lambda row: str(operand_func(row)).upper()
+            return lambda row: (
+                str(operand_func(row)).upper()
                 if operand_func(row) is not None
                 else None
             )
         elif isinstance(expr, exp.Lower):
             operand_func = self._compile_expression(expr.this)
-            return (
-                lambda row: str(operand_func(row)).lower()
+            return lambda row: (
+                str(operand_func(row)).lower()
                 if operand_func(row) is not None
                 else None
             )
