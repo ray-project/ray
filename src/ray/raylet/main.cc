@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
   // IO Service for node manager.
   instrumented_io_context main_service{/*enable_lag_probe=*/false,
                                        /*running_on_single_thread=*/true,
-                                       RayConfig::instance().event_stats_metrics()};
+                                       RayConfig::instance().emit_main_service_metrics()};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
