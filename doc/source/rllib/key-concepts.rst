@@ -17,12 +17,12 @@ key concepts and general architecture of RLlib.
     **RLlib overview:** The central component of RLlib is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
     class, acting as a runtime for executing your RL experiments.
     Your gateway into using an :ref:`Algorithm <rllib-key-concepts-algorithms>` is the
-    :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1;">cyan</span>) class, allowing
+    :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (cyan) class, allowing
     you to manage available configuration settings, for example learning rate or model architecture.
     Most :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` objects have
-    :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors (<span style="color: #d0e2f3;">blue</span>) to collect training samples
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors (blue) to collect training samples
     from the :ref:`RL environment <rllib-key-concepts-environments>` and
-    :py:class:`~ray.rllib.core.learner.learner.Learner` actors (<span style="color: #fff2cc;">yellow</span>)
+    :py:class:`~ray.rllib.core.learner.learner.Learner` actors (yellow)
     to compute gradients and update your :ref:`models <rllib-key-concepts-rl-modules>`.
     The algorithm synchronizes model weights after an update.
 
