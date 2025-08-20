@@ -58,7 +58,6 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
     callbacks[worker_id].push_back(
         std::make_pair(ObjectID::FromBinary(*key_id_binary), subscription_callback));
-    return true;
   }
 
   bool PublishObjectEviction(WorkerID worker_id = WorkerID::Nil()) {
