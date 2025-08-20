@@ -831,6 +831,7 @@ class Dataset:
         """
         from ray.data._expression_evaluator import _contains_udf, eval_expr
 
+        # TODO: update schema based on the expression AST.
         if batch_size is not None and _contains_udf(expr):
             import pyarrow as pa
 
