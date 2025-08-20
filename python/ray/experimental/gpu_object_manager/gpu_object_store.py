@@ -82,6 +82,7 @@ def __ray_recv__(
     from ray._private.worker import global_worker
 
     from ray.experimental.collective import get_tensor_transport_manager
+    from ray.experimental.collective.util import device_match_transport
 
     backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
@@ -95,6 +96,10 @@ def __ray_recv__(
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         tensors.append(tensor)
 
+    if tensors and not device_match_transport(device, backend):
+        raise ValueError(
+            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
+        )
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.recv_multiple_tensors(
         tensors,

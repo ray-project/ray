@@ -47,11 +47,11 @@ def get_tensor_transport_manager(
 def device_match_transport(device: "torch.device", tensor_transport: Backend) -> bool:
     """Check if the device matches the transport."""
     if tensor_transport == Backend.NIXL:
-        return device.type == "cuda"
+        return device.type == "cuda" or device.type == "cpu"
     elif tensor_transport == Backend.TORCH_GLOO:
         return device.type == "cpu"
     elif tensor_transport == Backend.NCCL:
-        return device.type == "cuda" or device.type == "cpu"
+        return device.type == "cuda"
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
