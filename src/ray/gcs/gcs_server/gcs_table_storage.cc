@@ -61,7 +61,7 @@ void GcsTable<Key, Data>::Get(const Key &key,
             data.ParseFromString(*result);
             value = std::move(data);
           }
-          callback(status, std::move(value));
+          cb(status, std::move(value));
         };
       }));
 }
