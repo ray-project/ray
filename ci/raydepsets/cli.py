@@ -274,8 +274,11 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
 def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise RuntimeError(
-            f"Unsupported platform/processor: {system}/{platform.processor()}"
-        )
-    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+    processor = platform.processor()
+
+    if system == "Linux" and processor == "x86_64":
+        return r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
+    elif system == "Darwin" and (processor == "arm" or processor == "aarch64"):
+        return r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
+    else:
+        raise RuntimeError(f"Unsupported platform/processor: {system}/{processor}")
