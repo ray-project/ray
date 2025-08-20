@@ -24,7 +24,7 @@ class DashboardAgent:
     def __init__(
         self,
         node_ip_address,
-        dashboard_agent_port,
+        grpc_port,
         gcs_address,
         cluster_id_hex,
         minimal,
@@ -54,7 +54,7 @@ class DashboardAgent:
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.log_dir = log_dir
-        self.dashboard_agent_port = dashboard_agent_port
+        self.grpc_port = grpc_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.events_export_addr = events_export_addr
@@ -112,13 +112,9 @@ class DashboardAgent:
             )  # noqa
         )
         try:
-            add_port_to_grpc_server(
-                self.server, build_address(self.ip, self.dashboard_agent_port)
-            )
+            add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
             if self.ip != "127.0.0.1" and self.ip != "localhost":
-                add_port_to_grpc_server(
-                    self.server, f"127.0.0.1:{self.dashboard_agent_port}"
-                )
+                add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
             # port conflict issue which brought from static port. We should
@@ -128,11 +124,11 @@ class DashboardAgent:
                 "disable the grpc service."
             )
             self.server = None
-            self.dashboard_agent_port = None
+            self.grpc_port = None
         else:
             logger.info(
                 "Dashboard agent grpc address: %s",
-                build_address(self.ip, self.dashboard_agent_port),
+                build_address(self.ip, self.grpc_port),
             )
 
         # If the agent is not minimal it should start the http server
@@ -196,7 +192,7 @@ class DashboardAgent:
             # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
-            grpc_port = -1 if not self.server else self.dashboard_agent_port
+            grpc_port = -1 if not self.server else self.grpc_port
             put_by_node_id = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
                 json.dumps([self.ip, http_port, grpc_port]).encode(),
@@ -266,7 +262,7 @@ if __name__ == "__main__":
         help="The port to expose metrics through Prometheus.",
     )
     parser.add_argument(
-        "--dashboard-agent-port",
+        "--grpc-port",
         required=True,
         type=int,
         help="The port on which the dashboard agent will receive GRPCs.",
@@ -427,7 +423,7 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.node_ip_address,
-            args.dashboard_agent_port,
+            args.grpc_port,
             args.gcs_address,
             args.cluster_id_hex,
             args.minimal,
