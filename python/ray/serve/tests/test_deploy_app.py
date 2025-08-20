@@ -850,8 +850,8 @@ def test_deploy_nonexistent_deployment(serve_instance):
     config.applications[1].name = "random1"
     config.applications[1].deployments[0].name = "random2"
     client.deploy_apps(config)
-    serve_details = client.get_serve_details()
-    print(f"@@@@@@@ serve_details: {serve_details}")
+   # Wait until the valid application is deployed.
+   wait_for_condition(check_running, app_name="app1")
 
     def check_app_message():
         details = ray.get(client._controller.get_serve_instance_details.remote())
