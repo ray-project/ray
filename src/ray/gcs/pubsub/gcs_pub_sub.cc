@@ -216,7 +216,9 @@ Status PythonGcsSubscriber::Subscribe() {
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
   request.set_sender_id(worker_id_);
-  request.add_commands()->set_channel_type(channel_type_);
+  auto *command = request.add_commands();
+  command->set_channel_type(channel_type_);
+  command->mutable_subscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status =
