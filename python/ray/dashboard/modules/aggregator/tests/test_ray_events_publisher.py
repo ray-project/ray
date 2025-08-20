@@ -162,7 +162,7 @@ class TestExternalSvcPublisher:
                 raise self._raise_exc
 
     class _FakeSession:
-        def __init__(self, response: "TestExternalPublisher._FakeResponse"):
+        def __init__(self, response: "TestExternalSvcPublisher._FakeResponse"):
             self._response = response
             self.post_calls = []
 

@@ -19,7 +19,7 @@ class BoundedQueue:
         self._lock = threading.Lock()
         self.max_size = max_size
 
-    def put(self, item) -> int:
+    def put(self, item) -> bool:
         """
         Add an item to the queue, dropping the oldest item if the queue is full.
 

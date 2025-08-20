@@ -267,7 +267,7 @@ class AggregatorAgent(
             try:
                 event_proto = self._event_buffer.get()
                 draining_event_batch.append(event_proto)
-            except Exception:
+            except queue.Empty:
                 break
 
         if draining_event_batch:
@@ -359,8 +359,6 @@ class AggregatorAgent(
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-            self._events_published_since_last_metrics_update = 0
-            self._events_filtered_out_since_last_metrics_update = 0
 
             # Publisher metrics
             _events_published_to_external_svc = external_svc_publisher_metrics.get(

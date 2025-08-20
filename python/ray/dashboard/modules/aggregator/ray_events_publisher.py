@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
 import asyncio
 import logging
-from pickletools import int4
 import random
 import json
-from typing import Callable, Optional, Tuple, Dict
+from typing import Callable, Dict
 import threading
 
 import aiohttp
@@ -333,7 +332,7 @@ class NoopPublisher:
     async def shutdown(self) -> None:
         return
 
-    def has_capacity(self) -> bool:
+    def can_accept_events(self) -> bool:
         return True
 
     def publish_events(self, item) -> None:
