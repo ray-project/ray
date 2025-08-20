@@ -107,11 +107,6 @@ DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # Each ObjectRef currently uses about 3KB of caller memory.
 CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
-# Match max_direct_call_object_size in
-# src/ray/common/ray_config_def.h.
-# TODO(swang): Ideally this should be pulled directly from the
-# config in case the user overrides it.
-DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
