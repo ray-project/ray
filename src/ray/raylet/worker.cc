@@ -173,7 +173,7 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignLeaseId(const LeaseID &lease_id) {
+void Worker::GrantLeaseId(const LeaseID &lease_id) {
   if (!lease_id.IsNil()) {
     lease_assign_time_ = absl::Now();
   }
@@ -199,7 +199,7 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const RayLease &Worker::GetAssignedLease() const { return assigned_lease_; }
+const RayLease &Worker::GetGrantedLease() const { return granted_lease_; }
 
 const std::string Worker::GetLeaseIdAsDebugString() const {
   std::stringstream id_ss;
@@ -211,7 +211,7 @@ const std::string Worker::GetLeaseIdAsDebugString() const {
 }
 
 bool Worker::IsDetachedActor() const {
-  return assigned_lease_.GetLeaseSpecification().IsDetachedActor();
+  return granted_lease_.GetLeaseSpecification().IsDetachedActor();
 }
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }

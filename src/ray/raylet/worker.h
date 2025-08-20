@@ -67,10 +67,10 @@ class WorkerInterface {
   virtual int Port() const = 0;
   virtual int AssignedPort() const = 0;
   virtual void SetAssignedPort(int port) = 0;
-  virtual void AssignLeaseId(const LeaseID &lease_id) = 0;
+  virtual void GrantLeaseId(const LeaseID &lease_id) = 0;
   virtual const LeaseID &GetGrantedLeaseId() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
-  virtual const RayLease &GetAssignedLease() const = 0;
+  virtual const RayLease &GetGrantedLease() const = 0;
   virtual std::optional<bool> GetIsGpu() const = 0;
   virtual std::optional<bool> GetIsActorWorker() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
@@ -103,7 +103,7 @@ class WorkerInterface {
 
   virtual RayLease &GetGrantedLease() = 0;
 
-  virtual void SetAssignedLease(const RayLease &assigned_lease) = 0;
+  virtual void GrantLease(const RayLease &granted_lease) = 0;
 
   virtual bool IsRegistered() = 0;
 
@@ -180,10 +180,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   int Port() const;
   int AssignedPort() const;
   void SetAssignedPort(int port);
-  void AssignLeaseId(const LeaseID &lease_id);
+  void GrantLeaseId(const LeaseID &lease_id);
   const LeaseID &GetGrantedLeaseId() const;
   const JobID &GetAssignedJobId() const;
-  const RayLease &GetAssignedLease() const;
+  const RayLease &GetGrantedLease() const;
   std::optional<bool> GetIsGpu() const;
   std::optional<bool> GetIsActorWorker() const;
   int GetRuntimeEnvHash() const;
@@ -226,20 +226,20 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  RayLease &GetGrantedLease() { return assigned_lease_; };
+  RayLease &GetGrantedLease() { return granted_lease_; };
 
-  void SetAssignedLease(const RayLease &assigned_lease) {
-    const auto &lease_spec = assigned_lease.GetLeaseSpecification();
+  void GrantLease(const RayLease &granted_lease) {
+    const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
     SetBundleId(lease_spec.PlacementGroupBundleId());
     SetOwnerAddress(lease_spec.CallerAddress());
-    AssignLeaseId(lease_spec.LeaseId());
+    GrantLeaseId(lease_spec.LeaseId());
     SetIsGpu(lease_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
     RAY_CHECK(!lease_spec.IsActorTask());
     SetIsActorWorker(lease_spec.IsActorCreationTask());
-    assigned_lease_ = assigned_lease;
+    granted_lease_ = granted_lease;
     root_detached_actor_id_ =
-        assigned_lease.GetLeaseSpecification().RootDetachedActorId();
+        granted_lease.GetLeaseSpecification().RootDetachedActorId();
   }
 
   absl::Time GetGrantedLeaseTime() const { return lease_assign_time_; };
@@ -323,7 +323,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayLease being assigned to this worker.
-  RayLease assigned_lease_;
+  RayLease granted_lease_;
   /// Time when the last lease was assigned to this worker.
   absl::Time lease_assign_time_;
   /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU lease

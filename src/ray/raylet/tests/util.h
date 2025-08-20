@@ -42,21 +42,21 @@ class MockWorker : public WorkerInterface {
 
   void SetOwnerAddress(const rpc::Address &address) override { address_ = address; }
 
-  void SetAssignedLease(const RayLease &assigned_lease) override {
-    lease_ = assigned_lease;
+  void GrantLease(const RayLease &granted_lease) override {
+    lease_ = granted_lease;
     lease_grant_time_ = absl::Now();
     root_detached_actor_id_ =
-        assigned_lease.GetLeaseSpecification().RootDetachedActorId();
-    const auto &lease_spec = assigned_lease.GetLeaseSpecification();
+        granted_lease.GetLeaseSpecification().RootDetachedActorId();
+    const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
     SetBundleId(lease_spec.PlacementGroupBundleId());
     SetOwnerAddress(lease_spec.CallerAddress());
-    AssignLeaseId(lease_spec.LeaseId());
+    GrantLeaseId(lease_spec.LeaseId());
   };
 
-  void AssignLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
+  void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
 
-  const RayLease &GetAssignedLease() const override { return lease_; }
+  const RayLease &GetGrantedLease() const override { return lease_; }
 
   absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
 

@@ -38,7 +38,7 @@ class WorkerKillerTest : public ::testing::Test {
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedLease(lease);
+    worker->GrantLease(lease);
     return worker;
   }
 
@@ -49,7 +49,7 @@ class WorkerKillerTest : public ::testing::Test {
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedLease(lease);
+    worker->GrantLease(lease);
     return worker;
   }
 };

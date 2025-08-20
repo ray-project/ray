@@ -534,11 +534,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A data structure representing an actor's owner.
   struct Owner {
     explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
-        : client(std::move(client)) {}
+        : client_(std::move(client)) {}
     /// A client that can be used to contact the owner.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client;
+    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
     /// The IDs of actors owned by this worker.
-    absl::flat_hash_set<ActorID> children_actor_ids;
+    absl::flat_hash_set<ActorID> children_actor_ids_;
   };
 
   /// Poll an actor's owner so that we will receive a notification when the

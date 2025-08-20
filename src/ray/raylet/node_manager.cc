@@ -516,7 +516,7 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   local_lease_manager_.CancelLeases(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id =
-            work->lease.GetLeaseSpecification().PlacementGroupBundleId();
+            work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
         return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
                (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
@@ -603,10 +603,10 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
   auto it = task_failure_reasons_.find(lease_id);
   if (it != task_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "lease " << lease_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
-                   << ", fail immediately: " << !it->second.should_retry;
-    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
-    reply->set_fail_task_immediately(!it->second.should_retry);
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_)
+                   << ", fail immediately: " << !it->second.should_retry_;
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info_);
+    reply->set_fail_task_immediately(!it->second.should_retry_);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for lease " << lease_id;
   }
@@ -1126,14 +1126,14 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
         fbb.GetSize(),
         fbb.GetBufferPointer(),
-        [this, client](const ray::Status &status) {
-          if (!status.ok()) {
+        [this, client](const ray::Status &write_msg_status) {
+          if (!write_msg_status.ok()) {
             DisconnectClient(client,
                              /*graceful=*/false,
                              rpc::WorkerExitType::SYSTEM_ERROR,
                              "Worker is failed because the raylet couldn't reply the "
                              "registration request: " +
-                                 status.ToString());
+                                 write_msg_status.ToString());
           }
         });
   };
@@ -1175,7 +1175,7 @@ Status NodeManager::RegisterForNewDriver(
   // The lease id set in the worker here should be consistent with the lease
   // id set in the core worker.
   const LeaseID driver_lease_id = LeaseID::DriverLeaseID(worker->WorkerId());
-  worker->AssignLeaseId(driver_lease_id);
+  worker->GrantLeaseId(driver_lease_id);
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
 
@@ -1247,13 +1247,13 @@ void NodeManager::SendPortAnnouncementResponse(
       static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          DisconnectClient(
-              client,
-              /*graceful=*/false,
-              rpc::WorkerExitType::SYSTEM_ERROR,
-              "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
+      [this, client](const ray::Status &write_msg_status) {
+        if (!write_msg_status.ok()) {
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           "Failed to send AnnounceWorkerPortReply to client: " +
+                               write_msg_status.ToString());
         }
       });
 }
@@ -1806,7 +1806,7 @@ void NodeManager::HandleCancelResourceReserve(
   local_lease_manager_.CancelLeases(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id =
-            work->lease.GetLeaseSpecification().PlacementGroupBundleId();
+            work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
@@ -2110,7 +2110,7 @@ bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (!lease_spec.IsActorCreationTask()) {
-    worker->AssignLeaseId(LeaseID::Nil());
+    worker->GrantLeaseId(LeaseID::Nil());
     worker->SetOwnerAddress(rpc::Address());
   }
   // Actors will be assigned tasks via the core worker and therefore are not idle.
@@ -2561,8 +2561,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          rpc::GetNodeStatsReply &&local_reply) {
-        replies->push_back(std::move(local_reply));
+          rpc::GetNodeStatsReply &&get_node_status_local_reply) {
+        replies->push_back(std::move(get_node_status_local_reply));
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));
@@ -2754,7 +2754,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           RAY_LOG(INFO)
               << "Killing worker with task "
-              << worker_to_kill->GetAssignedLease().GetLeaseSpecification().DebugString()
+              << worker_to_kill->GetGrantedLease().GetLeaseSpecification().DebugString()
               << "\n\n"
               << oom_kill_details << "\n\n"
               << oom_kill_suggestions;
@@ -2789,13 +2789,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
           } else if (worker_to_kill->GetActorId().IsNil()) {
-            const auto &ray_lease = worker_to_kill->GetAssignedLease();
+            const auto &ray_lease = worker_to_kill->GetGrantedLease();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
-            const auto &ray_lease = worker_to_kill->GetAssignedLease();
+            const auto &ray_lease = worker_to_kill->GetGrantedLease();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
@@ -2836,7 +2836,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
       << ") where the lease (" << worker->GetLeaseIdAsDebugString()
-      << ", name=" << worker->GetAssignedLease().GetLeaseSpecification().GetTaskName()
+      << ", name=" << worker->GetGrantedLease().GetLeaseSpecification().GetTaskName()
       << ", pid=" << worker->GetProcess().GetId()
       << ", memory used=" << process_used_bytes_gb << "GB) was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
@@ -2855,9 +2855,9 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 const std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
   std::stringstream not_retriable_recommendation_ss;
-  if (worker && !worker->GetAssignedLease().GetLeaseSpecification().IsRetriable()) {
+  if (worker && !worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
     not_retriable_recommendation_ss << "Set ";
-    if (worker->GetAssignedLease().GetLeaseSpecification().IsNormalTask()) {
+    if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
       not_retriable_recommendation_ss << "max_retries";
     } else {
       not_retriable_recommendation_ss << "max_restarts and max_task_retries";
@@ -2902,7 +2902,7 @@ void NodeManager::GCTaskFailureReason() {
   for (const auto &entry : task_failure_reasons_) {
     auto duration = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - entry.second.creation_time)
+            std::chrono::steady_clock::now() - entry.second.creation_time_)
             .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO).WithField(entry.first)

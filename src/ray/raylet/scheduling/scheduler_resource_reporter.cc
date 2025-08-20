@@ -137,9 +137,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   auto leases_to_grant_range =
       leases_to_grant_ | boost::adaptors::transformed([](const auto &pair) {
         auto cnt = pair.second.size();
-        // We should only report granting leases that do not have resources allocated.
+        // We should only report leases to be granted that do not have resources allocated.
         for (const auto &lease : pair.second) {
-          if (lease->allocated_instances) {
+          if (lease->allocated_instances_) {
             cnt--;
           }
         }

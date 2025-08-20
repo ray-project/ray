@@ -35,8 +35,8 @@ namespace raylet {
 /// Key groups on its owner id. For non-retriable lease the owner id is Nil,
 /// Since non-retriable lease forms its own group.
 struct GroupKey {
-  explicit GroupKey(const TaskID &owner_id) : owner_id(owner_id) {}
-  const TaskID &owner_id;
+  explicit GroupKey(const TaskID &owner_id) : owner_id_(owner_id) {}
+  const TaskID &owner_id_;
 };
 
 struct Group {

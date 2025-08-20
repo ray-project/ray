@@ -49,8 +49,8 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedLease(lease);
-    worker->AssignLeaseId(lease.GetLeaseSpecification().LeaseId());
+    worker->GrantLease(lease);
+    worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
     return worker;
   }
 
@@ -64,8 +64,8 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedLease(lease);
-    worker->AssignLeaseId(lease.GetLeaseSpecification().LeaseId());
+    worker->GrantLease(lease);
+    worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
     return worker;
   }
 };

@@ -197,20 +197,20 @@ bool LeaseDependencyManager::RequestLeaseDependencies(
     it->second.dependent_leases.insert(lease_id);
   }
 
-  for (const auto &obj_id : lease_entry->dependencies) {
+  for (const auto &obj_id : lease_entry->dependencies_) {
     if (local_objects_.count(obj_id)) {
       lease_entry->DecrementMissingDependencies();
     }
   }
 
   if (!required_objects.empty()) {
-    lease_entry->pull_request_id =
+    lease_entry->pull_request_id_ =
         object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS, task_key);
     RAY_LOG(DEBUG) << "Started pull for dependencies of lease " << lease_id
-                   << " request: " << lease_entry->pull_request_id;
+                   << " request: " << lease_entry->pull_request_id_;
   }
 
-  return lease_entry->num_missing_dependencies == 0;
+  return lease_entry->num_missing_dependencies_ == 0;
 }
 
 void LeaseDependencyManager::RemoveLeaseDependencies(const LeaseID &lease_id) {
@@ -219,13 +219,13 @@ void LeaseDependencyManager::RemoveLeaseDependencies(const LeaseID &lease_id) {
   RAY_CHECK(lease_entry != queued_lease_requests_.end())
       << "Can't remove dependencies of tasks that are not queued.";
 
-  if (lease_entry->second->pull_request_id > 0) {
+  if (lease_entry->second->pull_request_id_ > 0) {
     RAY_LOG(DEBUG) << "Canceling pull for dependencies of lease " << lease_id
-                   << " request: " << lease_entry->second->pull_request_id;
-    object_manager_.CancelPull(lease_entry->second->pull_request_id);
+                   << " request: " << lease_entry->second->pull_request_id_;
+    object_manager_.CancelPull(lease_entry->second->pull_request_id_);
   }
 
-  for (const auto &obj_id : lease_entry->second->dependencies) {
+  for (const auto &obj_id : lease_entry->second->dependencies_) {
     auto it = required_objects_.find(obj_id);
     RAY_CHECK(it != required_objects_.end());
     it->second.dependent_leases.erase(lease_id);
@@ -251,7 +251,7 @@ std::vector<LeaseID> LeaseDependencyManager::HandleObjectMissing(
       // If the dependent lease had all of its arguments ready, it was ready to
       // run but must be switched to waiting since one of its arguments is now
       // missing.
-      if (lease_entry->num_missing_dependencies == 0) {
+      if (lease_entry->num_missing_dependencies_ == 0) {
         waiting_lease_ids.push_back(dependent_lease_id);
         // During normal execution we should be able to include the check
         // RAY_CHECK(pending_leases_.count(dependent_lease_id) == 1);
@@ -284,7 +284,7 @@ std::vector<LeaseID> LeaseDependencyManager::HandleObjectLocal(
       lease_entry->DecrementMissingDependencies();
       // If the dependent lease now has all of its arguments ready, it's ready
       // to run.
-      if (lease_entry->num_missing_dependencies == 0) {
+      if (lease_entry->num_missing_dependencies_ == 0) {
         ready_lease_ids.push_back(dependent_lease_id);
       }
     }
@@ -317,9 +317,9 @@ std::vector<LeaseID> LeaseDependencyManager::HandleObjectLocal(
 bool LeaseDependencyManager::LeaseDependenciesBlocked(const LeaseID &lease_id) const {
   auto it = queued_lease_requests_.find(lease_id);
   RAY_CHECK(it != queued_lease_requests_.end());
-  RAY_CHECK(it->second->pull_request_id != 0);
+  RAY_CHECK(it->second->pull_request_id_ != 0);
   return !object_manager_.PullRequestActiveOrWaitingForMetadata(
-      it->second->pull_request_id);
+      it->second->pull_request_id_);
 }
 
 std::string LeaseDependencyManager::DebugString() const {

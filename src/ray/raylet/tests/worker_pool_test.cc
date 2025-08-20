@@ -456,7 +456,7 @@ class WorkerPoolTest : public ::testing::Test {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver =
         worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
-    driver->AssignLeaseId(LeaseID::FromRandom());
+    driver->GrantLeaseId(LeaseID::FromRandom());
     RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
     return driver;
   }
@@ -977,8 +977,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   auto worker_job_1_detached_actor_1 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
   RayLease job_1_detached_actor_1_lease(lease_spec_job_1_detached_actor_1);
-  worker_job_1_detached_actor_1->SetAssignedLease(job_1_detached_actor_1_lease);
-  worker_job_1_detached_actor_1->AssignLeaseId(LeaseID::Nil());
+  worker_job_1_detached_actor_1->GrantLease(job_1_detached_actor_1_lease);
+  worker_job_1_detached_actor_1->GrantLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
@@ -1009,8 +1009,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   lease_spec_job_2_detached_actor_3.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_3_id_job_2.Binary());
   RayLease job_2_detached_actor_3_lease(lease_spec_job_2_detached_actor_3);
-  worker_job_2_detached_actor_3->SetAssignedLease(job_2_detached_actor_3_lease);
-  worker_job_2_detached_actor_3->AssignLeaseId(LeaseID::Nil());
+  worker_job_2_detached_actor_3->GrantLease(job_2_detached_actor_3_lease);
+  worker_job_2_detached_actor_3->GrantLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_2_detached_actor_3);
   ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
@@ -1031,8 +1031,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   lease_spec_job_1_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_2_job_1.Binary());
   RayLease job_1_detached_actor_2_lease(lease_spec_job_1_detached_actor_2);
-  worker_job_1_detached_actor_2->SetAssignedLease(job_1_detached_actor_2_lease);
-  worker_job_1_detached_actor_2->AssignLeaseId(LeaseID::Nil());
+  worker_job_1_detached_actor_2->GrantLease(job_1_detached_actor_2_lease);
+  worker_job_1_detached_actor_2->GrantLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_2);
   ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
@@ -1055,8 +1055,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   lease_spec_job_2_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_1_job_1.Binary());
   RayLease job_2_detached_actor_1_lease(lease_spec_job_2_detached_actor_1);
-  worker_job_2_detached_actor_1->SetAssignedLease(job_2_detached_actor_1_lease);
-  worker_job_2_detached_actor_1->AssignLeaseId(LeaseID::Nil());
+  worker_job_2_detached_actor_1->GrantLease(job_2_detached_actor_1_lease);
+  worker_job_2_detached_actor_1->GrantLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_2_detached_actor_1);
   ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
@@ -1086,8 +1086,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRootDetachedActorID) {
   lease_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_1_job_1.Binary());
   RayLease job_1_detached_actor_1_lease(lease_spec_job_1_detached_actor_1);
-  worker_job_1_detached_actor_1->SetAssignedLease(job_1_detached_actor_1_lease);
-  worker_job_1_detached_actor_1->AssignLeaseId(LeaseID::Nil());
+  worker_job_1_detached_actor_1->GrantLease(job_1_detached_actor_1_lease);
+  worker_job_1_detached_actor_1->GrantLeaseId(LeaseID::Nil());
 
   // Case 1 (match):
   //   request has no root detached actor ID and matching job ID
@@ -1511,8 +1511,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     auto worker = worker_pool_->PopWorkerSync(lease_spec, false);
     // Simulate granting the lease and finish. This is to set lease_granted_time_.
     RayLease lease(lease_spec);
-    worker->SetAssignedLease(lease);
-    worker->AssignLeaseId(LeaseID::Nil());
+    worker->GrantLease(lease);
+    worker->GrantLeaseId(LeaseID::Nil());
 
     popped_workers.push_back(worker);
     ASSERT_TRUE(worker);
@@ -2410,7 +2410,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
 TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  driver->AssignLeaseId(LeaseID::FromRandom());
+  driver->GrantLeaseId(LeaseID::FromRandom());
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
     *callback_called_ptr = true;
@@ -2422,7 +2422,7 @@ TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
 TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  driver->AssignLeaseId(LeaseID::FromRandom());
+  driver->GrantLeaseId(LeaseID::FromRandom());
   RAY_CHECK_OK(
       worker_pool_->RegisterDriver(driver, rpc::JobConfig(), [](Status, int) {}));
 
@@ -2432,7 +2432,7 @@ TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   };
   auto second_driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  second_driver->AssignLeaseId(LeaseID::FromRandom());
+  second_driver->GrantLeaseId(LeaseID::FromRandom());
   RAY_CHECK_OK(worker_pool_->RegisterDriver(second_driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
 }
@@ -2441,7 +2441,7 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
 
-  driver->AssignLeaseId(LeaseID::FromRandom());
+  driver->GrantLeaseId(LeaseID::FromRandom());
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
     *callback_called_ptr = true;
