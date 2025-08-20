@@ -189,9 +189,9 @@ scrape_configs:
 ```
 
 #### HTTP service discovery
-Ray also exposes the same list of endpoints to scrape over an HTTP endpoint, compatible with [Prometheus HTTP Service Discovery](https://prometheus.io/docs/prometheus/latest/http_sd/).
+Ray also exposes the same list of addresses to scrape over an HTTP endpoint, compatible with [Prometheus HTTP Service Discovery](https://prometheus.io/docs/prometheus/latest/http_sd/).
 
-Use the following in your Prometheus config to discover targets over the HTTP endpoint ([HTTP SD docs](https://prometheus.io/docs/prometheus/latest/http_sd/)):
+Use the following in your Prometheus config to use the HTTP endpoint for service discovery ([HTTP SD docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#http_sd_config)):
 
 ```yaml
 scrape_configs:
