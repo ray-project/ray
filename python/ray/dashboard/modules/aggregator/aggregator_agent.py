@@ -10,8 +10,7 @@ import logging
 from urllib3.util import Retry
 from requests import Session
 from requests.adapters import HTTPAdapter
-
-from google.protobuf.json_format import MessageToJson
+from ray._private.protobuf_compat import message_to_json
 
 try:
     import prometheus_client
@@ -211,7 +210,7 @@ class AggregatorAgent(
         Receives events from the request, adds them to the event buffer,
         """
         if not self._event_processing_enabled:
-            return events_event_aggregator_service_pb2.AddEventReply()
+            return events_event_aggregator_service_pb2.AddEventsReply()
 
         # TODO(myan) #54515: Considering adding a mechanism to also send out the events
         # metadata (e.g. dropped task attempts) to help with event processing at the
@@ -271,7 +270,9 @@ class AggregatorAgent(
 
         # Convert protobuf objects to JSON dictionaries for HTTP POST
         filtered_event_batch_json = [
-            json.loads(MessageToJson(event), including_default_value_fields=True)
+            json.loads(
+                message_to_json(event, always_print_fields_with_no_presence=True)
+            )
             for event in filtered_event_batch
         ]
 
