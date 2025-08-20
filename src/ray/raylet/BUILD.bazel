@@ -133,8 +133,8 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/util:logging",
-        "//src/ray/util:time",
         "//src/ray/util:process",
+        "//src/ray/util:time",
         "@boost//:beast",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
@@ -161,7 +161,6 @@ ray_cc_library(
         ":local_object_manager_interface",
         ":worker_pool",
         "//src/ray/common:id",
-        "//src/ray/util:time",
         "//src/ray/common:ray_object",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/object_manager:object_directory",
@@ -169,6 +168,7 @@ ray_cc_library(
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:core_worker_client",
+        "//src/ray/util:time",
     ],
 )
 

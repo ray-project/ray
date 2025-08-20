@@ -14,8 +14,8 @@ ray_cc_test(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common/tests:testing",
-        "//src/ray/util/internal:stream_redirection_handle",
         "//src/ray/util:filesystem",
+        "//src/ray/util/internal:stream_redirection_handle",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],

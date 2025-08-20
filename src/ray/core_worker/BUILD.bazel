@@ -78,10 +78,10 @@ ray_cc_library(
     hdrs = ["common.h"],
     visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/util:process",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
+        "//src/ray/util:process",
     ],
 )
 
@@ -247,9 +247,9 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util:time",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
+        "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -266,9 +266,9 @@ ray_cc_library(
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
-        "//src/ray/util:time",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",

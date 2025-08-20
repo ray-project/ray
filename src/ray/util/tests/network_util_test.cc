@@ -14,6 +14,10 @@
 
 #include "ray/util/network_util.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include <boost/asio/generic/basic_endpoint.hpp>
 
 #include "gtest/gtest.h"
