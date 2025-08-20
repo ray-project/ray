@@ -9,7 +9,9 @@ class StepFailedRecreateEnvError(Exception):
 
     This exception may be raised by the environment's `step` method.
     It is then caught by the `EnvRunner` and the environment is reset.
-    This can be useful if your environment is unstable and gives you the ability to not log errors stemming from this.
+    This can be useful if your environment is unstable, regularely crashing in a certain way.
+    For example, if you connect to an external simulator that you have little control over.
+    You can detect such crashes in your step method and throw this error to not log the error.
     Use this with caution, as it may lead to infinite loops of resetting the environment.
     """
 
