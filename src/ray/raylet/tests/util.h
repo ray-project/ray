@@ -45,8 +45,7 @@ class MockWorker : public WorkerInterface {
   void GrantLease(const RayLease &granted_lease) override {
     lease_ = granted_lease;
     lease_grant_time_ = absl::Now();
-    root_detached_actor_id_ =
-        granted_lease.GetLeaseSpecification().RootDetachedActorId();
+    root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
     SetBundleId(lease_spec.PlacementGroupBundleId());

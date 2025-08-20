@@ -238,8 +238,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     RAY_CHECK(!lease_spec.IsActorTask());
     SetIsActorWorker(lease_spec.IsActorCreationTask());
     granted_lease_ = granted_lease;
-    root_detached_actor_id_ =
-        granted_lease.GetLeaseSpecification().RootDetachedActorId();
+    root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
   }
 
   absl::Time GetGrantedLeaseTime() const { return lease_assign_time_; };

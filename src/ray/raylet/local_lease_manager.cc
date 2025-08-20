@@ -650,8 +650,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     RAY_LOG(DEBUG) << "Granting lease " << lease_id << " to worker "
                    << worker->WorkerId();
 
-    Grant(
-        worker, leased_workers_, work->allocated_instances_, lease, reply, callback);
+    Grant(worker, leased_workers_, work->allocated_instances_, lease, reply, callback);
     erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     granted = true;
   }

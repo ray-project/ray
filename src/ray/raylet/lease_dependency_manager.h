@@ -228,8 +228,8 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// A struct to represent the object dependencies of a task.
   struct LeaseDependencies {
     LeaseDependencies(const absl::flat_hash_set<ObjectID> &deps,
-                     CounterMap<std::pair<std::string, bool>> &counter_map,
-                     const TaskMetricsKey &task_key)
+                      CounterMap<std::pair<std::string, bool>> &counter_map,
+                      const TaskMetricsKey &task_key)
         : dependencies_(std::move(deps)),
           num_missing_dependencies_(dependencies_.size()),
           waiting_task_counter_map_(counter_map),

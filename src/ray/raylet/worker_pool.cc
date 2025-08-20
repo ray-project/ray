@@ -1061,8 +1061,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         state.pending_registration_requests.begin(),
         state.pending_registration_requests.end(),
         [this, &worker](const std::shared_ptr<PopWorkerRequest> &request) {
-          return WorkerFitForLease(*worker, *request) ==
-                 WorkerUnfitForLeaseReason::NONE;
+          return WorkerFitForLease(*worker, *request) == WorkerUnfitForLeaseReason::NONE;
         });
     if (it != state.pending_registration_requests.end()) {
       pop_worker_request = *it;
@@ -1074,8 +1073,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         state.pending_start_requests.begin(),
         state.pending_start_requests.end(),
         [this, &worker](const std::shared_ptr<PopWorkerRequest> &request) {
-          return WorkerFitForLease(*worker, *request) ==
-                 WorkerUnfitForLeaseReason::NONE;
+          return WorkerFitForLease(*worker, *request) == WorkerUnfitForLeaseReason::NONE;
         });
     if (it != state.pending_start_requests.end()) {
       pop_worker_request = *it;
