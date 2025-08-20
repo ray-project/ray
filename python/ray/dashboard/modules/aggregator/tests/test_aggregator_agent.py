@@ -132,7 +132,7 @@ def test_aggregator_agent_receive_publish_events_normally(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                )
+                ),
             },
         },
     ],
@@ -247,7 +247,7 @@ def test_aggregator_agent_receive_multiple_events(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                )
+                ),
             },
         },
     ],
@@ -382,7 +382,7 @@ def test_aggregator_agent_profile_events_not_exposed(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT"
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
             },
         },
     ],

@@ -417,6 +417,7 @@ class AggregatorAgent(
     def _create_and_start_publisher_loop(self) -> None:
         """Creates and starts a dedicated asyncio event loop with multiple async publisher workers."""
         import asyncio
+
         print("== Start of create_and_start_publisher_loop ==")
         loop = asyncio.new_event_loop()
         try:
