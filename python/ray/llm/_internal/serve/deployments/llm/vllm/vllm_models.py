@@ -194,6 +194,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
+
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
         else:
@@ -238,6 +239,7 @@ class VLLMEngineConfig(BaseModelExtended):
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
         """
+        dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         pg = get_current_placement_group()
         if pg:
             logger.debug(
@@ -252,8 +254,12 @@ class VLLMEngineConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
+            name = "" if dp_rank is None else f"dp_{dp_rank}"
+
             pg = placement_group(
-                self.placement_bundles, strategy=self.placement_strategy
+                bundles=self.placement_bundles,
+                strategy=self.placement_strategy,
+                name=name,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")

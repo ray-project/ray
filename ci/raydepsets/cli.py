@@ -12,14 +12,14 @@ from ci.raydepsets.workspace import Depset, Workspace
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --no-strip-markers
-    --emit-index-url
-    --emit-find-links
     --unsafe-package ray
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
     --index-strategy unsafe-best-match
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
     --quiet
 """.split()
 
@@ -166,15 +166,15 @@ class DependencySetManager:
         if override_flags:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
-            args = _append_uv_flags(append_flags, args)
+            args.extend(_flatten_flags(append_flags))
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", self.get_path(constraint)])
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.extend([self.get_path(requirement)])
+                args.extend([requirement])
         if output:
-            args.extend(["-o", self.get_path(output)])
+            args.extend(["-o", output])
         self.exec_uv_cmd("compile", args)
 
     def subset(
@@ -271,16 +271,14 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return new_args + _flatten_flags(flags)
 
 
-def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
-    args.extend(flags)
-    return args
-
-
 def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise RuntimeError(
-            f"Unsupported platform/processor: {system}/{platform.processor()}"
-        )
-    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+    processor = platform.processor()
+
+    if system == "Linux" and processor == "x86_64":
+        return r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
+    elif system == "Darwin" and (processor == "arm" or processor == "aarch64"):
+        return r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
+    else:
+        raise RuntimeError(f"Unsupported platform/processor: {system}/{processor}")

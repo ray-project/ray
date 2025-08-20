@@ -10,6 +10,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
+from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
@@ -19,6 +20,7 @@ from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
 )
+from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
@@ -187,10 +189,10 @@ class RayTrainWorker:
         self,
         train_run_context: TrainRunContext,
         distributed_context: DistributedContext,
-        synchronization_actor: ActorHandle,
+        synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
-        dataset_manager: Optional[ActorHandle] = None,
+        dataset_shards: Dict[str, DataIterator] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
@@ -209,8 +211,8 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
+            dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
-            dataset_manager=dataset_manager,
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(
