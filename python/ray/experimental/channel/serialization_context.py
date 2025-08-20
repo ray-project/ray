@@ -94,10 +94,8 @@ class _SerializationContext:
     def serialize_tensor(
         self, tensor: "torch.Tensor"
     ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
-        from ray.experimental.channel import ChannelContext
 
-        ctx = ChannelContext.get_current()
-        if self._use_external_transport and tensor.device == ctx.torch_device:
+        if self._use_external_transport:
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
             # tensors should later be popped by the caller and sent via

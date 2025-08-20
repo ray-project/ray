@@ -147,7 +147,6 @@ class TensorTransportManager(ABC):
         tensors: List["torch.Tensor"],
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-        device: "torch.device",
     ):
         """
         Send multiple tensors to the destination actor.
@@ -156,5 +155,4 @@ class TensorTransportManager(ABC):
             tensors: The tensors to send.
             tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
-            device: The device to send the tensors to.
         """
