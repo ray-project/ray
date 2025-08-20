@@ -666,7 +666,12 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  // Workers should be placed into their own process groups (if enabled) to enable
+  // per-worker cleanup via killpg on worker death.
+  const bool new_process_group =
+      RayConfig::instance().process_group_cleanup_enabled();
+  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env,
+                /*pipe_to_stdin=*/false, new_process_group);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {

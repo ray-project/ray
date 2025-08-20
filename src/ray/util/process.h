@@ -100,7 +100,8 @@ class Process {
                    std::error_code &ec,
                    bool decouple = false,
                    const ProcessEnvironment &env = {},
-                   bool pipe_to_stdin = false);
+                   bool pipe_to_stdin = false,
+                   bool new_process_group = false);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -127,7 +128,8 @@ class Process {
       const std::vector<std::string> &args,
       bool decouple,
       const std::string &pid_file = std::string(),
-      const ProcessEnvironment &env = {});
+      const ProcessEnvironment &env = {},
+      bool new_process_group = false);
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;

@@ -150,24 +150,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options.debug_source;
 
   RAY_LOG(DEBUG).WithField(worker_id) << "Constructing CoreWorker";
-  if (RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
-#ifdef __linux__
-    // Not setting sigchld = ignore: user may want to do waitpid on their own.
-    // If user's bad code causes a zombie process, it will hang their in zombie status
-    // until this worker exits and raylet reaps it.
-    if (SetThisProcessAsSubreaper()) {
-      RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << pid;
-      SetSigchldIgnore();
-    } else {
-      RAY_LOG(WARNING)
-          << "Failed to set this core_worker process as subreaper. If Raylet is set as "
-             "subreaper, user-spawn daemon processes may be killed by raylet.";
-    }
-#else
-    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Raylet will not "
-                        "kill unknown children.";
-#endif
-  }
+  // Subreaper is deprecated; per-worker process groups are used instead. Intentionally
+  // do nothing here even if the subreaper flag is set.
 
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options),

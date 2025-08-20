@@ -1375,6 +1375,28 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       }
     }
 
+    // Attempt per-worker process-group cleanup before removing the worker.
+#if !defined(_WIN32)
+    if (RayConfig::instance().process_group_cleanup_enabled()) {
+      pid_t pgid = worker->GetProcess().GetId();
+      RAY_LOG(INFO).WithField(worker->WorkerId())
+          << "Attempting process-group cleanup for worker pid=" << pgid;
+      auto err = KillProcessGroup(pgid, SIGTERM);
+      if (err && *err) {
+        RAY_LOG(WARNING).WithField(worker->WorkerId())
+            << "Failed to SIGTERM process group " << pgid << ": " << err->message()
+            << ", errno=" << err->value();
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      err = KillProcessGroup(pgid, SIGKILL);
+      if (err && *err) {
+        RAY_LOG(WARNING).WithField(worker->WorkerId())
+            << "Failed to SIGKILL process group " << pgid << ": " << err->message()
+            << ", errno=" << err->value();
+      }
+    }
+#endif
+
     // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker, disconnect_type);
 
