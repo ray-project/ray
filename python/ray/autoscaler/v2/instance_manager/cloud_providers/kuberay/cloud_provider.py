@@ -36,7 +36,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import IPPRStatus, NodeType
+from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +190,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._terminate_errors_queue = []
         return errors
 
-    def get_ippr_capacities(self) -> Dict[str, Dict[str, float]]:
-        return self._ippr_provider.get_ippr_capacities()
+    def get_ippr_specs(self) -> IPPRSpecs:
+        return self._ippr_provider.get_ippr_specs()
 
     def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
         return self._ippr_provider.get_ippr_statuses()
@@ -410,7 +410,7 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
-        self._ippr_provider.validate_and_set_ippr_spec(self._ray_cluster)
+        self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
 

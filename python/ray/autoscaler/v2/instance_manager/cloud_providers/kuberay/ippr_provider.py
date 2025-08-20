@@ -22,26 +22,13 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
     KUBERAY_KIND_HEAD,
     KUBERAY_KIND_WORKER,
 )
-from ray.autoscaler.v2.schema import IPPRStatus
+from ray.autoscaler.v2.schema import (
+    IPPRStatus,
+    IPPRSpecs,
+    IPPRSpecsSchema,
+    IPPRGroupSpec,
+)
 
-
-ippr_schema = {
-    "type": "object",
-    "properties": {
-        "groups": {
-            "type": "object",
-            "additionalProperties": {
-                "type": "object",
-                "properties": {
-                    "max-cpu": {"type": ["string", "number"]},
-                    "max-memory": {"type": ["string", "integer"]},
-                    "resize-timeout": {"type": "integer"},
-                },
-                "required": ["max-cpu", "max-memory", "resize-timeout"],
-            },
-        }
-    },
-}
 
 logger = logging.getLogger(__name__)
 
@@ -54,22 +41,26 @@ class KubeRayIPPRProvider:
     ):
         self._gcs_client = gcs_client
         self._k8s_api_client = k8s_api_client
-        self._ippr_spec: Dict[str, Any] = {}
+        self._ippr_specs: IPPRSpecs = IPPRSpecs(groups={})
         self._ippr_statuses: Dict[str, IPPRStatus] = {}
         self._container_resources: Dict[str, Any] = {}
 
-    def validate_and_set_ippr_spec(self, ray_cluster: Optional[Dict[str, Any]]) -> None:
+    def validate_and_set_ippr_specs(
+        self, ray_cluster: Optional[Dict[str, Any]]
+    ) -> None:
         if not ray_cluster:
             return
 
-        spec_str = ray_cluster["metadata"].get("annotations", {}).get("ray.io/ippr")
-        if not spec_str:
+        specs_str = ray_cluster["metadata"].get("annotations", {}).get("ray.io/ippr")
+        if not specs_str:
             return
 
-        spec = json.loads(spec_str)
-        jsonschema.validate(instance=spec, schema=ippr_schema)
+        specs_raw = json.loads(specs_str)
+        jsonschema.validate(instance=specs_raw, schema=IPPRSpecsSchema)
 
-        def validate_worker_group_spec(worker_group_spec: Dict[str, Any]) -> None:
+        def _get_ippr_group_spec(
+            group_spec: Dict[str, Any], worker_group_spec: Dict[str, Any]
+        ) -> None:
             ray_start_params = worker_group_spec.get("rayStartParams", {})
             if "num-cpus" in ray_start_params or "memory" in ray_start_params:
                 raise ValueError(
@@ -90,16 +81,40 @@ class KubeRayIPPRProvider:
                 if restart is not None and restart != "NotRequired":
                     raise ValueError("IPPR only supports restartPolicy=NotRequired")
 
-        for group_name in spec.get("groups", {}).keys():
-            if group_name == "headgroup":
-                validate_worker_group_spec(ray_cluster["spec"]["headGroupSpec"])
-                continue
-            for worker_group_spec in ray_cluster["spec"].get("workerGroupSpecs", []):
-                if worker_group_spec["groupName"] == group_name:
-                    validate_worker_group_spec(worker_group_spec)
-                    break
+            pod_spec_requests = container_spec.get("resources", {}).get("requests", {})
+            pod_spec_limits = container_spec.get("resources", {}).get("limits", {})
+            spec_cpu = float(
+                parse_quantity(
+                    pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0)
+                )
+            )
+            spec_memory = int(
+                parse_quantity(
+                    pod_spec_limits.get("memory") or pod_spec_requests.get("memory", 0)
+                )
+            )
+            return IPPRGroupSpec(
+                min_cpu=spec_cpu,
+                min_memory=spec_memory,
+                max_cpu=float(parse_quantity(group_spec.get("max-cpu", 0))),
+                max_memory=int(parse_quantity(group_spec.get("max-memory", 0))),
+                resize_timeout=int(group_spec.get("resize-timeout", 0)),
+            )
 
-        self._ippr_spec = spec
+        # Validate and build typed spec per group
+        worker_groups = {
+            worker_group_spec["groupName"]: worker_group_spec
+            for worker_group_spec in ray_cluster["spec"].get("workerGroupSpecs", [])
+        }
+        worker_groups["headgroup"] = ray_cluster["spec"]["headGroupSpec"]
+
+        groups = {
+            group_name: _get_ippr_group_spec(group_spec, worker_groups[group_name])
+            for group_name, group_spec in specs_raw.get("groups", {}).items()
+            if group_name in worker_groups
+        }
+
+        self._ippr_specs = IPPRSpecs(groups=groups)
 
     def sync_with_raylets(self) -> None:
         for ippr_status in self._ippr_statuses.values():
@@ -145,7 +160,7 @@ class KubeRayIPPRProvider:
             ):
                 continue
 
-            ippr_group_spec = self._ippr_spec.get("groups", {}).get(
+            ippr_group_spec = self._ippr_specs.groups.get(
                 labels[KUBERAY_LABEL_KEY_TYPE]
             )
             ippr_status, container_resource = _set_ippr_status_for_pod(
@@ -187,14 +202,8 @@ class KubeRayIPPRProvider:
                     continue
             self._patch_ippr_resize(resize)
 
-    def get_ippr_capacities(self) -> Dict[str, Dict[str, float]]:
-        return {
-            group_name: {
-                "CPU": float(parse_quantity(group_spec.get("max-cpu", 0))),
-                "memory": float(parse_quantity(group_spec.get("max-memory", 0))),
-            }
-            for group_name, group_spec in self._ippr_spec.get("groups", {}).items()
-        }
+    def get_ippr_specs(self) -> IPPRSpecs:
+        return self._ippr_specs
 
     def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
         return self._ippr_statuses
@@ -215,8 +224,6 @@ class KubeRayIPPRProvider:
                         "ray.io/ippr-status": json.dumps(
                             {
                                 "raylet-id": resize.raylet_id,
-                                "min-cpu": resize.min_cpu,
-                                "min-memory": resize.min_memory,
                                 "resized-at": resized_at,
                             }
                         )
@@ -310,7 +317,7 @@ def _resize_raylet_resources(raylet_addr: str, cpu: float, memory: float):
 
 
 def _set_ippr_status_for_pod(
-    ippr_group_spec: Dict[str, Any],
+    ippr_group_spec: Optional[IPPRGroupSpec],
     pod: Dict[str, Any],
 ) -> tuple[Optional[IPPRStatus], Optional[Dict[str, Any]]]:
     if not ippr_group_spec:
@@ -342,10 +349,7 @@ def _set_ippr_status_for_pod(
 
     ippr_status = IPPRStatus(
         cloud_instance_id=pod["metadata"]["name"],
-        min_cpu=spec_cpu,
-        max_cpu=float(parse_quantity(ippr_group_spec.get("max-cpu", 0))),
-        min_memory=spec_memory,
-        max_memory=int(parse_quantity(ippr_group_spec.get("max-memory", 0))),
+        spec=ippr_group_spec,
         desired_cpu=spec_cpu,
         desired_memory=spec_memory,
         current_cpu=float(
@@ -362,7 +366,6 @@ def _set_ippr_status_for_pod(
                 or spec_memory
             )
         ),
-        resize_timeout=ippr_group_spec.get("resize-timeout", 0),
     )
 
     pod_ippr_status_json = (
@@ -371,12 +374,6 @@ def _set_ippr_status_for_pod(
     if pod_ippr_status_json:
         pod_ippr_status = json.loads(pod_ippr_status_json)
         ippr_status.raylet_id = pod_ippr_status.get("raylet-id")
-        ippr_status.min_cpu = float(
-            parse_quantity(pod_ippr_status.get("min-cpu", ippr_status.min_cpu))
-        )
-        ippr_status.min_memory = int(
-            parse_quantity(pod_ippr_status.get("min-memory", ippr_status.min_memory))
-        )
         ippr_status.resized_at = pod_ippr_status.get("resized-at")
 
     for condition in pod.get("status", {}).get("conditions", []):

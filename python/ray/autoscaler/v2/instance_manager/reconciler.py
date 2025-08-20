@@ -1129,7 +1129,8 @@ class Reconciler:
         )
 
         if isinstance(cloud_provider, KubeRayProvider):
-            sched_request.ippr_capacities = cloud_provider.get_ippr_capacities()
+            # Pass through the provider's IPPR spec
+            sched_request.ippr_specs = cloud_provider.get_ippr_specs()
             sched_request.ippr_statuses = cloud_provider.get_ippr_statuses()
 
         # Ask scheduler for updates to the cluster shape.

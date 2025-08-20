@@ -222,16 +222,45 @@ class ClusterStatus:
     # We should show them properly in the future.
 
 
+IPPRSpecsSchema = {
+    "type": "object",
+    "properties": {
+        "groups": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "max-cpu": {"type": ["string", "number"]},
+                    "max-memory": {"type": ["string", "integer"]},
+                    "resize-timeout": {"type": "integer"},
+                },
+                "required": ["max-cpu", "max-memory", "resize-timeout"],
+            },
+        }
+    },
+}
+
+
 @dataclass
-class IPPRStatus:
-    cloud_instance_id: str
+class IPPRGroupSpec:
     min_cpu: float
     max_cpu: float
     min_memory: int
     max_memory: int
+    resize_timeout: int
+
+
+@dataclass
+class IPPRSpecs:
+    groups: Dict[str, IPPRGroupSpec]
+
+
+@dataclass
+class IPPRStatus:
+    cloud_instance_id: str
+    spec: IPPRGroupSpec
     current_cpu: float
     current_memory: int
-    resize_timeout: int
     desired_cpu: float
     desired_memory: int
     resized_at: Optional[int] = None
@@ -274,13 +303,14 @@ class IPPRStatus:
 
     def can_resize_up(self) -> bool:
         return self.is_finished() and (
-            self.current_cpu < self.max_cpu or self.current_memory < self.max_memory
+            self.current_cpu < self.spec.max_cpu
+            or self.current_memory < self.spec.max_memory
         )
 
     def is_timeout(self) -> bool:
         return (
             self.resized_at is not None
-            and self.resized_at + self.resize_timeout < time.time()
+            and self.resized_at + self.spec.resize_timeout < time.time()
         )
 
     def is_failed(self) -> bool:

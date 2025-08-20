@@ -18,7 +18,13 @@ from ray.autoscaler._private.resource_demand_scheduler import (
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import AutoscalerInstance, IPPRStatus, NodeType
+from ray.autoscaler.v2.schema import (
+    AutoscalerInstance,
+    IPPRGroupSpec,
+    IPPRStatus,
+    NodeType,
+    IPPRSpecs,
+)
 from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
 from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
@@ -66,7 +72,7 @@ class SchedulingRequest:
     # The current instances.
     current_instances: List[AutoscalerInstance] = field(default_factory=list)
 
-    ippr_capacities: Optional[Dict[str, Dict[str, float]]] = field(default_factory=dict)
+    ippr_specs: Optional[IPPRSpecs] = None
     ippr_statuses: Optional[Dict[str, IPPRStatus]] = field(default_factory=dict)
 
 
@@ -167,7 +173,7 @@ class SchedulingNode:
 
     # IPPR status and capacity, queried from the cloud provider.
     ippr_status: Optional[IPPRStatus] = None
-    ippr_capacity: Optional[Dict[str, float]] = None
+    ippr_spec: Optional[IPPRGroupSpec] = None
 
     # Node's labels, including static or dynamic labels.
     labels: Dict[str, str] = field(default_factory=dict)
@@ -387,7 +393,6 @@ class SchedulingNode:
         node_kind: NodeKind,
         im_instance_id: Optional[str] = None,
         im_instance_status: Optional[str] = None,
-        ippr_capacity: Optional[Dict[str, float]] = None,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -740,7 +745,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
 
-        _ippr_capacities: Optional[Dict[NodeType, Dict[str, float]]] = None
+        _ippr_specs: Optional[IPPRSpecs] = None
 
         def __init__(
             self,
@@ -749,7 +754,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
-            ippr_capacities: Optional[Dict[NodeType, Dict[str, float]]] = None,
+            ippr_specs: Optional[IPPRSpecs] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -759,7 +764,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
             self._disable_launch_config_check = disable_launch_config_check
-            self._ippr_capacities = ippr_capacities
+            self._ippr_specs = ippr_specs
 
         @classmethod
         def from_schedule_request(
@@ -790,8 +795,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         and instance.cloud_instance_id in req.ippr_statuses
                     ):
                         node.ippr_status = req.ippr_statuses[instance.cloud_instance_id]
-                    if req.ippr_capacities and node.node_type in req.ippr_capacities:
-                        node.ippr_capacity = req.ippr_capacities[node.node_type]
+                        node.ippr_spec = req.ippr_specs.groups[node.node_type]
 
             return cls(
                 nodes=nodes,
@@ -799,7 +803,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
-                ippr_capacities=req.ippr_capacities,
+                ippr_specs=req.ippr_specs,
             )
 
         @staticmethod
@@ -894,8 +898,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 len(self._nodes), dict(self._node_type_available)
             )
 
-        def get_ippr_capacities(self) -> Dict[NodeType, Dict[str, float]]:
-            return self._ippr_capacities or {}
+        def get_ippr_specs(self) -> Optional[IPPRSpecs]:
+            return self._ippr_specs
 
         def get_ippr_requests(self) -> List[IPPRStatus]:
             return [
@@ -1542,8 +1546,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.ippr_status is not None and node.ippr_status.can_resize_up():
                 node.update_total_resources(
                     {
-                        "CPU": node.ippr_status.max_cpu,
-                        "memory": node.ippr_status.max_memory,
+                        "CPU": node.ippr_status.spec.max_cpu,
+                        "memory": node.ippr_status.spec.max_memory,
                     }
                 )
 
@@ -1561,8 +1565,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             best_node.ippr_status.update(
                 raylet_id=best_node.ray_node_id,
-                desired_cpu=best_node.ippr_status.max_cpu,
-                desired_memory=best_node.ippr_status.max_memory,
+                desired_cpu=best_node.ippr_status.spec.max_cpu,
+                desired_memory=best_node.ippr_status.spec.max_memory,
             )
 
             target_nodes.append(best_node)
@@ -1580,23 +1584,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             for node_type, num_available in node_type_available.items()
             if num_available > 0
         ]
-        ippr_capacities = ctx.get_ippr_capacities()
+        ippr_specs = ctx.get_ippr_specs()
         for node in node_pools:
-            ippr_capacity = ippr_capacities.get(node.node_type)
-            if ippr_capacity is not None:
+            if ippr_specs and node.node_type in ippr_specs.groups:
+                group = ippr_specs.groups[node.node_type]
                 node.update_total_resources(
                     {
-                        "CPU": float(
-                            max(
-                                ippr_capacity["CPU"],
-                                node.total_resources["CPU"],
-                            )
-                        ),
+                        "CPU": float(max(group.max_cpu, node.total_resources["CPU"])),
                         "memory": float(
-                            max(
-                                ippr_capacity["memory"],
-                                node.total_resources["memory"],
-                            )
+                            max(group.max_memory, node.total_resources["memory"])
                         ),
                     }
                 )
