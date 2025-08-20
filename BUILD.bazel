@@ -457,6 +457,7 @@ genrule(
 
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
+        sed -i -E 's/from src.ray.protobuf.public/from ./' "$${files[@]}"
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         # Help the generated serve files to have the correct module
         serve_files=($$(ls "$$tmpdir"/ray/serve/generated/*_pb2*.py))
