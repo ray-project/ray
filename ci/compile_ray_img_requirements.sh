@@ -3,13 +3,10 @@
 set -euo pipefail
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
-if [[ "${PYTHON_CODE}" != "py311" ]]; then
-	echo "--- Python version is not 3.11"
-	echo "--- Current Python version: ${PYTHON_CODE}"
-	exit 1
-fi
+echo "--- Python version: ${PYTHON_CODE}"
 
 mkdir -p /tmp/ray-deps
+mkdir -p /tmp/ray-deps/python/lock_files/ray_img
 
 echo "ray==3.0.0.dev0" > /tmp/ray-deps/requirements.txt
 
