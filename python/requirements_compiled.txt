@@ -1619,7 +1619,7 @@ pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r python/requirements/cloud-requirements.txt
-pydantic==2.10.0
+pydantic>=2.10.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1629,7 +1629,7 @@ pydantic==2.10.0
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
-pydantic-core==2.27.0
+pydantic-core>=2.27.0
     # via pydantic
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
