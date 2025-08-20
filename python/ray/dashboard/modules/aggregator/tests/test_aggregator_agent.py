@@ -42,6 +42,9 @@ from ray.core.generated.runtime_env_common_pb2 import (
 
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
+# Add import for sleep in negative test
+import time
+
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
@@ -623,6 +626,54 @@ def test_aggregator_agent_receive_driver_job_execution_event(
     assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
     assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
     assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC": "False",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_publish_disabled_does_not_send_http(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"10",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=fake_timestamp[0],
+                    severity=RayEvent.Severity.INFO,
+                    message="should not be sent",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    stub.AddEvents(request)
+
+    with pytest.raises(
+        RuntimeError, match="The condition wasn't met before the timeout expired."
+    ):
+        wait_for_condition(lambda: len(httpserver.log) > 0, 1)
+
+    assert len(httpserver.log) == 0
 
 
 if __name__ == "__main__":
