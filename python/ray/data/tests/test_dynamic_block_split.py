@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from dataclasses import astuple, dataclass
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -47,7 +48,9 @@ class RandomBytesDatasource(Datasource):
     def estimate_inmemory_data_size(self):
         return None
 
-    def get_read_tasks(self, parallelism: int):
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         def _blocks_generator():
             for _ in range(self.num_batches_per_task):
                 if self.use_bytes:
@@ -91,6 +94,7 @@ class RandomBytesDatasource(Datasource):
                     input_files=None,
                     exec_stats=None,
                 ),
+                per_block_limit=per_block_limit,
             )
         ]
 

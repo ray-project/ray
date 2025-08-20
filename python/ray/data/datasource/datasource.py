@@ -98,7 +98,9 @@ class Reader:
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
