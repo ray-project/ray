@@ -821,7 +821,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr, {});
 
   auto publisher = std::make_shared<pubsub::MockPublisher>();
-  auto subscriber = std::make_shared<pubsub::MockSubscriber>();
+  auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
   auto rc = std::make_shared<ReferenceCounter>(
       rpc::Address(),
       publisher.get(),

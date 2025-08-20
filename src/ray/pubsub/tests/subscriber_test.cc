@@ -121,8 +121,6 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
 
   int GetNumberOfInFlightLongPollingRequests() { return long_polling_callbacks.size(); }
 
-  std::string DebugString() const override { return ""; }
-
   ~MockWorkerClient(){};
 
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
