@@ -56,6 +56,9 @@ ray_cc_test(
     deps = [
         ":store_client_test_lib",
         "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
         "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
