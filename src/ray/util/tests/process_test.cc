@@ -22,7 +22,6 @@
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
 
 namespace ray {
 

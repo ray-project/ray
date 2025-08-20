@@ -21,8 +21,10 @@
 #include <boost/asio/local/stream_protocol.hpp>
 #endif
 #include <boost/asio/ip/tcp.hpp>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
