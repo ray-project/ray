@@ -334,6 +334,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
+      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -498,6 +499,12 @@ void CoreWorker::Shutdown() {
   if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
     RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
     return;
+  }
+
+  // For actors, perform cleanup before shutdown proceeds.
+  if (!GetWorkerContext().GetCurrentActorID().IsNil() && actor_shutdown_callback_) {
+    RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
+    actor_shutdown_callback_();
   }
   RAY_LOG(INFO) << "Shutting down.";
 
@@ -1331,7 +1338,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     conn->RegisterMutableObjectReader(
         req,
         [&promise, num_replied, num_requests, addr](
-            const Status &status, const rpc::RegisterMutableObjectReaderReply &reply) {
+            const Status &status, const rpc::RegisterMutableObjectReaderReply &) {
           RAY_CHECK_OK(status);
           *num_replied += 1;
           if (*num_replied == num_requests) {
@@ -1846,8 +1853,8 @@ json CoreWorker::OverrideRuntimeEnv(const json &child,
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) const {
-  auto factory = [this](const std::string &serialized_runtime_env_info) {
-    return OverrideTaskOrActorRuntimeEnvInfoImpl(serialized_runtime_env_info);
+  auto factory = [this](const std::string &runtime_env_info_str) {
+    return OverrideTaskOrActorRuntimeEnvInfoImpl(runtime_env_info_str);
   };
   return runtime_env_json_serialization_cache_.GetOrCreate(serialized_runtime_env_info,
                                                            std::move(factory));
@@ -2296,7 +2303,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  const auto &bundles = placement_group_creation_options.bundles;
+  const auto &bundles = placement_group_creation_options.bundles_;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
       if (resource.first == kBundle_ResourceLabel) {
@@ -2311,16 +2318,16 @@ Status CoreWorker::CreatePlacementGroup(
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
       placement_group_id,
-      placement_group_creation_options.name,
-      placement_group_creation_options.bundles,
-      placement_group_creation_options.strategy,
-      placement_group_creation_options.is_detached,
-      placement_group_creation_options.max_cpu_fraction_per_node,
-      placement_group_creation_options.soft_target_node_id,
+      placement_group_creation_options.name_,
+      placement_group_creation_options.bundles_,
+      placement_group_creation_options.strategy_,
+      placement_group_creation_options.is_detached_,
+      placement_group_creation_options.max_cpu_fraction_per_node_,
+      placement_group_creation_options.soft_target_node_id_,
       worker_context_->GetCurrentJobID(),
       worker_context_->GetCurrentActorID(),
       worker_context_->CurrentActorDetached(),
-      placement_group_creation_options.bundle_label_selector);
+      placement_group_creation_options.bundle_label_selector_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -3125,12 +3132,12 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         owner_address,
         {return_id},
         generator_id,
-        [return_id, pinned_return_object](const Status &status,
+        [return_id, pinned_return_object](const Status &pin_object_status,
                                           const rpc::PinObjectIDsReply &reply) {
           // RPC to the local raylet should never fail.
-          if (!status.ok()) {
+          if (!pin_object_status.ok()) {
             RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
-                           << status.ToString();
+                           << pin_object_status.ToString();
             return;
           }
           if (!reply.successes(0)) {
@@ -3579,8 +3586,9 @@ void CoreWorker::HandleWaitForActorRefDeleted(
 
   // Send a response to trigger cleaning up the actor state once the handle is
   // no longer in scope.
-  auto respond = [send_reply_callback](const ActorID &actor_id) {
-    RAY_LOG(DEBUG).WithField(actor_id) << "Replying to HandleWaitForActorRefDeleted";
+  auto respond = [send_reply_callback](const ActorID &respond_actor_id) {
+    RAY_LOG(DEBUG).WithField(respond_actor_id)
+        << "Replying to HandleWaitForActorRefDeleted";
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 

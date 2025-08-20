@@ -37,8 +37,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int object_manager_push_timeout_ms() const
 
-        uint64_t object_manager_default_chunk_size() const
-
         uint32_t maximum_gcs_deletion_batch_size() const
 
         int64_t max_direct_call_object_size() const
