@@ -182,7 +182,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
       objects_in_plasma_;
 };
 
-TaskSpecification BuildTaskSpec(
+LeaseSpecification BuildLeaseSpec(
     const std::unordered_map<std::string, double> &resources) {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
@@ -209,11 +209,11 @@ TaskSpecification BuildTaskSpec(
                             0,
                             TaskID::Nil(),
                             "");
-  return std::move(builder).ConsumeAndBuild();
+  return LeaseSpecification(std::move(builder).ConsumeAndBuild().GetMessage(), false);
 }
 
-TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_address,
-                                                 const ActorID &actor_id) {
+LeaseSpecification DetachedActorCreationLeaseSpec(const rpc::Address &owner_address,
+                                                  const ActorID &actor_id) {
   rpc::JobConfig config;
   const FunctionDescriptor function_descriptor =
       FunctionDescriptorBuilder::BuildPython("x", "", "", "");
@@ -253,7 +253,8 @@ TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_addre
                                              /*extension_data=*/"",
                                              /*allow_out_of_order_execution=*/false,
                                              /*root_detached_actor_id=*/actor_id);
-  return task_spec_builder;
+  return LeaseSpecification(std::move(task_spec_builder).ConsumeAndBuild().GetMessage(),
+                            true);
 }
 
 }  // namespace
@@ -297,13 +298,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
     auto backlog_report_1 = request.add_backlog_reports();
-    auto task_spec_1 = BuildTaskSpec({{"CPU", 1}});
-    backlog_report_1->mutable_resource_spec()->CopyFrom(task_spec_1.GetMessage());
+    auto lease_spec_1 = BuildLeaseSpec({{"CPU", 1}});
+    backlog_report_1->mutable_resource_spec()->CopyFrom(lease_spec_1.GetMessage());
     backlog_report_1->set_backlog_size(1);
 
     auto backlog_report_2 = request.add_backlog_reports();
-    auto task_spec_2 = BuildTaskSpec({{"GPU", 2}});
-    backlog_report_2->mutable_resource_spec()->CopyFrom(task_spec_2.GetMessage());
+    auto lease_spec_2 = BuildLeaseSpec({{"GPU", 2}});
+    backlog_report_2->mutable_resource_spec()->CopyFrom(lease_spec_2.GetMessage());
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
@@ -315,10 +316,10 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         .WillOnce(Return(driver));
     EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
     EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(task_spec_1.GetSchedulingClass(), worker_id, 1))
+                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
         .Times(1);
     EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(task_spec_2.GetSchedulingClass(), worker_id, 3))
+                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
         .Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
@@ -341,13 +342,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
     auto backlog_report_1 = request.add_backlog_reports();
-    auto task_spec_1 = BuildTaskSpec({{"CPU", 1}});
-    backlog_report_1->mutable_resource_spec()->CopyFrom(task_spec_1.GetMessage());
+    auto lease_spec_1 = BuildLeaseSpec({{"CPU", 1}});
+    backlog_report_1->mutable_resource_spec()->CopyFrom(lease_spec_1.GetMessage());
     backlog_report_1->set_backlog_size(1);
 
     auto backlog_report_2 = request.add_backlog_reports();
-    auto task_spec_2 = BuildTaskSpec({{"GPU", 2}});
-    backlog_report_2->mutable_resource_spec()->CopyFrom(task_spec_2.GetMessage());
+    auto lease_spec_2 = BuildLeaseSpec({{"GPU", 2}});
+    backlog_report_2->mutable_resource_spec()->CopyFrom(lease_spec_2.GetMessage());
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
@@ -358,10 +359,10 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
 
     EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
     EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(task_spec_1.GetSchedulingClass(), worker_id, 1))
+                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
         .Times(1);
     EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(task_spec_2.GetSchedulingClass(), worker_id, 3))
+                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
         .Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
@@ -476,7 +477,7 @@ class NodeManagerTest : public ::testing::Test {
         raylet_node_id_,
         *cluster_resource_scheduler_,
         get_node_info_func,
-        [](const ray::RayTask &task) {},
+        [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
     node_manager_ = std::make_unique<NodeManager>(io_service_,
@@ -525,7 +526,7 @@ class NodeManagerTest : public ::testing::Test {
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };
 
@@ -575,7 +576,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   PopWorkerCallback pop_worker_callback;
   EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
       .WillOnce(
-          [&](const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
             pop_worker_callback = callback;
           });
 
@@ -601,15 +602,14 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   owner_address.set_worker_id(owner_worker_id.Binary());
   const auto actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
-  const auto task_spec_builder =
-      DetachedActorCreationTaskBuilder(owner_address, actor_id);
+  const auto lease_spec = DetachedActorCreationLeaseSpec(owner_address, actor_id);
 
   // Invoke RequestWorkerLease to request a leased worker for the task in the
   // NodeManager.
   std::promise<Status> promise;
   rpc::RequestWorkerLeaseReply reply;
   rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(task_spec_builder.GetMessage());
+  request.mutable_resource_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
       &reply,
@@ -654,7 +654,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   PopWorkerCallback pop_worker_callback;
   EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
       .WillOnce(
-          [&](const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
             pop_worker_callback = callback;
           });
 
@@ -679,15 +679,14 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   owner_address.set_node_id(owner_node_id.Binary());
   const auto actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
-  const auto task_spec_builder =
-      DetachedActorCreationTaskBuilder(owner_address, actor_id);
+  const auto lease_spec = DetachedActorCreationLeaseSpec(owner_address, actor_id);
 
   // Invoke RequestWorkerLease to request a leased worker for the task in the
   // NodeManager.
   std::promise<Status> promise;
   rpc::RequestWorkerLeaseReply reply;
   rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(task_spec_builder.GetMessage());
+  request.mutable_resource_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
       &reply,

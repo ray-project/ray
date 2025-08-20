@@ -41,31 +41,31 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
 
   std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id,
                                                              int32_t max_restarts) {
-    rpc::TaskSpec message;
-    message.set_task_id(TaskID::FromRandom(job_id_).Binary());
+    rpc::LeaseSpec message;
+    message.set_lease_id(LeaseID::FromRandom().Binary());
     message.set_parent_task_id(owner_id.Binary());
-    message.mutable_actor_creation_task_spec()->set_max_actor_restarts(max_restarts);
+    message.set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
-    TaskSpecification task_spec(message);
-    RayTask task(task_spec);
+    LeaseSpecification lease_spec(message);
+    RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedTask(task);
-    worker->AssignTaskId(task.GetTaskSpecification().TaskId());
+    worker->SetAssignedLease(lease);
+    worker->AssignLeaseId(lease.GetLeaseSpecification().LeaseId());
     return worker;
   }
 
   std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
                                                     int32_t max_retries) {
-    rpc::TaskSpec message;
-    message.set_task_id(TaskID::FromRandom(job_id_).Binary());
+    rpc::LeaseSpec message;
+    message.set_lease_id(LeaseID::FromRandom().Binary());
     message.set_parent_task_id(owner_id.Binary());
     message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
-    TaskSpecification task_spec(message);
-    RayTask task(task_spec);
+    LeaseSpecification lease_spec(message);
+    RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedTask(task);
-    worker->AssignTaskId(task.GetTaskSpecification().TaskId());
+    worker->SetAssignedLease(lease);
+    worker->AssignLeaseId(lease.GetLeaseSpecification().LeaseId());
     return worker;
   }
 };

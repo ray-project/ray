@@ -33,7 +33,7 @@ ray_cc_library(
     name = "scheduler_internal",
     hdrs = ["internal.h"],
     deps = [
-        "//src/ray/common:lease_common",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:node_manager_cc_proto",
@@ -88,7 +88,7 @@ ray_cc_library(
         ":local_lease_manager_interface",
         ":scheduler_internal",
         ":scheduler_resource_reporter",
-        "//src/ray/common:lease_common",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",

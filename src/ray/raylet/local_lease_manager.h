@@ -63,7 +63,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
-  /// \param lease_lease_dependency_manager_ Used to fetch lease's dependencies.
+  /// \param lease_dependency_manager_ Used to fetch lease's dependencies.
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
@@ -78,7 +78,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   LocalLeaseManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      LeaseDependencyManagerInterface &lease_lease_dependency_manager,
+      LeaseDependencyManagerInterface &lease_dependency_manager,
       internal::NodeInfoGetter get_node_info,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -276,7 +276,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// Responsible for resource tracking/view of the cluster.
   ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make lease dependencies to be local.
-  LeaseDependencyManagerInterface &lease_lease_dependency_manager_;
+  LeaseDependencyManagerInterface &lease_dependency_manager_;
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
 
@@ -304,8 +304,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   absl::flat_hash_map<SchedulingClass, SchedulingClassInfo> info_by_sched_cls_;
 
   /// Queue of lease requests that should be scheduled onto workers.
-  /// Leases move from scheduled | waiting -> grant.
-  /// Leases can also move from grant -> waiting if one of their arguments is
+  /// Leases move from scheduled | waiting -> granting.
+  /// Leases can also move from granting -> waiting if one of their arguments is
   /// evicted.
   /// All leases in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the lease
@@ -315,11 +315,11 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       leases_to_grant_;
 
   /// Leases waiting for arguments to be transferred locally.
-  /// Leases move from waiting -> grant.
-  /// Leases can also move from grant -> waiting if one of their arguments is
+  /// Leases move from waiting -> granting.
+  /// Leases can also move from granting -> waiting if one of their arguments is
   /// evicted.
   /// All leases in this map that have dependencies should be registered with
-  /// the dependency manager, so that they can be moved to grant once their
+  /// the dependency manager, so that they can be moved to granting once their
   /// dependencies are local.
 
   /// We keep these in a queue so that leases can be spilled back from the end
@@ -390,7 +390,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   friend class SchedulerStats;
   friend class LocalLeaseManagerTest;
   FRIEND_TEST(ClusterLeaseManagerTest, FeasibleToNonFeasible);
-  FRIEND_TEST(LocalLeaseManagerTest, TestLeaseDispatchingOrder);
+  FRIEND_TEST(LocalLeaseManagerTest, TestLeaseGrantingOrder);
 };
 }  // namespace raylet
 }  // namespace ray

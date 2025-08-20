@@ -323,10 +323,6 @@ JobID PlacementGroupID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
-// Define the static counter for LeaseID
-// 0 is reserved for the Driver lease ID
-std::atomic<uint32_t> LeaseID::counter_{1};
-
 LeaseID LeaseID::FromRandom() {
   std::string data(kUniqueBytesLength, 0);
   uint32_t current_counter = counter_.fetch_add(1);

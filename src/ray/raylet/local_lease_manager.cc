@@ -34,7 +34,7 @@ namespace raylet {
 LocalLeaseManager::LocalLeaseManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    LeaseDependencyManagerInterface &lease_lease_dependency_manager,
+    LeaseDependencyManagerInterface &lease_dependency_manager,
     internal::NodeInfoGetter get_node_info,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -47,7 +47,7 @@ LocalLeaseManager::LocalLeaseManager(
     : self_node_id_(self_node_id),
       self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      lease_lease_dependency_manager_(lease_lease_dependency_manager),
+      lease_dependency_manager_(lease_dependency_manager),
       get_node_info_(get_node_info),
       max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
@@ -86,13 +86,13 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
   const auto &scheduling_key = lease.GetLeaseSpecification().GetSchedulingClass();
   auto object_ids = lease.GetLeaseSpecification().GetDependencies();
   if (!object_ids.empty()) {
-    bool args_ready = lease_lease_dependency_manager_.RequestLeaseDependencies(
+    bool args_ready = lease_dependency_manager_.RequestLeaseDependencies(
         lease_id,
         lease.GetLeaseSpecification().GetDependencies(),
         {lease.GetLeaseSpecification().GetTaskName(),
          lease.GetLeaseSpecification().IsRetry()});
     if (args_ready) {
-      RAY_LOG(DEBUG) << "Args already ready, lease can be dispatched " << lease_id;
+      RAY_LOG(DEBUG) << "Args already ready, lease can be granted " << lease_id;
       leases_to_grant_[scheduling_key].emplace_back(std::move(work));
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for lease: " << lease_id;
@@ -100,7 +100,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
       RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
     }
   } else {
-    RAY_LOG(DEBUG) << "No args, lease can be dispatched " << lease_id;
+    RAY_LOG(DEBUG) << "No args, lease can be granted " << lease_id;
     leases_to_grant_[scheduling_key].emplace_back(std::move(work));
   }
 }
@@ -116,7 +116,7 @@ void LocalLeaseManager::ScheduleAndGrantLeases() {
 }
 
 void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
-  // Check every lease in lease_to_grant queue to see
+  // Check every lease in leases_to_grant queue to see
   // whether it can be granted and ran. This avoids head-of-line
   // blocking where a lease which cannot be granted because
   // there are not enough available resources blocks other
@@ -451,7 +451,7 @@ void LocalLeaseManager::SpillWaitingLeases() {
     // feasible node, even if we have enough resources available locally for
     // placement.
     bool lease_dependencies_blocked =
-        lease_lease_dependency_manager_.LeaseDependenciesBlocked(lease_id);
+        lease_dependency_manager_.LeaseDependenciesBlocked(lease_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting lease " << lease_id
                    << " to remote node. Dependencies blocked? "
                    << lease_dependencies_blocked;
@@ -478,7 +478,7 @@ void LocalLeaseManager::SpillWaitingLeases() {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
       if (!lease_spec.GetDependencies().empty()) {
-        lease_lease_dependency_manager_.RemoveLeaseDependencies(lease_id);
+        lease_dependency_manager_.RemoveLeaseDependencies(lease_id);
       }
       num_waiting_lease_spilled_++;
       waiting_leases_index_.erase(lease_id);
@@ -521,7 +521,7 @@ bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work
   Spillback(node_id, work);
   num_unschedulable_lease_spilled_++;
   if (!spec.GetDependencies().empty()) {
-    lease_lease_dependency_manager_.RemoveLeaseDependencies(spec.LeaseId());
+    lease_dependency_manager_.RemoveLeaseDependencies(spec.LeaseId());
   }
   return true;
 }
@@ -539,7 +539,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   const auto &callback = work->callback;
   const bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &lease = work->lease;
-  bool dispatched = false;
+  bool granted = false;
 
   if (!canceled) {
     const auto &required_resource =
@@ -584,7 +584,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
 
         const auto &lease = work->lease;
         if (!lease.GetLeaseSpecification().GetDependencies().empty()) {
-          lease_lease_dependency_manager_.RemoveLeaseDependencies(
+          lease_dependency_manager_.RemoveLeaseDependencies(
               lease.GetLeaseSpecification().LeaseId());
         }
       };
@@ -599,7 +599,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   }
 
   if (!worker) {
-    dispatched = false;
+    granted = false;
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
         work->allocated_instances);
@@ -653,10 +653,10 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     Grant(
         worker, leased_workers_, work->allocated_instances, work->lease, reply, callback);
     erase_from_leases_to_grant_queue_fn(work, scheduling_class);
-    dispatched = true;
+    granted = true;
   }
 
-  return dispatched;
+  return granted;
 }
 
 void LocalLeaseManager::Spillback(const NodeID &spillback_to,
@@ -878,7 +878,7 @@ bool LocalLeaseManager::CancelLeases(
         if (predicate(work)) {
           ReplyCancelled(work, failure_type, scheduling_failure_message);
           if (!work->lease.GetLeaseSpecification().GetDependencies().empty()) {
-            lease_lease_dependency_manager_.RemoveLeaseDependencies(
+            lease_dependency_manager_.RemoveLeaseDependencies(
                 work->lease.GetLeaseSpecification().LeaseId());
           }
           waiting_leases_index_.erase(work->lease.GetLeaseSpecification().LeaseId());
@@ -907,7 +907,7 @@ void LocalLeaseManager::CancelLeaseToGrant(
     ReleaseLeaseArgs(lease_id);
   }
   if (!work->lease.GetLeaseSpecification().GetDependencies().empty()) {
-    lease_lease_dependency_manager_.RemoveLeaseDependencies(
+    lease_dependency_manager_.RemoveLeaseDependencies(
         work->lease.GetLeaseSpecification().LeaseId());
   }
   RemoveFromGrantedLeasesIfExists(work->lease);

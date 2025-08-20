@@ -36,34 +36,47 @@ class RayLease {
   RayLease() = default;
 
   /// Construct a `RayLease` object from a protobuf message.
-  explicit RayLease(rpc::LeaseSpec lease_spec);
+  explicit RayLease(rpc::LeaseSpec lease_spec)
+      : lease_spec_(LeaseSpecification(std::move(lease_spec))) {
+    ComputeDependencies();
+  }
 
   /// Construct a `RayLease` object from a `LeaseSpecification`.
-  explicit RayLease(LeaseSpecification lease_spec);
+  explicit RayLease(LeaseSpecification lease_spec) : lease_spec_(std::move(lease_spec)) {
+    ComputeDependencies();
+  }
 
-  RayLease(LeaseSpecification lease_spec, std::string preferred_node_id);
+  RayLease(LeaseSpecification lease_spec, std::string preferred_node_id)
+      : lease_spec_(std::move(lease_spec)),
+        preferred_node_id_(std::move(preferred_node_id)) {
+    ComputeDependencies();
+  }
 
   /// Get the immutable specification for the lease.
   ///
   /// \return The immutable specification for the lease.
-  const LeaseSpecification &GetLeaseSpecification() const;
+  const LeaseSpecification &GetLeaseSpecification() const { return lease_spec_; }
 
   /// Get the lease's object dependencies. This comprises the immutable lease
   /// arguments and the mutable execution dependencies.
   ///
   /// \return The object dependencies.
-  const std::vector<rpc::ObjectReference> &GetDependencies() const;
+  const std::vector<rpc::ObjectReference> &GetDependencies() const {
+    return dependencies_;
+  }
 
   /// Get the lease's preferred node id for scheduling. If the returned value
   /// is empty, then it means the lease has no preferred node.
   ///
   /// \return The preferred node id.
-  const std::string &GetPreferredNodeID() const;
+  const std::string &GetPreferredNodeID() const { return preferred_node_id_; }
 
-  std::string DebugString() const;
+  std::string DebugString() const {
+    return absl::StrFormat("lease_spec={%s}", lease_spec_.DebugString());
+  }
 
  private:
-  void ComputeDependencies();
+  void ComputeDependencies() { dependencies_ = lease_spec_.GetDependencies(); }
 
   /// RayLease specification object, consisting of immutable information about this
   /// lease determined at submission time. Includes resource demand, object

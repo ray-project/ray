@@ -32,24 +32,24 @@ class WorkerKillerTest : public ::testing::Test {
   RetriableFIFOWorkerKillingPolicy worker_killing_policy_;
 
   std::shared_ptr<WorkerInterface> CreateActorCreationWorker(int32_t max_restarts) {
-    rpc::TaskSpec message;
-    message.mutable_actor_creation_task_spec()->set_max_actor_restarts(max_restarts);
+    rpc::LeaseSpec message;
+    message.set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
-    TaskSpecification task_spec(message);
-    RayTask task(task_spec);
+    LeaseSpecification lease_spec(message);
+    RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedTask(task);
+    worker->SetAssignedLease(lease);
     return worker;
   }
 
   std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries) {
-    rpc::TaskSpec message;
+    rpc::LeaseSpec message;
     message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
-    TaskSpecification task_spec(message);
-    RayTask task(task_spec);
+    LeaseSpecification lease_spec(message);
+    RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedTask(task);
+    worker->SetAssignedLease(lease);
     return worker;
   }
 };

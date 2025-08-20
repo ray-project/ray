@@ -171,7 +171,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:lease_common",
+        "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

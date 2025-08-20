@@ -481,12 +481,12 @@ class WorkerPool : public WorkerPoolInterface {
   void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override;
 
-  /// Try to prestart a number of workers suitable the given task spec. Prestarting
+  /// Try to prestart a number of workers suitable the given lease spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
   /// then it means it takes a long time to scale up.
   ///
-  /// \param task_spec The returned worker must be able to execute this task.
-  /// \param backlog_size The number of tasks in the client backlog of this shape.
+  /// \param lease_spec The returned worker must be able to execute this lease.
+  /// \param backlog_size The number of leases in the client backlog of this shape.
   /// We aim to prestart 1 worker per CPU, up to the backlog size.
   void PrestartWorkers(const LeaseSpecification &lease_spec,
                        int64_t backlog_size) override;

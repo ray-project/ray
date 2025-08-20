@@ -71,11 +71,9 @@ struct Group {
   absl::Time earliest_granted_lease_time_ = absl::Now();
 
   /// The owner id shared by leases of this group.
-  /// TODO(clarng): make this const and implement move / swap.
   TaskID owner_id_;
 
   /// Whether the leases are retriable.
-  /// TODO(clarng): make this const and implement move / swap.
   bool retriable_;
 };
 

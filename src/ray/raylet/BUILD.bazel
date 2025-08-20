@@ -25,7 +25,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:lease_common",
+        "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "//src/ray/object_manager",
         "//src/ray/util:counter_map",
@@ -224,7 +224,7 @@ ray_cc_library(
         ":worker_killing_policy",
         ":worker_pool",
         "//src/ray/common:buffer",
-        "//src/ray/common:lease_common",
+        "//src/ray/common:lease",
         "//src/ray/common:memory_monitor",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/flatbuffers:node_manager_generated",

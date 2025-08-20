@@ -363,14 +363,14 @@ class WorkerPoolMock : public WorkerPool {
   // \param[in] push_workers If true, tries to push the workers from the started
   // processes.
   std::shared_ptr<WorkerInterface> PopWorkerSync(
-      const TaskSpecification &task_spec,
+      const LeaseSpecification &lease_spec,
       bool push_workers = true,
       PopWorkerStatus *worker_status = nullptr,
       int timeout_worker_number = 0,
       std::string *runtime_env_error_msg = nullptr) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
-    this->PopWorker(task_spec,
+    this->PopWorker(lease_spec,
                     [&popped_worker, worker_status, &promise, runtime_env_error_msg](
                         const std::shared_ptr<WorkerInterface> worker,
                         PopWorkerStatus status,
@@ -386,7 +386,7 @@ class WorkerPoolMock : public WorkerPool {
                       return true;
                     });
     if (push_workers) {
-      PushWorkers(timeout_worker_number, task_spec.JobId());
+      PushWorkers(timeout_worker_number, lease_spec.JobId());
     }
     promise.get_future().get();
     return popped_worker;
@@ -456,7 +456,7 @@ class WorkerPoolTest : public ::testing::Test {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver =
         worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
-    driver->AssignTaskId(TaskID::ForDriverTask(job_id));
+    driver->AssignLeaseId(LeaseID::FromRandom());
     RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
     return driver;
   }
@@ -528,29 +528,29 @@ static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfoFromString(
   return runtime_env_info;
 }
 
-static inline TaskSpecification ExampleTaskSpec(
+static inline LeaseSpecification ExampleLeaseSpec(
     const ActorID actor_id = ActorID::Nil(),
     const Language &language = Language::PYTHON,
     const JobID &job_id = JOB_ID,
     const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {},
-    const TaskID &task_id = TaskID::FromRandom(JobID::Nil()),
+    const LeaseID &lease_id = LeaseID::FromRandom(),
     const rpc::RuntimeEnvInfo runtime_env_info = rpc::RuntimeEnvInfo(),
     std::unordered_map<std::string, double> resources = {{"CPU", 1}}) {
-  rpc::TaskSpec message;
+  rpc::LeaseSpec message;
   message.set_job_id(job_id.Binary());
   message.set_language(language);
-  // Make sure no reduplicative task id.
-  RAY_CHECK(!task_id.IsNil());
-  message.set_task_id(task_id.Binary());
+  // Make sure no reduplicative lease id.
+  RAY_CHECK(!lease_id.IsNil());
+  message.set_lease_id(lease_id.Binary());
   if (!actor_id.IsNil()) {
     message.set_type(TaskType::ACTOR_TASK);
-    message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
+    message.set_actor_id(actor_id.Binary());
   } else if (!actor_creation_id.IsNil()) {
     message.set_type(TaskType::ACTOR_CREATION_TASK);
-    message.mutable_actor_creation_task_spec()->set_actor_id(actor_creation_id.Binary());
+    message.set_actor_id(actor_creation_id.Binary());
     for (const auto &option : dynamic_worker_options) {
-      message.mutable_actor_creation_task_spec()->add_dynamic_worker_options(option);
+      message.add_dynamic_worker_options(option);
     }
   } else {
     message.set_type(TaskType::NORMAL_TASK);
@@ -558,7 +558,7 @@ static inline TaskSpecification ExampleTaskSpec(
   message.mutable_required_resources()->insert(resources.begin(), resources.end());
 
   message.mutable_runtime_env_info()->CopyFrom(runtime_env_info);
-  return TaskSpecification(std::move(message));
+  return LeaseSpecification(std::move(message));
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
@@ -649,42 +649,42 @@ TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
-  const auto task_spec = ExampleTaskSpec();
+  const auto lease_spec = ExampleLeaseSpec();
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2);
+  worker_pool_->PrestartWorkers(lease_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3);
+  worker_pool_->PrestartWorkers(lease_spec, 3);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1);
+  worker_pool_->PrestartWorkers(lease_spec, 1);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // Capped by soft limit.
-  worker_pool_->PrestartWorkers(task_spec, 20);
+  worker_pool_->PrestartWorkers(lease_spec, 20);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
-  auto task_spec = ExampleTaskSpec();
-  task_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
+  auto lease_spec = ExampleLeaseSpec();
+  lease_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
       "{\"env_vars\": {\"FOO\": \"bar\"}}");
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2);
+  worker_pool_->PrestartWorkers(lease_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3);
+  worker_pool_->PrestartWorkers(lease_spec, 3);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1);
+  worker_pool_->PrestartWorkers(lease_spec, 1);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // Capped by soft limit.
-  worker_pool_->PrestartWorkers(task_spec, 20);
+  worker_pool_->PrestartWorkers(lease_spec, 20);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   std::shared_ptr<WorkerInterface> popped_worker;
-  const auto task_spec = ExampleTaskSpec();
+  const auto lease_spec = ExampleLeaseSpec();
   // Create some workers.
   std::unordered_set<std::shared_ptr<WorkerInterface>> workers;
   workers.insert(worker_pool_->CreateWorker(Process::CreateNewDummy()));
@@ -694,15 +694,15 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
     worker_pool_->PushWorker(worker);
   }
   // Pop two workers and make sure they're one of the workers we created.
-  popped_worker = worker_pool_->PopWorkerSync(task_spec);
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_GT(workers.count(popped_worker), 0);
-  popped_worker = worker_pool_->PopWorkerSync(task_spec);
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_GT(workers.count(popped_worker), 0);
   // Pop a worker from the empty pool and make sure it isn't one of the workers we
   // created.
-  popped_worker = worker_pool_->PopWorkerSync(task_spec);
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(workers.count(popped_worker), 0);
 }
@@ -712,26 +712,26 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
   auto py_worker =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
   worker_pool_->PushWorker(py_worker);
-  // Check that the Python worker will not be popped if the given task is a Java task
-  const auto java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA);
-  ASSERT_NE(worker_pool_->PopWorkerSync(java_task_spec), py_worker);
-  // Check that the Python worker can be popped if the given task is a Python task
-  const auto py_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(py_task_spec), py_worker);
+  // Check that the Python worker will not be popped if the given lease is a Java lease
+  const auto java_lease_spec = ExampleLeaseSpec(ActorID::Nil(), Language::JAVA);
+  ASSERT_NE(worker_pool_->PopWorkerSync(java_lease_spec), py_worker);
+  // Check that the Python worker can be popped if the given lease is a Python lease
+  const auto py_lease_spec = ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON);
+  ASSERT_EQ(worker_pool_->PopWorkerSync(py_lease_spec), py_worker);
 
   // Create a Java Worker, and add it to the pool
   auto java_worker =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA);
   worker_pool_->PushWorker(java_worker);
-  // Check that the Java worker will be popped now for Java task
-  ASSERT_EQ(worker_pool_->PopWorkerSync(java_task_spec), java_worker);
+  // Check that the Java worker will be popped now for Java lease
+  ASSERT_EQ(worker_pool_->PopWorkerSync(java_lease_spec), java_worker);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
-  auto task_id = TaskID::FromRandom(JOB_ID);
-  TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {}, task_id);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), nullptr);
+  auto lease_id = LeaseID::FromRandom();
+  LeaseSpecification lease_spec = ExampleLeaseSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {}, lease_id);
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
@@ -755,10 +755,13 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
       actor_jvm_options.end(),
       {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
   JobID job_id = JobID::FromInt(12345);
-  auto task_id = TaskID::ForDriverTask(job_id);
-  auto actor_id = ActorID::Of(job_id, task_id, 1);
-  TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA, job_id, actor_id, actor_jvm_options, task_id);
+  auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+  LeaseSpecification lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                                   Language::JAVA,
+                                                   job_id,
+                                                   actor_id,
+                                                   actor_jvm_options,
+                                                   LeaseID::FromRandom());
 
   rpc::JobConfig job_config = rpc::JobConfig();
   job_config.add_code_search_path("/test/code_search_path");
@@ -768,7 +771,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   job_config.add_jvm_options("-Dmy-job.foo=bar");
   worker_pool_->HandleJobStarted(job_id, job_config);
 
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), nullptr);
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
@@ -839,7 +842,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), POOL_SIZE_SOFT_LIMIT + 2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
-  // The worker registered. There's no pending tasks so it becomes idle.
+  // The worker registered. There's no pending leases so it becomes idle.
   worker_pool_->PushWorkers(0, JOB_ID);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
   ASSERT_EQ(worker_pool_->GetProcessSize(), POOL_SIZE_SOFT_LIMIT + 2);
@@ -880,9 +883,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
       // Make the first worker an actor worker.
       if (i == 0) {
         auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-        auto task_spec = ExampleTaskSpec(
+        auto lease_spec = ExampleLeaseSpec(
             /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
-        runtime_env_hash = task_spec.GetRuntimeEnvHash();
+        runtime_env_hash = lease_spec.GetRuntimeEnvHash();
       }
       auto worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
                                                Language::PYTHON,
@@ -899,19 +902,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
     // Pop workers for actor.
     for (auto job_id : job_ids) {
       auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-      // Pop workers for actor creation tasks.
-      auto task_spec = ExampleTaskSpec(
+      // Pop workers for actor creation leases.
+      auto lease_spec = ExampleLeaseSpec(
           /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
-      auto worker = worker_pool_->PopWorkerSync(task_spec);
+      auto worker = worker_pool_->PopWorkerSync(lease_spec);
       ASSERT_TRUE(worker);
       ASSERT_EQ(worker->GetAssignedJobId(), job_id);
       workers.push_back(worker);
     }
 
-    // Pop workers for normal tasks.
+    // Pop workers for normal leases.
     for (auto job_id : job_ids) {
-      auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
-      auto worker = worker_pool_->PopWorkerSync(task_spec);
+      auto lease_spec = ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_id);
+      auto worker = worker_pool_->PopWorkerSync(lease_spec);
       ASSERT_TRUE(worker);
       ASSERT_EQ(worker->GetAssignedJobId(), job_id);
       workers.push_back(worker);
@@ -931,8 +934,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
   }
 }
 
-// Tests the worker assignment logic for task specs that have a root detached actor ID.
-// These tasks:
+// Tests the worker assignment logic for lease specs that have a root detached actor ID.
+// These leases:
 //   - Must be matched to workers that have a matching job ID (or no job ID).
 //   - Must be matched to workers that have a matching detached actor ID (or no detached
 //   actor ID).
@@ -942,10 +945,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
 
   // NOTE: in all test cases the request has job_1_detached_actor_1 as its root detached
   // actor.
-  auto detached_actor_id_1_job_1 = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
-  auto task_spec_job_1_detached_actor_1 =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
-  task_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
+  auto detached_actor_id_1_job_1 =
+      ActorID::Of(job_1_id, TaskID::ForDriverTask(job_1_id), 0);
+  auto lease_spec_job_1_detached_actor_1 =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  lease_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_1_job_1.Binary());
 
   // Case 1 (match):
@@ -954,7 +958,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
       Process::CreateNewDummy(), Language::PYTHON, JobID::Nil());
 
   worker_pool_->PushWorker(worker_no_job_no_detached_actor);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_EQ(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_no_job_no_detached_actor);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
@@ -964,7 +968,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
 
   worker_pool_->PushWorker(worker_job_1_no_detached_actor);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_EQ(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_1_no_detached_actor);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
@@ -972,12 +976,12 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   //   worker has matching root detached actor ID and job ID
   auto worker_job_1_detached_actor_1 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
-  RayTask job_1_detached_actor_1_task(task_spec_job_1_detached_actor_1);
-  worker_job_1_detached_actor_1->SetAssignedTask(job_1_detached_actor_1_task);
-  worker_job_1_detached_actor_1->AssignTaskId(TaskID::Nil());
+  RayLease job_1_detached_actor_1_lease(lease_spec_job_1_detached_actor_1);
+  worker_job_1_detached_actor_1->SetAssignedLease(job_1_detached_actor_1_lease);
+  worker_job_1_detached_actor_1->AssignLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_1);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_EQ(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
@@ -987,7 +991,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
 
   worker_pool_->PushWorker(worker_job_2_no_detached_actor);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_2_no_detached_actor);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_2_no_detached_actor->MarkDead();
@@ -998,17 +1002,18 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   //   worker has mismatched detached actor ID and mismatched job ID
   auto worker_job_2_detached_actor_3 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
-  auto detached_actor_3_id_job_2 = ActorID::Of(job_2_id, TaskID::FromRandom(job_2_id), 0);
-  auto task_spec_job_2_detached_actor_3 =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
-  task_spec_job_2_detached_actor_3.GetMutableMessage().set_root_detached_actor_id(
+  auto detached_actor_3_id_job_2 =
+      ActorID::Of(job_2_id, TaskID::ForDriverTask(job_2_id), 0);
+  auto lease_spec_job_2_detached_actor_3 =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
+  lease_spec_job_2_detached_actor_3.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_3_id_job_2.Binary());
-  RayTask job_2_detached_actor_3_task(task_spec_job_2_detached_actor_3);
-  worker_job_2_detached_actor_3->SetAssignedTask(job_2_detached_actor_3_task);
-  worker_job_2_detached_actor_3->AssignTaskId(TaskID::Nil());
+  RayLease job_2_detached_actor_3_lease(lease_spec_job_2_detached_actor_3);
+  worker_job_2_detached_actor_3->SetAssignedLease(job_2_detached_actor_3_lease);
+  worker_job_2_detached_actor_3->AssignLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_2_detached_actor_3);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_2_detached_actor_3);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_2_detached_actor_3->MarkDead();
@@ -1019,17 +1024,18 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   //   worker has mismatched detached actor ID and matching job ID
   auto worker_job_1_detached_actor_2 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
-  auto detached_actor_id_2_job_1 = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 1);
-  auto task_spec_job_1_detached_actor_2 =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
-  task_spec_job_1_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
+  auto detached_actor_id_2_job_1 =
+      ActorID::Of(job_1_id, TaskID::ForDriverTask(job_1_id), 1);
+  auto lease_spec_job_1_detached_actor_2 =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  lease_spec_job_1_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_2_job_1.Binary());
-  RayTask job_1_detached_actor_2_task(task_spec_job_1_detached_actor_2);
-  worker_job_1_detached_actor_2->SetAssignedTask(job_1_detached_actor_2_task);
-  worker_job_1_detached_actor_2->AssignTaskId(TaskID::Nil());
+  RayLease job_1_detached_actor_2_lease(lease_spec_job_1_detached_actor_2);
+  worker_job_1_detached_actor_2->SetAssignedLease(job_1_detached_actor_2_lease);
+  worker_job_1_detached_actor_2->AssignLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_2);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_1_detached_actor_2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_1_detached_actor_2->MarkDead();
@@ -1044,16 +1050,16 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Test the worker pool logic regardless for completeness.
   auto worker_job_2_detached_actor_1 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
-  auto task_spec_job_2_detached_actor_1 =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
-  task_spec_job_2_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
+  auto lease_spec_job_2_detached_actor_1 =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
+  lease_spec_job_2_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_1_job_1.Binary());
-  RayTask job_2_detached_actor_1_task(task_spec_job_2_detached_actor_1);
-  worker_job_2_detached_actor_1->SetAssignedTask(job_2_detached_actor_1_task);
-  worker_job_2_detached_actor_1->AssignTaskId(TaskID::Nil());
+  RayLease job_2_detached_actor_1_lease(lease_spec_job_2_detached_actor_1);
+  worker_job_2_detached_actor_1->SetAssignedLease(job_2_detached_actor_1_lease);
+  worker_job_2_detached_actor_1->AssignLeaseId(LeaseID::Nil());
 
   worker_pool_->PushWorker(worker_job_2_detached_actor_1);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_2_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_2_detached_actor_1->MarkDead();
@@ -1062,7 +1068,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
 }
 
 // Tests the worker assignment logic for workers that have a root detached actor ID
-// but tasks that *don't* have one.
+// but leases that *don't* have one.
 //
 // Workers with a root detached actor ID can be used so long as their job ID matches
 // or hasn't been assigned yet.
@@ -1073,63 +1079,65 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRootDetachedActorID) {
   // NOTE: in all test cases the only worker in the pool is worker_job_1_detached_actor_1.
   auto worker_job_1_detached_actor_1 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
-  auto task_spec_job_1_detached_actor_1 =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
-  auto detached_actor_id_1_job_1 = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
-  task_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
+  auto lease_spec_job_1_detached_actor_1 =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  auto detached_actor_id_1_job_1 =
+      ActorID::Of(job_1_id, TaskID::ForDriverTask(job_1_id), 0);
+  lease_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
       detached_actor_id_1_job_1.Binary());
-  RayTask job_1_detached_actor_1_task(task_spec_job_1_detached_actor_1);
-  worker_job_1_detached_actor_1->SetAssignedTask(job_1_detached_actor_1_task);
-  worker_job_1_detached_actor_1->AssignTaskId(TaskID::Nil());
+  RayLease job_1_detached_actor_1_lease(lease_spec_job_1_detached_actor_1);
+  worker_job_1_detached_actor_1->SetAssignedLease(job_1_detached_actor_1_lease);
+  worker_job_1_detached_actor_1->AssignLeaseId(LeaseID::Nil());
 
   // Case 1 (match):
   //   request has no root detached actor ID and matching job ID
-  auto task_spec_job_1_no_detached_actor =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  auto lease_spec_job_1_no_detached_actor =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_1);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_no_detached_actor),
+  ASSERT_EQ(worker_pool_->PopWorkerSync(lease_spec_job_1_no_detached_actor),
             worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   // Case 2 (match):
   //   request has matching root detached actor ID and matching job ID
   worker_pool_->PushWorker(worker_job_1_detached_actor_1);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+  ASSERT_EQ(worker_pool_->PopWorkerSync(lease_spec_job_1_detached_actor_1),
             worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   // Case 3 (mismatch):
   //   request has no root detached actor ID and mismatched job ID
-  auto task_spec_job_2_no_detached_actor =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
+  auto lease_spec_job_2_no_detached_actor =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_1);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_2_no_detached_actor),
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_2_no_detached_actor),
             worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
   // Case 4 (mismatch):
   //   request has mismatched root detached actor ID and mismatched job ID
-  auto task_spec_job_2_detached_actor_2 =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
-  auto job_2_detached_actor_2_id = ActorID::Of(job_2_id, TaskID::FromRandom(job_2_id), 0);
-  task_spec_job_2_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
+  auto lease_spec_job_2_detached_actor_2 =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
+  auto job_2_detached_actor_2_id =
+      ActorID::Of(job_2_id, TaskID::ForDriverTask(job_2_id), 0);
+  lease_spec_job_2_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
       job_2_detached_actor_2_id.Binary());
 
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_2_detached_actor_2),
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec_job_2_detached_actor_2),
             worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
-  auto task_spec = ExampleTaskSpec();
+  auto lease_spec = ExampleLeaseSpec();
   std::vector<Process> started_processes;
 
   // Try to pop some workers. Some worker processes will be started.
   for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
     worker_pool_->PopWorker(
-        task_spec,
+        lease_spec,
         [](const std::shared_ptr<WorkerInterface> worker,
            PopWorkerStatus status,
            const std::string &runtime_env_setup_error_message) -> bool { return true; });
@@ -1143,7 +1151,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
 
   // Can't start a new worker process at this point.
   worker_pool_->PopWorker(
-      task_spec,
+      lease_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
@@ -1171,7 +1179,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
   // Can't start a new worker process at this point.
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   worker_pool_->PopWorker(
-      task_spec,
+      lease_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
@@ -1191,7 +1199,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
 
   // Can't start a new worker process at this point.
   worker_pool_->PopWorker(
-      task_spec,
+      lease_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
@@ -1248,7 +1256,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
   spill_workers.insert(CreateSpillWorker(Process()));
   spill_workers.insert(CreateSpillWorker(Process()));
   // Add the workers to the pool.
-  // 2 pending tasks / 2 new idle workers.
+  // 2 pending leases / 2 new idle workers.
   for (const auto &worker : spill_workers) {
     auto status = PopWorkerStatus::OK;
     auto [proc, token] = worker_pool_->StartWorkerProcess(
@@ -1276,7 +1284,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
     worker_pool_->OnWorkerStarted(worker);
   }
   // Now push back to used workers
-  // 0 pending task, 3 idle workers.
+  // 0 pending lease, 3 idle workers.
   for (const auto &worker : spill_workers) {
     worker_pool_->PushSpillWorker(worker);
   }
@@ -1497,20 +1505,20 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   ///
   std::vector<std::shared_ptr<WorkerInterface>> popped_workers;
   for (int i = 0; i < num_workers; i++) {
-    // Pop workers for actor creation tasks.
-    auto task_spec =
-        ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
-    auto worker = worker_pool_->PopWorkerSync(task_spec, false);
-    // Simulate running the task and finish. This is to set task_assign_time_.
-    RayTask task(task_spec);
-    worker->SetAssignedTask(task);
-    worker->AssignTaskId(TaskID::Nil());
+    // Pop workers for actor creation leases.
+    auto lease_spec =
+        ExampleLeaseSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+    auto worker = worker_pool_->PopWorkerSync(lease_spec, false);
+    // Simulate granting the lease and finish. This is to set lease_granted_time_.
+    RayLease lease(lease_spec);
+    worker->SetAssignedLease(lease);
+    worker->AssignLeaseId(LeaseID::Nil());
 
     popped_workers.push_back(worker);
     ASSERT_TRUE(worker);
     ASSERT_EQ(worker->GetAssignedJobId(), job_id);
   }
-  // After scheduling an actor and task, there's no more idle worker.
+  // After granting a lease to each worker, there should be no idle workers.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   ///
@@ -1719,10 +1727,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
 
-  auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  auto lease_spec =
+      ExampleLeaseSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
   PopWorkerStatus pop_worker_status;
   // This PopWorker should fail since the job finished.
-  worker = worker_pool_->PopWorkerSync(task_spec, false, &pop_worker_status);
+  worker = worker_pool_->PopWorkerSync(lease_spec, false, &pop_worker_status);
   ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
   ASSERT_FALSE(worker);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
@@ -1735,12 +1744,12 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   job_id = JOB_ID_2;
   rpc::JobConfig job_config;
   RegisterDriver(Language::PYTHON, job_id, job_config);
-  task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  lease_spec = ExampleLeaseSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
   pop_worker_status = PopWorkerStatus::OK;
   // This will start a new worker.
   std::promise<bool> promise;
   worker_pool_->PopWorker(
-      task_spec,
+      lease_spec,
       [&](const std::shared_ptr<WorkerInterface> worker,
           PopWorkerStatus status,
           const std::string &runtime_env_setup_error_message) -> bool {
@@ -1795,9 +1804,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   worker_pool_->PushWorker(worker);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
-  /// Execute some task with the worker.
-  auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
-  worker = worker_pool_->PopWorkerSync(task_spec, false);
+  /// Grant some lease with the worker.
+  auto lease_spec =
+      ExampleLeaseSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  worker = worker_pool_->PopWorkerSync(lease_spec, false);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   /// Return the worker.
@@ -1888,41 +1898,41 @@ TEST_F(WorkerPoolDriverRegisteredTest,
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  const auto actor_creation_task_spec = ExampleTaskSpec(ActorID::Nil(),
-                                                        Language::PYTHON,
-                                                        JOB_ID,
-                                                        actor_creation_id,
-                                                        {"XXX=YYY"},
-                                                        TaskID::FromRandom(JobID::Nil()),
-                                                        ExampleRuntimeEnvInfo({"XXX"}));
-  const auto normal_task_spec = ExampleTaskSpec(ActorID::Nil(),
-                                                Language::PYTHON,
-                                                JOB_ID,
-                                                ActorID::Nil(),
-                                                {"XXX=YYY"},
-                                                TaskID::FromRandom(JobID::Nil()),
-                                                ExampleRuntimeEnvInfo({"XXX"}));
-  const auto normal_task_spec_without_runtime_env =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {});
-  // Pop worker for actor creation task again.
-  auto popped_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+  const auto actor_creation_lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                                          Language::PYTHON,
+                                                          JOB_ID,
+                                                          actor_creation_id,
+                                                          {"XXX=YYY"},
+                                                          LeaseID::FromRandom(),
+                                                          ExampleRuntimeEnvInfo({"XXX"}));
+  const auto normal_lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                                  Language::PYTHON,
+                                                  JOB_ID,
+                                                  ActorID::Nil(),
+                                                  {"XXX=YYY"},
+                                                  LeaseID::FromRandom(),
+                                                  ExampleRuntimeEnvInfo({"XXX"}));
+  const auto normal_lease_spec_without_runtime_env =
+      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {});
+  // Pop worker for actor creation lease again.
+  auto popped_worker = worker_pool_->PopWorkerSync(actor_creation_lease_spec);
   // Got a worker with correct runtime env hash.
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(popped_worker->GetRuntimeEnvHash(),
-            actor_creation_task_spec.GetRuntimeEnvHash());
+            actor_creation_lease_spec.GetRuntimeEnvHash());
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
-  // Pop worker for normal task.
-  popped_worker = worker_pool_->PopWorkerSync(normal_task_spec);
+  // Pop worker for normal lease.
+  popped_worker = worker_pool_->PopWorkerSync(normal_lease_spec);
   // Got a worker with correct runtime env hash.
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_EQ(popped_worker->GetRuntimeEnvHash(), normal_task_spec.GetRuntimeEnvHash());
+  ASSERT_EQ(popped_worker->GetRuntimeEnvHash(), normal_lease_spec.GetRuntimeEnvHash());
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
-  // Pop worker for normal task without runtime env.
-  popped_worker = worker_pool_->PopWorkerSync(normal_task_spec_without_runtime_env);
+  // Pop worker for normal lease without runtime env.
+  popped_worker = worker_pool_->PopWorkerSync(normal_lease_spec_without_runtime_env);
   // Got a worker with correct runtime env hash.
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(popped_worker->GetRuntimeEnvHash(),
-            normal_task_spec_without_runtime_env.GetRuntimeEnvHash());
+            normal_lease_spec_without_runtime_env.GetRuntimeEnvHash());
   ASSERT_EQ(worker_pool_->GetProcessSize(), 3);
 }
 
@@ -1971,25 +1981,24 @@ TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvUriReferenceWorkerLevel) {
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Start actor with runtime env.
     auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-    const auto actor_creation_task_spec =
-        ExampleTaskSpec(ActorID::Nil(),
-                        Language::PYTHON,
-                        job_id,
-                        actor_creation_id,
-                        {"XXX=YYY"},
-                        TaskID::FromRandom(JobID::Nil()),
-                        runtime_env_info);
-    auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+    const auto actor_creation_lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                                            Language::PYTHON,
+                                                            job_id,
+                                                            actor_creation_id,
+                                                            {"XXX=YYY"},
+                                                            LeaseID::FromRandom(),
+                                                            runtime_env_info);
+    auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_lease_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
-    // Start task with runtime env.
-    const auto normal_task_spec = ExampleTaskSpec(ActorID::Nil(),
-                                                  Language::PYTHON,
-                                                  job_id,
-                                                  ActorID::Nil(),
-                                                  {"XXX=YYY"},
-                                                  TaskID::FromRandom(JobID::Nil()),
-                                                  runtime_env_info);
-    auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+    // Start lease with runtime env.
+    const auto normal_lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                                    Language::PYTHON,
+                                                    job_id,
+                                                    ActorID::Nil(),
+                                                    {"XXX=YYY"},
+                                                    LeaseID::FromRandom(),
+                                                    runtime_env_info);
+    auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_lease_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 3);
     // Disconnect actor worker.
     worker_pool_->DisconnectWorker(popped_actor_worker,
@@ -2018,18 +2027,17 @@ TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvUriReferenceWorkerLevel) {
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
     // Start actor with runtime env.
     auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 2);
-    const auto actor_creation_task_spec =
-        ExampleTaskSpec(ActorID::Nil(),
-                        Language::PYTHON,
-                        job_id,
-                        actor_creation_id,
-                        {"XXX=YYY"},
-                        TaskID::FromRandom(JobID::Nil()),
-                        runtime_env_info);
-    auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+    const auto actor_creation_lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                                            Language::PYTHON,
+                                                            job_id,
+                                                            actor_creation_id,
+                                                            {"XXX=YYY"},
+                                                            LeaseID::FromRandom(),
+                                                            runtime_env_info);
+    auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_lease_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    // Start task with runtime env.
-    auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+    // Start lease with runtime env.
+    auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_lease_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect actor worker.
     worker_pool_->DisconnectWorker(popped_actor_worker,
@@ -2049,36 +2057,36 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
   ///
   /// Check that a worker can be popped only if there is a
   /// worker available whose runtime env matches the runtime env
-  /// in the task spec.
+  /// in the lease spec.
   ///
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  const auto actor_creation_task_spec_1 =
-      ExampleTaskSpec(ActorID::Nil(),
-                      Language::PYTHON,
-                      JOB_ID,
-                      actor_creation_id,
-                      /*dynamic_worker_options=*/{},
-                      TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
-  const auto task_spec_1 =
-      ExampleTaskSpec(ActorID::Nil(),
-                      Language::PYTHON,
-                      JOB_ID,
-                      ActorID::Nil(),
-                      /*dynamic_worker_options=*/{},
-                      TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
-  const auto task_spec_2 =
-      ExampleTaskSpec(ActorID::Nil(),
-                      Language::PYTHON,
-                      JOB_ID,
-                      ActorID::Nil(),
-                      /*dynamic_worker_options=*/{},
-                      TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString("mock_runtime_env_2"));
+  const auto actor_creation_lease_spec_1 =
+      ExampleLeaseSpec(ActorID::Nil(),
+                       Language::PYTHON,
+                       JOB_ID,
+                       actor_creation_id,
+                       /*dynamic_worker_options=*/{},
+                       LeaseID::FromRandom(),
+                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
+  const auto lease_spec_1 =
+      ExampleLeaseSpec(ActorID::Nil(),
+                       Language::PYTHON,
+                       JOB_ID,
+                       ActorID::Nil(),
+                       /*dynamic_worker_options=*/{},
+                       LeaseID::FromRandom(),
+                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
+  const auto lease_spec_2 =
+      ExampleLeaseSpec(ActorID::Nil(),
+                       Language::PYTHON,
+                       JOB_ID,
+                       ActorID::Nil(),
+                       /*dynamic_worker_options=*/{},
+                       LeaseID::FromRandom(),
+                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_2"));
 
-  const int runtime_env_hash_1 = actor_creation_task_spec_1.GetRuntimeEnvHash();
+  const int runtime_env_hash_1 = actor_creation_lease_spec_1.GetRuntimeEnvHash();
 
   // Push worker with runtime env 1.
   auto worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
@@ -2088,14 +2096,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
                                            runtime_env_hash_1);
   worker_pool_->PushWorker(worker);
 
-  // Try to pop worker for task with runtime env 2.
-  auto popped_worker = worker_pool_->PopWorkerSync(task_spec_2);
+  // Try to pop worker for lease with runtime env 2.
+  auto popped_worker = worker_pool_->PopWorkerSync(lease_spec_2);
   // Check that popped worker isn't the one we pushed.
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_NE(popped_worker, worker);
 
-  // Try to pop the worker for task with runtime env 1.
-  popped_worker = worker_pool_->PopWorkerSync(task_spec_1);
+  // Try to pop the worker for lease with runtime env 1.
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec_1);
   ASSERT_EQ(popped_worker, worker);
 
   // Push another worker with runtime env 1.
@@ -2107,7 +2115,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
   worker_pool_->PushWorker(worker);
 
   // Try to pop the worker for an actor with runtime env 1.
-  popped_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec_1);
+  popped_worker = worker_pool_->PopWorkerSync(actor_creation_lease_spec_1);
   // Check that we got the pushed worker.
   ASSERT_EQ(popped_worker, worker);
   worker_pool_->ClearProcesses();
@@ -2115,10 +2123,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   std::shared_ptr<WorkerInterface> popped_worker;
-  const auto task_spec = ExampleTaskSpec();
+  const auto lease_spec = ExampleLeaseSpec();
 
   // Pop a worker and don't dispatch.
-  worker_pool_->PopWorker(task_spec,
+  worker_pool_->PopWorker(lease_spec,
                           [](const std::shared_ptr<WorkerInterface> worker,
                              PopWorkerStatus status,
                              const std::string &runtime_env_setup_error_message) -> bool {
@@ -2130,11 +2138,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   // No idle workers because no workers pushed.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
   // push workers.
-  worker_pool_->PushWorkers(0, task_spec.JobId());
+  worker_pool_->PushWorkers(0, lease_spec.JobId());
   // The worker has been pushed but not dispatched.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   // Pop a worker and don't dispatch.
-  worker_pool_->PopWorker(task_spec,
+  worker_pool_->PopWorker(lease_spec,
                           [](const std::shared_ptr<WorkerInterface> worker,
                              PopWorkerStatus status,
                              const std::string &runtime_env_setup_error_message) -> bool {
@@ -2145,7 +2153,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   // Pop a worker and dispatch.
-  worker_pool_->PopWorker(task_spec,
+  worker_pool_->PopWorker(lease_spec,
                           [](const std::shared_ptr<WorkerInterface> worker,
                              PopWorkerStatus status,
                              const std::string &runtime_env_setup_error_message) -> bool {
@@ -2163,56 +2171,56 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
   PopWorkerStatus status;
 
   /* Test PopWorkerStatus JobConfigMissing */
-  // Create a task by unregistered job id.
+  // Create a lease by unregistered job id.
   auto job_id = JobID::FromInt(123);
-  auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
-  popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
+  auto lease_spec = ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_id);
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec, true, &status);
   // PopWorker failed and the status is `JobConfigMissing`.
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::JobConfigMissing);
 
   // Register driver fot the job.
   RegisterDriver(Language::PYTHON, job_id);
-  popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec, true, &status);
   // PopWorker success.
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::OK);
 
   /* Test PopWorkerStatus RuntimeEnvCreationFailed */
-  // Create a task with bad runtime env.
-  const auto task_spec_with_bad_runtime_env =
-      ExampleTaskSpec(ActorID::Nil(),
-                      Language::PYTHON,
-                      job_id,
-                      ActorID::Nil(),
-                      {"XXX=YYY"},
-                      TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv)));
+  // Create a lease with bad runtime env.
+  const auto lease_spec_with_bad_runtime_env =
+      ExampleLeaseSpec(ActorID::Nil(),
+                       Language::PYTHON,
+                       job_id,
+                       ActorID::Nil(),
+                       {"XXX=YYY"},
+                       LeaseID::FromRandom(),
+                       ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv)));
   std::string error_msg;
   popped_worker = worker_pool_->PopWorkerSync(
-      task_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
+      lease_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
   ASSERT_EQ(error_msg, kBadRuntimeEnvErrorMsg);
 
-  // Create a task with available runtime env.
-  const auto task_spec_with_runtime_env =
-      ExampleTaskSpec(ActorID::Nil(),
-                      Language::PYTHON,
-                      job_id,
-                      ActorID::Nil(),
-                      {"XXX=YYY"},
-                      TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfo({"XXX"}));
-  popped_worker = worker_pool_->PopWorkerSync(task_spec_with_runtime_env, true, &status);
+  // Create a lease with available runtime env.
+  const auto lease_spec_with_runtime_env =
+      ExampleLeaseSpec(ActorID::Nil(),
+                       Language::PYTHON,
+                       job_id,
+                       ActorID::Nil(),
+                       {"XXX=YYY"},
+                       LeaseID::FromRandom(),
+                       ExampleRuntimeEnvInfo({"XXX"}));
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec_with_runtime_env, true, &status);
   // PopWorker success.
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::OK);
 
   /* Test PopWorkerStatus WorkerPendingRegistration */
-  // Create a task without push worker.
-  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  // Create a lease without push worker.
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec, false, &status);
   ASSERT_EQ(popped_worker, nullptr);
   // PopWorker failed while the timer was triggered and the status is
   // `WorkerPendingRegistration`.
@@ -2223,9 +2231,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerPendingRegistrationErasesRequest) {
   std::shared_ptr<WorkerInterface> popped_worker;
   PopWorkerStatus status;
-  auto task_spec = ExampleTaskSpec();
-  // Create a task without push worker. It should time out (WorkerPendingRegistration).
-  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  auto lease_spec = ExampleLeaseSpec();
+  // Create a lease without push worker. It should time out (WorkerPendingRegistration).
+  popped_worker = worker_pool_->PopWorkerSync(lease_spec, false, &status);
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
   // The request should be erased.
@@ -2345,14 +2353,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
-  const auto task_spec = ExampleTaskSpec();
-  worker_pool_->PrestartWorkersInternal(task_spec, /*num_needed=*/1);
-  worker_pool_->PushWorkers(0, task_spec.JobId());
+  const auto lease_spec = ExampleLeaseSpec();
+  worker_pool_->PrestartWorkersInternal(lease_spec, /*num_needed=*/1);
+  worker_pool_->PushWorkers(0, lease_spec.JobId());
   // One worker process has been prestarted.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   // Pop a worker and don't dispatch.
-  auto popped_worker = worker_pool_->PopWorkerSync(task_spec);
+  auto popped_worker = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker, nullptr);
   // no new worker started since we can reuse the cached worker.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
@@ -2361,17 +2369,17 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForSameJobId) {
-  const auto task_spec = ExampleTaskSpec();
+  const auto lease_spec = ExampleLeaseSpec();
 
   // start one worker
-  auto popped_worker = worker_pool_->PopWorkerSync(task_spec);
+  auto popped_worker = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
   worker_pool_->PushWorker(popped_worker);
 
   // start a new worker withe same job_id resuse the same worker.
-  auto popped_worker1 = worker_pool_->PopWorkerSync(task_spec);
+  auto popped_worker1 = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker1, nullptr);
   ASSERT_EQ(popped_worker1, popped_worker);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
@@ -2379,11 +2387,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForSameJobId) {
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
-  const auto task_spec = ExampleTaskSpec();
-  const auto task_spec1 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID_2);
+  const auto lease_spec = ExampleLeaseSpec();
+  const auto lease_spec1 = ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, JOB_ID_2);
 
   // start one worker
-  auto popped_worker = worker_pool_->PopWorkerSync(task_spec);
+  auto popped_worker = worker_pool_->PopWorkerSync(lease_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
@@ -2392,7 +2400,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
   RegisterDriver(Language::PYTHON, JOB_ID_2);
 
   // start a new worker with different job_id requires a new worker.
-  auto popped_worker1 = worker_pool_->PopWorkerSync(task_spec1);
+  auto popped_worker1 = worker_pool_->PopWorkerSync(lease_spec1);
   ASSERT_NE(popped_worker1, nullptr);
   ASSERT_NE(popped_worker1, popped_worker);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
@@ -2402,7 +2410,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
 TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
+  driver->AssignLeaseId(LeaseID::FromRandom());
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
     *callback_called_ptr = true;
@@ -2414,7 +2422,7 @@ TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
 TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
+  driver->AssignLeaseId(LeaseID::FromRandom());
   RAY_CHECK_OK(
       worker_pool_->RegisterDriver(driver, rpc::JobConfig(), [](Status, int) {}));
 
@@ -2424,7 +2432,7 @@ TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   };
   auto second_driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  second_driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
+  second_driver->AssignLeaseId(LeaseID::FromRandom());
   RAY_CHECK_OK(worker_pool_->RegisterDriver(second_driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
 }
@@ -2433,7 +2441,7 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
 
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
+  driver->AssignLeaseId(LeaseID::FromRandom());
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
     *callback_called_ptr = true;

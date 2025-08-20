@@ -189,9 +189,8 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "lease_common",
+    name = "lease",
     srcs = [
-        "lease/lease.cc",
         "lease/lease_spec.cc",
     ],
     hdrs = [

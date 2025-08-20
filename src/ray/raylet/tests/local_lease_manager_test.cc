@@ -42,10 +42,10 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec,
+  void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override {
     num_pops++;
-    const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
+    const int runtime_env_hash = lease_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
@@ -81,7 +81,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     RAY_CHECK(status != PopWorkerStatus::OK);
     for (const auto &pair : callbacks) {
       for (const auto &callback : pair.second) {
-        // No task should be dispatched.
+        // No lease should be granted.
         ASSERT_FALSE(
             callback(nullptr,
                      status,
@@ -95,23 +95,23 @@ class MockWorkerPool : public WorkerPoolInterface {
     for (auto it = workers.begin(); it != workers.end();) {
       std::shared_ptr<WorkerInterface> worker = *it;
       auto runtime_env_hash = worker->GetRuntimeEnvHash();
-      bool dispatched = false;
+      bool granted = false;
       auto cb_it = callbacks.find(runtime_env_hash);
       if (cb_it != callbacks.end()) {
         auto &list = cb_it->second;
         RAY_CHECK(!list.empty());
         for (auto list_it = list.begin(); list_it != list.end();) {
           auto &callback = *list_it;
-          dispatched = callback(worker, PopWorkerStatus::OK, "");
+          granted = callback(worker, PopWorkerStatus::OK, "");
           list_it = list.erase(list_it);
-          if (dispatched) {
+          if (granted) {
             break;
           }
         }
         if (list.empty()) {
           callbacks.erase(cb_it);
         }
-        if (dispatched) {
+        if (granted) {
           it = workers.erase(it);
           continue;
         }
@@ -208,7 +208,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     RAY_CHECK(false) << "Not used.";
   }
 
-  void PrestartWorkers(const TaskSpecification &task_spec,
+  void PrestartWorkers(const LeaseSpecification &lease_spec,
                        int64_t backlog_size) override {
     RAY_CHECK(false) << "Not used.";
   }
@@ -265,9 +265,9 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                   const std::string &task_name = "default",
-                   const std::vector<std::unique_ptr<TaskArg>> &args = {}) {
+RayLease CreateLease(const std::unordered_map<std::string, double> &required_resources,
+                     const std::string &task_name = "default",
+                     const std::vector<std::unique_ptr<TaskArg>> &args = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -301,7 +301,10 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
     spec_builder.AddArg(*arg);
   }
 
-  return RayTask(std::move(spec_builder).ConsumeAndBuild());
+  TaskSpecification spec = std::move(spec_builder).ConsumeAndBuild();
+  LeaseSpecification lease_spec(spec.GetMessage(), false);
+  lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
+  return RayLease(std::move(lease_spec));
 }
 
 }  // namespace
@@ -327,7 +330,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             },
             pool_,
             leased_workers_,
-            /* get_task_arguments= */
+            /* get_lease_arguments= */
             [this](const std::vector<ObjectID> &object_ids,
                    std::vector<std::unique_ptr<RayObject>> *results) {
               for (auto &obj_id : object_ids) {
@@ -339,7 +342,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
               }
               return true;
             },
-            /*max_pinned_task_arguments_bytes=*/1000,
+            /*max_pinned_lease_arguments_bytes=*/1000,
             /*get_time=*/[this]() { return current_time_ms_; })) {}
 
   void SetUp() override {
@@ -361,7 +364,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
@@ -374,7 +377,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };
 
-TEST_F(LocalLeaseManagerTest, TestTaskDispatchingOrder) {
+TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
@@ -386,42 +389,42 @@ TEST_F(LocalLeaseManagerTest, TestTaskDispatchingOrder) {
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
 
-  // First batch of tasks: 2 'f' tasks
-  auto task_f1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
-  auto task_f2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
+  // First batch of leases: [f, f]
+  auto lease_f1 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
+  auto lease_f2 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
   rpc::RequestWorkerLeaseReply reply;
-  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+  local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+      lease_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
-  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+  local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+      lease_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
-  // Second batch of tasks: [f, f, f, g]
-  auto task_f3 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
-  auto task_f4 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
-  auto task_f5 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
-  auto task_g1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "g");
-  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
-  local_lease_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+  // Second batch of leases: [f, f, f, g]
+  auto lease_f3 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
+  auto lease_f4 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
+  auto lease_f5 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
+  auto lease_g1 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "g");
+  local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+      lease_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+  local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+      lease_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+  local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+      lease_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+  local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+      lease_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   auto leases_to_grant_ = local_lease_manager_->GetLeasesToGrant();
-  // Only task f in queue now as g is dispatched.
+  // Out of the leases in the second batch, only lease g is granted due to fair scheduling
   ASSERT_EQ(leases_to_grant_.size(), 1);
 }
 
-TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
-  // Note that ideally it shouldn't be possible for an infeasible task to
-  // be in the local task manager when ScheduleAndGrantLeases happens.
+TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
+  // Note that ideally it shouldn't be possible for an infeasible lease to
+  // be in the local lease manager when ScheduleAndGrantLeases happens.
   // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
 
   std::shared_ptr<MockWorker> worker1 =
@@ -430,37 +433,37 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
 
-  // Create 2 tasks that requires 3 CPU's each and are waiting on an arg.
+  // Create 2 leases that requires 3 CPU's each and are waiting on an arg.
   auto arg_id = ObjectID::FromRandom();
   std::vector<std::unique_ptr<TaskArg>> args;
   args.push_back(
       std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
-  auto task1 = CreateTask({{kCPU_ResourceLabel, 3}}, "f", args);
-  auto task2 = CreateTask({{kCPU_ResourceLabel, 3}}, "f2", args);
+  auto lease1 = CreateLease({{kCPU_ResourceLabel, 3}}, "f", args);
+  auto lease2 = CreateLease({{kCPU_ResourceLabel, 3}}, "f2", args);
 
   EXPECT_CALL(object_manager_, Pull(_, _, _))
       .WillOnce(::testing::Return(1))
       .WillOnce(::testing::Return(2));
 
-  // Submit the tasks to the local task manager.
+  // Submit the leases to the local lease manager.
   int num_callbacks_called = 0;
   auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
   rpc::RequestWorkerLeaseReply reply1;
-  local_lease_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
-      task1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
+  local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+      lease1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
   rpc::RequestWorkerLeaseReply reply2;
-  local_lease_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
-      task2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
+  local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+      lease2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
 
   // Node no longer has cpu.
   scheduler_->GetLocalResourceManager().DeleteLocalResource(
       scheduling::ResourceID::CPU());
 
   // Simulate arg becoming local.
-  local_lease_manager_->TasksUnblocked(
-      {task1.GetTaskSpecification().TaskId(), task2.GetTaskSpecification().TaskId()});
+  local_lease_manager_->LeasesUnblocked({lease1.GetLeaseSpecification().LeaseId(),
+                                         lease2.GetLeaseSpecification().LeaseId()});
 
-  // Assert that the the correct rpc replies were sent back and the dispatch map is empty.
+  // Assert that the the correct rpc replies were sent back and the grant map is empty.
   ASSERT_EQ(reply1.failure_type(),
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   ASSERT_EQ(reply2.failure_type(),

@@ -72,7 +72,7 @@ class RayletClientInterface {
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
-  /// \param worker_id The unique worker id of the worker on the raylet node.
+  /// \param lease_id The unique lease id of the worker on the raylet node.
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \param worker_exiting Whether the worker is exiting and cannot be reused.
   /// \return ray::Status

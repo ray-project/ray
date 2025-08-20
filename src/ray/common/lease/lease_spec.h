@@ -105,16 +105,6 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   std::vector<rpc::ObjectReference> dependencies_;
 
   int runtime_env_hash_ = 0;
-
-  /// Below static fields could be mutated in `ComputeResources` concurrently due to
-  /// multi-threading, we need a mutex to protect it.
-  static absl::Mutex mutex_;
-  /// Keep global static id mappings for SchedulingClass for performance.
-  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      ABSL_GUARDED_BY(mutex_);
-  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      ABSL_GUARDED_BY(mutex_);
-  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

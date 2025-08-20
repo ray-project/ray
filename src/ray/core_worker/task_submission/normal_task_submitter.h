@@ -303,7 +303,7 @@ class NormalTaskSubmitter {
     // Keep track of pending worker lease requests to the raylet.
     absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
 
-    LeaseSpecification resource_spec;
+    LeaseSpecification lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue;

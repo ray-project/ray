@@ -33,7 +33,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (override));
   MOCK_METHOD((const absl::flat_hash_map<SchedulingClass,
                                          std::deque<std::shared_ptr<internal::Work>>> &),
-              GetLeaseToDispatch,
+              GetLeasesToGrant,
               (),
               (const, override));
   MOCK_METHOD((const absl::flat_hash_map<SchedulingClass,

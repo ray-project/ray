@@ -63,14 +63,13 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    bool new_scheduling_key_entry =
-        scheduling_key_entries_.find(scheduling_key) == scheduling_key_entries_.end();
+    bool new_scheduling_key_entry = !scheduling_key_entries_.contains(scheduling_key);
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
-    // Only set resource_spec if this is a new scheduling key entry
+    // Only set lease_spec if this is a new scheduling key entry
     if (new_scheduling_key_entry) {
-      scheduling_key_entry.resource_spec =
-          LeaseSpecification(task_spec.GetMessage(), false);
+      scheduling_key_entry.lease_spec =
+          LeaseSpecification(task_spec.GetMessage(), /*is_actor_creation_task=*/false);
     }
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
@@ -243,7 +242,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
   for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
     const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
     if (backlogs.find(scheduling_class) == backlogs.end()) {
-      backlogs[scheduling_class].first = scheduling_key_and_entry.second.resource_spec;
+      backlogs[scheduling_class].first = scheduling_key_and_entry.second.lease_spec;
       backlogs[scheduling_class].second = 0;
     }
     // We report backlog size per scheduling class not per scheduling key
@@ -308,28 +307,27 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   }
 
   const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_);
-  rpc::LeaseSpec resource_spec_msg = scheduling_key_entry.resource_spec.GetMessage();
-  resource_spec_msg.set_lease_id(lease_id.Binary());
-  const LeaseSpecification resource_spec =
-      LeaseSpecification(std::move(resource_spec_msg));
+  rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
+  lease_spec_msg.set_lease_id(lease_id.Binary());
+  const LeaseSpecification lease_spec = LeaseSpecification(std::move(lease_spec_msg));
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
     std::tie(best_node_address, is_selected_based_on_locality) =
-        lease_policy_->GetBestNodeForLease(resource_spec);
+        lease_policy_->GetBestNodeForLease(lease_spec);
     raylet_address = &best_node_address;
   }
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
-  const std::string task_name = resource_spec.GetTaskName();
+  const std::string task_name = lease_spec.GetTaskName();
   RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for task "
                  << task_name;
 
   raylet_client->RequestWorkerLease(
-      resource_spec.GetMessage(),
+      lease_spec.GetMessage(),
       /*grant_or_reject=*/is_spillback,
       [this,
        scheduling_key,
