@@ -2,8 +2,9 @@ import pytest
 import pytest_asyncio
 import sys
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
+from ray.dashboard.modules.aggregator.aggregator_agent import GCSPublisher
 from ray.dashboard.modules.aggregator.ray_events_publisher import (
     RayEventsPublisherBase,
     ExternalSvcPublisher,
@@ -264,6 +265,100 @@ class TestExternalSvcPublisher:
 
         metrics = publisher.get_and_reset_metrics()
         assert metrics["failed"] == len(events)
+
+
+class TestGCSPublisher:
+    """Test GCS publisher implementation."""
+
+    @pytest.fixture
+    def gcs_stub(self):
+        stub = Mock()
+        stub.AddEvents = AsyncMock()
+        return stub
+
+    @pytest.fixture
+    def gcs_publisher(self, base_kwargs, gcs_stub):
+        """Create GCS publisher for testing."""
+        kwargs = base_kwargs.copy()
+        # Remove 'name' as GCSPublisher doesn't take it directly
+        kwargs.pop("name", None)
+        kwargs.update({"timeout": 5.0, "gcs_event_stub": gcs_stub})
+        return GCSPublisher(**kwargs)
+
+    @pytest.mark.asyncio
+    async def test_publish_empty_batch(self, gcs_publisher, gcs_stub):
+        """Empty batches should be treated as success with no GCS call."""
+        gcs_publisher.start()
+        gcs_publisher.publish_events(([], None))
+        await gcs_publisher.shutdown()
+        stats = gcs_publisher.get_and_reset_metrics()
+        assert stats["published"] == 0
+        assert stats["failed"] == 0
+        gcs_stub.AddEvents.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_publish_success(self, gcs_publisher, gcs_stub):
+        # Mock successful response
+        mock_response = Mock()
+        mock_response.status.code = 0
+        gcs_stub.AddEvents.return_value = mock_response
+
+        # Create actual event objects instead of mocks
+        events = [
+            events_base_event_pb2.RayEvent(
+                event_id=b"1",
+                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
+                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
+                timestamp=Timestamp(seconds=123, nanos=0),
+                severity=events_base_event_pb2.RayEvent.Severity.INFO,
+                message="hello",
+            ),
+            events_base_event_pb2.RayEvent(
+                event_id=b"2",
+                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
+                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
+                timestamp=Timestamp(seconds=124, nanos=0),
+                severity=events_base_event_pb2.RayEvent.Severity.INFO,
+                message="world",
+            ),
+        ]
+        gcs_publisher.start()
+        gcs_publisher.publish_events((events, None))
+        await gcs_publisher.shutdown()
+
+        gcs_stub.AddEvents.assert_called_once()
+        stats = gcs_publisher.get_and_reset_metrics()
+        assert stats["published"] == 2
+        assert stats["failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_publish_gcs_error(self, gcs_publisher, gcs_stub):
+        """Exception from GCS"""
+        mock_response = Mock()
+        mock_response.status.code = 1
+        mock_response.status.message = "Error"
+        gcs_stub.AddEvents.return_value = mock_response
+
+        events = [Mock(spec=events_base_event_pb2.RayEvent)]
+        gcs_publisher.start()
+        gcs_publisher.publish_events((events, None))
+        await gcs_publisher.shutdown()
+
+        stats = gcs_publisher.get_and_reset_metrics()
+        assert stats["failed"] == len(events)
+
+    @pytest.mark.asyncio
+    async def test_publish_exception(self, gcs_publisher, gcs_stub):
+        """Exception when trying to reach GCS"""
+        gcs_stub.AddEvents.side_effect = Exception("Network error")
+
+        events = [Mock(spec=events_base_event_pb2.RayEvent)]
+        gcs_publisher.start()
+        gcs_publisher.publish_events((events, None))
+        await gcs_publisher.shutdown()
+
+        stats = gcs_publisher.get_and_reset_metrics()
+        assert stats["failed"] == len(events)
 
 
 class TestNoopPublisher:

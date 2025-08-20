@@ -6,12 +6,15 @@ import queue
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
+from ray._private.gcs_utils import create_gcs_channel
 from ray.dashboard.modules.aggregator.ray_events_publisher import (
     ExternalSvcPublisher,
+    GCSPublisher,
     NoopPublisher,
 )
 
 from ray.dashboard.modules.aggregator.bounded_queue import BoundedQueue
+from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
 try:
     import prometheus_client
@@ -28,6 +31,7 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
     events_base_event_pb2,
+    gcs_service_pb2_grpc,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +85,10 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
 )
+# flag to enable publishing events to GCS
+PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+)
 
 # Metrics
 if prometheus_client:
@@ -133,6 +141,24 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
+    events_published_to_gcs = Counter(
+        f"{metrics_prefix}_events_published_to_gcs",
+        "Total number of events successfully published to GCS.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_failed_to_publish_to_gcs = Counter(
+        f"{metrics_prefix}_events_failed_to_publish_to_gcs",
+        "Total number of events failed to publish to GCS after retries.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_dropped_in_gcs_publish_queue = Counter(
+        f"{metrics_prefix}_events_dropped_in_gcs_publish_queue",
+        "Total number of events dropped due to the GCS publish queue being full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
 
 
 class AggregatorAgent(
@@ -141,8 +167,8 @@ class AggregatorAgent(
 ):
     """
     AggregatorAgent is a dashboard agent module that collects events sent with
-    gRPC from other components, buffers them, and periodically sends them to an
-    external service with HTTP POST requests for further processing or storage
+    gRPC from other components, buffers them, and periodically sends them to GCS and
+    an external service with HTTP POST requests for further processing or storage
     """
 
     def __init__(self, dashboard_agent) -> None:
@@ -150,6 +176,7 @@ class AggregatorAgent(
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
         self._event_buffer = BoundedQueue(max_size=MAX_EVENT_BUFFER_SIZE)
+        self._task_metadata_buffer = TaskMetadataBuffer()
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
@@ -157,6 +184,11 @@ class AggregatorAgent(
 
         # Dedicated publisher event loop thread
         self._publisher_thread = None
+
+        self._async_gcs_channel = create_gcs_channel(self.gcs_address, aio=True)
+        self._async_gcs_event_stub = gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
+            self._async_gcs_channel
+        )
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -184,6 +216,7 @@ class AggregatorAgent(
         self._is_cleanup = False
         self._cleanup_finished_event = threading.Event()
 
+        # Initialize publishers
         if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC and self._event_http_target_enabled:
             logger.info(
                 f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
@@ -197,6 +230,15 @@ class AggregatorAgent(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
             self._external_svc_publisher = NoopPublisher()
+
+        if PUBLISH_EVENTS_TO_GCS:
+            logger.info("Publishing events to GCS is enabled")
+            self._gcs_publisher = GCSPublisher(
+                gcs_event_stub=self._async_gcs_event_stub,
+            )
+        else:
+            logger.info(f"Publishing events to GCS is disabled")
+            self._gcs_publisher = NoopPublisher()
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -215,10 +257,8 @@ class AggregatorAgent(
         if not self._event_processing_enabled:
             return events_event_aggregator_service_pb2.AddEventReply()
 
-        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
-        # metadata (e.g. dropped task attempts) to help with event processing at the
-        # downstream
         events_data = request.events_data
+        self._task_metadata_buffer.merge(events_data.task_events_metadata)
         for event in events_data.events:
             with self._lock:
                 self._events_received_since_last_metrics_update += 1
@@ -264,9 +304,29 @@ class AggregatorAgent(
             except queue.Empty:
                 break
 
-        if draining_event_batch:
+        # Drain task metadata
+        draining_task_metadata_batch = (
+            events_event_aggregator_service_pb2.TaskEventsMetadata()
+        )
+        metadata_batch = self._task_metadata_buffer.get()
+        # merge all batches of task metadata into a single batch
+        while metadata_batch and len(metadata_batch.dropped_task_attempts) > 0:
+            draining_task_metadata_batch.dropped_task_attempts.extend(
+                metadata_batch.dropped_task_attempts
+            )
+            metadata_batch = self._task_metadata_buffer.get()
+
+        # publish events to GCS and external service
+        if (
+            draining_event_batch
+            or len(draining_task_metadata_batch.dropped_task_attempts) > 0
+        ):
             frozen_batch = tuple(draining_event_batch)
-            self._external_svc_publisher.publish_events(frozen_batch)
+            self._gcs_publisher.publish_events(
+                (frozen_batch, draining_task_metadata_batch)
+            )
+            if draining_event_batch:
+                self._external_svc_publisher.publish_events(frozen_batch)
 
     async def _build_event_batches(self) -> None:
         """
@@ -281,7 +341,10 @@ class AggregatorAgent(
                 break
 
             # If destination queue is full, wait a bit before pulling from buffer
-            if not self._external_svc_publisher.can_accept_events():
+            if (
+                not self._external_svc_publisher.can_accept_events()
+                and not self._gcs_publisher.can_accept_events()
+            ):
                 await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
                 continue
 
@@ -294,9 +357,11 @@ class AggregatorAgent(
                     break
 
             if event_batch:
+                task_events_metadata = self._task_metadata_buffer.get()
                 frozen_batch = tuple(event_batch)
                 # Enqueue batch to publishers
                 self._external_svc_publisher.publish_events(frozen_batch)
+                self._gcs_publisher.publish_events((frozen_batch, task_events_metadata))
 
                 # Reset local batch
                 event_batch.clear()
@@ -307,6 +372,7 @@ class AggregatorAgent(
     async def _publisher_event_loop(self):
         # Start destination specific publishers
         self._external_svc_publisher.start()
+        self._gcs_publisher.start()
         # Launch one batching task to continuously build batches of events and enqueue to publishers
         batching_task = asyncio.create_task(
             self._build_event_batches(),
@@ -318,7 +384,9 @@ class AggregatorAgent(
         finally:
             # Drain any remaining items and shutdown publisher
             await self._drain_event_buffer_to_publishers()
-            await self._external_svc_publisher.shutdown()
+            await asyncio.gather(
+                self._gcs_publisher.shutdown(), self._external_svc_publisher.shutdown()
+            )
             self._update_metrics()
 
     def _create_and_start_publisher_loop(self) -> None:
@@ -340,6 +408,7 @@ class AggregatorAgent(
         external_svc_publisher_metrics = (
             self._external_svc_publisher.get_and_reset_metrics()
         )
+        gcs_publisher_metrics = self._gcs_publisher.get_and_reset_metrics()
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
@@ -368,6 +437,12 @@ class AggregatorAgent(
                 external_svc_publisher_metrics.get("queue_dropped", 0)
             )
 
+            _events_published_to_gcs = gcs_publisher_metrics.get("published", 0)
+            _events_failed_to_publish_to_gcs = gcs_publisher_metrics.get("failed", 0)
+            _events_dropped_in_gcs_publish_queue = gcs_publisher_metrics.get(
+                "queue_dropped", 0
+            )
+
         labels = {
             "ip": self._ip,
             "pid": self._pid,
@@ -393,6 +468,13 @@ class AggregatorAgent(
         )
         events_dropped_in_external_svc_publish_queue.labels(**labels).inc(
             _events_dropped_in_external_publish_queue
+        )
+        events_published_to_gcs.labels(**labels).inc(_events_published_to_gcs)
+        events_failed_to_publish_to_gcs.labels(**labels).inc(
+            _events_failed_to_publish_to_gcs
+        )
+        events_dropped_in_gcs_publish_queue.labels(**labels).inc(
+            _events_dropped_in_gcs_publish_queue
         )
 
     def _check_main_thread_liveness(self) -> None:

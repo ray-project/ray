@@ -3,7 +3,7 @@ import asyncio
 import logging
 import random
 import json
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 import threading
 
 import aiohttp
@@ -12,6 +12,7 @@ from ray._private import ray_constants
 
 from ray.core.generated import (
     events_base_event_pb2,
+    events_event_aggregator_service_pb2,
 )
 
 logger = logging.getLogger(__name__)
@@ -250,7 +251,7 @@ class ExternalSvcPublisher(RayEventsPublisherBase):
         jitter_ratio: float = PUBLISHER_JITTER_RATIO,
     ) -> None:
         super().__init__(
-            name="external-service",
+            name="external-service-publisher",
             queue_max_size=queue_max_size,
             max_retries=max_retries,
             initial_backoff=initial_backoff,
@@ -317,6 +318,103 @@ class ExternalSvcPublisher(RayEventsPublisherBase):
             return len(item)
         except Exception:
             return 0
+
+
+class GCSPublisher(RayEventsPublisherBase):
+    """Publishes event batches to GCS via the GCS gRPC AddEvents API.
+
+    Queue item: (events_tuple, task_events_metadata)
+    """
+
+    def __init__(
+        self,
+        *,
+        gcs_event_stub,
+        timeout: float = PUBLISHER_TIMEOUT_SECONDS,
+        queue_max_size: int = PUBLISHER_QUEUE_MAX_SIZE,
+        max_retries: int = PUBLISHER_MAX_RETRIES,
+        initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
+        max_backoff: float = PUBLISHER_MAX_BACKOFF_SECONDS,
+        jitter_ratio: float = PUBLISHER_JITTER_RATIO,
+    ) -> None:
+        super().__init__(
+            name="gcs-publisher",
+            queue_max_size=queue_max_size,
+            max_retries=max_retries,
+            initial_backoff=initial_backoff,
+            max_backoff=max_backoff,
+            jitter_ratio=jitter_ratio,
+        )
+        self._gcs_event_stub = gcs_event_stub
+        self._timeout = timeout
+
+    async def _async_publish(
+        self,
+        item: tuple[
+            list[events_base_event_pb2.RayEvent],
+            Optional[events_event_aggregator_service_pb2.TaskEventsMetadata],
+        ],
+    ) -> PublishStats:
+        # item: (event_batch, task_events_metadata)
+        events, task_events_metadata = item
+        if not events and (
+            not task_events_metadata
+            or len(task_events_metadata.dropped_task_attempts) == 0
+        ):
+            # nothing to publish
+            return PublishStats(
+                publish_status=True, num_events_published=0, num_events_filtered_out=0
+            )
+        try:
+            events_data = self._create_ray_events_data(events, task_events_metadata)
+            request = events_event_aggregator_service_pb2.AddEventsRequest(
+                events_data=events_data
+            )
+            response = await self._gcs_event_stub.AddEvents(
+                request, timeout=self._timeout
+            )
+            if response.status.code != 0:
+                logger.error(f"GCS AddEvents failed: {response.status.message}")
+                return PublishStats(
+                    publish_status=False,
+                    num_events_published=0,
+                    num_events_filtered_out=0,
+                )
+            return PublishStats(
+                publish_status=True,
+                num_events_published=len(events),
+                num_events_filtered_out=0,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send events to GCS: {e}")
+            return PublishStats(
+                publish_status=False, num_events_published=0, num_events_filtered_out=0
+            )
+
+    def _count_num_events(self, item) -> int:
+        try:
+            events, _ = item
+            return len(events)
+        except Exception:
+            return 0
+
+    def _create_ray_events_data(
+        self,
+        event_batch: list[events_base_event_pb2.RayEvent],
+        task_events_metadata: Optional[
+            events_event_aggregator_service_pb2.TaskEventsMetadata
+        ] = None,
+    ) -> events_event_aggregator_service_pb2.RayEventsData:
+        """
+        Helper method to create RayEventsData from event batch and metadata.
+        """
+        events_data = events_event_aggregator_service_pb2.RayEventsData()
+        events_data.events.extend(event_batch)
+
+        if task_events_metadata:
+            events_data.task_events_metadata.CopyFrom(task_events_metadata)
+
+        return events_data
 
 
 class NoopPublisher:

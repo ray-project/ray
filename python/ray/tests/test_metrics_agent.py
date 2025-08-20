@@ -147,6 +147,9 @@ _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_filtered_out_before_external_svc_publish_total",
     "ray_event_aggregator_agent_events_failed_to_publish_to_external_svc_total",
     "ray_event_aggregator_agent_events_dropped_in_external_svc_publish_queue_total",
+    "ray_event_aggregator_agent_events_published_to_gcs_total",
+    "ray_event_aggregator_agent_events_failed_to_publish_to_gcs_total",
+    "ray_event_aggregator_agent_events_dropped_in_gcs_publish_queue_total",
 ]
 
 _NODE_METRICS = [
@@ -510,6 +513,9 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_filtered_out_before_external_svc_publish_total",
             "ray_event_aggregator_agent_events_failed_to_publish_to_external_svc_total",
             "ray_event_aggregator_agent_events_dropped_in_external_svc_publish_queue_total",
+            "ray_event_aggregator_agent_events_published_to_gcs_total",
+            "ray_event_aggregator_agent_events_failed_to_publish_to_gcs_total",
+            "ray_event_aggregator_agent_events_dropped_in_gcs_publish_queue_total",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -523,6 +529,9 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_filtered_out_before_external_svc_publish_total": 1.0,
             "ray_event_aggregator_agent_events_failed_to_publish_to_external_svc_total": 0.0,
             "ray_event_aggregator_agent_events_dropped_in_external_svc_publish_queue_total": 0.0,
+            "ray_event_aggregator_agent_events_published_to_gcs_total": 0.0,
+            "ray_event_aggregator_agent_events_failed_to_publish_to_gcs_total": 0.0,
+            "ray_event_aggregator_agent_events_dropped_in_gcs_publish_queue_total": 0.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]

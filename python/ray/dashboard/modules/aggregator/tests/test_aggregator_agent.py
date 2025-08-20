@@ -119,6 +119,7 @@ def test_aggregator_agent_http_target_not_enabled(
 ):
     dashboard_agent = MagicMock()
     dashboard_agent.events_export_addr = export_addr
+    dashboard_agent.gcs_address = "127.0.0.1:8000"
     agent = AggregatorAgent(dashboard_agent)
     assert agent._event_http_target_enabled == expected_http_target_enabled
     assert agent._event_processing_enabled == expected_event_processing_enabled
