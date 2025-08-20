@@ -1408,6 +1408,20 @@ py_test(
 )
 
 py_test(
+    name = "test_mcap_datasource",
+    size = "medium",
+    srcs = ["tests/test_mcap_datasource.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_delta_sharing",
     size = "small",
     srcs = ["tests/test_delta_sharing.py"],

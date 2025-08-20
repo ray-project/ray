@@ -8,8 +8,8 @@ for external indexing to further optimize reads.
 
 import logging
 import os
-import tempfile
 from dataclasses import dataclass
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -69,6 +69,15 @@ class MCAPFilterConfig:
                 raise ValueError("time values must be non-negative")
 
 
+class IndexType(Enum):
+    """Valid index types for external indexing."""
+
+    AUTO = "auto"
+    PARQUET = "parquet"
+    SQLITE = "sqlite"
+    CUSTOM = "custom"
+
+
 @dataclass(frozen=True)
 class ExternalIndexConfig:
     """Configuration for external indexing to optimize MCAP reads.
@@ -88,6 +97,19 @@ class ExternalIndexConfig:
     validate_index: bool = True
     cache_index: bool = True
 
+    def __post_init__(self):
+        """Validate external index configuration."""
+        # Validate index_path is not empty
+        if not self.index_path:
+            raise ValueError("index_path cannot be empty")
+
+        # Validate index_type is one of the allowed values
+        valid_types = [t.value for t in IndexType]
+        if self.index_type not in valid_types:
+            raise ValueError(
+                f"index_type must be one of {valid_types}, got '{self.index_type}'"
+            )
+
 
 class MCAPDatasource(FileBasedDatasource):
     """MCAP (Message Capture) datasource for reading MCAP files.
@@ -103,6 +125,8 @@ class MCAPDatasource(FileBasedDatasource):
     can use external indexing functions for further optimization.
 
     Examples:
+        :noindex:
+
         >>> import ray
         >>> from ray.data.datasource import MCAPDatasource
         >>>
@@ -261,53 +285,36 @@ class MCAPDatasource(FileBasedDatasource):
         import mcap
 
         try:
-            # Read the file into memory for MCAP processing
-            # Note: MCAP requires random access, so we read the entire file
-            file_data = f.readall()
+            # MCAP can read directly from seekable file-like objects
+            # pyarrow.NativeFile is seekable, so we can pass it directly
+            with mcap.open(f, "r") as reader:
+                # Get summary for optimization
+                summary = reader.get_summary()
 
-            # Create a temporary file for MCAP to read from
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mcap") as temp_file:
-                temp_file.write(file_data)
-                temp_file.flush()
-                temp_file_path = temp_file.name
+                # Apply predicate pushdown filters with external index optimization
+                filtered_messages = self._apply_filters_with_external_index(
+                    reader, summary, path
+                )
 
-            try:
-                # Open MCAP file and apply filters with external index optimization
-                with mcap.open(temp_file_path, "r") as reader:
-                    # Get summary for optimization
-                    summary = reader.get_summary()
+                # Process messages in batches
+                batch = []
+                for message in filtered_messages:
+                    # Convert message to PyArrow-compatible format
+                    message_data = self._message_to_pyarrow_format(message)
 
-                    # Apply predicate pushdown filters with external index optimization
-                    filtered_messages = self._apply_filters_with_external_index(
-                        reader, summary, path
-                    )
+                    if self._include_paths:
+                        message_data["_file_path"] = path
 
-                    # Process messages in batches
-                    batch = []
-                    for message in filtered_messages:
-                        # Convert message to PyArrow-compatible format
-                        message_data = self._message_to_pyarrow_format(message)
+                    batch.append(message_data)
 
-                        if self._include_paths:
-                            message_data["_file_path"] = path
-
-                        batch.append(message_data)
-
-                        # Yield batch when it reaches the configured size
-                        if len(batch) >= self._filter_config.batch_size:
-                            yield self._create_block(batch)
-                            batch = []
-
-                    # Yield remaining messages
-                    if batch:
+                    # Yield batch when it reaches the configured size
+                    if len(batch) >= self._filter_config.batch_size:
                         yield self._create_block(batch)
+                        batch = []
 
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(temp_file_path)
-                except OSError:
-                    pass  # Ignore cleanup errors
+                # Yield remaining messages
+                if batch:
+                    yield self._create_block(batch)
 
         except Exception as e:
             logger.error(f"Error reading MCAP file {path}: {e}")
@@ -419,16 +426,15 @@ class MCAPDatasource(FileBasedDatasource):
             # Example: Query SQLite index for optimization hints
             # This is a simplified example - real implementation would depend on index structure
             if self._filter_config.channels:
-                # Query index for channel mappings
-                channel_list = ",".join(
-                    [f"'{ch}'" for ch in self._filter_config.channels]
-                )
+                # Query index for channel mappings using safe parameter substitution
+                placeholders = ",".join("?" for _ in self._filter_config.channels)
+                params = list(self._filter_config.channels) + [file_path]
                 cursor.execute(
                     f"""
                     SELECT channel_id, topic FROM channels 
-                    WHERE topic IN ({channel_list}) AND file_path = ?
+                    WHERE topic IN ({placeholders}) AND file_path = ?
                 """,
-                    (file_path,),
+                    params,
                 )
 
                 channel_mappings = cursor.fetchall()
@@ -604,9 +610,11 @@ class MCAPDatasource(FileBasedDatasource):
         try:
             return pa.Table.from_pylist(batch)
         except Exception as e:
-            logger.warning(f"Failed to create PyArrow table: {e}")
-            # Fallback to simple table with raw data
-            return pa.Table.from_pylist([{"raw_data": str(msg)} for msg in batch])
+            logger.warning(f"Failed to create PyArrow table from batch. Error: {e}")
+            # Re-raising the exception provides a clearer error to the user
+            # than falling back to a raw string representation.
+            # This helps users diagnose issues like inconsistent schema within the batch.
+            raise
 
     def __del__(self):
         """Clean up external index resources."""
@@ -617,5 +625,7 @@ class MCAPDatasource(FileBasedDatasource):
             ):
                 try:
                     self._external_index["connection"].close()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to close SQLite connection for external index: {e}"
+                    )

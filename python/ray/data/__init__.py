@@ -59,6 +59,7 @@ from ray.data.read_api import (  # noqa: F401
     read_images,
     read_json,
     read_lance,
+    read_mcap,
     read_mongo,
     read_numpy,
     read_parquet,

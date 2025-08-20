@@ -2128,6 +2128,8 @@ def read_mcap(
     optimization for efficient filtering by channels, topics, and time ranges.
 
     Examples:
+        :noindex:
+
         Read all MCAP files in a directory.
 
         >>> import ray

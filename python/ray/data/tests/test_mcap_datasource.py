@@ -206,9 +206,7 @@ class TestMCAPDatasource:
             time_range=(1000000000, 2000000000),
         )
 
-        datasource = MCAPDatasource(
-            self.test_file_path, filter_config=filter_config
-        )
+        datasource = MCAPDatasource(self.test_file_path, filter_config=filter_config)
 
         assert datasource._filter_config == filter_config
 
@@ -315,7 +313,9 @@ class TestMCAPDatasourceReading:
 
         with patch("mcap.Filter", return_value=mock_filter):
             filter_config = MCAPFilterConfig(channels={"camera"})
-            datasource = MCAPDatasource(self.test_file_path, filter_config=filter_config)
+            datasource = MCAPDatasource(
+                self.test_file_path, filter_config=filter_config
+            )
 
             # Test filter application
             messages = list(datasource._apply_filters(mock_reader, mock_summary))
@@ -374,9 +374,7 @@ class TestMCAPDatasourceReading:
         mock_mcap_open.return_value.__enter__.return_value = Mock()
         mock_mcap_open.return_value.__exit__.return_value = None
 
-        filter_config = MCAPFilterConfig(
-            time_range=(1000000000, 2000000000)
-        )
+        filter_config = MCAPFilterConfig(time_range=(1000000000, 2000000000))
         datasource = MCAPDatasource(self.test_file_path, filter_config=filter_config)
 
         # Mock reader and summary
@@ -733,4 +731,5 @@ class TestMCAPDatasourceIntegration:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

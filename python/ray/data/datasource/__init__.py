@@ -40,13 +40,15 @@ from ray.data._internal.datasource.mcap_datasource import (
     MCAPFilterConfig,
     ExternalIndexConfig,
 )
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
     "BaseFileMetadataProvider",
-    "BlockBasedFileDatasource",
     "Connection",
     "Datasink",
     "Datasource",
