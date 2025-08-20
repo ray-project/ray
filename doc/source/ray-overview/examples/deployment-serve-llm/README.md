@@ -11,7 +11,7 @@ Deploy small size models using tensor parallelism across 4—8 GPUs on a single 
 
 ---
 
-**[Medium size LLM deployment](#)**  
+**[Medium size LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/medium-size-llm.ipynb)**  
 Deploy medium size models using tensor parallelism across 4—8 GPUs on a single node, such as Llama 3 70B, Qwen 14B, Mixtral 8x7B.  
 
 ---
@@ -38,5 +38,6 @@ Deploy models that can switch between reasoning and non-reasoning modes for flex
 :hidden:
 
 notebooks/small-size-llm.ipynb
+notebooks/medium-size-llm.ipynb
 ```
 
