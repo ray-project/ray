@@ -395,7 +395,7 @@ class GCSPublisher(RayEventsPublisherBase):
         try:
             events, _ = item
             return len(events)
-        except Exception:
+        except (TypeError, ValueError):
             return 0
 
     def _create_ray_events_data(

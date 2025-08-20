@@ -361,7 +361,7 @@ class AggregatorAgent(
                 frozen_batch = tuple(event_batch)
                 # Enqueue batch to publishers
                 self._external_svc_publisher.publish_events(frozen_batch)
-                self._gcs_publisher.publish_events((frozen_batch, task_events_metadata))
+                self._gcs_publisher.publish_events((event_batch, task_events_metadata))
 
                 # Reset local batch
                 event_batch.clear()

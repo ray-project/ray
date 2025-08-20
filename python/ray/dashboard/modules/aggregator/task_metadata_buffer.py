@@ -65,7 +65,7 @@ class TaskMetadataBuffer:
                 # Reset the current metadata and start merging afresh
                 self._metadata.Clear()
 
-                return current_metadata.dropped_task_attempts
+                return current_metadata
 
             return self._buffer.get_nowait()
 
