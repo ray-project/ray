@@ -39,21 +39,17 @@ class ThreadRunner:
             with self._lock:
                 self._is_running = True
 
-            has_exception = False
             try:
                 result = target()
                 with self._lock:
                     self._ret = result
+                self._exc_queue.put(None)
             except BaseException as e:
                 # Exclude the first 2 frames from the traceback, which are
                 # the `ThreadRunner._run_target` and `construct_train_func` calls.
                 self._exc_queue.put(
                     construct_user_exception_with_traceback(e, exclude_frames=2)
                 )
-                has_exception = True
-
-            if not has_exception:
-                self._exc_queue.put(None)
 
         self._thread = threading.Thread(
             target=_run_target,
@@ -97,6 +93,7 @@ class ThreadRunner:
             return self._ret
 
     def get_exception_queue(self) -> queue.SimpleQueue:
+        """Returns a queue that nested threads can add exceptions to."""
         return self._exc_queue
 
     def join(self, timeout: Optional[float] = None) -> T:

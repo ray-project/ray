@@ -55,6 +55,8 @@ def test_nested_thread_error(thread_runner):
 
     def target():
         def nested():
+            # Use dummy_condition to test the case where a nested thread raises
+            # an exception but the target function is still running.
             dummy_condition = threading.Condition()
 
             # Use the same target() + nested() structure as test_error to simulate
@@ -93,7 +95,6 @@ def test_nested_thread_error(thread_runner):
 
     assert isinstance(error, UserExceptionWithTraceback)
     assert isinstance(error._base_exc, ValueError)
-    print(error._traceback_str)
     assert "_run_target" not in error._traceback_str
 
 
