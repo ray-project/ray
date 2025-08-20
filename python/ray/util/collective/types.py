@@ -62,7 +62,7 @@ class TensorTransportMetadata:
     Args:
         tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
         tensor_device: The device of the tensor. Currently, we assume all tensors in the
-        list are on the same device type.
+        list have the same device type.
     """
 
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
