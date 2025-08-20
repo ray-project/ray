@@ -41,5 +41,6 @@ notebooks/small-size-llm.ipynb
 notebooks/medium-size-llm.ipynb
 notebooks/vision-llm.ipynb
 notebooks/reasoning-llm.ipynb
+notebooks/hybrid-reasoning-llm.ipynb
 ```
 
