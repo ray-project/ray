@@ -65,32 +65,34 @@ class LocalModeTrainFnUtils(TrainFnUtils):
 
     def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
         """Return the last metrics reported by the training function.
-        This function should only be called by BackendForLocalMode
+        This function should only be called by LocalController
         """
         return self._last_metrics
 
 
-class BackendForLocalMode:
+class LocalController:
     def __init__(self, datasets: Optional[Dict[str, GenDataset]] = None):
         if datasets is not None:
             datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
 
         self.local_world_size = 1
         self.local_rank = 0
+        self.datasets = datasets
 
+    def _get_experiment_name(self) -> str:
+        return f"local_training-{date_str()}"
+
+    def initialize_and_run_local_controller(
+        self, train_func: Callable[[], None]
+    ) -> Result:
         set_train_fn_utils(
             LocalModeTrainFnUtils(
                 experiment_name=self._get_experiment_name(),
                 local_world_size=self.local_world_size,
                 local_rank=self.local_rank,
-                dataset_shards=datasets,
+                dataset_shards=self.datasets,
             )
         )
-
-    def _get_experiment_name(self) -> str:
-        return f"local_training-{date_str()}"
-
-    def fit(self, train_func: Callable[[], None]) -> Result:
         train_func()
         train_fn_utils = get_train_fn_utils()
         assert isinstance(train_fn_utils, LocalModeTrainFnUtils)

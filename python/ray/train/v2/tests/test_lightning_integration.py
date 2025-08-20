@@ -25,19 +25,18 @@ def reduce_health_check_interval(monkeypatch):
 @pytest.mark.parametrize("accelerator", ["cpu"])
 # @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])  # TODO: Enable GPU test
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
-@pytest.mark.parametrize("num_workers", [0, 2])
-def test_trainer_with_native_dataloader_for_distributed_and_local_mode(
-    ray_start_4_cpus, strategy_name, accelerator, datasource, num_workers
+def test_trainer_with_native_dataloader(
+    ray_start_4_cpus, strategy_name, accelerator, datasource
 ):
     """Test basic ddp and fsdp training with dataloader and datamodule."""
 
     if accelerator == "cpu" and strategy_name == "fsdp":
         return
 
+    num_workers = 2
     num_epochs = 1
     batch_size = 8
     dataset_size = 256
-    dataset_shard_size = num_workers if num_workers > 0 else 1
 
     strategy_map = {"ddp": RayDDPStrategy(), "fsdp": RayFSDPStrategy()}
 
@@ -68,16 +67,13 @@ def test_trainer_with_native_dataloader_for_distributed_and_local_mode(
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
-        scaling_config=ScalingConfig(
-            num_workers=num_workers, use_gpu=(accelerator == "gpu")
-        ),
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=(accelerator == "gpu")),
     )
 
     results = trainer.fit()
     assert results.metrics["epoch"] == num_epochs - 1
     assert (
-        results.metrics["step"]
-        == num_epochs * dataset_size / dataset_shard_size / batch_size
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
     )
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics

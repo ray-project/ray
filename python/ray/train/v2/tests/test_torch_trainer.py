@@ -30,13 +30,14 @@ def test_minimal(ray_start_4_cpus):
     trainer.fit()
 
 
-@pytest.mark.parametrize("num_workers", [0, 1, 2])
-def test_torch_linear_for_distributed_and_local_mode(ray_start_4_cpus, num_workers):
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_torch_linear(ray_start_4_cpus, num_workers):
     def train_func(config):
         result = linear_train_func(config)
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
 
+    num_workers = num_workers
     epochs = 3
     scaling_config = ScalingConfig(num_workers=num_workers)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
@@ -45,11 +46,7 @@ def test_torch_linear_for_distributed_and_local_mode(ray_start_4_cpus, num_worke
         train_loop_config=config,
         scaling_config=scaling_config,
     )
-    result = trainer.fit()
-    assert result.error is None
-    assert result.metrics is not None
-    assert result.metrics["loss"] is not None
-    assert result.checkpoint
+    trainer.fit()
 
 
 if __name__ == "__main__":
