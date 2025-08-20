@@ -165,7 +165,7 @@ void LocalDependencyResolver::ResolveDependencies(
                                                     contained_ids);
           }
           if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
+            resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
           }
         });
   }
@@ -195,7 +195,7 @@ void LocalDependencyResolver::ResolveDependencies(
           }
 
           if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
+            resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
           }
         });
   }
