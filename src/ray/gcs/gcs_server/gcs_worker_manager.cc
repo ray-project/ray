@@ -218,8 +218,7 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       };
 
-  gcs_table_storage_.WorkerTable().Put(worker_id, *worker_data,
-                                       {on_done, io_context_});
+  gcs_table_storage_.WorkerTable().Put(worker_id, *worker_data, {on_done, io_context_});
 }
 
 void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
@@ -289,9 +288,9 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
                              reply,
                              num_paused_threads_delta,
                              on_worker_update_done,
-                             send_reply_callback](const Status &status,
-                                                  const std::optional<rpc::WorkerTableData>
-                                                      &result) {
+                             send_reply_callback](
+                                const Status &status,
+                                const std::optional<rpc::WorkerTableData> &result) {
     if (!status.ok()) {
       RAY_LOG(WARNING).WithField(worker_id)
           << "Failed to get worker info, status = " << status;

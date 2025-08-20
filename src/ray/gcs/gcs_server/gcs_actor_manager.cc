@@ -1169,8 +1169,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
          gcs_publisher_->PublishActor(actor_id,
                                       GenActorDataOnlyWithStates(*actor_table_data));
          if (!is_restartable) {
-           gcs_table_storage_->ActorTaskSpecTable().Delete(
-               actor_id, {[](auto) {}, io_context_});
+           gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
+                                                           {[](auto) {}, io_context_});
          }
          actor->WriteActorExportEvent();
          // Destroy placement group owned by this actor.
@@ -1512,8 +1512,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           gcs_table_storage_->ActorTaskSpecTable().Delete(
-               actor_id, {[](auto) {}, io_context_});
+           gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
+                                                           {[](auto) {}, io_context_});
            actor->WriteActorExportEvent();
          },
          io_context_});
@@ -1700,8 +1700,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     }
   }
   if (!dead_actors.empty()) {
-    gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
-        dead_actors, {[](auto) {}, io_context_});
+    gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors,
+                                                         {[](auto) {}, io_context_});
   }
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
                                        const std::pair<ActorID, int64_t> &right) {

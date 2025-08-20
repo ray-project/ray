@@ -608,8 +608,8 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
   if (it != registered_placement_groups_.end()) {
     on_done(Status::OK(), it->second->GetPlacementGroupTableData());
   } else {
-    gcs_table_storage_->PlacementGroupTable().Get(
-        placement_group_id, {std::move(on_done), io_context_});
+    gcs_table_storage_->PlacementGroupTable().Get(placement_group_id,
+                                                  {std::move(on_done), io_context_});
   }
   ++counts_[CountType::GET_PLACEMENT_GROUP_REQUEST];
 }
@@ -737,8 +737,8 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
       }
     };
 
-    gcs_table_storage_->PlacementGroupTable().Get(
-        placement_group_id, {std::move(on_done), io_context_});
+    gcs_table_storage_->PlacementGroupTable().Get(placement_group_id,
+                                                  {std::move(on_done), io_context_});
   } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
     RAY_LOG(DEBUG) << "Placement group is created, placement group id = "
                    << placement_group_id;
