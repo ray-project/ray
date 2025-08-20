@@ -34,20 +34,19 @@ RLlib's MultiAgentEnv API
 
 .. hint::
 
-    This paragraph describes RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, which is the
+    This paragraph describes RLlib's own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, which is the
     recommended way of defining your own multi-agent environment logic. However, if you are already using a
     third-party multi-agent API, RLlib offers wrappers for :ref:`Farama's PettingZoo API <farama-pettingzoo-api>` as well
     as :ref:`DeepMind's OpenSpiel API <deepmind-openspiel-api>`.
 
 
-The :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API of RLlib closely follows the
+The :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API of RLlib closely follows the
 conventions and APIs of `Farama's gymnasium (single-agent) <gymnasium.farama.org>`__ envs and even subclasses
 from `gymnasium.Env`, however, instead of publishing individual observations, rewards, and termination/truncation flags
-from `reset()` and `step()`, a custom :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation
-outputs dictionaries, one for observations, one for rewards, etc..in which agent IDs map
-In each such multi-agent dictionary, agent IDs map to the respective individual agent's observation/reward/etc..
+from `reset()` and `step()`, a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation
+outputs dictionaries, one for observations, one for rewards, etc. In each multi-agent dictionary, agent IDs map to the respective individual agent's observation/reward/etc.
 
-Here is a first draft of an example :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation:
+Here is a first draft of an example :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation:
 
 .. code-block::
 
@@ -72,7 +71,7 @@ Here is a first draft of an example :py:class`~ray.rllib.env.multi_agent_env.Mul
 Agent Definitions
 ~~~~~~~~~~~~~~~~~
 
-The number of agents in your environment and their IDs are entirely controlled by your :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
+The number of agents in your environment and their IDs are entirely controlled by your :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
 code. Your env decides, which agents start after an episode reset, which agents enter the episode at a later point, which agents
 terminate the episode early, and which agents stay in the episode until the entire episode ends.
 
@@ -371,7 +370,7 @@ you can use grouping in conjunction with the policy mapping API described in pri
 Third Party Multi-Agent Env APIs
 --------------------------------
 
-Besides RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, you can also use
+Besides RLlib's own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, you can also use
 various third-party APIs and libraries to implement custom multi-agent envs.
 
 
