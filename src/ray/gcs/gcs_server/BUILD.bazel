@@ -266,6 +266,7 @@ ray_cc_binary(
         "//src/ray/stats:stats_lib",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:raii",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
