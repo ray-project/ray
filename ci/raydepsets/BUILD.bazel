@@ -14,7 +14,7 @@ py_library(
     srcs = [
         "cli.py",
     ],
-    data = ["@uv_x86_64//:file"],
+    data = ["//:uv_file"],
     deps = [
         ":workspace",
         ci_require("bazel-runfiles"),
