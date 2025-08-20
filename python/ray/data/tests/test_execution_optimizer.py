@@ -117,14 +117,22 @@ def test_read_operator_emits_warning_for_large_read_tasks():
         def estimate_inmemory_data_size(self) -> Optional[int]:
             return None
 
-        def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        def get_read_tasks(
+            self, parallelism: int, per_block_limit: Optional[int] = None
+        ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
             def read_fn():
                 _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
-            return [ReadTask(read_fn, BlockMetadata(1, None, None, None))]
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(1, None, None, None),
+                    per_block_limit=per_block_limit,
+                )
+            ]
 
     with pytest.warns(UserWarning):
         ray.data.read_datasource(StubDatasource()).materialize()

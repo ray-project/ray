@@ -1182,10 +1182,6 @@ python/ray/data/_internal/logical/operators/join_operator.py
 python/ray/data/_internal/logical/operators/map_operator.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `AbstractMap.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AbstractMap.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [compute: Optional[ComputeStrategy], input_op: Optional[LogicalOperator], min_rows_per_bundled_input: Optional[int], name: str, num_outputs: Optional[int], ray_remote_args: Optional[Dict[str, Any]], ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]]].
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `AbstractUDFMap.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `AbstractUDFMap.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [compute: Optional[ComputeStrategy], fn: UserDefinedFunction, fn_args: Optional[Iterable[Any]], fn_constructor_args: Optional[Iterable[Any]], fn_constructor_kwargs: Optional[Dict[str, Any]], fn_kwargs: Optional[Dict[str, Any]], input_op: LogicalOperator, min_rows_per_bundled_input: Optional[int], name: str, ray_remote_args: Optional[Dict[str, Any]], ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]]].
     DOC101: Method `StreamingRepartition.__init__`: Docstring contains fewer arguments than in function signature.
@@ -1303,17 +1299,7 @@ python/ray/data/dataset.py
     DOC201: Method `Dataset.to_random_access_dataset` does not have a return section in docstring
     DOC201: Method `Dataset.stats` does not have a return section in docstring
     DOC201: Method `Dataset.has_serializable_lineage` does not have a return section in docstring
-    DOC101: Method `Dataset._repr_mimebundle_`: Docstring contains fewer arguments than in function signature.
     DOC106: Method `Dataset._repr_mimebundle_`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC103: Method `Dataset._repr_mimebundle_`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
-    DOC101: Method `Schema.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Schema.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [base_schema: Union['pyarrow.lib.Schema', 'PandasBlockSchema'], data_context: Optional[DataContext]].
---------------------
-python/ray/data/datasource/datasource.py
-    DOC102: Method `Reader.get_read_tasks`: Docstring contains more arguments than in function signature.
-    DOC103: Method `Reader.get_read_tasks`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [read_args: ].
-    DOC101: Method `RandomIntRowDatasource.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `RandomIntRowDatasource.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [n: int, num_columns: int].
 --------------------
 python/ray/data/datasource/file_datasink.py
     DOC101: Method `_FileDatasink.__init__`: Docstring contains fewer arguments than in function signature.

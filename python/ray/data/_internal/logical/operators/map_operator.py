@@ -34,8 +34,7 @@ class AbstractMap(AbstractOneToOne):
         compute: Optional[ComputeStrategy] = None,
         per_block_limit: Optional[int] = None,
     ):
-        """
-        Initialize an ``AbstractMap`` logical operator that will later
+        """Initialize an ``AbstractMap`` logical operator that will later
         be converted into a physical ``MapOperator``.
 
         Args:

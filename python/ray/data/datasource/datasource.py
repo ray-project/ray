@@ -120,7 +120,20 @@ class _LegacyDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
+        """Execute the read and return read tasks.
+
+        Args:
+            parallelism: The requested read parallelism. The number of read
+                tasks should equal to this value if possible.
+            per_block_limit: The per-block limit for the read tasks.
+
+        Returns:
+            A list of read tasks that can be executed to read blocks from the
+            datasource in parallel.
+        """
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
@@ -224,8 +237,7 @@ class RandomIntRowDatasource(Datasource):
     """
 
     def __init__(self, n: int, num_columns: int):
-        """
-        Initialize the datasource that generates random‐integer rows.
+        """Initialize the datasource that generates random-integer rows.
 
         Args:
             n: The number of rows to generate.
