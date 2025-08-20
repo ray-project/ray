@@ -220,10 +220,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
-    gcs_client_->Actors().AsyncSubscribe(
-        actor_id, subscribe, [&promise](Status status) {
-          promise.set_value(status.ok());
-        });
+    gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
+      promise.set_value(status.ok());
+    });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 

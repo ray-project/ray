@@ -85,8 +85,7 @@ void GcsTable<Key, Data>::GetAll(
 }
 
 template <typename Key, typename Data>
-void GcsTable<Key, Data>::Delete(const Key &key,
-                                 Postable<void(ray::Status)> callback) {
+void GcsTable<Key, Data>::Delete(const Key &key, Postable<void(ray::Status)> callback) {
   store_client_->AsyncDelete(
       table_name_, key.Binary(), JustOk<bool>(std::move(callback)));
 }

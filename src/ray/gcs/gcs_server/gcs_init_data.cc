@@ -65,8 +65,7 @@ void GcsInitData::AsyncLoadNodeTableData(Postable<void()> on_done) {
 void GcsInitData::AsyncLoadPlacementGroupTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading placement group table data.";
   gcs_table_storage_.PlacementGroupTable().GetAll(std::move(on_done).TransformArg(
-      [this](absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData>
-                 result) {
+      [this](absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData> result) {
         placement_group_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading placement group table data, size = "
                       << placement_group_table_data_.size();
