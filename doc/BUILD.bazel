@@ -1,6 +1,6 @@
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
-load("//bazel:python.bzl", "doctest", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
+load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
 exports_files(["test_myst_doc.py"])
 
@@ -480,8 +480,7 @@ doctest(
     tags = ["team:core"],
 )
 
-doctest(
-    name = "doctest[data]",
+doctest_each(
     files = glob(
         include = [
             "source/data/**/*.md",
@@ -492,15 +491,9 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             # These tests are currently failing.
-            "source/data/loading-data.rst",
-            "source/data/data-internals.rst",
-            "source/data/inspecting-data.rst",
-            "source/data/loading-data.rst",
-            "source/data/performance-tips.rst",
-            "source/data/saving-data.rst",
-            "source/data/working-with-images.rst",
             "source/data/working-with-llms.rst",
-            "source/data/working-with-pytorch.rst",
+            # These don't contain code snippets.
+            "source/data/api/**/*.rst",
         ],
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",

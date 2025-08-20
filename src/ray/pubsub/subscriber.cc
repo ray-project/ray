@@ -23,7 +23,7 @@ namespace ray {
 
 namespace pubsub {
 namespace {
-const PublisherID kDefaultPublisherID{};
+const UniqueID kDefaultUniqueID{};
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,7 +36,7 @@ bool SubscriberChannel::Subscribe(
     SubscriptionItemCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
   cum_subscribe_requests_++;
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
     return subscription_map_[publisher_id]
@@ -59,7 +59,7 @@ bool SubscriberChannel::Subscribe(
 bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
                                     const std::optional<std::string> &key_id) {
   cum_unsubscribe_requests_++;
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   // Find subscription info.
   auto subscription_it = subscription_map_.find(publisher_id);
@@ -94,7 +94,7 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
 
 bool SubscriberChannel::IsSubscribed(const rpc::Address &publisher_address,
                                      const std::string &key_id) const {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
     return false;
@@ -122,7 +122,7 @@ bool SubscriberChannel::CheckNoLeaks() const {
 
 void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_address,
                                                rpc::PubMessage &&pub_message) const {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
@@ -154,7 +154,7 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
 
 void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
                                                const Status &status) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
@@ -183,7 +183,7 @@ void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_add
 
 void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
                                                const std::string &key_id) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
@@ -279,7 +279,7 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   command->cmd.mutable_unsubscribe_message();
 
   absl::MutexLock lock(&mutex_);
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
 
@@ -294,7 +294,7 @@ bool Subscriber::UnsubscribeChannel(const rpc::ChannelType channel_type,
   command->cmd.mutable_unsubscribe_message();
 
   absl::MutexLock lock(&mutex_);
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
 
@@ -330,7 +330,7 @@ bool Subscriber::SubscribeInternal(
     command->cmd.mutable_subscribe_message()->Swap(sub_message.get());
   }
   command->done_cb = std::move(subscribe_done_callback);
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   absl::MutexLock lock(&mutex_);
   commands_[publisher_id].emplace(std::move(command));
@@ -345,7 +345,7 @@ bool Subscriber::SubscribeInternal(
 
 void Subscriber::MakeLongPollingConnectionIfNotConnected(
     const rpc::Address &publisher_address) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   auto publishers_connected_it = publishers_connected_.find(publisher_id);
   if (publishers_connected_it == publishers_connected_.end()) {
     publishers_connected_.emplace(publisher_id);
@@ -354,7 +354,7 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
 }
 
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
   auto subscriber_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
@@ -373,7 +373,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
 void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address,
                                            const Status &status,
                                            rpc::PubsubLongPollingReply &&reply) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has been replied from " << publisher_id;
   RAY_CHECK(publishers_connected_.count(publisher_id));
 
@@ -390,9 +390,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     commands_.erase(publisher_id);
   } else {
     RAY_CHECK(!reply.publisher_id().empty()) << "publisher_id is empty.";
-    auto reply_publisher_id = PublisherID::FromBinary(reply.publisher_id());
+    auto reply_publisher_id = UniqueID::FromBinary(reply.publisher_id());
     if (reply_publisher_id != processed_sequences_[publisher_id].first) {
-      if (processed_sequences_[publisher_id].first != kDefaultPublisherID) {
+      if (processed_sequences_[publisher_id].first != kDefaultUniqueID) {
         RAY_LOG(INFO) << "Received publisher_id " << reply_publisher_id.Hex()
                       << " is different from last seen publisher_id "
                       << processed_sequences_[publisher_id].first
@@ -447,7 +447,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
 }
 
 void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_address) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
 
   // If there's no in flight command batch request to the publisher,
@@ -488,9 +488,9 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
             Status status, const rpc::PubsubCommandBatchReply &reply) {
           {
             absl::MutexLock lock(&mutex_);
-            auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
-            RAY_CHECK(command_batch_sent_it != command_batch_sent_.end());
-            command_batch_sent_.erase(command_batch_sent_it);
+            auto command_batch_sent_iter = command_batch_sent_.find(publisher_id);
+            RAY_CHECK(command_batch_sent_iter != command_batch_sent_.end());
+            command_batch_sent_.erase(command_batch_sent_iter);
           }
           for (const auto &done : done_cb) {
             if (done) {

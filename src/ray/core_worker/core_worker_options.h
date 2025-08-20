@@ -83,7 +83,6 @@ struct CoreWorkerOptions {
         interactive(false),
         node_ip_address(""),
         node_manager_port(0),
-        raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
@@ -97,6 +96,7 @@ struct CoreWorkerOptions {
         get_lang_stack(nullptr),
         kill_main(nullptr),
         cancel_async_actor_task(nullptr),
+        actor_shutdown_callback(nullptr),
         is_local_mode(false),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
@@ -135,8 +135,6 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
-  /// IP address of the raylet.
-  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
@@ -177,6 +175,8 @@ struct CoreWorkerOptions {
   // Should return a boolean indicating if the task was successfully cancelled or not.
   // If not, the client will retry.
   std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
+  /// Callback to shutdown actor instance before shutdown.
+  std::function<void()> actor_shutdown_callback;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.

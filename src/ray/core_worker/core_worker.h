@@ -42,13 +42,14 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -180,7 +181,7 @@ class CoreWorker {
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ray::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
@@ -1673,6 +1674,17 @@ class CoreWorker {
                     const int64_t timeout_ms,
                     std::vector<std::shared_ptr<RayObject>> &results);
 
+  /// Helper to compute idleness from precomputed counters.
+  ///
+  /// We consider the worker to be idle if it doesn't have object references and it
+  /// doesn't have any object pinning RPCs in flight and it doesn't have pending tasks.
+  bool IsIdle(size_t num_objects_with_references,
+              int64_t pins_in_flight,
+              size_t num_pending_tasks) const;
+
+  /// Convenience overload that fetches counters and evaluates idleness.
+  bool IsIdle() const;
+
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
   /// \return The caller ID. For non-actor tasks, this is the current task ID.
@@ -1740,7 +1752,7 @@ class CoreWorker {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the local Raylet that goes over a local socket.
-  std::shared_ptr<RayletIpcClientInterface> raylet_ipc_client_;
+  std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
 
   // Client to the local Raylet that goes over a gRPC connection.
   std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
@@ -1872,14 +1884,10 @@ class CoreWorker {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
-  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
-  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
-  /// See https://github.com/ray-project/ray/issues/51642.
-
-  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
-  std::atomic<bool> is_exited_ = false;
-  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
-  std::atomic<bool> is_shutdown_ = false;
+  /// Unified shutdown coordinator that manages all shutdown operations.
+  /// Implements a thread-safe, single state machine that coordinates
+  /// all shutdown entry points.
+  std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
   int64_t max_direct_call_object_size_;
 
@@ -1899,6 +1907,9 @@ class CoreWorker {
 
   /// Worker's PID
   uint32_t pid_;
+
+  /// Callback to cleanup actor instance before shutdown
+  std::function<void()> actor_shutdown_callback_;
 
   // Guards generator_ids_pending_deletion_.
   absl::Mutex generator_ids_pending_deletion_mutex_;
@@ -1922,6 +1933,10 @@ class CoreWorker {
 
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
+
+  // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
+  // the shutdown procedure without exposing additional public APIs.
+  friend class CoreWorkerShutdownExecutor;
 
   /// Used to block in certain spots if the GCS node cache is needed.
   std::mutex gcs_client_node_cache_populated_mutex_;

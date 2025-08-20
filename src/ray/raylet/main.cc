@@ -473,6 +473,8 @@ int main(int argc, char *argv[]) {
     object_manager_config.object_store_memory = object_store_memory;
     object_manager_config.max_bytes_in_flight =
         RayConfig::instance().object_manager_max_bytes_in_flight();
+    RAY_CHECK_GT(object_manager_config.max_bytes_in_flight, 0)
+        << "object_manager_max_bytes_in_flight must be greater than 0";
     object_manager_config.plasma_directory = plasma_directory;
     object_manager_config.fallback_directory = fallback_directory;
     object_manager_config.huge_pages = huge_pages;
@@ -671,8 +673,8 @@ int main(int argc, char *argv[]) {
         ray::scheduling::NodeID(raylet_node_id.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
-        [&](ray::scheduling::NodeID node_id) {
-          return gcs_client->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+        [&](ray::scheduling::NodeID id) {
+          return gcs_client->Nodes().Get(NodeID::FromBinary(id.Binary())) != nullptr;
         },
         /*get_used_object_store_memory*/
         [&]() {
@@ -695,8 +697,8 @@ int main(int argc, char *argv[]) {
         /*labels*/
         node_manager_config.labels);
 
-    auto get_node_info_func = [&](const NodeID &node_id) {
-      return gcs_client->Nodes().Get(node_id);
+    auto get_node_info_func = [&](const NodeID &id) {
+      return gcs_client->Nodes().Get(id);
     };
     auto announce_infeasible_task = [](const ray::RayTask &task) {
       /// Publish the infeasible task error to GCS so that drivers can subscribe to it
@@ -765,11 +767,11 @@ int main(int argc, char *argv[]) {
                                                           announce_infeasible_task,
                                                           *local_task_manager);
 
-    auto raylet_client_factory = [&](const NodeID &node_id) {
-      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
-      RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    auto raylet_client_factory = [&](const NodeID &id) {
+      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
+      RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
-          node_id, node_info->node_manager_address(), node_info->node_manager_port());
+          id, node_info->node_manager_address(), node_info->node_manager_port());
       return raylet_client_pool->GetOrConnectByAddress(std::move(addr));
     };
 
