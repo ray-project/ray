@@ -2823,6 +2823,7 @@ class TestAutoscaling:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
+                    metrics={},
                     window_avg=req_per_replica,
                     send_timestamp=timer.time(),
                 )
@@ -2978,7 +2979,7 @@ class TestAutoscaling:
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 2, timer.time()
+                    replica._actor.replica_id, 2, {}, timer.time()
                 )
 
         # status=UPSCALING, status_trigger=AUTOSCALE
@@ -3055,7 +3056,7 @@ class TestAutoscaling:
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 1, timer.time()
+                    replica._actor.replica_id, 1, {}, timer.time()
                 )
 
         # status=DOWNSCALING, status_trigger=AUTOSCALE
@@ -3145,7 +3146,7 @@ class TestAutoscaling:
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 1, timer.time()
+                    replica._actor.replica_id, 1, {}, timer.time()
                 )
 
         check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
