@@ -16,4 +16,4 @@ hf_transfer
 transformers<4.54.0 # Due to https://github.com/vllm-project/vllm-ascend/issues/2046
 
 # nixl version Needs to be in sync with the one in ray-llm/Dockerfile
-nixl==0.3.1
+nixl==0.4.1
