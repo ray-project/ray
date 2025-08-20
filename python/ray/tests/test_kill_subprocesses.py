@@ -8,7 +8,6 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 
 import psutil
 
@@ -91,7 +90,9 @@ def test_sigkilled_worker_can_kill_subprocess(pg_cleanup_enabled, shutdown_only)
         logger.info(get_process_info(pid))  # subprocess killed
 
 
-def test_daemon_processes_not_killed_until_actor_dead(pg_cleanup_enabled, shutdown_only):
+def test_daemon_processes_not_killed_until_actor_dead(
+    pg_cleanup_enabled, shutdown_only
+):
     ray.init()
     # sigkill'd actor can't kill subprocesses
     b = BedMaker.remote()
@@ -117,9 +118,7 @@ def test_detached_setsido_escape(pg_cleanup_enabled, shutdown_only):
     class A:
         def spawn_detached(self):
             # Detach into a new session (escape worker PG); sleep long.
-            script = (
-                "python -c \"import os,sys,time; os.setsid(); time.sleep(1000)\""
-            )
+            script = 'python -c "import os,sys,time; os.setsid(); time.sleep(1000)"'
             p = subprocess.Popen(script, shell=True)
             return p.pid
 

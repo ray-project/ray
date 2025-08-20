@@ -483,7 +483,12 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, decouple, env, /*pipe_to_stdin=*/false,
+  Process proc(&*argv.begin(),
+               NULL,
+               error,
+               decouple,
+               env,
+               /*pipe_to_stdin=*/false,
                new_process_group);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);

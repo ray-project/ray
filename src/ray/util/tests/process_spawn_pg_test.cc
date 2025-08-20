@@ -32,8 +32,11 @@ namespace {
 
 TEST(ProcessSpawnPGTest, NewGroupWhenRequested) {
   std::vector<std::string> args = {"/bin/sh", "-c", "sleep 5"};
-  auto [proc, ec] = Process::Spawn(args, /*decouple=*/false, /*pid_file=*/"",
-                                   /*env=*/{}, /*new_process_group=*/true);
+  auto [proc, ec] = Process::Spawn(args,
+                                   /*decouple=*/false,
+                                   /*pid_file=*/"",
+                                   /*env=*/{},
+                                   /*new_process_group=*/true);
   ASSERT_FALSE(ec) << ec.message();
   ASSERT_TRUE(proc.IsValid());
 
@@ -47,8 +50,11 @@ TEST(ProcessSpawnPGTest, NewGroupWhenRequested) {
 
 TEST(ProcessSpawnPGTest, SameGroupWhenNotRequested) {
   std::vector<std::string> args = {"/bin/sh", "-c", "sleep 5"};
-  auto [proc, ec] = Process::Spawn(args, /*decouple=*/false, /*pid_file=*/"",
-                                   /*env=*/{}, /*new_process_group=*/false);
+  auto [proc, ec] = Process::Spawn(args,
+                                   /*decouple=*/false,
+                                   /*pid_file=*/"",
+                                   /*env=*/{},
+                                   /*new_process_group=*/false);
   ASSERT_FALSE(ec) << ec.message();
   ASSERT_TRUE(proc.IsValid());
 
@@ -66,5 +72,3 @@ TEST(ProcessSpawnPGTest, SameGroupWhenNotRequested) {
 }  // namespace ray
 
 #endif  // !_WIN32
-
-
