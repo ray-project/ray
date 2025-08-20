@@ -106,6 +106,7 @@ class Reader:
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
+            per_block_limit: The per-block limit for the read tasks.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
