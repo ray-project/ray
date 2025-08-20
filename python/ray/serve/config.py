@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -453,13 +454,9 @@ class HTTPOptions(BaseModel):
         return v
     
     @validator("ssl_certfile")
-    def validate_ssl_config(cls, v, values):
+    def validate_ssl_certfile(cls, v, values):
         ssl_keyfile = values.get("ssl_keyfile")
-        if (v and not ssl_keyfile) or (ssl_keyfile and not v):
-            raise ValueError(
-                "Both ssl_keyfile and ssl_certfile must be provided together "
-                "to enable HTTPS."
-            )
+        validate_ssl_config(v, ssl_keyfile)
         return v
 
     @validator("middlewares", always=True)

@@ -24,6 +24,7 @@ from ray.serve._private.common import (
     RequestProtocol,
     ServeDeployMode,
 )
+from ray.serve._private.utils import validate_ssl_config
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
@@ -734,13 +735,9 @@ class HTTPOptionsSchema(BaseModel):
     )
     
     @validator("ssl_certfile")
-    def validate_ssl_config(cls, v, values):
+    def validate_ssl_certfile(cls, v, values):
         ssl_keyfile = values.get("ssl_keyfile")
-        if (v and not ssl_keyfile) or (ssl_keyfile and not v):
-            raise ValueError(
-                "Both ssl_keyfile and ssl_certfile must be provided together "
-                "to enable HTTPS."
-            )
+        validate_ssl_config(v, ssl_keyfile)
         return v
 
 

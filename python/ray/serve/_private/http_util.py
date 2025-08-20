@@ -714,9 +714,6 @@ async def start_asgi_http_server(
     # has no use to us.
     logging.getLogger("uvicorn.error").level = logging.CRITICAL
 
-    # NOTE: We have to use lower level uvicorn Config and Server
-    # class because we want to run the server as a coroutine. The only
-    # alternative is to call uvicorn.run which is blocking.
     # Configure SSL if certificates are provided
     ssl_kwargs = {}
     if http_options.ssl_keyfile and http_options.ssl_certfile:
@@ -734,6 +731,9 @@ async def start_asgi_http_server(
             f"with SSL certificate: {http_options.ssl_certfile}"
         )
     
+    # NOTE: We have to use lower level uvicorn Config and Server
+    # class because we want to run the server as a coroutine. The only
+    # alternative is to call uvicorn.run which is blocking.
     server = uvicorn.Server(
         config=uvicorn.Config(
             lambda: app,
