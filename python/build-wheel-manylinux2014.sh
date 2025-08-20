@@ -43,11 +43,11 @@ PYTHON_VERSIONS=(
 
 # Extract prebuilt dashboard into expected location, only if it exists
 if [[ -f "$HOME"/dashboard_build.tar.gz ]]; then
-  echo "Extracting "$HOME"/dashboard_build.tar.gz..."
+  echo "Extracting $HOME/dashboard_build.tar.gz..."
   mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
   tar -xzf "$HOME"/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
 else
-  echo "ERROR: "$HOME"/dashboard_build.tar.gz not found. Aborting." >&2
+  echo "ERROR: $HOME/dashboard_build.tar.gz not found. Aborting." >&2
   exit 1
 fi
 
