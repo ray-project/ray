@@ -39,6 +39,7 @@ class ThreadRunner:
             with self._lock:
                 self._is_running = True
 
+            has_exception = False
             try:
                 result = target()
                 with self._lock:
@@ -49,10 +50,10 @@ class ThreadRunner:
                 self._exc_queue.put(
                     construct_user_exception_with_traceback(e, exclude_frames=2)
                 )
+                has_exception = True
 
-            with self._lock:
-                if not self._exc:
-                    self._exc_queue.put(None)
+            if not has_exception:
+                self._exc_queue.put(None)
 
         self._thread = threading.Thread(
             target=_run_target,
