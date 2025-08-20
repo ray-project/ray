@@ -301,8 +301,7 @@ void ServerConnection::DoAsyncWrites() {
                 }
                 call_handlers(status, num_messages);
               },
-              std::move(stats_handle),
-              false);
+              std::move(stats_handle));
         });
   } else {
     boost::asio::async_write(
@@ -381,8 +380,7 @@ void ClientConnection::ProcessMessages() {
             const boost::system::error_code &ec, size_t bytes_transferred) mutable {
           EventTracker::RecordExecution(
               [this, this_ptr, ec]() { ProcessMessageHeader(ec); },
-              std::move(stats_handle),
-              false);
+              std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_,
@@ -422,8 +420,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
         [this, this_ptr, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) mutable {
           EventTracker::RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
-                                        std::move(stats_handle),
-                                        false);
+                                        std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_,
