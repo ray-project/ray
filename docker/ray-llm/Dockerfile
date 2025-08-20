@@ -10,6 +10,7 @@ ARG ROOT_DIR="/usr/local"
 ARG GDR_HOME="${ROOT_DIR}/gdrcopy"
 ARG UCX_HOME="${ROOT_DIR}/ucx"
 ARG NIXL_HOME="${ROOT_DIR}/nixl"
+ARG NVSHMEM_HOME="${ROOT_DIR}/nvshmem"
 
 RUN <<EOF
 #!/bin/bash
@@ -159,8 +160,10 @@ NVSHMEM_VERSION="3.2.5-1"
     export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
     export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
-    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
-    cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
+    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${NVSHMEM_HOME}"
+    cmake --build "${EP_TEMP_DIR}/nvshmem_build"
+
+    sudo "$(which cmake)" --install "${EP_TEMP_DIR}/nvshmem_build" --prefix "${NVSHMEM_HOME}"
 )
 
 # Install PPLX Kernels
@@ -169,7 +172,7 @@ NVSHMEM_VERSION="3.2.5-1"
 
     cd "${EP_TEMP_DIR}"
 
-    export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
+    export CMAKE_PREFIX_PATH="${NVSHMEM_HOME}"
 
     # build and install pplx, require pytorch installed
     git clone --depth 1 --no-checkout https://github.com/ppl-ai/pplx-kernels
@@ -181,6 +184,43 @@ NVSHMEM_VERSION="3.2.5-1"
     # see https://github.com/pypa/pip/issues/9955#issuecomment-838065925
     # PIP_NO_BUILD_ISOLATION=0 disables build isolation
     PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
+)
+
+# Install DeepEP
+(
+    echo "Installing DeepEP"
+
+    cd "${EP_TEMP_DIR}"
+
+    export NVSHMEM_DIR="${NVSHMEM_HOME}"
+
+    git clone --depth 1 --no-checkout https://github.com/deepseek-ai/DeepEP
+    cd DeepEP
+    # using a specific commit to make the build deterministic
+    # date of the commit: 2025-08-06
+    git fetch --depth 1 origin dd14b36d96f197a6ae5162448c8c05cbf03f64db
+    git checkout dd14b36d96f197a6ae5162448c8c05cbf03f64db
+
+    PIP_NO_BUILD_ISOLATION=0 pip install . -v --no-deps
+)
+
+# Install DeepGEMM
+(
+    echo "Installing DeepGEMM"
+
+    cd "${EP_TEMP_DIR}"
+
+    git clone --depth 1 --no-checkout https://github.com/deepseek-ai/DeepGEMM.git
+    cd DeepGEMM
+    # using a specific commit to make the build deterministic
+    # date of the commit: 2025-08-04
+    git fetch --depth 1 origin 7b6b5563b9d4c1ae07ffbce7f78ad3ac9204827c
+    git checkout 7b6b5563b9d4c1ae07ffbce7f78ad3ac9204827c
+
+    # Initialize and update submodules after checkout
+    git submodule update --init --recursive
+
+    ./install.sh
 )
 
 rm -rf "${EP_TEMP_DIR}"
@@ -200,6 +240,6 @@ EOF
 # https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
 # and here:
 # https://gitlab.com/nvidia/container-images/cuda/-/issues/27
-ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:/usr/local/nvidia/bin"
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:${NVSHMEM_HOME}/bin:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${NVSHMEM_HOME}/lib:/usr/local/nvidia/lib64"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
