@@ -16,7 +16,7 @@ Deploy medium size models using tensor parallelism across 4—8 GPUs on a single
 
 ---
 
-**[Large size LLM deployment](#)**  
+**[Large size LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/vision-llm.ipynb)**  
 Deploy massive models using pipeline parallelism across a multi-node cluster, such as Deepseek-R1 or Llama-Nemotron-253B.  
 
 ---
@@ -39,5 +39,6 @@ Deploy models that can switch between reasoning and non-reasoning modes for flex
 
 notebooks/small-size-llm.ipynb
 notebooks/medium-size-llm.ipynb
+notebooks/vision-llm.ipynb
 ```
 
