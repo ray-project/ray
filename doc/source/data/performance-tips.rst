@@ -51,7 +51,7 @@ For example, the following code batches multiple files into the same read task t
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16)
+    ds = ray.data.read_csv(["s3://anonymous@ray-example-data/iris.csv"] * 16)
     print(ds.materialize())
 
 .. testoutput::
@@ -81,7 +81,7 @@ Notice how the number of output blocks is equal to ``override_num_blocks`` in th
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16, override_num_blocks=16)
+    ds = ray.data.read_csv(["s3://anonymous@ray-example-data/iris.csv"] * 16, override_num_blocks=16)
     print(ds.materialize())
 
 .. testoutput::
@@ -143,7 +143,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv").map(lambda row: row)
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -171,7 +171,7 @@ For example, this code sets the number of files equal to ``override_num_blocks``
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv", override_num_blocks=1).map(lambda row: row)
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv", override_num_blocks=1).map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -205,15 +205,21 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 .. testcode::
 
     import ray
+
     # Read just two of the five columns of the Iris dataset.
-    ray.data.read_parquet(
+    ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
         columns=["sepal.length", "variety"],
     )
+    
+    print(ds.schema())
 
 .. testoutput::
 
-    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
+    Column        Type
+    ------        ----
+    sepal.length  double
+    variety       string
 
 
 .. _data_memory:
