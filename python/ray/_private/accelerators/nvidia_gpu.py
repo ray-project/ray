@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
 
-NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([\s\-\w\d]+[\w\d])")
+NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([\s\-\w]+\w)")
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
