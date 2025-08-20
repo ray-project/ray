@@ -350,8 +350,8 @@ ray_cc_test(
     name = "process_spawn_pg_test",
     srcs = ["process_spawn_pg_test.cc"],
     tags = [
-        "team:core",
         "no_windows",
+        "team:core",
     ],
     deps = [
         "//src/ray/util",

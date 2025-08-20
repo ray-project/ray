@@ -394,13 +394,6 @@ int main(int argc, char *argv[]) {
   absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
 
-  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
-  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
-  // so we have to put it here.
-  auto enable_subreaper = [&]() {
-    RAY_LOG(WARNING) << "Subreaper enable requested but deprecated and ignored.";
-  };
-
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
   auto shutdown_raylet_after_unregistration = [&main_service,
