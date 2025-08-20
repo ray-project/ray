@@ -552,7 +552,7 @@ DEFAULT_GRAFANA_ROWS = [
         collapsed=False,
     ),
     Row(
-        title="Hardware Utilization by Node (CPU, GPU, Memory, Disk and Network)",
+        title="Hardware Utilization by Node",
         id=1005,
         panels=NODE_HARDWARE_UTILIZATION_PANELS,
         collapsed=False,
