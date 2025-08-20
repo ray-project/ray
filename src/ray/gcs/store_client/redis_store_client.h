@@ -269,8 +269,8 @@ class RedisStoreClient : public StoreClient {
       const std::vector<RedisConcurrencyKey> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void DeleteByKeys(const std::string &table_name,
-                      const std::vector<std::string> &keys,
-                      Postable<void(int64_t)> callback);
+                    const std::vector<std::string> &keys,
+                    Postable<void(int64_t)> callback);
 
   // Send the redis command to the server. This method will make request to be
   // serialized for each key in keys. At a given time, only one request for a {table_name,
