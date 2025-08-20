@@ -24,7 +24,7 @@ class DashboardAgent:
     def __init__(
         self,
         node_ip_address,
-        dashboard_agent_port,
+        grpc_port,
         gcs_address,
         cluster_id_hex,
         minimal,
@@ -54,7 +54,7 @@ class DashboardAgent:
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.log_dir = log_dir
-        self.dashboard_agent_port = dashboard_agent_port
+        self.grpc_port = grpc_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.events_export_addr = events_export_addr
@@ -111,11 +111,10 @@ class DashboardAgent:
                 ),
             )  # noqa
         )
-        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
-            self.grpc_port = add_port_to_grpc_server(
-                self.server, build_address(grpc_ip, self.dashboard_agent_port)
-            )
+            add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
+            if self.ip != "127.0.0.1" and self.ip != "localhost":
+                add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
             # port conflict issue which brought from static port. We should
@@ -129,7 +128,7 @@ class DashboardAgent:
         else:
             logger.info(
                 "Dashboard agent grpc address: %s",
-                build_address(grpc_ip, self.grpc_port),
+                build_address(self.ip, self.grpc_port),
             )
 
         # If the agent is not minimal it should start the http server
@@ -263,7 +262,7 @@ if __name__ == "__main__":
         help="The port to expose metrics through Prometheus.",
     )
     parser.add_argument(
-        "--dashboard-agent-port",
+        "--grpc-port",
         required=True,
         type=int,
         help="The port on which the dashboard agent will receive GRPCs.",
@@ -424,7 +423,7 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.node_ip_address,
-            args.dashboard_agent_port,
+            args.grpc_port,
             args.gcs_address,
             args.cluster_id_hex,
             args.minimal,
