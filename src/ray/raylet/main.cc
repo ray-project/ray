@@ -38,6 +38,7 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"

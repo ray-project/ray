@@ -289,6 +289,7 @@ ray_cc_binary(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
         "//src/ray/util:process",
+        "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "//src/ray/util:time",
