@@ -139,7 +139,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         auto cnt = pair.second.size();
         // We should only report dispatching tasks that do not have resources allocated.
         for (const auto &task : pair.second) {
-          if (task->allocated_instances) {
+          if (task->allocated_instances_) {
             cnt--;
           }
         }

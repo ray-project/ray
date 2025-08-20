@@ -33,11 +33,11 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     std::function<std::function<void()>()> initialize_thread_callback)
     : initialize_thread_callback_(std::move(initialize_thread_callback)) {
   for (auto &group : concurrency_groups) {
-    const auto name = group.name;
-    const auto max_concurrency = group.max_concurrency;
+    const auto name = group.name_;
+    const auto max_concurrency = group.max_concurrency_;
     auto executor =
         std::make_shared<ExecutorType>(max_concurrency, initialize_thread_callback_);
-    auto &fds = group.function_descriptors;
+    auto &fds = group.function_descriptors_;
     for (auto fd : fds) {
       functions_to_executor_index_[fd->ToString()] = executor;
     }

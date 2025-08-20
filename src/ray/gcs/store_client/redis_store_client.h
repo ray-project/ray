@@ -49,10 +49,10 @@ struct RedisMatchPattern {
     static const RedisMatchPattern kAny("*");
     return kAny;
   }
-  const std::string escaped;
+  const std::string escaped_;
 
  private:
-  explicit RedisMatchPattern(std::string escaped) : escaped(std::move(escaped)) {}
+  explicit RedisMatchPattern(std::string escaped) : escaped_(std::move(escaped)) {}
 };
 
 struct RedisCommand {

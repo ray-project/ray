@@ -128,9 +128,10 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePut___3BLio_ray_runtime_objec
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(
     JNIEnv *env, jclass, jobject ids, jlong timeoutMs) {
   std::vector<ObjectID> object_ids;
-  JavaListToNativeVector<ObjectID>(env, ids, &object_ids, [](JNIEnv *env, jobject id) {
-    return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
-  });
+  JavaListToNativeVector<ObjectID>(
+      env, ids, &object_ids, [](JNIEnv *inner_env, jobject id) {
+        return JavaByteArrayToId<ObjectID>(inner_env, static_cast<jbyteArray>(id));
+      });
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = CoreWorkerProcess::GetCoreWorker().Get(
       object_ids, static_cast<int64_t>(timeoutMs), results);
@@ -148,8 +149,8 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeWait(JNIEnv *env,
                                                         jboolean fetch_local) {
   std::vector<ObjectID> object_ids;
   JavaListToNativeVector<ObjectID>(
-      env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
+      env, objectIds, &object_ids, [](JNIEnv *inner_env, jobject id) {
+        return JavaByteArrayToId<ObjectID>(inner_env, static_cast<jbyteArray>(id));
       });
   std::vector<bool> results;
   auto status = CoreWorkerProcess::GetCoreWorker().Wait(object_ids,
@@ -158,20 +159,21 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeWait(JNIEnv *env,
                                                         &results,
                                                         static_cast<bool>(fetch_local));
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
-    jobject java_item =
-        env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    return java_item;
-  });
+  return NativeVectorToJavaList<bool>(
+      env, results, [](JNIEnv *inner_env, const bool &item) {
+        jobject java_item =
+            inner_env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
+        RAY_CHECK_JAVA_EXCEPTION(inner_env);
+        return java_item;
+      });
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *env, jclass, jobject objectIds, jboolean localOnly) {
   std::vector<ObjectID> object_ids;
   JavaListToNativeVector<ObjectID>(
-      env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
+      env, objectIds, &object_ids, [](JNIEnv *inner_env, jobject id) {
+        return JavaByteArrayToId<ObjectID>(inner_env, static_cast<jbyteArray>(id));
       });
   auto status =
       CoreWorkerProcess::GetCoreWorker().Delete(object_ids, static_cast<bool>(localOnly));
@@ -207,15 +209,15 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
   return NativeMapToJavaMap<ObjectID, std::pair<size_t, size_t>>(
       env,
       reference_counts,
-      [](JNIEnv *env, const ObjectID &key) {
-        return IdToJavaByteArray<ObjectID>(env, key);
+      [](JNIEnv *inner_env, const ObjectID &key) {
+        return IdToJavaByteArray<ObjectID>(inner_env, key);
       },
-      [](JNIEnv *env, const std::pair<size_t, size_t> &value) {
-        jlongArray array = env->NewLongArray(2);
-        jlong *elements = env->GetLongArrayElements(array, nullptr);
+      [](JNIEnv *inner_env, const std::pair<size_t, size_t> &value) {
+        jlongArray array = inner_env->NewLongArray(2);
+        jlong *elements = inner_env->GetLongArrayElements(array, nullptr);
         elements[0] = static_cast<jlong>(value.first);
         elements[1] = static_cast<jlong>(value.second);
-        env->ReleaseLongArrayElements(array, elements, 0);
+        inner_env->ReleaseLongArrayElements(array, elements, 0);
         return array;
       });
 }

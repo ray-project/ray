@@ -132,7 +132,7 @@ struct GcsServerMocker {
     }
 
     bool GrantWorkerLease() {
-      return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, NodeID::Nil());
+      return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id_, NodeID::Nil());
     }
 
     bool GrantWorkerLease(const std::string &address,
@@ -299,7 +299,7 @@ struct GcsServerMocker {
     int num_leases_canceled = 0;
     int num_release_unused_workers = 0;
     int num_get_task_failure_causes = 0;
-    NodeID node_id = NodeID::FromRandom();
+    NodeID node_id_ = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::DrainRayletReply>> drain_raylet_callbacks = {};
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
