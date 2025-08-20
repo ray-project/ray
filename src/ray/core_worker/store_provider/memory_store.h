@@ -26,7 +26,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_count.h"
 #include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
@@ -47,20 +46,25 @@ class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
   ///
-  /// \param[in] io_context Posts async callbacks to this context.
-  /// \param[in] counter If not null, this enables ref counting for local objects,
-  ///            and the `remove_after_get` flag for Get() will be ignored.
-  /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
+  /// \param io_context Posts async callbacks to this context.
+  /// \param raylet_ipc_client IPC client to the local Raylet. Used to release &
+  ///        reacquire resources during & after blocking calls.
+  /// \param should_delete_object_on_put Callback to check if an object should be
+  ///        immediately deleted when it is put into the store.
+  /// \param check_signals Called periodically during long-running
+  /// operations.
+  /// \param unhandled_exception_handler Called on objects that have unhandled
+  /// exceptions.
+  /// \param object_allocator Used to override the object allocator.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      ReferenceCounter *counter = nullptr,
-      std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client = nullptr,
+      ipc::RayletIpcClientInterface &raylet_ipc_client,
+      std::function<bool(const ObjectID)> should_delete_object_on_put = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
                                                const ObjectID &object_id)>
           object_allocator = nullptr);
-  ~CoreWorkerMemoryStore() = default;
 
   /// Put an object with specified ID into object store. If there are pending GetAsync
   /// requests, the callbacks are posted onto the io_context.
@@ -72,21 +76,11 @@ class CoreWorkerMemoryStore {
   /// Get a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to get. Duplicates are not allowed.
-  /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] ctx The current worker context.
-  /// \param[in] remove_after_get When to remove the objects from store after `Get`
-  /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
+  /// \param[out] got_exception If any of the results contained an exception.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &object_ids,
-             int num_objects,
-             int64_t timeout_ms,
-             const WorkerContext &ctx,
-             bool remove_after_get,
-             std::vector<std::shared_ptr<RayObject>> *results);
-
-  /// Convenience wrapper around Get() that stores results in a given result map.
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
              int64_t timeout_ms,
              const WorkerContext &ctx,
@@ -185,7 +179,6 @@ class CoreWorkerMemoryStore {
                  int num_objects,
                  int64_t timeout_ms,
                  const WorkerContext &ctx,
-                 bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception,
                  bool at_most_num_objects);
@@ -205,12 +198,15 @@ class CoreWorkerMemoryStore {
 
   instrumented_io_context &io_context_;
 
-  /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
-  /// mandatory once Java is supported.
-  ReferenceCounter *ref_counter_;
+  /// Used to release & reacquire resources during & after blocking calls.
+  ipc::RayletIpcClient &raylet_ipc_client_;
 
-  // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
+  /// Called to check if a given object should be deleted immediately when it's put
+  /// into the store.
+  std::function<bool(const ObjectID)> should_delete_object_on_put_;
+
+  // Used to notify worker blocked / unblocked on get calls.
+  ipc::RayletIpcClientInterface &raylet_ipc_client_;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
