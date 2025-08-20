@@ -2,6 +2,7 @@ import os
 import random
 import sys
 import tempfile
+import signal
 
 import numpy as np
 import pytest
@@ -1674,6 +1675,60 @@ def test_one_liner_actor_method_invocation(shutdown_only):
     # See https://github.com/ray-project/ray/pull/53178
     result = ray.get(Foo.remote().method.remote())
     assert result == "ok"
+
+
+def test_get_actor_after_same_name_actor_dead(shutdown_only):
+    ray.init(namespace="test")
+
+    @ray.remote
+    class Actor:
+        def get_pid(self):
+            return os.getpid()
+
+    def get_pid(actor):
+        while True:
+            try:
+                return ray.get(actor.get_pid.remote())
+            except Exception:
+                pass
+
+    a = Actor.options(name="test", max_restarts=1).remote()
+
+    pid = get_pid(a)
+    os.kill(pid, signal.SIGKILL)
+
+    pid = get_pid(a)
+    os.kill(pid, signal.SIGKILL)
+
+    wait_for_condition(lambda: ray.state.actors(a._actor_id.hex())["State"] == "DEAD")
+
+    # When a reference is held, the name cannot be reused.
+    with pytest.raises(ValueError):
+        Actor.options(name="test", max_restarts=1).remote()
+
+    # triger rpc reply: WaitForActorRefDeleted
+    del a
+
+    b = None
+
+    def wait_new_actor_ready():
+        nonlocal b
+        b = Actor.options(name="test", max_restarts=1).remote()
+        return True
+
+    wait_for_condition(wait_new_actor_ready)
+
+    # Ensure actor(b) is alive
+    ray.get(b.__ray_ready__.remote())
+    _ = ray.get_actor("test", namespace="test")
+
+    # ray.kill can proactively release the name.
+    ray.kill(b)
+    wait_for_condition(lambda: ray.state.actors(b._actor_id.hex())["State"] == "DEAD")
+
+    c = Actor.options(name="test", max_restarts=1).remote()
+    ray.get(c.__ray_ready__.remote())
+    _ = ray.get_actor("test", namespace="test")
 
 
 if __name__ == "__main__":
