@@ -68,7 +68,7 @@ inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
     const flatbuffers::String &object_id, const ray::protocol::Address &address) {
   ray::rpc::ObjectReference ref;
   ref.set_object_id(object_id.str());
-  ref.mutable_owner_address()->set_raylet_id(address.raylet_id()->str());
+  ref.mutable_owner_address()->set_node_id(address.node_id()->str());
   ref.mutable_owner_address()->set_ip_address(address.ip_address()->str());
   ref.mutable_owner_address()->set_port(address.port());
   ref.mutable_owner_address()->set_worker_id(address.worker_id()->str());
@@ -85,7 +85,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
     ray::rpc::ObjectReference ref;
     ref.set_object_id(object_ids.Get(i)->str());
     const auto &addr = owner_addresses.Get(i);
-    ref.mutable_owner_address()->set_raylet_id(addr->raylet_id()->str());
+    ref.mutable_owner_address()->set_node_id(addr->node_id()->str());
     ref.mutable_owner_address()->set_ip_address(addr->ip_address()->str());
     ref.mutable_owner_address()->set_port(addr->port());
     ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
@@ -250,7 +250,7 @@ void NodeManager::RegisterGcs() {
         /* reporter */ &cluster_resource_scheduler_.GetLocalResourceManager(),
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
+        report_resources_period_ms_);
 
     // Register a commands channel.
     // It's only used for GC right now.
@@ -280,7 +280,7 @@ void NodeManager::RegisterGcs() {
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
-  // node failure. These workers can be identified by comparing the raylet_id
+  // node failure. These workers can be identified by comparing the node_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const rpc::WorkerDeltaData &worker_failure_data) {
@@ -514,7 +514,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   // so that pg bundle can be returned.
   local_task_manager_.CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->task_.GetTaskSpecification().PlacementGroupBundleId();
         return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
                (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
@@ -601,10 +602,10 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
-                   << ", fail immediately: " << !it->second.should_retry;
-    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
-    reply->set_fail_task_immediately(!it->second.should_retry);
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_)
+                   << ", fail immediately: " << !it->second.should_retry_;
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info_);
+    reply->set_fail_task_immediately(!it->second.should_retry_);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
@@ -835,7 +836,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
-    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().node_id());
     RAY_CHECK(!owner_node_id.IsNil());
     if (worker->IsDetachedActor() || owner_node_id != node_id) {
       continue;
@@ -1124,14 +1125,14 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
         fbb.GetSize(),
         fbb.GetBufferPointer(),
-        [this, client](const ray::Status &status) {
-          if (!status.ok()) {
+        [this, client](const ray::Status &write_msg_status) {
+          if (!write_msg_status.ok()) {
             DisconnectClient(client,
                              /*graceful=*/false,
                              rpc::WorkerExitType::SYSTEM_ERROR,
                              "Worker is failed because the raylet couldn't reply the "
                              "registration request: " +
-                                 status.ToString());
+                                 write_msg_status.ToString());
           }
         });
   };
@@ -1211,8 +1212,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
     RAY_CHECK(job_config.has_value());
 
     rpc::Address driver_address;
-    // Assume raylet ID is the same as the node ID.
-    driver_address.set_raylet_id(self_node_id_.Binary());
+    // Assume node ID is the same as the node ID.
+    driver_address.set_node_id(self_node_id_.Binary());
     driver_address.set_ip_address(worker->IpAddress());
     driver_address.set_port(port);
     driver_address.set_worker_id(worker->WorkerId().Binary());
@@ -1245,13 +1246,13 @@ void NodeManager::SendPortAnnouncementResponse(
       static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          DisconnectClient(
-              client,
-              /*graceful=*/false,
-              rpc::WorkerExitType::SYSTEM_ERROR,
-              "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
+      [this, client](const ray::Status &write_msg_status) {
+        if (!write_msg_status.ok()) {
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           "Failed to send AnnounceWorkerPortReply to client: " +
+                               write_msg_status.ToString());
         }
       });
 }
@@ -1396,9 +1397,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                 .WithField("node_id", self_node_id_.Hex())
                 .WithField("job_id", worker->GetAssignedJobId().Hex())
             << error_message_str;
-        auto error_data_ptr = gcs::CreateErrorTableData(
+        auto error_data = gcs::CreateErrorTableData(
             type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
-        gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
+        gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
       }
     }
 
@@ -1592,9 +1593,9 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
-  auto error_data_ptr = gcs::CreateErrorTableData(
+  auto error_data = gcs::CreateErrorTableData(
       type, error_message, absl::FromUnixMillis(timestamp), job_id);
-  gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
+  gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
 }
 
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
@@ -1662,7 +1663,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
   const auto caller_node =
-      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
+      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().node_id());
   if (!task.GetTaskSpecification().IsDetachedActor() &&
       (failed_workers_cache_.contains(caller_worker) ||
        failed_nodes_cache_.contains(caller_node))) {
@@ -1804,7 +1805,8 @@ void NodeManager::HandleCancelResourceReserve(
   // In the case of placement group removal, we should cancel all the lease requests.
   local_task_manager_.CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->task_.GetTaskSpecification().PlacementGroupBundleId();
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
@@ -2026,9 +2028,9 @@ void NodeManager::MarkObjectsAsFailed(
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(ERROR) << error_message;
-      auto error_data_ptr = gcs::CreateErrorTableData(
+      auto error_data = gcs::CreateErrorTableData(
           "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
-      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
+      gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
     }
   }
 }
@@ -2572,8 +2574,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          rpc::GetNodeStatsReply &&local_reply) {
-        replies->push_back(std::move(local_reply));
+          rpc::GetNodeStatsReply &&get_node_status_local_reply) {
+        replies->push_back(std::move(get_node_status_local_reply));
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));
@@ -2913,7 +2915,7 @@ void NodeManager::GCTaskFailureReason() {
   for (const auto &entry : task_failure_reasons_) {
     auto duration = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - entry.second.creation_time)
+            std::chrono::steady_clock::now() - entry.second.creation_time_)
             .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO).WithField(entry.first)
