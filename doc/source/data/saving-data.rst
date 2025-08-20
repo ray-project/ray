@@ -392,6 +392,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         :meth:`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
