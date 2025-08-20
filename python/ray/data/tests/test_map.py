@@ -2610,15 +2610,25 @@ def test_with_column_udf_multiple_udfs(
     ds = ds.with_column("times_two", multiply_by_two(col("plus_one")))
     ds = ds.with_column("div_three", divide_by_three(col("times_two")))
 
-    result = ds.take(1)[0]
-    assert result["id"] == 0
-    assert result["plus_one"] == 1  # 0 + 1 = 1
-    assert result["times_two"] == 2  # 1 * 2 = 2
-    assert result["div_three"] == pytest.approx(2.0 / 3.0)  # 2 / 3 ≈ 0.667
+    # Convert to pandas and compare with expected result
+    result_df = ds.to_pandas()
 
-    # Ensure all columns exist in schema
-    expected_columns = {"id", "plus_one", "times_two", "div_three"}
-    assert set(ds.schema().names) == expected_columns
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "plus_one": [1, 2, 3, 4, 5],  # id + 1
+            "times_two": [2, 4, 6, 8, 10],  # (id + 1) * 2
+            "div_three": [
+                2.0 / 3.0,
+                4.0 / 3.0,
+                2.0,
+                8.0 / 3.0,
+                10.0 / 3.0,
+            ],  # ((id + 1) * 2) / 3
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df)
 
 
 @pytest.mark.skipif(

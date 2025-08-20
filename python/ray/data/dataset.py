@@ -793,26 +793,41 @@ class Dataset:
         """
         Add a new column to the dataset via an expression.
 
-        Examples:
+        This method allows you to add a new column to a dataset by applying an
+        expression. The expression can be composed of existing columns, literals,
+        and user-defined functions (UDFs).
 
+        Examples:
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.with_column("id_2", (col("id") * 2)).schema()
-            Column  Type
-            ------  ----
-            id      int64
-            id_2    int64
+            >>> # Add a new column 'id_2' by multiplying 'id' by 2.
+            >>> ds.with_column("id_2", col("id") * 2).show(2)
+            {'id': 0, 'id_2': 0}
+            {'id': 1, 'id_2': 2}
+
+            >>> # Using a UDF with with_column
+            >>> from ray.data.expressions import udf
+            >>> from ray.data.datatype import DataType
+            >>> import pyarrow.compute as pc
+            >>>
+            >>> @udf(return_dtype=DataType.int64())
+            ... def add_one(column):
+            ...     return pc.add(column, 1)
+            >>>
+            >>> ds.with_column("id_plus_one", add_one(col("id"))).show(2)
+            {'id': 0, 'id_plus_one': 1}
+            {'id': 1, 'id_plus_one': 2}
 
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
+            batch_size: When `batch_size` is specified, the expression is evaluated in batches.
             **ray_remote_args: Additional resource requirements to request from
-                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                Ray for the map tasks (e.g., `num_gpus=1`).
 
         Returns:
-            A new dataset with the added column evaluated via the expression.
+            A new dataset with the added column.
         """
         from ray.data._expression_evaluator import _contains_udf, eval_expr
 
