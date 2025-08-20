@@ -14,6 +14,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
 - [Autoscaler](#autoscaler)
+- [Multi-node GPU clusters](#multi-node-gpu)
 - [Other questions](#other-questions)
 
 (use-the-right-version-of-ray)=
@@ -96,6 +97,11 @@ or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challengin
 One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide.
 Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
 Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
+
+(multi-node-gpu)=
+## Multi-node GPU Deployments
+
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <serve-multi-node-gpu-troubleshooting>`.
 
 (other-questions)=
 ## Other questions

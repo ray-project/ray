@@ -47,6 +47,7 @@ class RayDataConfig(DataLoaderConfig):
     locality_with_output: bool = False
     actor_locality_enabled: bool = False
     enable_shard_locality: bool = True
+    preserve_order: bool = False
     ray_data_pin_memory: bool = False
 
 

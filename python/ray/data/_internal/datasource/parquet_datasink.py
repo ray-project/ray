@@ -22,7 +22,7 @@ WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 # Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 EXISTING_DATA_BEHAVIOR_MAP = {
     SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "delete_matching",
+    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
     SaveMode.IGNORE: "overwrite_or_ignore",
     SaveMode.ERROR: "error",
 }
@@ -32,6 +32,9 @@ FILE_FORMAT = "parquet"
 # These args are part of https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream
 # and are not supported by ParquetDatasink.
 UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
+
+# https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
+ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +63,26 @@ def choose_row_group_limits(
         # No explicit row group size provided. We are defaulting to
         # either the caller's min_rows_per_file or max_rows_per_file limits
         # or Arrow's defaults
-        return min_rows_per_file, max_rows_per_file, max_rows_per_file
+        min_rows_per_group, max_rows_per_group, max_rows_per_file = (
+            min_rows_per_file,
+            max_rows_per_file,
+            max_rows_per_file,
+        )
+
+        # If min_rows_per_group is provided and max_rows_per_group is not,
+        # and min_rows_per_group is greater than Arrow's default max_rows_per_group,
+        # we set max_rows_per_group to min_rows_per_group to avoid creating too many row groups.
+        if (
+            min_rows_per_group is not None
+            and max_rows_per_group is None
+            and min_rows_per_group > ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+        ):
+            max_rows_per_group, max_rows_per_file = (
+                min_rows_per_group,
+                min_rows_per_group,
+            )
+
+        return min_rows_per_group, max_rows_per_group, max_rows_per_file
 
     elif row_group_size is not None and (
         min_rows_per_file is None or max_rows_per_file is None
@@ -207,13 +229,8 @@ class ParquetDatasink(_FileDatasink):
             # No extension and not templatized, add extension and template
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
-            # Has extension but not templatized, add template while preserving extension
-            logger.warning(
-                "FilenameProvider have to provide proper filename template including '{{i}}' "
-                "macro to ensure unique filenames when writing multiple files. Appending '{{i}}' "
-                "macro to the end of the file. For more details on the expected filename template checkout "
-                "PyArrow's `write_to_dataset` API"
-            )
+            # TODO(@goutamvenkat-anyscale): Add a warning if you pass in a custom
+            # filename provider and it isn't templatized.
             # Use pathlib.Path to properly handle filenames with dots
             filename_path = Path(filename)
             stem = filename_path.stem  # filename without extension

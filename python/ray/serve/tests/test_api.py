@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, overload
 
 import httpx
 import pytest
@@ -28,6 +28,7 @@ from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -80,8 +81,14 @@ class FakeRequestRouter(RequestRouter):
     ) -> List[List[RunningReplica]]:
         return [candidate_replicas]
 
+    def initialize_state(self, test_parameter: int = 0):
+        print("Called initialize_state in FakeRequestRouter")
+        self.test_parameter = test_parameter
 
-@serve.deployment(request_router_class=FakeRequestRouter)
+
+@serve.deployment(
+    request_router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
+)
 class AppWithCustomRequestRouter:
     def __call__(self) -> str:
         return "Hello, world!"
@@ -905,8 +912,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    url = get_application_url("HTTP")
-    r = httpx.post(url, timeout=10)
+    r = httpx.post("http://localhost:8000/", timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text
 
     @serve.deployment
@@ -1110,6 +1116,73 @@ def test_deploy_app_with_custom_request_router(serve_instance):
 
     handle = serve.run(AppWithCustomRequestRouter.bind())
     assert handle.remote().result() == "Hello, world!"
+
+
+@serve.deployment(
+    request_router_config=RequestRouterConfig(
+        request_router_class="ray.serve.tests.test_api.FakeRequestRouter",
+        request_router_kwargs=dict(test_parameter=4848),
+    )
+)
+class AppWithCustomRequestRouterAndKwargs:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+
+def test_custom_request_router_kwargs(serve_instance):
+    """Check that custom kwargs can be passed to the request router."""
+
+    handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
+    assert handle.remote().result() == "Hello, world!"
+
+
+def test_overloaded_app_builder_signatures():
+    """Test that call_user_app_builder_with_args_if_necessary validates the base
+    function signature with a pydantic basemodel, rather than the overload that
+    accepts a dict (for the sake of lint permissiveness).
+    """
+
+    class Config(BaseModel):
+        name: str
+        value: int = 42
+
+    @serve.deployment
+    class MockDeployment:
+        def __call__(self):
+            return "mock"
+
+    mock_app = MockDeployment.bind()
+
+    # Overloaded function where the implementation has a pydantic annotation
+    @overload
+    def overloaded_builder(args: dict) -> Application:
+        ...
+
+    def overloaded_builder(args: Config) -> Application:
+        """Implementation with pydantic BaseModel annotation."""
+
+        assert isinstance(args, Config), f"Expected Config but got {type(args)}"
+        return mock_app
+
+    # Test 1: Valid input should work and convert to Config model
+    result = call_user_app_builder_with_args_if_necessary(
+        overloaded_builder, {"name": "test", "value": 123}
+    )
+    assert isinstance(result, Application)
+
+    # Test 2: Invalid dict input should raise validation error
+    # Missing required field 'name'
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder, {"value": 123}  # Missing required 'name' field
+        )
+
+    # Test 3: Wrong type should also raise validation error
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder,
+            {"name": "test", "value": "not_an_int"},  # 'value' should be int
+        )
 
 
 if __name__ == "__main__":

@@ -238,7 +238,6 @@ class ApplicationState:
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
-        self._docs_path: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
@@ -264,14 +263,7 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        # if the docs path is set during the deploy app task, use that
-        # TODO (abrar): this can be dropped completely in favor of the
-        # deployment state manager once we have migrated all the tests
-        # to the new API.
-        if self._docs_path is not None:
-            return self._docs_path
-
-        # else get the docs path from the running deployments
+        # get the docs path from the running deployments
         # we are making an assumption that the docs path can only be set
         # on ingress deployments with fastapi.
         ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
@@ -332,9 +324,7 @@ class ApplicationState:
         # Restore route prefix and docs path from checkpointed deployments when
         # the imperatively started application is restarting with controller.
         if checkpoint_data.deployment_infos is not None:
-            self._route_prefix, self._docs_path = self._check_routes(
-                checkpoint_data.deployment_infos
-            )
+            self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
     def _set_target_state(
         self,
@@ -479,7 +469,7 @@ class ApplicationState:
 
         self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
-        self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
+        self._route_prefix = self._check_routes(deployment_infos)
 
         self._set_target_state(
             deployment_infos=deployment_infos,
@@ -517,9 +507,7 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._route_prefix, self._docs_path = self._check_routes(
-                    overrided_infos
-                )
+                self._route_prefix = self._check_routes(overrided_infos)
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
@@ -703,7 +691,7 @@ class ApplicationState:
             overrided_infos = override_deployment_info(
                 deployment_infos, self._build_app_task_info.config
             )
-            self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
+            self._route_prefix = self._check_routes(overrided_infos)
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
         except (TypeError, ValueError, RayServeException):
             return None, BuildAppStatus.FAILED, traceback.format_exc()
@@ -739,33 +727,24 @@ class ApplicationState:
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
-        """Check route prefixes and docs paths of deployments in app.
+        """Check route prefixes of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
         set it as the application route prefix. This function must be
         run every control loop iteration because the target config could
         be updated without kicking off a new task.
 
-        Returns: tuple of route prefix, docs path.
-        Raises: RayServeException if more than one route prefix or docs
-            path is found among deployments.
+        Returns: route prefix.
+        Raises: RayServeException if more than one route prefix is found among deployments.
         """
         num_route_prefixes = 0
-        num_docs_paths = 0
         route_prefix = None
-        # TODO(Ziy1-Tan): `docs_path` will be removed when
-        # https://github.com/ray-project/ray/issues/53023 is resolved.
-        # We can get it from DeploymentStateManager directly.
-        docs_path = None
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
             # through a redeployed config.
             if info.route_prefix is not None:
                 route_prefix = info.route_prefix
                 num_route_prefixes += 1
-            if info.docs_path is not None:
-                docs_path = info.docs_path
-                num_docs_paths += 1
 
         if num_route_prefixes > 1:
             raise RayServeException(
@@ -773,17 +752,8 @@ class ApplicationState:
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
             )
-        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
-        # if user sets the docs path to None in their FastAPI app.
-        if num_docs_paths > 1:
-            raise RayServeException(
-                f'Found multiple deployments in application "{self._name}" that have '
-                "a docs path. This may be due to using multiple FastAPI deployments "
-                "in your application. Please only include one deployment with a docs "
-                "path in your application to avoid this issue."
-            )
 
-        return route_prefix, docs_path
+        return route_prefix
 
     def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
@@ -1227,7 +1197,6 @@ def build_serve_application(
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
-                    docs_path=deployment._docs_path,
                 )
             )
         if num_ingress_deployments > 1:

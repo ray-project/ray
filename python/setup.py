@@ -29,6 +29,7 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -130,7 +131,7 @@ else:
     )
     RAY_EXTRA_CPP = True
     # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or os.getenv("RAY_DISABLE_EXTRA_CPP") == "1":
+    if "dev" in setup_spec.version or not BUILD_CPP:
         RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
@@ -177,6 +178,7 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/spark/defaults.yaml",
+    "ray/autoscaler/_private/readonly/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
@@ -250,7 +252,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "opentelemetry-sdk",
+            "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
             pydantic_dep,
@@ -259,9 +261,6 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "opentelemetry-api",
-            "opentelemetry-sdk",
-            "opentelemetry-exporter-otlp",
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
@@ -301,12 +300,23 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
+            ]
+        )
+    )
+
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.0.0",
+        "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
@@ -357,13 +367,14 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.9.2",
+                "vllm>=0.10.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "hf_transfer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
@@ -384,7 +395,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
@@ -404,25 +415,31 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installation path
-# (~/bin/bazel) if it isn't found.
-def _bazel_invoke(cmdline, *args, **kwargs):
-    home = os.path.expanduser("~")
-    first_candidate = os.getenv("BAZEL_PATH", "bazel")
-    candidates = [first_candidate]
+def _find_bazel_bin():
+    candidates = []
+
+    # User specified bazel location.
+    bazel_path = os.getenv("BAZEL_PATH")
+    if bazel_path:
+        candidates.append(bazel_path)
+
+    # Default bazel locations; prefers bazelisk.
+    candidates.extend(["bazelisk", "bazel"])
+
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
-            candidates.append(mingw_dir + "/bin/bazel.exe")
+            candidates.append(os.path.join(mingw_dir, "bin", "bazel.exe"))
     else:
-        candidates.append(os.path.join(home, "bin", "bazel"))
-    for i, cmd in enumerate(candidates):
-        try:
-            subprocess.check_call([cmd] + cmdline, *args, **kwargs)
-            break
-        except IOError:
-            if i >= len(candidates) - 1:
-                raise
+        home_dir = os.path.expanduser("~")
+        candidates.append(os.path.join(home_dir, "bin", "bazel"))
+
+    for bazel in candidates:
+        bazel_bin = shutil.which(bazel)
+        if bazel_bin:
+            return bazel_bin
+
+    raise RuntimeError("Cannot find bazel in PATH")
 
 
 def patch_isdir():
@@ -624,13 +641,12 @@ def build(build_python, build_java, build_cpp):
         #
         # And we put it here so that does not change behavior of
         # conda-forge build.
-        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
-            bazel_flags.append("--incompatible_strict_action_env")
+        bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
-    bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
+    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
+    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -639,10 +655,23 @@ def build(build_python, build_java, build_cpp):
     if setup_spec.build_type == BuildType.TSAN:
         bazel_flags.append("--config=tsan")
 
-    _bazel_invoke(
-        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+    bazel_bin = _find_bazel_bin()
+    # Build all things first.
+    subprocess.check_call(
+        [bazel_bin]
+        + bazel_precmd_flags
+        + ["build"]
+        + bazel_flags
+        + ["--"]
+        + bazel_targets,
         env=bazel_env,
     )
+    # Then run the actions.
+    for action in bazel_targets:
+        subprocess.check_call(
+            [bazel_bin] + bazel_precmd_flags + ["run"] + bazel_flags + [action],
+            env=bazel_env,
+        )
 
 
 def _walk_thirdparty_dir(directory):
@@ -682,7 +711,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
         build(False, False, False)
     else:
-        build(True, BUILD_JAVA, True)
+        build(True, BUILD_JAVA, BUILD_CPP)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -748,6 +777,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},

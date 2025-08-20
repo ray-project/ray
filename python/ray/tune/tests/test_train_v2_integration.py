@@ -14,7 +14,14 @@ TRAIN_DRIVER_RESOURCE_NAME = "train_driver_resource"
 NUM_GPUS_IN_CLUSTER = 4
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
+def ray_start_4_cpus():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
+@pytest.fixture()
 def ray_cpu_head_gpu_worker():
     cluster = Cluster()
     cluster.add_node(resources={TRAIN_DRIVER_RESOURCE_NAME: 1})
@@ -102,6 +109,30 @@ def test_e2e(
         assert CHECKPOINT_PATH_KEY in result.metrics
         world_sizes.add(result.metrics["world_size"])
     assert world_sizes == set(num_workers_grid_search)
+
+
+def test_errors(ray_start_4_cpus):
+    """Test that errors in training are properly captured and reported."""
+
+    def train_worker_fn():
+        raise RuntimeError("Simulated training error")
+
+    def train_fn(config):
+        trainer = DataParallelTrainer(train_worker_fn)
+        trainer.fit()
+
+    tuner = ray.tune.Tuner(train_fn)
+
+    results = tuner.fit()
+
+    assert results.errors, "Expected errors to be captured"
+    assert len(results.errors) == 1, "Expected exactly one error"
+
+    error = results.errors[0]
+    assert "RuntimeError" in str(error), f"Expected RuntimeError, got: {error}"
+    assert "Simulated training error" in str(
+        error
+    ), f"Expected specific error message, got: {error}"
 
 
 if __name__ == "__main__":

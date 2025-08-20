@@ -8,14 +8,6 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
-pushd "$ROOT_DIR"
-  echo "Check java code format."
-  # check google java style
-  mvn -T16 spotless:check
-  # check naming and others
-  mvn -T16 checkstyle:check
-popd
-
 run_testng() {
     local pid
     local exit_code
@@ -72,10 +64,24 @@ if [[ ! -d ".git" ]]; then
 fi
 
 echo "Build java maven deps."
+bazel run //java:gen_pom_files
+bazel run //java:gen_proto_files
 bazel build //java:gen_maven_deps
+
+echo "Build ray core."
+bazel run //:gen_ray_pkg
 
 echo "Build test jar."
 bazel build //java:all_tests_shaded.jar
+
+(
+  cd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+)
 
 java/generate_jni_header_files.sh
 
@@ -120,12 +126,14 @@ echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
   linux*) ip="$(hostname -I | awk '{print $1}')";;
   darwin*)
-    ip="$(ipconfig getifaddr en0 || true)"
     # On newer macos ec2 instances, en0 is IPv6 only.
-    # en6 is the private network and has an IPv4 address.
-    if [[ -z "$ip" ]]; then
-      ip="$(ipconfig getifaddr en6 || true)"
-    fi
+    # en6 (or sometimes en7) is the private network and has an IPv4 address.
+    for interface in en0 en6 en7; do
+      ip="$(ipconfig getifaddr "$interface" || true)"
+      if [[ "$ip" != "" ]]; then
+        break
+      fi
+    done
 
     if [[ -z "$ip" ]]; then
       echo "Can't get IP address; ifconfig output:"

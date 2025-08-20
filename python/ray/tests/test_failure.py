@@ -380,26 +380,6 @@ def test_exception_chain(ray_start_regular):
         assert isinstance(ex, RayTaskError)
 
 
-def test_baseexception_task(ray_start_regular):
-    @ray.remote
-    def task():
-        raise BaseException("abc")
-
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(task.remote())
-
-
-def test_baseexception_actor(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise BaseException("abc")
-
-    with pytest.raises(ActorDiedError):
-        a = Actor.remote()
-        ray.get(a.f.remote())
-
-
 @pytest.mark.skip("This test does not work yet.")
 @pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
@@ -773,6 +753,35 @@ def test_update_object_location_batch_failure(
             )
         ).remote(obj_ref)
         assert ray.get(consume_ref, timeout=10) > 0
+
+
+def test_raytaskerror_serialization(ray_start_regular):
+    """Test that RayTaskError with dual exception instances can be properly serialized."""
+    import ray.cloudpickle as pickle
+
+    class MyException(Exception):
+        def __init__(self, one, two):
+            self.one = one
+            self.two = two
+
+        def __reduce__(self):
+            return self.__class__, (self.one, self.two)
+
+    original_exception = MyException("test 1", "test 2")
+    ray_task_error = ray.exceptions.RayTaskError(
+        function_name="test_function",
+        traceback_str="test traceback",
+        cause=original_exception,
+    )
+
+    dual_exception = ray_task_error.make_dual_exception_instance()
+    pickled = pickle.dumps(dual_exception)
+    unpickled = pickle.loads(pickled)
+
+    assert isinstance(unpickled, ray.exceptions.RayTaskError)
+    assert isinstance(unpickled, MyException)
+    assert unpickled.one == "test 1"
+    assert unpickled.two == "test 2"
 
 
 if __name__ == "__main__":

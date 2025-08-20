@@ -2,14 +2,17 @@ package io.ray.api.options;
 
 import io.ray.api.Ray;
 import io.ray.api.placementgroup.PlacementStrategy;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /** The options for creating placement group. */
 public class PlacementGroupCreationOptions {
-  public final String name;
-  public final List<Map<String, Double>> bundles;
-  public final PlacementStrategy strategy;
+  private final String name;
+  private final List<Map<String, Double>> bundles;
+  private final PlacementStrategy strategy;
 
   public PlacementGroupCreationOptions(
       String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
@@ -30,8 +33,24 @@ public class PlacementGroupCreationOptions {
           "`PlacementStrategy` must be specified when creating a new placement group.");
     }
     this.name = name;
-    this.bundles = bundles;
+    this.bundles =
+        Collections.unmodifiableList(
+            bundles.stream()
+                .map(bundle -> Collections.unmodifiableMap(new HashMap<>(bundle)))
+                .collect(Collectors.toList()));
     this.strategy = strategy;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public List<Map<String, Double>> getBundles() {
+    return bundles;
+  }
+
+  public PlacementStrategy getStrategy() {
+    return strategy;
   }
 
   /** The inner class for building PlacementGroupCreationOptions. */

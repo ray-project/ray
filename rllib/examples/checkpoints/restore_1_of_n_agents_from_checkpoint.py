@@ -13,7 +13,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2
+`python [script file name].py --num-agents=2
 --checkpoint-freq=20 --checkpoint-at-end`
 
 Control the number of agents and policies (RLModules) via --num-agents and
@@ -74,7 +74,6 @@ parser = add_rllib_example_script_args(
     default_reward=-500.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     num_agents=2,
 )

@@ -114,6 +114,9 @@ class TorchTensorWorker:
     def recv_tensor(self, tensor):
         return tensor
 
+    def recv_tensors(self, *tensors):
+        return tuple(tensors)
+
     def ping(self):
         return
 
@@ -1445,6 +1448,53 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
 
         for result_tensor, expected_tensor in zip(result, expected_tensors):
             assert torch.equal(result_tensor.to("cpu"), expected_tensor)
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_all_reduce_bind_list_of_nodes(ray_start_regular):
+    """
+    Test basic all-reduce with list of nodes.
+    """
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes_0 = [worker.send_tensor.bind(inp[0]) for worker in workers]
+        computes_1 = [worker.send_tensor.bind(inp[1]) for worker in workers]
+        collectives = collective.allreduce.bind([computes_0, computes_1], ReduceOp.SUM)
+        recvs = [
+            worker.recv_tensors.bind(*collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (i * 10,)
+        dtype = torch.float16
+        t1 = torch.ones(shape, dtype=dtype, device="cuda") * i
+        t2 = torch.ones(shape, dtype=dtype, device="cuda") * i * 2
+        ref = compiled_dag.execute(t1, t2)
+        result = ray.get(ref)
+        assert len(result[0]) == len(result[1]) == 2
+
+        result_tensors_0 = [t.to("cpu") for t in result[0]]
+        result_tensors_1 = [t.to("cpu") for t in result[1]]
+        assert all(
+            torch.equal(result_tensors_0[i], result_tensors_1[i])
+            for i in range(len(result_tensors_0))
+        )
+        assert result_tensors_0[0][0].item() == result_tensors_1[0][0].item() == i * 2
+        assert result_tensors_0[1][0].item() == result_tensors_1[1][0].item() == i * 4
 
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")

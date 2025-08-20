@@ -377,16 +377,7 @@ class ASGIReceiveProxy:
                 pickled_messages = await self._receive_asgi_messages(
                     self._request_metadata
                 )
-                if isinstance(pickled_messages, bytes):
-                    messages = pickle.loads(pickled_messages)
-                else:
-                    messages = (
-                        pickled_messages
-                        if isinstance(pickled_messages, list)
-                        else [pickled_messages]
-                    )
-
-                for message in messages:
+                for message in pickle.loads(pickled_messages):
                     self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
@@ -441,7 +432,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     from fastapi import APIRouter, Depends
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
-    def get_current_servable_instance():
+    async def get_current_servable_instance():
         from ray import serve
 
         return serve.get_replica_context().servable_object

@@ -1,3 +1,4 @@
+import sys
 from typing import Optional
 
 import pytest
@@ -50,3 +51,7 @@ class TestTextCompletionModelConverter:
         assert model.gpu_type.value == gpu_type.value
         assert model.tensor_parallelism == tensor_parallelism
         assert model.reference_model_id == reference_model_id
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

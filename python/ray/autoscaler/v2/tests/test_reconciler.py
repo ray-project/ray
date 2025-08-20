@@ -391,6 +391,9 @@ class TestReconciler:
             NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
         ]
         im_instances = [
+            create_instance(
+                "i-0", status=Instance.TERMINATED, cloud_instance_id="c-1"
+            ),  # this should not be matched.
             create_instance("i-1", status=Instance.ALLOCATED, cloud_instance_id="c-1"),
         ]
         cloud_instances = {
@@ -409,7 +412,8 @@ class TestReconciler:
         )
 
         instances, _ = instance_storage.get_instances()
-        assert len(instances) == 1
+        assert len(instances) == 2
+        assert instances["i-0"].status == Instance.TERMINATED
         assert instances["i-1"].status == Instance.RAY_RUNNING
         assert instances["i-1"].node_id == binary_to_hex(b"r-1")
 
@@ -596,10 +600,16 @@ class TestReconciler:
 
         im_instances = [
             create_instance(
-                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+                "i-1",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-1",
+                ray_node_id=binary_to_hex(b"r-1"),
             ),  # To be reconciled.
             create_instance(
-                "i-2", status=Instance.RAY_RUNNING, cloud_instance_id="c-2"
+                "i-2",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-2",
+                ray_node_id=binary_to_hex(b"r-2"),
             ),  # To be reconciled.
         ]
         TestReconciler._add_instances(instance_storage, im_instances)
@@ -703,7 +713,7 @@ class TestReconciler:
             TestReconciler._add_instances(instance_storage, [instance])
             next_id += 1
 
-        num_desired_upscale = max(1, math.ceil(upscaling_speed * (num_running)))
+        num_desired_upscale = max(1, math.ceil(upscaling_speed * (max(num_running, 1))))
         expected_launch_num = min(
             num_desired_upscale,
             max(0, max_concurrent_launches - num_requested),  # global limit
@@ -1475,6 +1485,190 @@ class TestReconciler:
         assert len(instances) == 3
         statuses = {instance.status for instance in instances.values()}
         assert statuses == {Instance.RAY_RUNNING, Instance.ALLOCATED}
+
+    @staticmethod
+    def test_cloud_instance_reboot(setup):
+        """
+        Test that the case of booting up a previous stopped cloud instance.
+        """
+        instance_manager, instance_storage, subscriber = setup
+
+        im_instances = [
+            create_instance(
+                "i-1",
+                status=Instance.TERMINATED,
+                cloud_instance_id="c-1",
+                ray_node_id=binary_to_hex(b"r-1"),
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(
+                node_id=b"r-1",
+                status=NodeStatus.DEAD,
+                instance_id="c-1",
+                ray_node_type_name="type-1",
+            ),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.WORKER),
+        }
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+        events = subscriber.events
+        for e in events:
+            assert e.new_instance_status == Instance.ALLOCATED
+            assert e.cloud_instance_id == "c-1"
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        statuses = {instance.status for instance in instances.values()}
+        assert statuses == {Instance.ALLOCATED, Instance.TERMINATED}
+
+    @staticmethod
+    def test_ray_node_restarted_on_the_same_cloud_instance(setup):
+        """
+        Test that the case of reusing cloud instances.
+        """
+        instance_manager, instance_storage, subscriber = setup
+
+        im_instances = [
+            create_instance(
+                "i-1",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-1",
+                ray_node_id=binary_to_hex(b"r-1"),
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(
+                node_id=b"r-2",
+                status=NodeStatus.IDLE,
+                instance_id="c-1",
+                ray_node_type_name="type-1",
+            ),
+            NodeState(
+                node_id=b"r-1",
+                status=NodeStatus.DEAD,
+                instance_id="c-1",
+                ray_node_type_name="type-1",
+            ),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.WORKER),
+        }
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+        events = subscriber.events
+        assert len(events) == 4
+        assert events[0].new_instance_status == Instance.ALLOCATED
+        assert events[0].cloud_instance_id == "c-1"
+        assert events[0].ray_node_id == binary_to_hex(b"r-2")
+
+        assert events[1].new_instance_status == Instance.RAY_RUNNING
+        assert events[1].instance_id == events[0].instance_id
+        assert events[1].ray_node_id == binary_to_hex(b"r-2")
+
+        assert events[2].new_instance_status == Instance.RAY_STOPPED
+        assert events[2].instance_id == "i-1"
+        assert events[2].ray_node_id == binary_to_hex(b"r-1")
+        assert events[3].new_instance_status == Instance.TERMINATING
+        assert events[3].instance_id == "i-1"
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        statuses = {instance.status for instance in instances.values()}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
+
+    @staticmethod
+    def test_ray_head_restarted_on_the_same_cloud_instance(setup):
+        """
+        Test that the case of restarting Head node with GCS FT.
+        """
+        instance_manager, instance_storage, subscriber = setup
+
+        ray_nodes = [
+            NodeState(
+                node_id=b"r-2",
+                status=NodeStatus.IDLE,
+                instance_id="c-1",
+                ray_node_type_name="type-1",
+            ),
+            NodeState(
+                node_id=b"r-1",
+                status=NodeStatus.DEAD,
+                instance_id="c-1",
+                ray_node_type_name="type-1",
+            ),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.HEAD),
+        }
+
+        subscriber.clear()
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+        events = subscriber.events
+        assert len(events) == 5
+        assert events[0].new_instance_status == Instance.ALLOCATED
+        assert events[0].cloud_instance_id == "c-1"
+        assert events[0].ray_node_id == binary_to_hex(b"r-2")
+
+        assert events[1].new_instance_status == Instance.ALLOCATED
+        assert events[1].cloud_instance_id == "c-1"
+        assert events[1].ray_node_id == binary_to_hex(b"r-1")
+
+        assert events[1].instance_id != events[0].instance_id
+
+        assert events[2].new_instance_status == Instance.RAY_RUNNING
+        assert events[2].instance_id == events[0].instance_id
+        assert events[2].ray_node_id == binary_to_hex(b"r-2")
+
+        assert events[3].new_instance_status == Instance.RAY_STOPPED
+        assert events[3].instance_id == events[1].instance_id
+        assert events[3].ray_node_id == binary_to_hex(b"r-1")
+
+        assert events[4].new_instance_status == Instance.TERMINATING
+        assert events[4].instance_id == events[1].instance_id
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        statuses = {instance.status for instance in instances.values()}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
 
     @staticmethod
     def test_reconcile_max_worker_nodes_limit_triggers_termination(setup):
