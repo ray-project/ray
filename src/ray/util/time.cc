@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include "ray/util/time.h"
 
-#include <chrono>
-
-namespace ray {
-
-inline int64_t current_sys_time_s() {
-  std::chrono::seconds s_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(
-      std::chrono::system_clock::now().time_since_epoch());
-  return s_since_epoch.count();
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms) {
+  std::optional<std::chrono::steady_clock::time_point> timeout_point;
+  if (timeout_ms == -1) {
+    return timeout_point;
+  }
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  timeout_point.emplace(now + timeout_duration);
+  return timeout_point;
 }
-
-}  // namespace ray

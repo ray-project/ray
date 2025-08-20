@@ -5,6 +5,7 @@ ray_cc_library(
     srcs = ["pb_utils.cc"],
     hdrs = ["pb_util.h"],
     deps = [
+        "//src/ray/util:time",
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",

@@ -29,7 +29,6 @@
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/util.h"
 
 using namespace std::chrono_literals;  // NOLINT
 using namespace ray;                   // NOLINT

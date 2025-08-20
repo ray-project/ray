@@ -14,6 +14,8 @@
 
 #include "ray/util/network_util.h"
 
+#include <boost/asio/generic/basic_endpoint.hpp>
+
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -72,6 +74,40 @@ TEST(NetworkUtilTest, TestParseAddress) {
 
   result = ParseAddress("localhost");
   ASSERT_FALSE(result.has_value());
+}
+
+TEST(NetworkUtilTest, UrlIpTcpParseTest) {
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://[::1]:1/", 0), false), "[::1]:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://[::1]/", 0), false), "[::1]:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://[::1]:1", 0), false), "[::1]:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://[::1]", 0), false), "[::1]:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://127.0.0.1:1/", 0), false),
+            "127.0.0.1:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://127.0.0.1/", 0), false), "127.0.0.1:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://127.0.0.1:1", 0), false),
+            "127.0.0.1:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("tcp://127.0.0.1", 0), false), "127.0.0.1:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("[::1]:1/", 0), false), "[::1]:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("[::1]/", 0), false), "[::1]:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("[::1]:1", 0), false), "[::1]:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("[::1]", 0), false), "[::1]:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("127.0.0.1:1/", 0), false), "127.0.0.1:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("127.0.0.1/", 0), false), "127.0.0.1:0");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("127.0.0.1:1", 0), false), "127.0.0.1:1");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("127.0.0.1", 0), false), "127.0.0.1:0");
+#ifndef _WIN32
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("unix:///tmp/sock"), false), "/tmp/sock");
+  ASSERT_EQ(EndpointToUrl(ParseUrlEndpoint("/tmp/sock"), false), "/tmp/sock");
+#endif
+}
+
+TEST(NetworkUtilTest, ParseURLTest) {
+  const std::string url = "http://abc?num_objects=9&offset=8388878&size=8388878";
+  auto parsed_url = *ParseURL(url);
+  ASSERT_EQ(parsed_url["url"], "http://abc");
+  ASSERT_EQ(parsed_url["num_objects"], "9");
+  ASSERT_EQ(parsed_url["offset"], "8388878");
+  ASSERT_EQ(parsed_url["size"], "8388878");
 }
 
 }  // namespace ray

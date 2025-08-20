@@ -12,61 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/util.h"
+#include "ray/util/process.h"
 
-#include <boost/asio/generic/basic_endpoint.hpp>
 #include <boost/process/child.hpp>
 #include <chrono>
 #include <cstdio>
-#include <string>
 #include <thread>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
-using namespace std::chrono_literals;  // NOLINT
-
 namespace ray {
-
-template <class T>
-static std::string to_str(const T &obj, bool include_scheme) {
-  return EndpointToUrl(obj, include_scheme);
-}
-
-TEST(UtilTest, UrlIpTcpParseTest) {
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]:1/", 0), false), "[::1]:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]/", 0), false), "[::1]:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]:1", 0), false), "[::1]:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]", 0), false), "[::1]:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1:1/", 0), false), "127.0.0.1:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1/", 0), false), "127.0.0.1:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1:1", 0), false), "127.0.0.1:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1", 0), false), "127.0.0.1:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]:1/", 0), false), "[::1]:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]/", 0), false), "[::1]:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]:1", 0), false), "[::1]:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]", 0), false), "[::1]:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1:1/", 0), false), "127.0.0.1:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1/", 0), false), "127.0.0.1:0");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1:1", 0), false), "127.0.0.1:1");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1", 0), false), "127.0.0.1:0");
-#ifndef _WIN32
-  ASSERT_EQ(to_str(ParseUrlEndpoint("unix:///tmp/sock"), false), "/tmp/sock");
-  ASSERT_EQ(to_str(ParseUrlEndpoint("/tmp/sock"), false), "/tmp/sock");
-#endif
-}
-
-TEST(UtilTest, ParseURLTest) {
-  const std::string url = "http://abc?num_objects=9&offset=8388878&size=8388878";
-  auto parsed_url = *ParseURL(url);
-  ASSERT_EQ(parsed_url["url"], "http://abc");
-  ASSERT_EQ(parsed_url["num_objects"], "9");
-  ASSERT_EQ(parsed_url["offset"], "8388878");
-  ASSERT_EQ(parsed_url["size"], "8388878");
-}
 
 TEST(UtilTest, IsProcessAlive) {
   namespace bp = boost::process;
@@ -75,7 +33,7 @@ TEST(UtilTest, IsProcessAlive) {
   c.join();
   for (int i = 0; i < 5; ++i) {
     if (IsProcessAlive(pid)) {
-      std::this_thread::sleep_for(1s);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     } else {
       break;
     }

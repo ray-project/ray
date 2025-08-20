@@ -40,4 +40,18 @@ std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
   }
   return result;
 }
+
+// Prepend the prefix to each line of str.
+inline std::string PrependToEachLine(const std::string &str, const std::string &prefix) {
+  std::stringstream ss;
+  ss << prefix;
+  for (char c : str) {
+    ss << c;
+    if (c == '\n') {
+      ss << prefix;
+    }
+  }
+  return ss.str();
+}
+
 }  // namespace ray

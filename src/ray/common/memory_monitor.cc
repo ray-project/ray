@@ -23,7 +23,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
 
 namespace ray {
 

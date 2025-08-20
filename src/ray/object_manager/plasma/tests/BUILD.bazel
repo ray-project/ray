@@ -6,6 +6,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/object_manager/plasma:plasma_allocator",
+        "//src/ray/common:id",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
