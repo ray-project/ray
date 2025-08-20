@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 import sys
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock
 
 from ray.dashboard.modules.aggregator.ray_events_publisher import (
     RayEventsPublisherBase,
@@ -279,7 +279,7 @@ class TestNoopPublisher:
         asyncio.run(publisher.shutdown())
 
         # These should return expected values
-        assert publisher.has_capacity() is True
+        assert publisher.can_accept_events() is True
         publisher.publish_events("anything")
         metrics = publisher.get_and_reset_metrics()
         assert metrics == {

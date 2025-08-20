@@ -2,7 +2,6 @@ import asyncio
 import signal
 import time
 import os
-import json
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import threading
@@ -11,11 +10,6 @@ from ray.dashboard.modules.aggregator.ray_events_publisher import (
     ExternalSvcPublisher,
     NoopPublisher,
 )
-from urllib3.util import Retry
-from requests import Session
-from requests.adapters import HTTPAdapter
-
-from google.protobuf.json_format import MessageToJson
 
 from ray.dashboard.modules.aggregator.bounded_queue import BoundedQueue
 

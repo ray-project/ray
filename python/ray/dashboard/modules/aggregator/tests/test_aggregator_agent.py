@@ -42,9 +42,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
 
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
-# Add import for sleep in negative test
-import time
-
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
