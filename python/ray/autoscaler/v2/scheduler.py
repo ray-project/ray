@@ -825,6 +825,26 @@ class ResourceDemandScheduler(IResourceScheduler):
                 cluster_shape[node.node_type] += 1
             return cluster_shape
 
+        def get_cluster_resources(self) -> Dict[str, float]:
+            """
+            Aggregate total cluster resources.
+
+            Sums each node's `total_resources` across the current context,
+            excluding nodes marked `TO_TERMINATE`.
+
+            Returns:
+                A dict mapping resource names to their summed resources.
+            """
+            cluster_resources = defaultdict(float)
+            for node in self._nodes:
+                if node.status == SchedulingNodeStatus.TO_TERMINATE:
+                    # Skip the nodes that are to be terminated.
+                    continue
+
+                for key, value in node.total_resources.items():
+                    cluster_resources[key] += value
+            return cluster_resources
+
         def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
 
@@ -949,8 +969,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     infeasible_requests=infeasible_requests,
                     infeasible_gang_requests=infeasible_gang_requests,
                     infeasible_cluster_resource_constraints=infeasible_constraints,
-                    cluster_shape=ctx.get_cluster_shape(),
-                    node_type_configs=ctx.get_node_type_configs(),
+                    cluster_resources=ctx.get_cluster_resources(),
                 )
             except Exception:
                 logger.exception("Failed to emit event logs.")
