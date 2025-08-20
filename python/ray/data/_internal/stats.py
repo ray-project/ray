@@ -280,6 +280,11 @@ class _StatsActor:
             description="Seconds user thread is blocked by iter_batches()",
             tag_keys=iter_tag_keys,
         )
+        self.iter_first_batch_blocked_s = Gauge(
+            "data_iter_first_batch_blocked_seconds",
+            description="Seconds user thread is blocked waiting for first batch",
+            tag_keys=iter_tag_keys,
+        )
         self.iter_user_s = Gauge(
             "data_iter_user_seconds",
             description="Seconds spent in user code",
@@ -469,6 +474,9 @@ class _StatsActor:
     ):
         tags = self._create_tags(dataset_tag)
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_first_batch_blocked_s.set(
+            stats.iter_first_batch_blocked_s.get(), tags
+        )
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
