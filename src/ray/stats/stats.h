@@ -91,15 +91,8 @@ static inline void Init(
                                   static_cast<uint64_t>(500))));
   // Register the metric recorder.
   if (RayConfig::instance().enable_open_telemetry()) {
-    std::string otlp_exporter_host = "127.0.0.1";
-    for (const auto &tag_pair : global_tags) {
-      if (tag_pair.first == NodeAddressKey) {
-        otlp_exporter_host = tag_pair.second;
-        break;
-      }
-    }
     OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        BuildAddress(otlp_exporter_host, metrics_agent_port),
+        BuildAddress("127.0.0.1", metrics_agent_port),
         std::chrono::milliseconds(
             absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
         std::chrono::milliseconds(
@@ -114,17 +107,9 @@ static inline void Init(
         StatsConfig::instance().GetReportInterval());
     opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
         StatsConfig::instance().GetHarvestInterval());
-    // Use node IP address for connecting to the metrics agent when not on loopback.
-    std::string oc_exporter_host = "127.0.0.1";
-    for (const auto &tag_pair : global_tags) {
-      if (tag_pair.first == NodeAddressKey) {
-        oc_exporter_host = tag_pair.second;
-        break;
-      }
-    }
     OpenCensusProtoExporter::Register(metrics_agent_port,
                                       (*metrics_io_service),
-                                      oc_exporter_host,
+                                      "127.0.0.1",
                                       worker_id,
                                       metrics_report_batch_size,
                                       max_grpc_payload_size);

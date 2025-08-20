@@ -112,9 +112,13 @@ class DashboardAgent:
             )  # noqa
         )
         try:
-            self.grpc_port = add_port_to_grpc_server(
+            add_port_to_grpc_server(
                 self.server, build_address(self.ip, self.dashboard_agent_port)
             )
+            if self.ip != "127.0.0.1" and self.ip != "localhost":
+                add_port_to_grpc_server(
+                    self.server, f"127.0.0.1:{self.dashboard_agent_port}"
+                )
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
             # port conflict issue which brought from static port. We should
@@ -124,11 +128,11 @@ class DashboardAgent:
                 "disable the grpc service."
             )
             self.server = None
-            self.grpc_port = None
+            self.dashboard_agent_port = None
         else:
             logger.info(
                 "Dashboard agent grpc address: %s",
-                build_address(self.ip, self.grpc_port),
+                build_address(self.ip, self.dashboard_agent_port),
             )
 
         # If the agent is not minimal it should start the http server
@@ -192,7 +196,7 @@ class DashboardAgent:
             # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
-            grpc_port = -1 if not self.server else self.grpc_port
+            grpc_port = -1 if not self.server else self.dashboard_agent_port
             put_by_node_id = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
                 json.dumps([self.ip, http_port, grpc_port]).encode(),
