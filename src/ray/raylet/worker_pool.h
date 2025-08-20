@@ -86,18 +86,18 @@ using PopWorkerCallback =
                        const std::string &runtime_env_setup_error_message)>;
 
 struct PopWorkerRequest {
-  const rpc::Language language;
-  const rpc::WorkerType worker_type;
-  const JobID job_id;                    // can be Nil
-  const ActorID root_detached_actor_id;  // can be Nil
-  const std::optional<bool> is_gpu;
-  const std::optional<bool> is_actor_worker;
-  const rpc::RuntimeEnvInfo runtime_env_info;
-  const int runtime_env_hash;
-  const std::vector<std::string> dynamic_options;
-  std::optional<absl::Duration> worker_startup_keep_alive_duration;
+  const rpc::Language language_;
+  const rpc::WorkerType worker_type_;
+  const JobID job_id_;                    // can be Nil
+  const ActorID root_detached_actor_id_;  // can be Nil
+  const std::optional<bool> is_gpu_;
+  const std::optional<bool> is_actor_worker_;
+  const rpc::RuntimeEnvInfo runtime_env_info_;
+  const int runtime_env_hash_;
+  const std::vector<std::string> dynamic_options_;
+  std::optional<absl::Duration> worker_startup_keep_alive_duration_;
 
-  PopWorkerCallback callback;
+  PopWorkerCallback callback_;
 
   PopWorkerRequest(rpc::Language lang,
                    rpc::WorkerType worker_type,
@@ -110,18 +110,17 @@ struct PopWorkerRequest {
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
-      : language(lang),
-        worker_type(worker_type),
-        job_id(job),
-        root_detached_actor_id(root_actor_id),
-        is_gpu(gpu),
-        is_actor_worker(actor_worker),
-        runtime_env_info(std::move(runtime_env_info)),
-        // this-> is needed to disambiguate the member variable from the ctor arg.
-        runtime_env_hash(runtime_env_hash),
-        dynamic_options(std::move(options)),
-        worker_startup_keep_alive_duration(worker_startup_keep_alive_duration),
-        callback(std::move(callback)) {}
+      : language_(lang),
+        worker_type_(worker_type),
+        job_id_(job),
+        root_detached_actor_id_(root_actor_id),
+        is_gpu_(gpu),
+        is_actor_worker_(actor_worker),
+        runtime_env_info_(std::move(runtime_env_info)),
+        runtime_env_hash_(runtime_env_hash),
+        dynamic_options_(std::move(options)),
+        worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
+        callback_(std::move(callback)) {}
 };
 
 /// \class IOWorkerPoolInterface
@@ -872,7 +871,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
-  int ray_debugger_external;
+  int ray_debugger_external_;
 
   /// If the first job has already been registered.
   bool first_job_registered_ = false;

@@ -197,20 +197,20 @@ bool DependencyManager::RequestTaskDependencies(
     it->second.dependent_tasks.insert(task_id);
   }
 
-  for (const auto &obj_id : task_entry->dependencies) {
+  for (const auto &obj_id : task_entry->dependencies_) {
     if (local_objects_.count(obj_id)) {
       task_entry->DecrementMissingDependencies();
     }
   }
 
   if (!required_objects.empty()) {
-    task_entry->pull_request_id =
+    task_entry->pull_request_id_ =
         object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS, task_key);
     RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
-                   << " request: " << task_entry->pull_request_id;
+                   << " request: " << task_entry->pull_request_id_;
   }
 
-  return task_entry->num_missing_dependencies == 0;
+  return task_entry->num_missing_dependencies_ == 0;
 }
 
 void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
@@ -219,13 +219,13 @@ void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
   RAY_CHECK(task_entry != queued_task_requests_.end())
       << "Can't remove dependencies of tasks that are not queued.";
 
-  if (task_entry->second->pull_request_id > 0) {
+  if (task_entry->second->pull_request_id_ > 0) {
     RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
-                   << " request: " << task_entry->second->pull_request_id;
-    object_manager_.CancelPull(task_entry->second->pull_request_id);
+                   << " request: " << task_entry->second->pull_request_id_;
+    object_manager_.CancelPull(task_entry->second->pull_request_id_);
   }
 
-  for (const auto &obj_id : task_entry->second->dependencies) {
+  for (const auto &obj_id : task_entry->second->dependencies_) {
     auto it = required_objects_.find(obj_id);
     RAY_CHECK(it != required_objects_.end());
     it->second.dependent_tasks.erase(task_id);
@@ -251,7 +251,7 @@ std::vector<TaskID> DependencyManager::HandleObjectMissing(
       // If the dependent task had all of its arguments ready, it was ready to
       // run but must be switched to waiting since one of its arguments is now
       // missing.
-      if (task_entry->num_missing_dependencies == 0) {
+      if (task_entry->num_missing_dependencies_ == 0) {
         waiting_task_ids.push_back(dependent_task_id);
         // During normal execution we should be able to include the check
         // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
@@ -283,7 +283,7 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
       task_entry->DecrementMissingDependencies();
       // If the dependent task now has all of its arguments ready, it's ready
       // to run.
-      if (task_entry->num_missing_dependencies == 0) {
+      if (task_entry->num_missing_dependencies_ == 0) {
         ready_task_ids.push_back(dependent_task_id);
       }
     }
@@ -316,9 +316,9 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
 bool DependencyManager::TaskDependenciesBlocked(const TaskID &task_id) const {
   auto it = queued_task_requests_.find(task_id);
   RAY_CHECK(it != queued_task_requests_.end());
-  RAY_CHECK(it->second->pull_request_id != 0);
+  RAY_CHECK(it->second->pull_request_id_ != 0);
   return !object_manager_.PullRequestActiveOrWaitingForMetadata(
-      it->second->pull_request_id);
+      it->second->pull_request_id_);
 }
 
 std::string DependencyManager::DebugString() const {

@@ -646,7 +646,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Constructor for a reference whose origin is unknown.
     Reference() = default;
     Reference(std::string call_site, int64_t object_size)
-        : call_site(std::move(call_site)), object_size(object_size) {}
+        : call_site_(std::move(call_site)), object_size_(object_size) {}
     /// Constructor for a reference that we created.
     Reference(rpc::Address owner_address,
               std::string call_site,
@@ -654,14 +654,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
               bool is_reconstructable,
               std::optional<NodeID> pinned_at_node_id,
               rpc::TensorTransport tensor_transport)
-        : call_site(std::move(call_site)),
-          object_size(object_size),
-          owner_address(std::move(owner_address)),
-          pinned_at_node_id(std::move(pinned_at_node_id)),
-          tensor_transport(tensor_transport),
-          owned_by_us(true),
-          is_reconstructable(is_reconstructable),
-          pending_creation(!pinned_at_node_id.has_value()) {}
+        : call_site_(std::move(call_site)),
+          object_size_(object_size),
+          owner_address_(std::move(owner_address)),
+          pinned_at_node_id_(std::move(pinned_at_node_id)),
+          tensor_transport_(tensor_transport),
+          owned_by_us_(true),
+          is_reconstructable_(is_reconstructable),
+          pending_creation_(!pinned_at_node_id_.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -694,7 +694,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
+      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstructable_) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -756,9 +756,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::string DebugString() const;
 
     /// Description of the call site where the reference was created.
-    std::string call_site = "<unknown>";
+    std::string call_site_ = "<unknown>";
     /// Object size if known, otherwise -1;
-    int64_t object_size = -1;
+    int64_t object_size_ = -1;
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
@@ -766,25 +766,25 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
-    std::optional<rpc::Address> owner_address;
+    std::optional<rpc::Address> owner_address_;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
-    std::optional<NodeID> pinned_at_node_id;
+    std::optional<NodeID> pinned_at_node_id_;
     /// TODO(kevin85421): Make tensor_transport a required field for all constructors.
     ///
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE;
+    rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
-    bool owned_by_us = false;
+    bool owned_by_us_ = false;
 
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage. This should be set to false if the object was created
     // by ray.put(), a task that cannot be retried, or its lineage was evicted.
-    bool is_reconstructable = false;
+    bool is_reconstructable_ = false;
     /// Whether the lineage of this object was evicted due to memory pressure.
     bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
@@ -843,7 +843,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     bool has_nested_refs_to_report = false;
 
     /// Whether the task that creates this object is scheduled/executing.
-    bool pending_creation = false;
+    bool pending_creation_ = false;
 
     /// Whether or not this object was spilled.
     bool did_spill = false;

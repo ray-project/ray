@@ -21,9 +21,9 @@ namespace raylet_scheduling_policy {
 
 scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::NODE_LABEL);
+  RAY_CHECK(options.scheduling_type_ == SchedulingType::NODE_LABEL);
   auto context =
-      dynamic_cast<const NodeLabelSchedulingContext *>(options.scheduling_context.get());
+      dynamic_cast<const NodeLabelSchedulingContext *>(options.scheduling_context_.get());
   const auto &scheduling_strategy = context->GetSchedulingStrategy();
   RAY_CHECK(scheduling_strategy.has_node_label_scheduling_strategy());
   const auto &node_label_scheduling_strategy =
