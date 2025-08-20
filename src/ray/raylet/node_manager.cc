@@ -1387,6 +1387,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
             << "Failed to SIGTERM process group " << pgid << ": " << err->message()
             << ", errno=" << err->value();
       }
+      // TODO(codope): consider making the grace period configurable.
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       err = KillProcessGroup(pgid, SIGKILL);
       if (err && *err) {
@@ -2749,6 +2750,32 @@ void NodeManager::TriggerGlobalGC() {
 void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());
+#if !defined(_WIN32)
+  // Best-effort process-group cleanup for any remaining workers before shutdown.
+  if (RayConfig::instance().process_group_cleanup_enabled()) {
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                        /* filter_io_workers */ false);
+    for (const auto &w : workers) {
+      pid_t pgid = w->GetProcess().GetId();
+      RAY_LOG(INFO).WithField(w->WorkerId())
+          << "Stop(): attempting process-group cleanup for worker pid=" << pgid;
+      auto err = KillProcessGroup(pgid, SIGTERM);
+      if (err && *err) {
+        RAY_LOG(WARNING).WithField(w->WorkerId())
+            << "Stop(): failed to SIGTERM process group " << pgid << ": "
+            << err->message() << ", errno=" << err->value();
+      }
+      // TODO(codope): consider making the grace period configurable.
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      err = KillProcessGroup(pgid, SIGKILL);
+      if (err && *err) {
+        RAY_LOG(WARNING).WithField(w->WorkerId())
+            << "Stop(): failed to SIGKILL process group " << pgid << ": "
+            << err->message() << ", errno=" << err->value();
+      }
+    }
+  }
+#endif
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
