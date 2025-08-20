@@ -34,7 +34,7 @@ ippr_schema = {
                 "type": "object",
                 "properties": {
                     "max-cpu": {"type": ["string", "number"]},
-                    "max-memory": {"type": ["string", "number"]},
+                    "max-memory": {"type": ["string", "integer"]},
                     "resize-timeout": {"type": "integer"},
                 },
                 "required": ["max-cpu", "max-memory", "resize-timeout"],
@@ -90,7 +90,7 @@ class KubeRayIPPRProvider:
                 if restart is not None and restart != "NotRequired":
                     raise ValueError("IPPR only supports restartPolicy=NotRequired")
 
-        for group_name in self._ippr_spec.get("groups", {}).keys():
+        for group_name in spec.get("groups", {}).keys():
             if group_name == "headgroup":
                 validate_worker_group_spec(ray_cluster["spec"]["headGroupSpec"])
                 continue
@@ -113,6 +113,10 @@ class KubeRayIPPRProvider:
                     raylet_addr = _get_raylet_address(
                         self._gcs_client, ippr_status.raylet_id
                     )
+                    if not raylet_addr:
+                        raise RuntimeError(
+                            f"Raylet address not found for pod {ippr_status.cloud_instance_id}"
+                        )
                     _resize_raylet_resources(
                         raylet_addr,
                         ippr_status.current_cpu,
@@ -167,6 +171,10 @@ class KubeRayIPPRProvider:
                     raylet_addr = _get_raylet_address(
                         self._gcs_client, resize.raylet_id
                     )
+                    if not raylet_addr:
+                        raise RuntimeError(
+                            f"Raylet address not found for pod {resize.cloud_instance_id}"
+                        )
                     _resize_raylet_resources(
                         raylet_addr,
                         resize.desired_cpu,
@@ -245,9 +253,9 @@ class KubeRayIPPRProvider:
                     f"{path_prefix}/limits/memory",
                     max(
                         resize.desired_memory,
-                        float(
+                        int(
                             parse_quantity(
-                                container_resource["spec"]["limits"].get("memory")
+                                container_resource["spec"]["limits"].get("memory", 0)
                             )
                         ),
                     ),
@@ -256,7 +264,7 @@ class KubeRayIPPRProvider:
             patch.append(
                 replace_patch(
                     f"{path_prefix}/requests/memory",
-                    float(
+                    int(
                         parse_quantity(
                             container_resource["status"]["requests"].get("memory", 0)
                         )
@@ -326,7 +334,7 @@ def _set_ippr_status_for_pod(
     spec_cpu = float(
         parse_quantity(pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0))
     )
-    spec_memory = float(
+    spec_memory = int(
         parse_quantity(
             pod_spec_limits.get("memory") or pod_spec_requests.get("memory", 0)
         )
@@ -337,7 +345,7 @@ def _set_ippr_status_for_pod(
         min_cpu=spec_cpu,
         max_cpu=float(parse_quantity(ippr_group_spec.get("max-cpu", 0))),
         min_memory=spec_memory,
-        max_memory=float(parse_quantity(ippr_group_spec.get("max-memory", 0))),
+        max_memory=int(parse_quantity(ippr_group_spec.get("max-memory", 0))),
         desired_cpu=spec_cpu,
         desired_memory=spec_memory,
         current_cpu=float(
@@ -347,7 +355,7 @@ def _set_ippr_status_for_pod(
                 or spec_cpu
             )
         ),
-        current_memory=float(
+        current_memory=int(
             parse_quantity(
                 pod_status_limits.get("memory")
                 or pod_status_requests.get("memory")
@@ -366,7 +374,7 @@ def _set_ippr_status_for_pod(
         ippr_status.min_cpu = float(
             parse_quantity(pod_ippr_status.get("min-cpu", ippr_status.min_cpu))
         )
-        ippr_status.min_memory = float(
+        ippr_status.min_memory = int(
             parse_quantity(pod_ippr_status.get("min-memory", ippr_status.min_memory))
         )
         ippr_status.resized_at = pod_ippr_status.get("resized-at")
@@ -390,7 +398,7 @@ def _set_ippr_status_for_pod(
                         diff = spec_cpu - (remaining / 1000)
                         ippr_status.suggested_cpu = ippr_status.desired_cpu - diff
                     else:
-                        diff = spec_memory - remaining
+                        diff = spec_memory - int(remaining)
                         ippr_status.suggested_memory = ippr_status.desired_memory - diff
             elif ippr_status.resized_status == "infeasible":
                 match = re.search(

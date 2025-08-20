@@ -227,25 +227,25 @@ class IPPRStatus:
     cloud_instance_id: str
     min_cpu: float
     max_cpu: float
-    min_memory: float
-    max_memory: float
+    min_memory: int
+    max_memory: int
     current_cpu: float
-    current_memory: float
+    current_memory: int
     resize_timeout: int
     desired_cpu: float
-    desired_memory: float
+    desired_memory: int
     resized_at: Optional[int] = None
     resized_status: Optional[str] = None
     resized_message: Optional[str] = None
     suggested_cpu: Optional[float] = None
-    suggested_memory: Optional[float] = None
+    suggested_memory: Optional[int] = None
     raylet_id: Optional[str] = None
 
     def update(
         self,
         raylet_id: str,
         desired_cpu: Optional[float],
-        desired_memory: Optional[float],
+        desired_memory: Optional[int],
     ) -> None:
         if desired_cpu is not None:
             self.desired_cpu = desired_cpu
