@@ -10,15 +10,43 @@ if [[ "$EUID" -eq 0 ]]; then
   # Install sudo
   yum -y install sudo
 
-  # Create group and user
-  groupadd -g "$HOST_GID" builduser
-  useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
+  GROUP_NAME="builduser"
+  declare -a UID_FLAG=()   # <-- always define array
 
-  # Give sudo access
+  # --- Create/select group safely ---
+  if [[ -n "${HOST_GID:-}" && "$HOST_GID" -ne 0 ]]; then
+    if getent group "$HOST_GID" >/dev/null; then
+      GROUP_NAME="$(getent group "$HOST_GID" | cut -d: -f1)"
+    else
+      # Try requested GID; fallback to system-assigned if taken/invalid
+      groupadd -g "$HOST_GID" "$GROUP_NAME" || groupadd "$GROUP_NAME"
+    fi
+  else
+    getent group "$GROUP_NAME" >/dev/null || groupadd "$GROUP_NAME"
+  fi
+
+  # --- Prepare UID flag safely ---
+  if [[ -n "${HOST_UID:-}" && "$HOST_UID" -ne 0 ]]; then
+    if id -u "$HOST_UID" >/dev/null 2>&1; then
+      : # UID taken -> leave UID_FLAG empty (system-assigned)
+    else
+      UID_FLAG=(-u "$HOST_UID")
+    fi
+  fi
+
+  # --- Create user safely ---
+  if ! id -u builduser >/dev/null 2>&1; then
+    # Safe array expansion with set -u
+    useradd -m -d "$HOME"/ -g "$GROUP_NAME" ${UID_FLAG[@]+"${UID_FLAG[@]}"} builduser
+  fi
+
+  mkdir -p "$HOME"/
+  chown -R builduser:"$GROUP_NAME" "$HOME"/
+
   echo "builduser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builduser
   chmod 0440 /etc/sudoers.d/builduser
 
-  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@" || {
+  exec sudo -E -u builduser HOME="/tmp" bash "$0" "$@" || {
     echo "Failed to exec as builduser." >&2
     exit 1
   }
