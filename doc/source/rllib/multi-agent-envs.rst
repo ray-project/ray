@@ -44,7 +44,7 @@ The :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API of RLlib closel
 conventions and APIs of `Farama's gymnasium (single-agent) <gymnasium.farama.org>`__ envs and even subclasses
 from `gymnasium.Env`, however, instead of publishing individual observations, rewards, and termination/truncation flags
 from `reset()` and `step()`, a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation
-outputs dictionaries, one for observations, one for rewards, etc. In each multi-agent dictionary, agent IDs map to the respective individual agent's observation/reward/etc.
+outputs separate dictionaries for observations, rewards, etc., where each dictionary maps agent IDs to the corresponding values for each agent.
 
 Here is a first draft of an example :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation:
 
