@@ -150,19 +150,19 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
         raise click.ClickException("Ray is already started on this node.")
 
     # 1. Parse address and check if we are on the head node.
-    gcs_ip_port = ray._common.network_utils.parse_address(address)
-    if gcs_ip_port is None:
+    gcs_host_port = ray._common.network_utils.parse_address(address)
+    if gcs_host_port is None:
         raise click.ClickException(f"Invalid address format: {address}")
-    gcs_ip, gcs_port = gcs_ip_port
+    gcs_host, gcs_port = gcs_host_port
 
     try:
         # AF_UNSPEC allows resolving both IPv4 and IPv6
         addrinfo = socket.getaddrinfo(
-            gcs_ip, gcs_port, socket.AF_UNSPEC, socket.SOCK_STREAM
+            gcs_host, gcs_port, socket.AF_UNSPEC, socket.SOCK_STREAM
         )
-        resolved_gcs_ip = addrinfo[0][4][0]
+        resolved_gcs_host = addrinfo[0][4][0]
     except socket.gaierror:
-        raise click.ClickException(f"Could not resolve hostname: {gcs_ip}")
+        raise click.ClickException(f"Could not resolve hostname: {gcs_host}")
 
     my_ips = []
     for iface, addrs in psutil.net_if_addrs().items():
@@ -180,7 +180,7 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
         # to avoid starting N head nodes
         my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
 
-    is_head = resolved_gcs_ip in my_ips
+    is_head = resolved_gcs_host in my_ips
 
     result = None
     # 2. Start Ray and run commands.
@@ -194,7 +194,7 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
                 "ray",
                 "start",
                 "--head",
-                f"--node-ip-address={resolved_gcs_ip}",
+                f"--node-ip-address={resolved_gcs_host}",
                 f"--port={gcs_port}",
                 *ray_start_args,
             ]
