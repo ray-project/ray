@@ -19,6 +19,7 @@ steps:
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
     label: "wanda: ray.py{{matrix}}.cpu.base-extra"
@@ -31,6 +32,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: ""
     depends_on: raycpubase
 
   - name: raycudabase
@@ -58,6 +60,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
@@ -82,6 +85,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: ""
     depends_on: raycudabase
 
   - name: ray-llmbase
@@ -114,6 +118,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
+      ARCH_SUFFIX: ""
     depends_on: ray-llmbase
 
   - name: ray-mlcudabase
@@ -150,6 +155,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
+      ARCH_SUFFIX: ""
     depends_on: ray-mlcudabase
 
   - name: ray-mlcpubase
@@ -176,4 +182,5 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray-ml"
+      ARCH_SUFFIX: ""
     depends_on: ray-mlcpubase

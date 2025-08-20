@@ -284,6 +284,74 @@ class TestEvictionBehavior:
         ray.get(prefix_request_router._tree_actor.stop_eviction_loop.remote())
         await asyncio.sleep(0.1)
 
+
+class TestPromptNormalization:
+    """Tests for input normalization in the prefix-aware router."""
+
+    def test_normalize_prompt_string(self, prefix_request_router):
+        req = fake_pending_request(prompt="Hello world")
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello world"
+
+    def test_normalize_messages_list_of_strings(self, prefix_request_router):
+        req = fake_pending_request(messages=["Hello", " ", "world"])
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello world"
+
+    def test_normalize_messages_dict_content_string(self, prefix_request_router):
+        req = fake_pending_request(
+            messages=[
+                {"content": "Hello"},
+                {"content": " world"},
+            ]
+        )
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello world"
+
+    def test_normalize_messages_dict_content_list_of_dicts_text(
+        self, prefix_request_router
+    ):
+        req = fake_pending_request(
+            messages=[
+                {
+                    "content": [
+                        {"type": "text", "text": "Hello"},
+                        {"type": "text", "text": " world"},
+                    ]
+                }
+            ]
+        )
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello world"
+
+    def test_normalize_messages_dict_content_list_of_strings(
+        self, prefix_request_router
+    ):
+        req = fake_pending_request(messages=[{"content": ["Hello", " ", "world"]}])
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello world"
+
+    def test_normalize_unsupported_returns_empty(self, prefix_request_router):
+        # For now, unsupported multimodal parts should be ignored, resulting in empty string
+        req = fake_pending_request(
+            messages=[
+                {
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "http://example.com"},
+                        },
+                    ]
+                }
+            ]
+        )
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == ""
+
+    def test_extract_raises_when_no_prompt_or_messages(self, prefix_request_router):
+        with pytest.raises(ValueError):
+            _ = prefix_request_router._extract_text_from_request(fake_pending_request())
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "prefix_request_router",
@@ -331,3 +399,10 @@ class TestEvictionBehavior:
 
         ray.get(prefix_request_router._tree_actor.stop_eviction_loop.remote())
         await asyncio.sleep(0.1)
+
+
+if __name__ == "__main__":
+    import sys
+
+    exit_code = pytest.main(["-vs", __file__])
+    sys.exit(exit_code)
