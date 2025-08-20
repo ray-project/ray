@@ -47,7 +47,7 @@ class CollectiveTensorTransport(TensorTransportManager):
                 for t in gpu_object:
                     if t.device.type != device.type:
                         raise ValueError(
-                            "All tensors in one GPU object must be on the same device."
+                            "All tensors in one GPU object must be the same device type."
                         )
                     tensor_meta.append((t.shape, t.dtype))
             return CollectiveTransportMetadata(
