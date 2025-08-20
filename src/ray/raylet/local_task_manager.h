@@ -282,16 +282,13 @@ class LocalTaskManager : public ILocalTaskManager {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    explicit SchedulingClassInfo(int64_t cap)
-        : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
+    explicit SchedulingClassInfo(int64_t cap) : capacity(cap) {}
     /// Track the running task ids in this scheduling class.
     ///
     /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     uint64_t capacity;
-    /// The next time that a new task of this scheduling class may be dispatched.
-    int64_t next_update_time;
   };
 
   /// Mapping from scheduling class to information about the running tasks of
@@ -369,9 +366,6 @@ class LocalTaskManager : public ILocalTaskManager {
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;
-
-  /// Whether or not to enable the worker process cap.
-  const bool sched_cls_cap_enabled_;
 
   /// The initial interval before the cap on the number of worker processes is increased.
   const int64_t sched_cls_cap_interval_ms_;

@@ -56,7 +56,6 @@ LocalTaskManager::LocalTaskManager(
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
       get_time_ms_(get_time_ms),
-      sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
@@ -258,38 +257,14 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       }
 
       // Check if the scheduling class is at capacity now.
-      if (sched_cls_cap_enabled_ &&
-          sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
+      if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
-                       << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_ms_() < sched_cls_info.next_update_time) {
-          // We're over capacity and it's not time to admit a new task yet.
-          // Calculate the next time we should admit a new task.
-          int64_t current_capacity = sched_cls_info.running_tasks.size();
-          int64_t allowed_capacity = sched_cls_info.capacity;
-          int64_t exp = current_capacity - allowed_capacity;
-          int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
-          if (wait_time > sched_cls_cap_max_ms_) {
-            wait_time = sched_cls_cap_max_ms_;
-            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                                "task. Worker process startup is being throttled.";
-          }
-
-          int64_t target_time = get_time_ms_() + wait_time;
-          sched_cls_info.next_update_time =
-              std::min(target_time, sched_cls_info.next_update_time);
-
-          // While we're over capacity and cannot run the task,
-          // try to spill to a node that can run it.
-          bool did_spill = TrySpillback(work, is_infeasible);
-          if (did_spill) {
-            work_it = dispatch_queue.erase(work_it);
-            continue;
-          }
-
-          break;
+        bool did_spill = TrySpillback(work, is_infeasible);
+        if (did_spill) {
+          work_it = dispatch_queue.erase(work_it);
+          continue;
         }
+        break;
       }
 
       bool args_missing = false;
@@ -349,11 +324,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
-        // Force us to recalculate the next update time the next time a task
-        // comes through this queue. We should only do this when we're
-        // confident we're ready to dispatch the task after all checks have
-        // passed.
-        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.

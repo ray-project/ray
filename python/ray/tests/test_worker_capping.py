@@ -291,5 +291,4 @@ def test_idle_workers(shutdown_only):
 
 
 if __name__ == "__main__":
-    os.environ["RAY_worker_cap_enabled"] = "true"
     sys.exit(pytest.main(["-sv", __file__]))
