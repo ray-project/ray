@@ -70,10 +70,10 @@ class SubscriberChannel {
   ///
   /// \param publisher_address Address of the publisher to subscribe the object.
   /// \param message id The message id to subscribe from the publisher.
-  /// \param subscription_callback A callback that is invoked whenever the given object
-  /// information is published.
-  /// \param subscription_failure_callback A callback that is
-  /// invoked whenever the publisher is dead (or failed).
+  /// \param subscription_item_callback A callback that is invoked whenever the given
+  /// object information is published.
+  /// \param subscription_failure_callback A callback that is invoked whenever the
+  /// publisher is dead (or failed).
   void Subscribe(const rpc::Address &publisher_address,
                  const std::optional<std::string> &key_id,
                  SubscriptionItemCallback subscription_item_callback,
@@ -149,14 +149,14 @@ class SubscriberChannel {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
       return subscription_it->second.all_entities_subscription->item_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return callback_it->second.item_cb;
   }
@@ -168,14 +168,14 @@ class SubscriberChannel {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
       return subscription_it->second.all_entities_subscription->failure_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return callback_it->second.failure_cb;
   }
@@ -276,18 +276,6 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);
   // Testing only. Check if there are leaks.
   bool CheckNoLeaks() const ABSL_LOCKS_EXCLUDED(mutex_);
-
-  ///
-  /// Private fields
-  ///
-
-  bool SubscribeInternal(std::unique_ptr<rpc::SubMessage> sub_message,
-                         const rpc::ChannelType channel_type,
-                         const rpc::Address &publisher_address,
-                         const std::optional<std::string> &key_id,
-                         SubscribeDoneCallback subscribe_done_callback,
-                         SubscriptionItemCallback subscription_callback,
-                         SubscriptionFailureCallback subscription_failure_callback);
 
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.

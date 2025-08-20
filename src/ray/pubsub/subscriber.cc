@@ -43,6 +43,7 @@ void SubscriberChannel::Subscribe(
         *key_id,
         SubscriptionInfo(std::move(subscription_callback),
                          std::move(subscription_failure_callback)));
+    return;
   }
   auto &all_entities_subscription =
       subscription_map_[publisher_id].all_entities_subscription;
