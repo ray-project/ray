@@ -76,7 +76,9 @@ def transport_options(temp_queue_directory):
 def create_processor_config(temp_queue_directory, transport_options):
     """Create a TaskProcessorConfig with common defaults."""
 
-    def _create(**kwargs):
+    def _create(
+        failed_task_queue_name=None, unprocessable_task_queue_name=None, **kwargs
+    ):
         results_path = temp_queue_directory["results_path"]
 
         config_params = {
@@ -85,8 +87,18 @@ def create_processor_config(temp_queue_directory, transport_options):
                 broker_url="filesystem://",
                 backend_url=f"file://{results_path}",
                 broker_transport_options=transport_options,
+                worker_concurrency=1,
             ),
         }
+
+        # Add dead letter queue names if provided
+        if failed_task_queue_name is not None:
+            config_params["failed_task_queue_name"] = failed_task_queue_name
+        if unprocessable_task_queue_name is not None:
+            config_params[
+                "unprocessable_task_queue_name"
+            ] = unprocessable_task_queue_name
+
         config_params.update(kwargs)
 
         return TaskProcessorConfig(**config_params)
@@ -214,7 +226,6 @@ class TestTaskConsumerWithRayServe:
     ):
         """Test that tasks persist in queue and get executed after deployment restart."""
         processor_config = create_processor_config()
-        processor_config.adapter_config.worker_concurrency = 1
 
         # Use a shared object to track processed tasks across deployments
         @ray.remote
@@ -388,8 +399,9 @@ class TestTaskConsumerWithDLQsConfiguration:
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
         """Test that unknown tasks are sent to the unprocessable task queue."""
-        processor_config = create_processor_config()
-        processor_config.unprocessable_task_queue_name = "unprocessable_task_queue"
+        processor_config = create_processor_config(
+            unprocessable_task_queue_name="unprocessable_task_queue"
+        )
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
@@ -417,8 +429,9 @@ class TestTaskConsumerWithDLQsConfiguration:
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
         """Test that failed tasks are sent to the failed task queue."""
-        processor_config = create_processor_config()
-        processor_config.failed_task_queue_name = "failed_task_queue"
+        processor_config = create_processor_config(
+            failed_task_queue_name="failed_task_queue"
+        )
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
@@ -438,9 +451,10 @@ class TestTaskConsumerWithDLQsConfiguration:
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
         """Test that tasks with mismatched arguments are sent to the unprocessable task queue."""
-        processor_config = create_processor_config()
-        processor_config.unprocessable_task_queue_name = "unprocessable_task_queue"
-        processor_config.failed_task_queue_name = "failed_task_queue"
+        processor_config = create_processor_config(
+            unprocessable_task_queue_name="unprocessable_task_queue",
+            failed_task_queue_name="failed_task_queue",
+        )
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
@@ -465,9 +479,10 @@ class TestTaskConsumerWithDLQsConfiguration:
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
         """Test that tasks with argument type mismatches are sent to the unprocessable task queue."""
-        processor_config = create_processor_config()
-        processor_config.unprocessable_task_queue_name = "unprocessable_task_queue"
-        processor_config.failed_task_queue_name = "failed_task_queue"
+        processor_config = create_processor_config(
+            unprocessable_task_queue_name="unprocessable_task_queue",
+            failed_task_queue_name="failed_task_queue",
+        )
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)

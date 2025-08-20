@@ -51,22 +51,6 @@ def _json_dump(obj: Any) -> Any:
         return str(obj)
 
 
-def _move_task_to_queue(app: Celery, queue_name: str, task_name: str, args: list):
-    """Helper function to move a task to a specified queue."""
-    try:
-        logger.info(f"Moving task: {task_name} to queue: {queue_name}, args: {args}")
-        result = app.send_task(
-            name=task_name,
-            queue=queue_name,
-            args=args,
-        )
-        logger.info(f"Moved task: {task_name} to queue: {queue_name}, result: {result}")
-    except Exception as e:
-        logger.error(
-            f"Failed to move task: {task_name} to queue: {queue_name}, error: {e}"
-        )
-
-
 @PublicAPI(stability="alpha")
 class TaskProcessorAdapter(ABC):
     """
@@ -474,14 +458,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             logger.info("Celery worker thread is already running.")
             return
 
-        unique_id = int(time.time())
-        try:
-            unique_id = get_replica_context().replica_tag
-        except Exception:
-            logger.warning(
-                "exception in get_replica_context, using timestamp as unique id"
-            )
-
+        unique_id = get_replica_context().replica_tag
         self._worker_hostname = f"{self._app.main}_{unique_id}"
 
         worker_args = [
@@ -547,8 +524,30 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         return self._app.control.ping()
 
     def _handle_task_failure(
-        self, sender=None, task_id=None, args=None, kwargs=None, einfo=None, **kw
+        self,
+        sender: Any = None,
+        task_id: str = None,
+        args: Any = None,
+        kwargs: Any = None,
+        einfo: Any = None,
+        **kw,
     ):
+        """Handle task failures and route them to appropriate dead letter queues.
+
+        This method is called when a task fails after all retry attempts have been
+        exhausted. It logs the failure and moves the task to a dead letter queue
+        based on the exception type:
+        - TypeError exceptions go to unprocessable_task_queue (if configured)
+        - All other exceptions go to failed_task_queue (if configured)
+
+        Args:
+            sender: The task object that failed
+            task_id: Unique identifier of the failed task
+            args: Positional arguments passed to the task
+            kwargs: Keyword arguments passed to the task
+            einfo: Exception info object containing exception details and traceback
+            **kw: Additional keyword arguments passed by Celery
+        """
         logger.info(
             f"Task failure detected for task_id: {task_id}, args: {args}, kwargs: {kwargs}, einfo: {einfo}"
         )
@@ -575,8 +574,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             dlq_name = self._config.failed_task_queue_name
 
         if dlq_name:
-            _move_task_to_queue(
-                self._app,
+            self._move_task_to_queue(
                 dlq_name,
                 sender.name,
                 dlq_args,
@@ -587,16 +585,34 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             )
 
     def _handle_unknown_task(
-        self, sender=None, name=None, id=None, message=None, exc=None, **kwargs
+        self,
+        sender: Any = None,
+        name: str = None,
+        id: str = None,
+        message: Any = None,
+        exc: Any = None,
+        **kwargs,
     ):
-        """Handle unknown/unregistered tasks"""
+        """Handle unknown or unregistered tasks received by Celery.
+
+        This method is called when Celery receives a task that it doesn't recognize
+        (i.e., a task that hasn't been registered with the Celery app). These tasks
+        are moved to the unprocessable task queue if configured.
+
+        Args:
+            sender: The Celery app or worker that detected the unknown task
+            name: Name of the unknown task
+            id: Task ID of the unknown task
+            message: The raw message received for the unknown task
+            exc: The exception raised when trying to process the unknown task
+            **kwargs: Additional context information from Celery
+        """
         logger.info(
             f"Unknown task detected by Celery. Name: {name}, ID: {id}, Message: {message}"
         )
 
         if self._config.unprocessable_task_queue_name:
-            _move_task_to_queue(
-                self._app,
+            self._move_task_to_queue(
                 self._config.unprocessable_task_queue_name,
                 name,
                 [
@@ -607,3 +623,20 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
                     _json_dump(kwargs),
                 ],
             )
+
+    def _move_task_to_queue(self, queue_name: str, task_name: str, args: list):
+        """Helper function to move a task to a specified queue."""
+        try:
+            logger.info(
+                f"Moving task: {task_name} to queue: {queue_name}, args: {args}"
+            )
+            self._app.send_task(
+                name=task_name,
+                queue=queue_name,
+                args=args,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to move task: {task_name} to queue: {queue_name}, error: {e}"
+            )
+            raise e
