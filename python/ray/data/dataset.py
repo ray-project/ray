@@ -792,23 +792,46 @@ class Dataset:
     ) -> "Dataset":
         """
         Add a new column to the dataset via an expression.
+
+        Examples:
+
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = ray.data.range(100)
+            >>> ds.with_column("id_2", (col("id") * 2)).schema()
+            Column  Type
+            ------  ----
+            id      int64
+            id_2    int64
+
+        Args:
+            column_name: The name of the new column.
+            expr: An expression that defines the new column values.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
+
+        Returns:
+            A new dataset with the added column evaluated via the expression.
         """
         from ray.data._expression_evaluator import _contains_udf, eval_expr
 
         if batch_size is not None and _contains_udf(expr):
             import pyarrow as pa
 
-            def _batch_fn(df: pa.Table) -> pa.Table:
+            def _batch_fn(batch: pa.Table) -> pa.Table:
 
-                new_column_values = eval_expr(expr, df)
+                new_column_values = eval_expr(expr, batch)
                 # Check if column already exists
-                if column_name in df.column_names:
+                if column_name in batch.column_names:
                     # Replace existing column
-                    column_index = df.column_names.index(column_name)
-                    return df.set_column(column_index, column_name, new_column_values)
+                    column_index = batch.column_names.index(column_name)
+                    return batch.set_column(
+                        column_index, column_name, new_column_values
+                    )
                 else:
                     # Add new column
-                    return df.append_column(column_name, new_column_values)
+                    return batch.append_column(column_name, new_column_values)
 
             return self.map_batches(
                 _batch_fn,
