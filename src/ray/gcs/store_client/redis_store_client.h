@@ -24,10 +24,11 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/asio/postable.h"
-#include "ray/common/ray_config.h"
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -90,7 +91,30 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
   return os;
 }
 
+struct RedisClientOptions {
+  // Redis server address.
+  std::string ip;
+  int port;
+
+  // Redis username and password.
+  std::string username = "";
+  std::string password = "";
+
+  // Whether to use TLS/SSL for the connection.
+  bool enable_ssl = false;
+
+  // The interval between health checks to Redis.
+  // If a health check fails, the client will crash the process.
+  // Set to 0 to disable health checking.
+  uint64_t heartbeat_interval_ms = 1000;
+};
+
 // StoreClient using Redis as persistence backend.
+//
+// The StoreClient does not currently handle any failures (transient or otherwise) of
+// the Redis server. A periodic health check runs in the background and it will crash
+// the process if the Redis server cannot be reached.
+//
 // Note in redis term a "key" points to a hash table and a "field" is a key, a "value"
 // is just a value. We double quote "key" and "field" to avoid confusion.
 //
@@ -110,7 +134,13 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
 // [1] https://github.com/ray-project/ray/pull/35123#issuecomment-1546549046
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
+  /// Connect to Redis. Not thread safe.
+  ///
+  /// \param io_service The event loop for this client. Must be single threaded.
+  /// \param options The options for connecting to Redis.
+  explicit RedisStoreClient(instrumented_io_context &io_service,
+                            const RedisClientOptions &options);
+  ~RedisStoreClient();
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
@@ -150,6 +180,11 @@ class RedisStoreClient : public StoreClient {
                    Postable<void(bool)> callback) override;
 
  private:
+  // Check if Redis is available.
+  //
+  // \param callback The callback that will be called with a Status. OK means healthy.
+  void AsyncCheckHealth(Postable<void(Status)> callback);
+
   /// \class RedisScanner
   ///
   /// This class is used to HSCAN data from a Redis table.
@@ -167,13 +202,13 @@ class RedisStoreClient : public StoreClient {
     // Don't call this. Use ScanKeysAndValues instead.
     explicit RedisScanner(
         PrivateCtorTag tag,
-        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<RedisContext> primary_context,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
         Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
     static void ScanKeysAndValues(
-        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<RedisContext> primary_context,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
         Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
@@ -185,6 +220,7 @@ class RedisStoreClient : public StoreClient {
     void Scan();
 
     void OnScanCallback(const std::shared_ptr<CallbackReply> &reply);
+
     /// The table name that the scanner will scan.
     RedisKey redis_key_;
 
@@ -204,7 +240,7 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
-    std::shared_ptr<RedisClient> redis_client_;
+    std::shared_ptr<RedisContext> primary_context_;
 
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback_;
 
@@ -260,8 +296,17 @@ class RedisStoreClient : public StoreClient {
                   const std::vector<std::string> &keys,
                   Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
+  instrumented_io_context &io_service_;
+
+  RedisClientOptions options_;
+
   std::string external_storage_namespace_;
-  std::shared_ptr<RedisClient> redis_client_;
+
+  // The following context writes everything to the primary shard.
+  std::shared_ptr<RedisContext> primary_context_;
+
+  std::shared_ptr<PeriodicalRunner> periodic_health_check_runner_;
+
   absl::Mutex mu_;
 
   // The pending redis requests queue for each key.
