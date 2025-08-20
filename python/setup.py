@@ -367,7 +367,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.10.0",
+                "vllm>=0.10.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
