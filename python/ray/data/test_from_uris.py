@@ -3,71 +3,50 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pyarrow as pa
-import s3fs
+import pyarrow.compute as pc
+import pyarrow.fs as pafs
 
 import ray
 from ray.data._internal.util import make_async_gen
 
-NUM_IMAGES = 10000
-IMAGE_URI_COL_NAME = "image_uri"
+#### SETUP CODE ####
+BUCKET = "anyscale-imagenet/"
+METADATA_PATH = "s3://" + BUCKET + "metadata.parquet"
+IMAGES_PATH = "s3://" + BUCKET + "ILSVRC/Data/CLS-LOC/train/"
+NUM_IMAGES = 100
+IMAGE_URI_COL_NAME = "key"
 
-uris = [
-    f"s3://air-example-data-2/20G-image-data-synthetic-raw/dog_{str(i)}.jpg"
-    for i in range(1, NUM_IMAGES + 1)
-]
-ids = [str(i) for i in range(1, NUM_IMAGES + 1)]
 
-# Create Arrow table directly to avoid pandas conversion
-arrow_table = pa.Table.from_arrays(
-    [pa.array(uris), pa.array(ids)], names=[IMAGE_URI_COL_NAME, "id"]
+def convert_key(table: pa.Table) -> pa.Table:
+    col = table["key"]
+    t = col.type
+    new_col = pc.binary_join_element_wise(
+        pa.scalar(BUCKET, type=t), col, pa.scalar("", type=t)
+    )
+    return table.set_column(
+        table.schema.get_field_index(IMAGE_URI_COL_NAME), IMAGE_URI_COL_NAME, new_col
+    )
+
+
+metadata_ds = (
+    ray.data.read_parquet(METADATA_PATH)
+    .map_batches(convert_key, batch_format="pyarrow")
+    .limit(NUM_IMAGES)
 )
-ds = ray.data.from_arrow(arrow_table)
 
+read_images_ds = ray.data.read_images(IMAGES_PATH, mode="RGB").limit(NUM_IMAGES)
+#### END OF SETUP CODE ####
 
-def download_image(row):
-    fs = s3fs.S3FileSystem(anon=True)
-    with fs.open(row[IMAGE_URI_COL_NAME], "rb") as f:
-        row["image_bytes"] = f.read()
-    return row
-
-
-# naive_map_ds = ds.map(download_image)
-
-# start_time = time.time()
-# for _ in naive_map_ds.iter_internal_ref_bundles():
-#     pass
-# end_time = time.time()
-# print(f"Time elapsed naive ds map: {end_time - start_time} seconds")
-
-
-def download_images(batch):
-    fs = s3fs.S3FileSystem(anon=True)
-    images = []
-    for uri in batch[IMAGE_URI_COL_NAME]:
-        with fs.open(uri, "rb") as f:
-            images.append(f.read())
-    batch["image_bytes"] = images
-    return batch
-
-
-naive_map_batches_ds = ds.map_batches(download_images)
-
-start_time = time.time()
-for _ in naive_map_batches_ds.iter_internal_ref_bundles():
-    pass
-end_time = time.time()
-print(f"Time elapsed naive ds map_batches: {end_time - start_time} seconds")
-
-
+#### READ FROM URIS PROTOTYPE CODE ####
 def download_images_threaded(batch, max_workers=16):
     """Optimized version that uses make_async_gen for concurrent downloads."""
 
     def download_uris(uri_iterator):
         """Function that takes an iterator of URIs and yields downloaded bytes for each."""
+        fs = pafs.S3FileSystem(region="us-west-2")
         for uri in uri_iterator:
-            fs = s3fs.S3FileSystem(anon=True)
             try:
-                with fs.open(uri, "rb") as f:
+                with fs.open_input_file(uri) as f:
                     yield f.read()
             except Exception as e:
                 print(f"Error downloading {uri}: {e}")
@@ -97,14 +76,14 @@ class PartitionActor:
     def __init__(self):
         self._batch_size_estimate = None
 
-    def _sample_sizes(self, uri_list, max_workers=8):
+    def _sample_sizes(self, uri_list, max_workers=16):
         """Fetch file sizes in parallel using ThreadPoolExecutor."""
 
         def get_file_size(uri):
             # Each thread needs its own filesystem instance
-            fs = s3fs.S3FileSystem(anon=True)
+            fs = pafs.S3FileSystem(region="us-west-2")
             try:
-                return fs.info(uri)["size"]
+                return fs.get_file_info(uri).size
             except Exception as e:
                 print(f"Error getting size for {uri}: {e}")
                 return None
@@ -153,14 +132,31 @@ class PartitionActor:
         yield from self._arrow_batcher(batch, self._batch_size_estimate)
 
 
-optimized_ds = ds.map_batches(
-    PartitionActor, concurrency=1, batch_format="pyarrow"
-).map_batches(download_images_threaded, batch_format="pyarrow")
+#### END OF READ FROM URIS PROTOTYPE CODE ####
+
+#### READ_IMAGES BENCHMARK ####
+start_time = time.time()
+for _ in read_images_ds.iter_internal_ref_bundles():
+    pass
+end_time = time.time()
+print(f"Time elapsed optimized read_images: {end_time - start_time} seconds")
+#### END OF READ_IMAGES BENCHMARK ####
+
+#### READ FROM URI BENCHMARK ####
+# pre-materialize the metadata to avoid including in the benchmark time
+metadata_ds = metadata_ds.materialize()
+
+read_from_uri_ds = metadata_ds.map_batches(
+    PartitionActor, concurrency=1, batch_format="pyarrow", preserve_output_format=True
+).map_batches(
+    download_images_threaded, batch_format="pyarrow", preserve_input_format=True
+)
 
 start_time = time.time()
-for _ in optimized_ds.iter_internal_ref_bundles():
+for _ in read_from_uri_ds.iter_internal_ref_bundles():
     pass
 end_time = time.time()
 print(
     f"Time elapsed optimized ds map_batches / from uris: {end_time - start_time} seconds"
 )
+#### END OF READ FROM URI BENCHMARK ####

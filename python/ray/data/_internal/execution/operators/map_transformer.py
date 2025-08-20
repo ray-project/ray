@@ -145,12 +145,12 @@ class MapTransformer:
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
         assert len(transform_fns) > 0
-        assert (
-            transform_fns[0].input_type == MapTransformFnDataType.Block
-        ), "The first transform function must take blocks as input."
-        assert (
-            transform_fns[-1].output_type == MapTransformFnDataType.Block
-        ), "The last transform function must output blocks."
+        # assert (
+        #     transform_fns[0].input_type == MapTransformFnDataType.Block
+        # ), "The first transform function must take blocks as input."
+        # assert (
+        #     transform_fns[-1].output_type == MapTransformFnDataType.Block
+        # ), "The last transform function must output blocks."
 
         for i in range(len(transform_fns) - 1):
             assert transform_fns[i].output_type == transform_fns[i + 1].input_type, (

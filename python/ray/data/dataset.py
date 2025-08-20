@@ -469,6 +469,8 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        preserve_input_format: bool = False,
+        preserve_output_format: bool = False,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -704,6 +706,8 @@ class Dataset:
             memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
+            preserve_input_format=preserve_input_format,
+            preserve_output_format=preserve_output_format,
             **ray_remote_args,
         )
 
@@ -724,6 +728,8 @@ class Dataset:
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        preserve_input_format: bool,
+        preserve_output_format: bool,
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -778,6 +784,8 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            preserve_input_format=preserve_input_format,
+            preserve_output_format=preserve_output_format,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)

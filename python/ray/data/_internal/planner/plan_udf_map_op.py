@@ -254,6 +254,8 @@ def plan_udf_map_op(
             op._batch_format,
             op._zero_copy_batch,
             init_fn,
+            preserve_input_format=op._preserve_input_format,
+            preserve_output_format=op._preserve_output_format,
         )
     else:
         if isinstance(op, MapRows):
@@ -581,20 +583,41 @@ def _create_map_transformer_for_map_batches_op(
     batch_format: str = "default",
     zero_copy_batch: bool = False,
     init_fn: Optional[Callable[[], None]] = None,
+    *,
+    preserve_input_format: bool = False,
+    preserve_output_format: bool = False,
 ) -> MapTransformer:
     """Create a MapTransformer for a map_batches operator."""
-    transform_fns = [
+    input_transform_fn = (
+        None
+        if preserve_input_format
+        else
         # Convert input blocks to batches.
         BlocksToBatchesMapTransformFn(
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-        ),
+        )
+    )
+
+    output_transform_fn = (
+        None
+        if preserve_output_format
+        else
+        # Convert output batches to blocks.
+        BuildOutputBlocksMapTransformFn.for_batches()
+    )
+
+    transform_fns = []
+    if input_transform_fn is not None:
+        transform_fns.append(input_transform_fn)
+    transform_fns.append(
         # Apply the UDF.
         BatchMapTransformFn(batch_fn, is_udf=True),
-        # Convert output batches to blocks.
-        BuildOutputBlocksMapTransformFn.for_batches(),
-    ]
+    )
+    if output_transform_fn is not None:
+        transform_fns.append(output_transform_fn)
+
     return MapTransformer(transform_fns, init_fn)
 
 
