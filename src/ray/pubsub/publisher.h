@@ -149,13 +149,13 @@ struct LongPollConnection {
   LongPollConnection(std::string *publisher_id,
                      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
                      rpc::SendReplyCallback send_reply_callback)
-      : publisher_id(publisher_id),
-        pub_messages(pub_messages),
-        send_reply_callback(std::move(send_reply_callback)) {}
+      : publisher_id_(publisher_id),
+        pub_messages_(pub_messages),
+        send_reply_callback_(std::move(send_reply_callback)) {}
 
-  std::string *publisher_id;
-  google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages;
-  rpc::SendReplyCallback send_reply_callback;
+  std::string *publisher_id_;
+  google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages_;
+  rpc::SendReplyCallback send_reply_callback_;
 };
 
 /// Keeps the state of each connected subscriber.
