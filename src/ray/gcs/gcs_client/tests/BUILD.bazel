@@ -64,6 +64,7 @@ ray_cc_test(
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:network_util",
+        "//src/ray/util:raii",
         "@com_google_googletest//:gtest_main",
     ],
 )
