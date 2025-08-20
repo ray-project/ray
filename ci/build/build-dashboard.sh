@@ -81,14 +81,14 @@ NODE_DIR="$HOME/nodejs"
 mkdir -p "$NODE_DIR"
 
 # Download tarball
-curl -fsSLO "${NODE_BASE_URL}/${NODE_TARBALL}"
+curl -fsSL "${NODE_BASE_URL}/${NODE_TARBALL}" -o "$HOME/${NODE_TARBALL}"
 
 # Verify checksum for our tarball only
-echo "$NODE_SHASUM256  $NODE_TARBALL" | sha256sum -c -
+echo "$NODE_SHASUM256  $HOME/${NODE_TARBALL}" | sha256sum -c -
 
 # Extract
-tar -xJf "$NODE_TARBALL" -C "$NODE_DIR"
-rm -f "$NODE_TARBALL"
+tar -xJf "$HOME/$NODE_TARBALL" -C "$NODE_DIR"
+rm -f "$HOME/$NODE_TARBALL"
 
 # Add Node to PATH for this session
 export PATH="$NODE_DIR/node-v${NODE_VERSION_FULL}-linux-${NODE_ARCH}/bin:$PATH"
