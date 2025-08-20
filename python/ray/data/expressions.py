@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional
 
+from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -239,6 +241,164 @@ class BinaryExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class UDFExpr(Expr):
+    """Expression that represents a user-defined function call.
+
+    This expression type wraps a UDF with schema inference capabilities,
+    allowing UDFs to be used seamlessly within the expression system.
+
+    UDFs operate on batches of data, where each column argument is passed
+    as a PyArrow Array containing multiple values from that column across the batch.
+
+    Args:
+        fn: The user-defined function to call
+        args: List of argument expressions (positional arguments)
+        kwargs: Dictionary of keyword argument expressions
+        return_dtype: Return data type for schema inference
+        function_name: Optional name for the function (for debugging)
+
+    Example:
+        >>> from ray.data.expressions import col, udf
+        >>> from ray.data.types import DataType
+        >>> import pyarrow as pa
+        >>> import pyarrow.compute as pc
+        >>>
+        >>> @udf(return_dtype=DataType.int64())
+        >>> def add_one(x: pa.Array) -> pa.Array:
+        ...     return pc.add(x, 1)
+        >>>
+        >>> # Use in expressions
+        >>> expr = add_one(col("value"))
+    """
+
+    fn: Callable
+    args: List[Expr]
+    kwargs: Dict[str, Expr]
+    return_dtype: DataType
+    function_name: Optional[str] = None
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UDFExpr)
+            and self.fn == other.fn
+            and len(self.args) == len(other.args)
+            and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
+            and self.kwargs.keys() == other.kwargs.keys()
+            and all(
+                self.kwargs[k].structurally_equals(other.kwargs[k])
+                for k in self.kwargs.keys()
+            )
+            and self.return_dtype == other.return_dtype
+            and self.function_name == other.function_name
+        )
+
+
+def _create_udf_callable(fn: Callable, return_dtype: DataType):
+    """Create a callable that generates UDFExpr when called with expressions."""
+
+    def udf_callable(*args, **kwargs):
+        # Convert arguments to expressions if they aren't already
+        expr_args = []
+        for arg in args:
+            if isinstance(arg, Expr):
+                expr_args.append(arg)
+            else:
+                expr_args.append(LiteralExpr(arg))
+
+        expr_kwargs = {}
+        for k, v in kwargs.items():
+            if isinstance(v, Expr):
+                expr_kwargs[k] = v
+            else:
+                expr_kwargs[k] = LiteralExpr(v)
+
+        return UDFExpr(
+            fn=fn,
+            args=expr_args,
+            kwargs=expr_kwargs,
+            return_dtype=return_dtype,
+            function_name=getattr(fn, "__name__", None),
+        )
+
+    # Preserve original function metadata
+    functools.update_wrapper(udf_callable, fn)
+
+    # Store the original function for access if needed
+    udf_callable._original_fn = fn
+    udf_callable._return_dtype = return_dtype
+
+    return udf_callable
+
+
+@PublicAPI(stability="alpha")
+def udf(fn: Optional[Callable] = None, *, return_dtype: DataType):
+    """
+    Decorator to convert a UDF into an expression-compatible function.
+
+    This decorator allows UDFs to be used seamlessly within the expression system,
+    enabling schema inference and integration with other expressions.
+
+    IMPORTANT: UDFs operate on batches of data, not individual rows. When your UDF
+    is called, each column argument will be passed as a PyArrow Array containing
+    multiple values from that column across the batch. Under the hood, when working
+    with multiple columns, they get translated to PyArrow arrays (one array per column).
+
+    Args:
+        fn: The function to decorate (when used as @udf)
+        return_dtype: Required return data type for schema inference.
+    Returns:
+        A callable that creates UDFExpr instances when called with expressions
+
+    Example:
+        >>> from ray.data.expressions import col, udf
+        >>> from ray.data.types import DataType
+        >>> import pyarrow as pa
+        >>> import pyarrow.compute as pc
+        >>> import ray
+        >>>
+        >>> # UDF that operates on a batch of values (PyArrow Array)
+        >>> @udf(return_dtype=DataType.int64())
+        >>> def add_one(x: pa.Array) -> pa.Array:
+        ...     return pc.add(x, 1)  # Vectorized operation on the entire Array
+        >>>
+        >>> # UDF that combines multiple columns (each as a PyArrow Array)
+        >>> @udf(return_dtype=DataType.string())
+        >>> def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
+        ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
+        >>>
+        >>> # Use in dataset operations
+        >>> ds = ray.data.from_items([
+        ...     {"value": 5, "first": "John", "last": "Doe"},
+        ...     {"value": 10, "first": "Jane", "last": "Smith"}
+        ... ])
+        >>>
+        >>> # Single column transformation (operates on batches)
+        >>> ds_incremented = ds.with_column("value_plus_one", add_one(col("value")))
+        >>>
+        >>> # Multi-column transformation (each column becomes a PyArrow Array)
+        >>> ds_formatted = ds.with_column("full_name", format_name(col("first"), col("last")))
+        >>>
+        >>> # Can also be used in complex expressions
+        >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
+    """
+
+    def decorator(func: Callable):
+        return _create_udf_callable(func, return_dtype)
+
+    # Handle both @udf and @udf(...) syntax
+    if fn is not None:
+        # This is the @udf syntax without parentheses, which is no longer supported
+        # since return_dtype is mandatory
+        raise ValueError(
+            "return_dtype is required for UDF expressions. "
+            f"Please use @udf(return_dtype=DataType...) instead of @udf for function '{fn.__name__}'"
+        )
+    else:
+        return decorator
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -314,6 +474,8 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UDFExpr",
+    "udf",
     "col",
     "lit",
 ]

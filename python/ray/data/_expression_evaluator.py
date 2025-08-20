@@ -13,6 +13,7 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     Operation,
+    UDFExpr,
 )
 
 _PANDAS_EXPR_OPS_MAP = {
@@ -58,10 +59,16 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
-        raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
+    if isinstance(expr, UDFExpr):
+        args = [_eval_expr_recursive(arg, batch, ops) for arg in expr.args]
+        kwargs = {
+            k: _eval_expr_recursive(v, batch, ops) for k, v in expr.kwargs.items()
+        }
+        return expr.fn(*args, **kwargs)
+    raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
-def eval_expr(expr: "Expr", batch) -> Any:
+def eval_expr(expr: "Expr", batch: Any) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""
     if isinstance(batch, pd.DataFrame):
         return _eval_expr_recursive(expr, batch, _PANDAS_EXPR_OPS_MAP)
@@ -69,3 +76,11 @@ def eval_expr(expr: "Expr", batch) -> Any:
         return _eval_expr_recursive(expr, batch, _ARROW_EXPR_OPS_MAP)
     else:
         raise TypeError(f"Unsupported batch type: {type(batch).__name__}")
+
+
+def _contains_udf(e: Expr) -> bool:
+    if isinstance(e, UDFExpr):
+        return True
+    if isinstance(e, BinaryExpr):
+        return _contains_udf(e.left) or _contains_udf(e.right)
+    return False

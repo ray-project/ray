@@ -34,8 +34,9 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _MapActorContext,
 )
 from ray.data.context import DataContext
+from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
-from ray.data.expressions import col, lit
+from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -2366,6 +2367,301 @@ def test_with_column_multiple_expressions(
 
     # Ensure all new columns exist in the schema.
     assert set(ds.schema().names) == {"id", "plus_one", "times_two", "ten_minus_id"}
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "udf_function, column_name, expected_result",
+    [
+        # Single column UDF - add one to each value
+        pytest.param(
+            lambda: udf(return_dtype=DataType.int64())(lambda x: pc.add(x, 1)),
+            "add_one",
+            1,  # 0 + 1 = 1
+            id="single_column_add_one",
+        ),
+        # Single column UDF - multiply by 2
+        pytest.param(
+            lambda: udf(return_dtype=DataType.int64())(lambda x: pc.multiply(x, 2)),
+            "times_two",
+            0,  # 0 * 2 = 0
+            id="single_column_multiply",
+        ),
+        # Single column UDF - square the value
+        pytest.param(
+            lambda: udf(return_dtype=DataType.int64())(lambda x: pc.multiply(x, x)),
+            "squared",
+            0,  # 0 * 0 = 0
+            id="single_column_square",
+        ),
+        # Single column UDF with string return type
+        pytest.param(
+            lambda: udf(return_dtype=DataType.string())(
+                lambda x: pc.cast(x, pa.string())
+            ),
+            "id_str",
+            "0",  # Convert 0 to "0"
+            id="single_column_to_string",
+        ),
+        # Single column UDF with float return type
+        pytest.param(
+            lambda: udf(return_dtype=DataType.float64())(lambda x: pc.divide(x, 2.0)),
+            "half",
+            0.0,  # 0 / 2.0 = 0.0
+            id="single_column_divide_float",
+        ),
+    ],
+)
+def test_with_column_udf_single_column(
+    ray_start_regular_shared,
+    udf_function,
+    column_name,
+    expected_result,
+    target_max_block_size_infinite_or_default,
+):
+    """Test UDFExpr functionality with single column operations in with_column."""
+    ds = ray.data.range(5)
+    udf_fn = udf_function()
+
+    # Apply the UDF to the "id" column
+    ds_with_udf = ds.with_column(column_name, udf_fn(col("id")))
+
+    result = ds_with_udf.take(1)[0]
+    assert result["id"] == 0
+    assert result[column_name] == expected_result
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "test_scenario",
+    [
+        # Multi-column UDF - add two columns
+        pytest.param(
+            {
+                "data": [{"a": 1, "b": 2}, {"a": 3, "b": 4}],
+                "udf": lambda: udf(return_dtype=DataType.int64())(
+                    lambda x, y: pc.add(x, y)
+                ),
+                "column_name": "sum_ab",
+                "expected_first": 3,  # 1 + 2 = 3
+                "expected_second": 7,  # 3 + 4 = 7
+            },
+            id="multi_column_add",
+        ),
+        # Multi-column UDF - multiply two columns
+        pytest.param(
+            {
+                "data": [{"x": 2, "y": 3}, {"x": 4, "y": 5}],
+                "udf": lambda: udf(return_dtype=DataType.int64())(
+                    lambda x, y: pc.multiply(x, y)
+                ),
+                "column_name": "product_xy",
+                "expected_first": 6,  # 2 * 3 = 6
+                "expected_second": 20,  # 4 * 5 = 20
+            },
+            id="multi_column_multiply",
+        ),
+        # Multi-column UDF - string concatenation
+        pytest.param(
+            {
+                "data": [
+                    {"first": "John", "last": "Doe"},
+                    {"first": "Jane", "last": "Smith"},
+                ],
+                "udf": lambda: udf(return_dtype=DataType.string())(
+                    lambda first, last: pc.binary_join_element_wise(first, last, " ")
+                ),
+                "column_name": "full_name",
+                "expected_first": "John Doe",
+                "expected_second": "Jane Smith",
+            },
+            id="multi_column_string_concat",
+        ),
+    ],
+)
+def test_with_column_udf_multi_column(
+    ray_start_regular_shared,
+    test_scenario,
+    target_max_block_size_infinite_or_default,
+):
+    """Test UDFExpr functionality with multi-column operations in with_column."""
+    data = test_scenario["data"]
+    udf_fn = test_scenario["udf"]()
+    column_name = test_scenario["column_name"]
+    expected_first = test_scenario["expected_first"]
+    expected_second = test_scenario["expected_second"]
+
+    ds = ray.data.from_items(data)
+
+    # Apply UDF to multiple columns based on the scenario
+    if "a" in data[0] and "b" in data[0]:
+        ds_with_udf = ds.with_column(column_name, udf_fn(col("a"), col("b")))
+    elif "x" in data[0] and "y" in data[0]:
+        ds_with_udf = ds.with_column(column_name, udf_fn(col("x"), col("y")))
+    else:  # first/last name scenario
+        ds_with_udf = ds.with_column(column_name, udf_fn(col("first"), col("last")))
+
+    results = ds_with_udf.take(2)
+    assert results[0][column_name] == expected_first
+    assert results[1][column_name] == expected_second
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expression_scenario",
+    [
+        # UDF in arithmetic expression
+        pytest.param(
+            {
+                "expression_factory": lambda add_one_udf: add_one_udf(col("id")) * 2,
+                "expected": 2,  # (0 + 1) * 2 = 2
+                "column_name": "udf_times_two",
+            },
+            id="udf_in_arithmetic",
+        ),
+        # UDF with literal addition
+        pytest.param(
+            {
+                "expression_factory": lambda add_one_udf: add_one_udf(col("id"))
+                + lit(10),
+                "expected": 11,  # (0 + 1) + 10 = 11
+                "column_name": "udf_plus_literal",
+            },
+            id="udf_plus_literal",
+        ),
+        # UDF in comparison
+        pytest.param(
+            {
+                "expression_factory": lambda add_one_udf: add_one_udf(col("id")) > 0,
+                "expected": True,  # (0 + 1) > 0 = True
+                "column_name": "udf_comparison",
+            },
+            id="udf_in_comparison",
+        ),
+        # Nested UDF operations (UDF + regular expression)
+        pytest.param(
+            {
+                "expression_factory": lambda add_one_udf: add_one_udf(col("id") + 5),
+                "expected": 6,  # add_one(0 + 5) = add_one(5) = 6
+                "column_name": "nested_udf",
+            },
+            id="nested_udf_expression",
+        ),
+    ],
+)
+def test_with_column_udf_in_complex_expressions(
+    ray_start_regular_shared,
+    expression_scenario,
+    target_max_block_size_infinite_or_default,
+):
+    """Test UDFExpr functionality in complex expressions with with_column."""
+    ds = ray.data.range(5)
+
+    # Create a simple add_one UDF for use in expressions
+    @udf(return_dtype=DataType.int64())
+    def add_one(x: pa.Array) -> pa.Array:
+        return pc.add(x, 1)
+
+    expression = expression_scenario["expression_factory"](add_one)
+    expected = expression_scenario["expected"]
+    column_name = expression_scenario["column_name"]
+
+    ds_with_expr = ds.with_column(column_name, expression)
+
+    result = ds_with_expr.take(1)[0]
+    assert result["id"] == 0
+    assert result[column_name] == expected
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_udf_multiple_udfs(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test applying multiple UDFs in sequence with with_column."""
+    ds = ray.data.range(5)
+
+    # Define multiple UDFs
+    @udf(return_dtype=DataType.int64())
+    def add_one(x: pa.Array) -> pa.Array:
+        return pc.add(x, 1)
+
+    @udf(return_dtype=DataType.int64())
+    def multiply_by_two(x: pa.Array) -> pa.Array:
+        return pc.multiply(x, 2)
+
+    @udf(return_dtype=DataType.float64())
+    def divide_by_three(x: pa.Array) -> pa.Array:
+        return pc.divide(x, 3.0)
+
+    # Apply UDFs in sequence
+    ds = ds.with_column("plus_one", add_one(col("id")))
+    ds = ds.with_column("times_two", multiply_by_two(col("plus_one")))
+    ds = ds.with_column("div_three", divide_by_three(col("times_two")))
+
+    result = ds.take(1)[0]
+    assert result["id"] == 0
+    assert result["plus_one"] == 1  # 0 + 1 = 1
+    assert result["times_two"] == 2  # 1 * 2 = 2
+    assert result["div_three"] == pytest.approx(2.0 / 3.0)  # 2 / 3 ≈ 0.667
+
+    # Ensure all columns exist in schema
+    expected_columns = {"id", "plus_one", "times_two", "div_three"}
+    assert set(ds.schema().names) == expected_columns
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_mixed_udf_and_regular_expressions(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test mixing UDF expressions and regular expressions in with_column operations."""
+    ds = ray.data.range(5)
+
+    # Define a UDF for testing
+    @udf(return_dtype=DataType.int64())
+    def multiply_by_three(x: pa.Array) -> pa.Array:
+        return pc.multiply(x, 3)
+
+    # Mix regular expressions and UDF expressions
+    ds = ds.with_column("plus_ten", col("id") + 10)  # Regular expression
+    ds = ds.with_column("times_three", multiply_by_three(col("id")))  # UDF expression
+    ds = ds.with_column("minus_five", col("id") - 5)  # Regular expression
+    ds = ds.with_column(
+        "udf_plus_regular", multiply_by_three(col("id")) + col("plus_ten")
+    )  # Mixed: UDF + regular
+    ds = ds.with_column(
+        "comparison", col("times_three") > col("plus_ten")
+    )  # Regular expression using UDF result
+
+    # Convert to pandas and compare with expected result
+    result_df = ds.to_pandas()
+
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "plus_ten": [10, 11, 12, 13, 14],  # id + 10
+            "times_three": [0, 3, 6, 9, 12],  # id * 3
+            "minus_five": [-5, -4, -3, -2, -1],  # id - 5
+            "udf_plus_regular": [10, 14, 18, 22, 26],  # (id * 3) + (id + 10)
+            "comparison": [False, False, False, False, False],  # times_three > plus_ten
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df)
 
 
 if __name__ == "__main__":
