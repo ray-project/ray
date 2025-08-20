@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
-    DEFAULT_GRAFANA_PANELS,
+    DEFAULT_GRAFANA_ROWS,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
@@ -132,6 +132,9 @@ def test_metrics_folder_with_dashboard_override(
             contents = json.loads(f.read())
             assert contents["uid"] == uid
             for panel in contents["panels"]:
+                if panel["type"] == "row":
+                    # Row panels don't have targets
+                    continue
                 for target in panel["targets"]:
                     # Check for standard_global_filters
                     assert 'SessionName=~"$SessionName"' in target["expr"]
@@ -154,6 +157,9 @@ def test_metrics_folder_with_dashboard_override(
             found_max = False
             found_max_pending = False
             for panel in contents["panels"]:
+                if panel["type"] == "row":
+                    # Row panels don't have series overrides
+                    continue
                 for override in panel.get("seriesOverrides", []):
                     if override.get("alias") == "MAX":
                         assert override["fill"] == 0
@@ -210,9 +216,10 @@ def test_metrics_folder_when_dashboard_disabled():
 
 
 def test_default_dashboard_utilizes_global_filters():
-    for panel in DEFAULT_GRAFANA_PANELS:
-        for target in panel.targets:
-            assert "{global_filters}" in target.expr
+    for row in DEFAULT_GRAFANA_ROWS:
+        for panel in row.panels:
+            for target in panel.targets:
+                assert "{global_filters}" in target.expr
 
 
 def test_serve_dashboard_utilizes_global_filters():
