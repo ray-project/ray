@@ -284,7 +284,10 @@ class CloudFileSystem:
 
     @staticmethod
     def download_model(
-        destination_path: str, bucket_uri: str, tokenizer_only: bool, exclude_safetensors: bool=False
+        destination_path: str,
+        bucket_uri: str,
+        tokenizer_only: bool,
+        exclude_safetensors: bool = False,
     ) -> None:
         """Download a model from cloud storage.
 
@@ -342,7 +345,7 @@ class CloudFileSystem:
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
-                suffixes_to_exclude=safetensors_to_exclude
+                suffixes_to_exclude=safetensors_to_exclude,
             )
 
         except Exception as e:

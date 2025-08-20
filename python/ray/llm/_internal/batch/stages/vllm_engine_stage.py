@@ -473,7 +473,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model_id=self.model,
             mirror_config=None,
             download_model=download_model,
-            download_extra_files=False
+            download_extra_files=False,
         )
 
         # Create an LLM engine.

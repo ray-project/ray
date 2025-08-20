@@ -116,7 +116,7 @@ class CloudModelDownloader(CloudModelAccessor):
     def get_model(
         self,
         tokenizer_only: bool,
-        exclude_safetensors: bool=False,
+        exclude_safetensors: bool = False,
     ) -> str:
         """Gets a model from cloud storage and stores it locally.
 
@@ -148,7 +148,7 @@ class CloudModelDownloader(CloudModelAccessor):
                         destination_path=path,
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
-                        exclude_safetensors=exclude_safetensors
+                        exclude_safetensors=exclude_safetensors,
                     )
                     logger.info(
                         "Finished downloading %s for %s from %s storage",
@@ -231,7 +231,7 @@ def download_model_files(
     model_id: Optional[str] = None,
     mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
-    download_extra_files: bool = True
+    download_extra_files: bool = True,
 ) -> Optional[str]:
     """
     Download the model files from the cloud storage. We support two ways to specify
@@ -293,7 +293,8 @@ def download_model_files(
     if download_model != NodeModelDownloadable.NONE:
         model_path_or_id = downloader.get_model(
             tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY,
-            exclude_safetensors=download_model == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            exclude_safetensors=download_model
+            == NodeModelDownloadable.EXCLUDE_SAFETENSORS,
         )
 
     if download_extra_files:
