@@ -55,7 +55,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
     """VPG (vanilla pol. gradient)-style MultiRLModule handling a shared encoder.
     # __sphinx_doc_mrlm_end__
 
-        This MultiRLModule needs to be configured appropriately as below. A functioning example can be found in examples/multi_agent/shared_encoder_cartpole.py.
+        This MultiRLModule needs to be configured appropriately as below.
 
         .. testcode::
 

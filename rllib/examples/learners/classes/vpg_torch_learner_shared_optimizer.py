@@ -19,9 +19,8 @@ class VPGTorchLearnerSharedOptimizer(VPGTorchLearner):
     def configure_optimizers(self) -> None:
         # Get and aggregate parameters for every module
         param_list = []
-        for module_id in self.module.keys():
-            m = self.module[module_id]
-            if self.rl_module_is_compatible(self.module[module_id]):
+        for m in self.module.values():
+            if self.rl_module_is_compatible(m):
                 param_list.extend(m.parameters())
 
         self.register_optimizer(

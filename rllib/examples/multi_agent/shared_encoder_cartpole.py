@@ -20,36 +20,21 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Under the shared encoder architecture, the target reward of 700 will
-typically be reached well before 100,000 iterations. A trial concludes
-as below:
+Under the shared encoder architecture, the target reward of 700 will typically be reached well before 100,000 iterations. A trial concludes as below:
 
-+---------------------+------------+---------------------+--------+------------------+
-| Trial name          | status     | loc                 |   iter |   total time (s) |
-|---------------------+------------+---------------------+--------+------------------+
-| VPG_env_658a2_00000 | TERMINATED | 172.29.87.208:18266 |     31 |          17.8074 |
-+---------------------+------------+---------------------+--------+------------------+
++---------------------+------------+-----------------+--------+------------------+-------+-------------------+-------------+-------------+
+| Trial name          | status     | loc             |   iter |   total time (s) |    ts |   combined return |   return p1 |   return p0 |
+|---------------------+------------+-----------------+--------+------------------+-------+-------------------+-------------+-------------|
+| VPG_env_ab318_00000 | TERMINATED | 127.0.0.1:37375 |     33 |          44.2689 | 74197 |            611.35 |      191.71 |      419.64 |
++---------------------+------------+-----------------+--------+------------------+-------+-------------------+-------------+-------------+
 
-+-------+-------------------+-------------+-------------+
-|    ts |   combined return |   return p0 |   return p1 |
-+-------+-------------------+-------------+-------------|
-| 34796 |             716.3 |         500 |       216.3 |
-+-------+-------------------+-------------+-------------+
+Without a shared encoder, a lower reward is typically achieved after training for the full 100,000 timesteps:
 
-Without a shared encoder, a much lower reward is typically achieved
-after training for the full 100,000 timesteps:
-
-+---------------------+------------+---------------------+--------+------------------+
-| Trial name          | status     | loc                 |   iter |   total time (s) |
-|---------------------+------------+---------------------+--------+------------------+
-| VPG_env_5fbd8_00000 | TERMINATED | 172.29.87.208:20165 |     54 |          37.2488 |
-+---------------------+------------+---------------------+--------+------------------+
-
-+--------+-------------------+-------------+-------------+
-|     ts |   combined return |   return p0 |   return p1 |
-+--------+-------------------+-------------+-------------|
-| 101105 |             476.1 |        13.1 |         463 |
-+--------+-------------------+-------------+-------------+
++---------------------+------------+-----------------+--------+------------------+--------+-------------------+-------------+-------------+
+| Trial name          | status     | loc             |   iter |   total time (s) |     ts |   combined return |   return p0 |   return p1 |
+|---------------------+------------+-----------------+--------+------------------+--------+-------------------+-------------+-------------|
+| VPG_env_2e79e_00000 | TERMINATED | 127.0.0.1:39076 |     37 |           52.127 | 103894 |            526.66 |       85.78 |      440.88 |
++---------------------+------------+-----------------+--------+------------------+--------+-------------------+-------------+-------------+
 
 
 """
@@ -98,6 +83,7 @@ if __name__ == "__main__":
     )  # To allow instantiation of shared encoder
 
     EMBEDDING_DIM = args.encoder_emb_dim  # encoder output dim
+
     if args.no_shared_encoder:
         print("Running experiment without shared encoder")
         specs = MultiRLModuleSpec(
@@ -107,7 +93,7 @@ if __name__ == "__main__":
                     module_class=VPGPolicyNoSharedEncoder,
                     model_config={
                         "embedding_dim": EMBEDDING_DIM,
-                        "hidden_dim": 1024,
+                        "hidden_dim": 64,
                     },
                 ),
                 # Small policy net.
@@ -136,7 +122,7 @@ if __name__ == "__main__":
                     module_class=VPGPolicyAfterSharedEncoder,
                     model_config={
                         "embedding_dim": EMBEDDING_DIM,
-                        "hidden_dim": 1024,
+                        "hidden_dim": 64,
                     },
                 ),
                 # Small policy net.
@@ -160,7 +146,9 @@ if __name__ == "__main__":
         VPGConfig()
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
         .training(
-            learner_class=VPGTorchLearnerSharedOptimizer,
+            learner_class=VPGTorchLearnerSharedOptimizer
+            if not args.no_shared_encoder
+            else None,
             train_batch_size=2048,
             lr=1e-2,
         )
