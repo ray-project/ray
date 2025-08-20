@@ -14,10 +14,8 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
-    wait_until_server_available,
     find_free_port,
 )
-from ray._common.network_utils import parse_address, build_address
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
@@ -30,6 +28,17 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
+from ray.core.generated.events_driver_job_definition_event_pb2 import (
+    DriverJobDefinitionEvent,
+)
+from ray.core.generated.events_driver_job_execution_event_pb2 import (
+    DriverJobExecutionEvent,
+)
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvInfo,
+    RuntimeEnvUris,
+    RuntimeEnvConfig,
+)
 
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
@@ -69,23 +78,24 @@ _with_aggregator_port = pytest.mark.parametrize(
 )
 
 
-def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
+def get_event_aggregator_grpc_stub(gcs_address, head_node_id):
     """
     An helper function to get the gRPC stub for the event aggregator agent.
     Should only be used in tests.
     """
-    ip, _ = parse_address(webui_url)
-    agent_address = build_address(ip, ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
-    assert wait_until_server_available(agent_address)
 
     gcs_address = gcs_address
     gcs_client = GcsClient(address=gcs_address)
-    agent_addr = gcs_client.internal_kv_get(
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-    )
-    ip, http_port, grpc_port = json.loads(agent_addr)
+
+    def get_addr():
+        return gcs_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(lambda: get_addr() is not None)
+    ip, _, grpc_port = json.loads(get_addr())
     options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = init_grpc_channel(f"{ip}:{grpc_port}", options=options)
     return EventAggregatorServiceStub(channel)
@@ -120,7 +130,7 @@ def test_aggregator_agent_receive_publish_events_normally(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -175,7 +185,7 @@ def test_aggregator_agent_receive_event_full(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -222,7 +232,7 @@ def test_aggregator_agent_receive_multiple_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -279,7 +289,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventsRequest(
@@ -326,7 +336,7 @@ def test_aggregator_agent_receive_empty_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventsRequest(
@@ -347,7 +357,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     """Test that profile events are not sent when not in exposable event types."""
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -401,7 +411,7 @@ def test_aggregator_agent_receive_profile_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -485,6 +495,134 @@ def _verify_profile_event_json(req_json, expected_timestamp):
     assert event_entry["startTime"] == "1751302230130000000"
     assert event_entry["endTime"] == "1751302230131000000"
     assert event_entry["extraData"] == '{"cpu_usage": 0.8}'
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_driver_job_definition_event(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job event",
+                    driver_job_definition_event=DriverJobDefinitionEvent(
+                        job_id=b"1",
+                        config=DriverJobDefinitionEvent.Config(
+                            runtime_env_info=RuntimeEnvInfo(
+                                serialized_runtime_env="{}",
+                                uris=RuntimeEnvUris(
+                                    working_dir_uri="file:///tmp/ray/runtime_env",
+                                    py_modules_uris=[],
+                                ),
+                                runtime_env_config=RuntimeEnvConfig(
+                                    setup_timeout_seconds=10,
+                                    eager_install=True,
+                                    log_files=[],
+                                ),
+                            ),
+                            metadata={},
+                        ),
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job event"
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
+            "serializedRuntimeEnv"
+        ]
+        == "{}"
+    )
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"]["uris"][
+            "workingDirUri"
+        ]
+        == "file:///tmp/ray/runtime_env"
+    )
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
+            "runtimeEnvConfig"
+        ]["setupTimeoutSeconds"]
+        == 10.0
+    )
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_driver_job_execution_event(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job execution event",
+                    driver_job_execution_event=DriverJobExecutionEvent(
+                        job_id=b"1",
+                        states=[
+                            DriverJobExecutionEvent.StateTimestamp(
+                                state=DriverJobExecutionEvent.State.CREATED,
+                                timestamp=Timestamp(seconds=1234567890),
+                            ),
+                            DriverJobExecutionEvent.StateTimestamp(
+                                state=DriverJobExecutionEvent.State.FAILURE,
+                                timestamp=Timestamp(seconds=1234567890),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job execution event"
+    assert (
+        req_json[0]["driverJobExecutionEvent"]["jobId"]
+        == base64.b64encode(b"1").decode()
+    )
+    assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
+    assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
+    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
 
 
 if __name__ == "__main__":
