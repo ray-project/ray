@@ -53,7 +53,6 @@ class NixlTensorTransport(TensorTransportManager):
                 )
                 # We assume all tensors in one GPU object are on the same device.
                 device = gpu_object[0].device
-                tensor_meta = []
                 for t in gpu_object:
                     if t.device.type != device.type:
                         raise ValueError(
