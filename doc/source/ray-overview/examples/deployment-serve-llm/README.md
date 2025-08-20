@@ -16,22 +16,22 @@ Deploy medium size models using tensor parallelism across 4—8 GPUs on a single
 
 ---
 
-**[Large size LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/vision-llm.ipynb)**  
+**[Large size LLM deployment](#)**  
 Deploy massive models using pipeline parallelism across a multi-node cluster, such as Deepseek-R1 or Llama-Nemotron-253B.  
 
 ---
 
-**[Vision LLM deployment](#)**  
+**[Vision LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/vision-llm.ipynb)**  
 Deploy models with image + text input such as Qwen 2.5-VL-7B-Instruct, MiniGPT-4, or Pixtral-12B.  
 
 ---
 
-**[Reasoning LLM deployment](#)**  
+**[Reasoning LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/reasoning-llm.ipynb)**  
 Deploy models with reasoning capabilities designed for long-context tasks, coding, or tool use, such as QwQ-32B.  
 
 ---
 
-**[Hybrid Thinking LLM deployment](#)**  
+**[Hybrid Thinking LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/hybrid-reasoning-llm.ipynb)**  
 Deploy models that can switch between reasoning and non-reasoning modes for flexible usage, such as Qwen-3.
 
 ```{toctree}
