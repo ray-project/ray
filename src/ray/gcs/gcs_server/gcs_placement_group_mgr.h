@@ -35,6 +35,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
+#include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
