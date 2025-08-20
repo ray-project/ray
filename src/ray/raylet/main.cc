@@ -90,7 +90,7 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
-DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
+DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
 // TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
 // CPU and memory resource reservation in the followup PR.
@@ -473,6 +473,8 @@ int main(int argc, char *argv[]) {
     object_manager_config.object_store_memory = object_store_memory;
     object_manager_config.max_bytes_in_flight =
         RayConfig::instance().object_manager_max_bytes_in_flight();
+    RAY_CHECK_GT(object_manager_config.max_bytes_in_flight, 0)
+        << "object_manager_max_bytes_in_flight must be greater than 0";
     object_manager_config.plasma_directory = plasma_directory;
     object_manager_config.fallback_directory = fallback_directory;
     object_manager_config.huge_pages = huge_pages;
@@ -490,15 +492,6 @@ int main(int argc, char *argv[]) {
                    << "rpc_service_threads_number = "
                    << object_manager_config.rpc_service_threads_number
                    << ", object_chunk_size = " << object_manager_config.object_chunk_size;
-    // Initialize stats.
-    const ray::stats::TagsType global_tags = {
-        {ray::stats::ComponentKey, "raylet"},
-        {ray::stats::WorkerIdKey, ""},
-        {ray::stats::VersionKey, kRayVersion},
-        {ray::stats::NodeAddressKey, node_ip_address},
-        {ray::stats::SessionNameKey, session_name}};
-    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
-
     RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
     node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
@@ -556,7 +549,11 @@ int main(int argc, char *argv[]) {
 
     raylet_client_pool =
         std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
-          return std::make_shared<ray::raylet::RayletClient>(addr, *client_call_manager);
+          return std::make_shared<ray::raylet::RayletClient>(
+              addr,
+              *client_call_manager,
+              ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                  gcs_client.get(), raylet_client_pool.get(), addr));
         });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
@@ -818,7 +815,19 @@ int main(int argc, char *argv[]) {
                                                    is_head_node,
                                                    *node_manager);
 
-    // Initialize event framework.
+    // Initializing stats should be done after the node manager is initialized because
+    // <explain why>. Metrics exported before this call will be buffered until `Init` is
+    // called.
+    const ray::stats::TagsType global_tags = {
+        {ray::stats::ComponentKey, "raylet"},
+        {ray::stats::WorkerIdKey, ""},
+        {ray::stats::VersionKey, kRayVersion},
+        {ray::stats::NodeAddressKey, node_ip_address},
+        {ray::stats::SessionNameKey, session_name}};
+    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+
+    // Initialize event framework. This should be done after the node manager is
+    // initialized.
     if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
       const std::vector<ray::SourceTypeVariant> source_types = {
           ray::rpc::Event_SourceType::Event_SourceType_RAYLET};

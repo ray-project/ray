@@ -1,8 +1,9 @@
 import sys
+
 import pytest
 
-from ci.ray_ci.doc.module import Module
 from ci.ray_ci.doc.api import AnnotationType, CodeType
+from ci.ray_ci.doc.module import Module
 
 
 def test_walk():

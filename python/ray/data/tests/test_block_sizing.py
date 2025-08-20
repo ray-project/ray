@@ -88,9 +88,10 @@ def test_map(shutdown_only, restore_data_context):
         block_size_expected=ctx.target_max_block_size // 2,
     )
 
-    # Setting the shuffle block size doesn't do anything for
-    # map-only Datasets.
+    # Setting the shuffle block size prints a warning and actually resets
+    # target_max_block_size
     ctx.target_shuffle_max_block_size = ctx.target_max_block_size / 2
+    num_blocks_expected *= 2
 
     # Test read.
     ds = ray.data.range(100_000, override_num_blocks=1).materialize()
@@ -109,11 +110,14 @@ def test_map(shutdown_only, restore_data_context):
         .map(lambda row: row)
         .materialize()
     )
+
+    # NOTE: `initial_num_blocks` is based on estimate, hence we bake in 50% margin
     assert (
         num_blocks_expected * 2
         <= ds._plan.initial_num_blocks()
-        <= num_blocks_expected * 2 + 1
+        <= num_blocks_expected * 3
     )
+
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected * 2,
@@ -154,8 +158,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
 
     shuffle_fn, kwargs, fusion_supported = shuffle_op
 
-    ctx.target_shuffle_max_block_size = 10_000 * 8
-    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
+    ctx.target_max_block_size = 10_000 * 8
+    num_blocks_expected = mem_size // ctx.target_max_block_size
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
@@ -164,11 +168,17 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         <= ds._plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
+
+    def _estimate_intermediate_blocks(fusion_supported: bool, num_blocks_expected: int):
+        return num_blocks_expected**2 + num_blocks_expected * (
+            2 if fusion_supported else 4
+        )
+
     # map * reduce intermediate blocks + 1 metadata ref per map/reduce task.
     # If fusion is not supported, the un-fused map stage produces 1 data and 1
     # metadata per task.
-    num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
-        2 if fusion_supported else 4
+    num_intermediate_blocks = _estimate_intermediate_blocks(
+        fusion_supported, num_blocks_expected
     )
 
     print(f">>> Asserting {num_intermediate_blocks} blocks are in plasma")
@@ -191,8 +201,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         <= ds._plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
-    num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
-        2 if fusion_supported else 4
+    num_intermediate_blocks = _estimate_intermediate_blocks(
+        fusion_supported, num_blocks_expected
     )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
@@ -201,9 +211,9 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         num_intermediate_blocks,
     )
 
-    ctx.target_shuffle_max_block_size //= 2
-    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    block_size_expected = ctx.target_shuffle_max_block_size
+    ctx.target_max_block_size //= 2
+    num_blocks_expected = mem_size // ctx.target_max_block_size
+    block_size_expected = ctx.target_max_block_size
 
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
@@ -211,8 +221,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         <= ds._plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
-    num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
-        2 if fusion_supported else 4
+    num_intermediate_blocks = _estimate_intermediate_blocks(
+        fusion_supported, num_blocks_expected
     )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
@@ -228,8 +238,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         <= ds._plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
-    num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
-        2 if fusion_supported else 4
+    num_intermediate_blocks = _estimate_intermediate_blocks(
+        fusion_supported, num_blocks_expected
     )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
@@ -238,12 +248,18 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
 
     # Setting target max block size does not affect map ops when there is a
     # shuffle downstream.
-    ctx.target_max_block_size = ctx.target_shuffle_max_block_size * 2
+    ctx.target_max_block_size = ctx.target_max_block_size * 2
+    num_blocks_expected //= 2
+
     ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     assert (
         num_blocks_expected
         <= ds._plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
+    )
+
+    num_intermediate_blocks = _estimate_intermediate_blocks(
+        fusion_supported, num_blocks_expected
     )
 
     assert_blocks_expected_in_plasma(
