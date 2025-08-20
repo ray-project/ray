@@ -1,6 +1,14 @@
 build_arg_sets:
+  py39:
+    PYTHON_VERSION: 3.9
+  py310:
+    PYTHON_VERSION: 3.10
   py311:
     PYTHON_VERSION: 3.11
+  py312:
+    PYTHON_VERSION: 3.12
+  py313:
+    PYTHON_VERSION: 3.13
 
 
 depsets:
@@ -9,10 +17,14 @@ depsets:
       - /tmp/ray-deps/requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
-    output: python/ray-img/requirements_compiled_ray_img_${PYTHON_VERSION}.txt
+    output: python/lock_files/ray_img/requirements_compiled_ray_img_${PYTHON_VERSION}.txt
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --find-links=.whl/
     build_arg_sets:
+      - py39
+      - py310
       - py311
+      - py312
+      - py313
