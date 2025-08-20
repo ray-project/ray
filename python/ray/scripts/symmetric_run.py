@@ -84,7 +84,7 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
 USAGE:
 
     python -m ray.scripts.symmetric_run --address ADDRESS
-[--wait-for-nnodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
+[--min-nodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
 
 DESCRIPTION:
 
@@ -92,7 +92,7 @@ DESCRIPTION:
 (2) runs a command on the head node, and (3) stops the Ray cluster.
 
     The '--' separator is required to distinguish between Ray start arguments
-and the entrypoint command. The --wait-for-nnodes option is optional and
+and the entrypoint command. The --min-nodes option is optional and
 can be used to wait for a specific number of nodes to start.
 
 EXAMPLES:
@@ -103,11 +103,11 @@ EXAMPLES:
 
     # Start Ray with specific head node and run a command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --wait-for-nnodes 4 -- python train_model.py --epochs=100
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
 
     # Start Ray and run a multi-word command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --wait-for-nnodes 4 --num-cpus=4 -- python -m my_module --config=prod
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
 
 RAY START OPTIONS:
 
@@ -125,7 +125,7 @@ SEPARATOR REQUIREMENT:
     "--address", required=True, type=str, help="The address of the Ray cluster."
 )
 @click.option(
-    "--wait-for-nnodes",
+    "--min-nodes",
     type=int,
     help="If provided, wait for this number of nodes to start.",
 )
@@ -146,13 +146,18 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
 
     min_nodes = 1 if wait_for_nnodes is None else wait_for_nnodes
 
+    if not entrypoint_on_head:
+        raise click.ClickException("No entrypoint command provided.")
+
     if check_ray_already_started():
         raise click.ClickException("Ray is already started on this node.")
 
     # 1. Parse address and check if we are on the head node.
     gcs_host_port = ray._common.network_utils.parse_address(address)
     if gcs_host_port is None:
-        raise click.ClickException(f"Invalid address format: {address}")
+        raise click.ClickException(
+            f"Invalid address format: {address}, should be `host:port`"
+        )
     gcs_host, gcs_port = gcs_host_port
 
     try:
@@ -174,7 +179,6 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
             ]:
                 my_ips.append(addr.address)
 
-    # Add localhost ips if we are running on a single node.
     if min_nodes > 1:
         # Ban localhost ips if we are not running on a single node
         # to avoid starting N head nodes
@@ -208,14 +212,12 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
                     "Timed out waiting for other nodes to start."
                 )
 
-            # Run the user command if provided.
-            if entrypoint_on_head:
-                click.echo(
-                    f"Running command on head node: {entrypoint_on_head}",
-                )
-                click.echo("=======================")
-                result = subprocess.run(entrypoint_on_head)
-                click.echo("=======================")
+            click.echo(
+                f"Running command on head node: {entrypoint_on_head}",
+            )
+            click.echo("=======================")
+            result = subprocess.run(entrypoint_on_head)
+            click.echo("=======================")
         else:
             # On a worker node, start Ray and connect to the head.
             click.echo(f"On worker node. Connecting to Ray cluster at {address}...")
