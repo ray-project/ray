@@ -15,6 +15,7 @@
 #pragma once
 
 #include <chrono>
+#include <optional>
 
 namespace ray {
 
@@ -43,7 +44,7 @@ inline int64_t current_sys_time_s() {
 }
 
 /// Converts a timeout in milliseconds to a timeout point.
-/// \param[in] timeout_ms The timeout in milliseconds.
+/// \param timeout_ms The timeout in milliseconds.
 /// \return The timeout point, or std::nullopt if timeout_ms is -1.
 std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
