@@ -253,7 +253,7 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
           worker_data->CopyFrom(*result);
           worker_data->set_debugger_port(debugger_port);
           gcs_table_storage_.WorkerTable().Put(
-              worker_id, *worker_data, {on_worker_update_done, io_context_});
+              worker_id, *worker_data, {std::move(on_worker_update_done), io_context_});
         }
       };
 
