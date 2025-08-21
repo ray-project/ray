@@ -641,6 +641,7 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     """
     cdef:
         c_vector[CObjectID] result
+    result.reserve(len(object_refs))
     for object_ref in object_refs:
         result.push_back((<ObjectRef>object_ref).native())
     return result
@@ -3482,7 +3483,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
 
-        object_refs = []
+        wait_ids.reserve(len(object_refs_or_generators))
         for ref_or_generator in object_refs_or_generators:
             if (not isinstance(ref_or_generator, ObjectRef)
                     and not isinstance(ref_or_generator, ObjectRefGenerator)):
@@ -3495,17 +3496,14 @@ cdef class CoreWorker:
             if isinstance(ref_or_generator, ObjectRefGenerator):
                 # Before calling wait,
                 # get the next reference from a generator.
-                object_refs.append(ref_or_generator._get_next_ref())
+                wait_ids.push_back((<ObjectRef>ref_or_generator._get_next_ref()).native())
             else:
-                object_refs.append(ref_or_generator)
+                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
 
-        wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results, fetch_local)
         check_status(op_status)
-
-        assert len(results) == len(object_refs)
 
         ready, not_ready = [], []
         for i, object_ref_or_generator in enumerate(object_refs_or_generators):

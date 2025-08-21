@@ -1429,9 +1429,6 @@ class CoreWorker {
   /// Record metric for executed and owned tasks. Will be run periodically.
   void RecordMetrics();
 
-  /// Check if there is an owner of the object from the ReferenceCounter.
-  bool HasOwner(const ObjectID &object_id) const;
-
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
                             const std::shared_ptr<RayObject> &obj,
