@@ -4,7 +4,11 @@ from pathlib import Path
 import pydantic
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LoraConfig,
+    ModelLoadingConfig,
+)
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
@@ -300,6 +304,64 @@ class TestModelConfig:
                 log_engine_metrics=True,
                 engine_kwargs={"disable_log_stats": True},
             )
+
+
+class TestFieldValidators:
+    """Test the field validators for dict validation."""
+
+    def test_model_loading_config_dict_validation(self):
+        """Test that model_loading_config accepts and validates dict input."""
+        config_dict = {"model_id": "microsoft/DialoGPT-medium"}
+
+        llm_config = LLMConfig(model_loading_config=config_dict, llm_engine="vLLM")
+
+        assert isinstance(llm_config.model_loading_config, ModelLoadingConfig)
+        assert llm_config.model_loading_config.model_id == "microsoft/DialoGPT-medium"
+
+    def test_model_loading_config_validation_error(self):
+        """Test that invalid dict raises proper validation error."""
+        with pytest.raises(pydantic.ValidationError) as exc_info:
+            LLMConfig(
+                model_loading_config={"invalid_field": "value"}, llm_engine="vLLM"
+            )
+
+        assert "Invalid model_loading_config" in str(exc_info.value)
+
+    def test_lora_config_dict_validation(self):
+        """Test that lora_config accepts and validates dict input."""
+        llm_config = LLMConfig(
+            model_loading_config={"model_id": "test"},
+            lora_config=None,
+            llm_engine="vLLM",
+        )
+
+        assert llm_config.lora_config is None
+
+        lora_dict = {
+            "dynamic_lora_loading_path": "s3://bucket/lora",
+            "max_num_adapters_per_replica": 8,
+        }
+
+        llm_config2 = LLMConfig(
+            model_loading_config={"model_id": "test"},
+            lora_config=lora_dict,
+            llm_engine="vLLM",
+        )
+
+        assert isinstance(llm_config2.lora_config, LoraConfig)
+        assert llm_config2.lora_config.max_num_adapters_per_replica == 8
+        assert llm_config2.lora_config.dynamic_lora_loading_path == "s3://bucket/lora"
+
+    def test_lora_config_validation_error(self):
+        """Test that invalid lora config dict raises proper validation error."""
+        with pytest.raises(pydantic.ValidationError) as exc_info:
+            LLMConfig(
+                model_loading_config={"model_id": "test"},
+                lora_config={"max_num_adapters_per_replica": "invalid_string"},
+                llm_engine="vLLM",
+            )
+
+        assert "Invalid lora_config" in str(exc_info.value)
 
 
 if __name__ == "__main__":
