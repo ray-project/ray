@@ -226,25 +226,24 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 raise e
 
     def _try_env_step(self, actions):
-        """Tries stepping the env and - if an error orrurs - handles it gracefully."""
+        """Tries stepping the env and - if an error occurs - handles it gracefully."""
         try:
             with self.metrics.log_time(ENV_STEP_TIMER):
                 results = self.env.step(actions)
             return results
         except Exception as e:
+            logger.exception(
+                "Stepping the env resulted in an error! The original error "
+                f"is: {e.args[0]}"
+            )
+            # @OldAPI param
             if self.config.restart_failed_sub_environments:
-                logger.exception(
-                    "Stepping the env resulted in an error! The original error "
-                    f"is: {e.args[0]}"
-                )
                 # Recreate the env.
                 self.make_env()
-                # And return that the stepping failed. The caller will then handle
-                # specific cleanup operations (for example discarding thus-far collected
-                # data and repeating the step attempt).
-                return ENV_STEP_FAILURE
-            else:
-                raise e
+            # And return that the stepping failed. The caller will then handle
+            # specific cleanup operations (for example discarding thus-far collected
+            # data and repeating the step attempt).
+            return ENV_STEP_FAILURE
 
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""
