@@ -25,6 +25,7 @@
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
 
 namespace plasma {
 

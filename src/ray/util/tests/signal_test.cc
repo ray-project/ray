@@ -14,14 +14,16 @@
 
 #include <signal.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/util.h"
+#include "ray/util/raii.h"
 
 // This test just print some call stack information.
 namespace ray {

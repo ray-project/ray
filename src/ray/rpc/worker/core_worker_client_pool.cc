@@ -138,15 +138,15 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
 
   RAY_LOG(DEBUG) << "Connected to worker " << worker_id << " with address "
                  << BuildAddress(addr_proto.ip_address(), addr_proto.port());
-  return entry.core_worker_client;
+  return entry.core_worker_client_;
 }
 
 void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
-    auto worker_id = client_list_.back().worker_id;
-    auto node_id = client_list_.back().node_id;
+    auto worker_id = client_list_.back().worker_id_;
+    auto node_id = client_list_.back().node_id_;
     // The last client in the list is the least recent accessed client.
-    if (client_list_.back().core_worker_client->IsIdleAfterRPCs()) {
+    if (client_list_.back().core_worker_client_->IsIdleAfterRPCs()) {
       worker_client_map_.erase(worker_id);
       EraseFromNodeClientMap(node_id, worker_id);
       client_list_.pop_back();
@@ -169,7 +169,7 @@ void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   if (it == worker_client_map_.end()) {
     return;
   }
-  EraseFromNodeClientMap(it->second->node_id, /*worker_id=*/id);
+  EraseFromNodeClientMap(it->second->node_id_, /*worker_id=*/id);
   client_list_.erase(it->second);
   worker_client_map_.erase(it);
 }

@@ -45,7 +45,6 @@
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace core {
@@ -382,9 +381,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         // from the middle of user operations.
         core_worker->io_service_.post(
             [this, obj]() {
-              auto core_worker = GetCoreWorker();
-              if (core_worker->options_.unhandled_exception_handler != nullptr) {
-                core_worker->options_.unhandled_exception_handler(obj);
+              auto this_core_worker = GetCoreWorker();
+              if (this_core_worker->options_.unhandled_exception_handler != nullptr) {
+                this_core_worker->options_.unhandled_exception_handler(obj);
               }
             },
             "CoreWorker.HandleException");

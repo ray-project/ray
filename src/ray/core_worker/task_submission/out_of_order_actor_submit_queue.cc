@@ -20,8 +20,7 @@
 namespace ray {
 namespace core {
 
-OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue(ActorID actor_id)
-    : kActorId(actor_id) {}
+OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue() {}
 
 void OutofOrderActorSubmitQueue::Emplace(uint64_t position,
                                          const TaskSpecification &spec) {

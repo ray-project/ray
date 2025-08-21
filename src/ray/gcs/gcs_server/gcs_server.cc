@@ -36,7 +36,6 @@
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {
@@ -187,7 +186,7 @@ void GcsServer::GetOrGenerateClusterId(
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
          if (!provided_cluster_id.has_value()) {
-           instrumented_io_context &io_context = continuation.io_context();
+           instrumented_io_context &io_ctx = continuation.io_context();
            ClusterID cluster_id = ClusterID::FromRandom();
            RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
            kv_manager_->GetInstance().Put(
@@ -202,7 +201,7 @@ void GcsServer::GetOrGenerateClusterId(
                       .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
                                 cluster_id);
                 },
-                io_context});
+                io_ctx});
          } else {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
            RAY_LOG(INFO).WithField(cluster_id)

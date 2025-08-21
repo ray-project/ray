@@ -342,9 +342,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         {
           absl::MutexLock lock(&mu_);
 
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
-          scheduling_key_entry.pending_lease_requests.erase(task_id);
+          auto &sched_entry = scheduling_key_entries_[scheduling_key];
+          auto raylet_lease_client =
+              raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+          sched_entry.pending_lease_requests.erase(task_id);
 
           if (status.ok()) {
             if (reply.canceled()) {
@@ -387,9 +388,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                                  ", task_name=",
                                  task_name));
 
-                tasks_to_fail = std::move(scheduling_key_entry.task_queue);
-                scheduling_key_entry.task_queue.clear();
-                if (scheduling_key_entry.CanDelete()) {
+                tasks_to_fail = std::move(sched_entry.task_queue);
+                sched_entry.task_queue.clear();
+                if (sched_entry.CanDelete()) {
                   scheduling_key_entries_.erase(scheduling_key);
                 }
               } else {
@@ -412,11 +413,11 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                              << WorkerID::FromBinary(reply.worker_address().worker_id());
 
               AddWorkerLeaseClient(reply.worker_address(),
-                                   std::move(raylet_client),
+                                   std::move(raylet_lease_client),
                                    reply.resource_mapping(),
                                    scheduling_key,
                                    task_id);
-              RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+              RAY_CHECK(sched_entry.active_workers.size() >= 1);
               OnWorkerIdle(reply.worker_address(),
                            scheduling_key,
                            /*was_error=*/false,
@@ -472,9 +473,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                  << "because the raylet is "
                     "unavailable (crashed).";
               error_info.set_error_message(ss.str());
-              tasks_to_fail = std::move(scheduling_key_entry.task_queue);
-              scheduling_key_entry.task_queue.clear();
-              if (scheduling_key_entry.CanDelete()) {
+              tasks_to_fail = std::move(sched_entry.task_queue);
+              sched_entry.task_queue.clear();
+              if (sched_entry.CanDelete()) {
                 scheduling_key_entries_.erase(scheduling_key);
               }
             } else {
@@ -574,7 +575,7 @@ void NormalTaskSubmitter::PushNormalTask(
                                                 addr,
                                                 get_task_failure_cause_reply_status,
                                                 get_task_failure_cause_reply);
-                  absl::MutexLock lock(&mu_);
+                  absl::MutexLock task_submission_state_lock(&mu_);
                   if (!will_retry) {
                     // Task submission and task cancellation are the only two other code
                     // paths that clean up the cancelled_tasks_ map. If the task is not
