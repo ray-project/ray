@@ -2647,8 +2647,6 @@ class Dataset:
                 small_ds = ds
                 large_key_columns = on
                 small_key_columns = right_on
-                large_suffix = left_suffix
-                small_suffix = right_suffix
                 datasets_swapped = False
             else:
                 # ds (right) is larger, self (left) is smaller
@@ -2656,19 +2654,23 @@ class Dataset:
                 small_ds = self
                 large_key_columns = right_on
                 small_key_columns = on
-                large_suffix = right_suffix
-                small_suffix = left_suffix
                 datasets_swapped = True
 
             # Create the broadcast join function - PyArrow will handle all join types natively
+            # Note: left_suffix and right_suffix always refer to the original left and right datasets
+            # regardless of which one is larger/smaller
             join_type_enum = JoinType(join_type)
             join_fn = BroadcastJoinFunction(
                 small_table_dataset=small_ds,
                 join_type=join_type_enum,
                 large_table_key_columns=large_key_columns,
                 small_table_key_columns=small_key_columns,
-                large_table_columns_suffix=large_suffix,
-                small_table_columns_suffix=small_suffix,
+                large_table_columns_suffix=(
+                    right_suffix if datasets_swapped else left_suffix
+                ),
+                small_table_columns_suffix=(
+                    left_suffix if datasets_swapped else right_suffix
+                ),
                 datasets_swapped=datasets_swapped,
             )
 
@@ -5895,9 +5897,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

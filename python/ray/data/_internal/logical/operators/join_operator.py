@@ -1,3 +1,10 @@
+"""Logical operators for join operations in Ray Data.
+
+This module provides the Join logical operator and JoinType enum for performing
+various types of joins between datasets. The Join operator handles the logical
+planning of join operations, including schema validation and join type specification.
+"""
+
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
 
@@ -9,6 +16,12 @@ if TYPE_CHECKING:
 
 
 class JoinType(Enum):
+    """Enumeration of supported join types in Ray Data.
+
+    This enum defines all the join types that can be performed between datasets,
+    including inner joins, outer joins, semi joins, and anti joins.
+    """
+
     INNER = "inner"
     LEFT_OUTER = "left_outer"
     RIGHT_OUTER = "right_outer"
@@ -20,15 +33,34 @@ class JoinType(Enum):
 
 
 class Join(NAry):
-    """Logical operator for join."""
+    """Logical operator for join operations between datasets.
+
+    The Join operator represents a join operation in the logical plan. It handles
+    various join types including inner, outer, semi, and anti joins. The operator
+    validates schemas and ensures that join key columns are compatible between
+    the left and right datasets.
+
+    Examples:
+        .. testcode::
+
+            # Create a join operator for inner join
+            join_op = Join(
+                left_input_op=left_dataset._logical_plan.dag,
+                right_input_op=right_dataset._logical_plan.dag,
+                join_type="inner",
+                left_key_columns=("id",),
+                right_key_columns=("id",),
+                num_partitions=4
+            )
+    """
 
     def __init__(
         self,
         left_input_op: LogicalOperator,
         right_input_op: LogicalOperator,
         join_type: str,
-        left_key_columns: Tuple[str],
-        right_key_columns: Tuple[str],
+        left_key_columns: Tuple[str, ...],
+        right_key_columns: Tuple[str, ...],
         *,
         num_partitions: int,
         left_columns_suffix: Optional[str] = None,
@@ -36,23 +68,29 @@ class Join(NAry):
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Args:
-            left_input_op: The input operator at left hand side.
-            right_input_op: The input operator at right hand side.
-            join_type: The kind of join that should be performed, one of ("inner",
-               "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
-               "left_anti", "right_anti").
-            left_key_columns: The columns from the left Dataset that should be used as
-              keys of the join operation.
-            right_key_columns: The columns from the right Dataset that should be used as
-              keys of the join operation.
-            partition_size_hint: Hint to joining operator about the estimated
-              avg expected size of the resulting partition (in bytes)
-            num_partitions: Total number of expected blocks outputted by this
-                operator.
-        """
+        """Initialize the Join operator.
 
+        Args:
+            left_input_op: The input operator for the left dataset.
+            right_input_op: The input operator for the right dataset.
+            join_type: The type of join to perform. Must be one of the supported
+                join types defined in JoinType enum.
+            left_key_columns: The columns from the left dataset to use as join keys.
+            right_key_columns: The columns from the right dataset to use as join keys.
+            num_partitions: Total number of expected output partitions from this
+                operator.
+            left_columns_suffix: Optional suffix to append to left dataset column
+                names to avoid naming conflicts.
+            right_columns_suffix: Optional suffix to append to right dataset column
+                names to avoid naming conflicts.
+            partition_size_hint: Hint about the estimated average size of resulting
+                partitions in bytes.
+            aggregator_ray_remote_args: Optional Ray remote arguments for the
+                aggregator.
+
+        Raises:
+            ValueError: If the join type is not supported or if key columns are invalid.
+        """
         try:
             join_type_enum = JoinType(join_type)
         except ValueError:
@@ -77,10 +115,27 @@ class Join(NAry):
     def _validate_schemas(
         left_op_schema: "Schema",
         right_op_schema: "Schema",
-        left_key_column_names: Tuple[str],
-        right_key_column_names: Tuple[str],
+        left_key_column_names: Tuple[str, ...],
+        right_key_column_names: Tuple[str, ...],
     ):
-        def _col_names_as_str(keys: Sequence[str]):
+        """Validate that the schemas are compatible for the join operation.
+
+        This method checks that:
+        1. At least one key column is provided for each side
+        2. The number of key columns matches between left and right sides
+        3. The key columns have compatible types
+
+        Args:
+            left_op_schema: Schema of the left dataset.
+            right_op_schema: Schema of the right dataset.
+            left_key_column_names: Names of key columns in the left dataset.
+            right_key_column_names: Names of key columns in the right dataset.
+
+        Raises:
+            ValueError: If the schemas are incompatible for joining.
+        """
+
+        def _col_names_as_str(keys: Sequence[str]) -> str:
             keys_joined = ", ".join(map(lambda k: f"'{k}'", keys))
             return f"[{keys_joined}]"
 
@@ -97,7 +152,10 @@ class Join(NAry):
                 f"{_col_names_as_str(right_key_column_names)})"
             )
 
-        def _get_key_column_types(schema: "Schema", keys: Tuple[str]):
+        def _get_key_column_types(
+            schema: "Schema", keys: Tuple[str, ...]
+        ) -> Optional[list]:
+            """Extract the types of the specified key columns from a schema."""
             return (
                 [
                     _type
