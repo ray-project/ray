@@ -1494,6 +1494,14 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
+    # Constants for repartition configuration
+    _DEFAULT_TARGET_BYTES_PER_BLOCK = 128 * 1024 * 1024  # 128 MB
+    _MIN_SAMPLES_FOR_ACCURACY = 3
+    _MAX_SAMPLES_FOR_PERFORMANCE = 5
+    _MIN_BYTES_PER_ROW_FALLBACK = 1024  # 1KB
+    _MIN_TARGET_BYTES_WARNING = 64  # 64 bytes minimum
+    _MAX_TARGET_BYTES_WARNING = 1024 * 1024 * 1024  # 1GB
+
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
@@ -1622,14 +1630,14 @@ class Dataset:
                 raise ValueError(
                     f"`target_num_bytes_per_block` must be positive, got {target_num_bytes_per_block}"
                 )
-            # Warn if target is very small (less than 1KB)
-            if target_num_bytes_per_block < 1024:
-                warnings.warn(
-                    f"`target_num_bytes_per_block` is very small ({target_num_bytes_per_block} bytes). "
-                    "Consider using a larger value (e.g., 1MB = 1048576 bytes) for better performance."
-                )
-            # Warn if target is very large (more than 1GB)
-            elif target_num_bytes_per_block > 1024 * 1024 * 1024:
+                    # Warn if target is very small (less than 1KB)
+        if target_num_bytes_per_block < self._MIN_BYTES_PER_ROW_FALLBACK:
+            warnings.warn(
+                f"`target_num_bytes_per_block` is very small ({target_num_bytes_per_block} bytes). "
+                "Consider using a larger value (e.g., 1MB = 1048576 bytes) for better performance."
+            )
+        # Warn if target is very large (more than 1GB)
+        elif target_num_bytes_per_block > self._MAX_TARGET_BYTES_WARNING:
                 warnings.warn(
                     f"`target_num_bytes_per_block` is very large ({target_num_bytes_per_block} bytes). "
                     "Large blocks may cause memory issues and slower processing."
@@ -1645,7 +1653,7 @@ class Dataset:
 
         if len(target_params_set) == 0:
             # Default to 128 MB target bytes per block (Apache Spark standard)
-            target_num_bytes_per_block = 128 * 1024 * 1024
+            target_num_bytes_per_block = self._DEFAULT_TARGET_BYTES_PER_BLOCK
             logger.info(
                 f"Using default target of {target_num_bytes_per_block // (1024 * 1024)} MB per block (Apache Spark standard)"
             )
@@ -1771,8 +1779,16 @@ class Dataset:
         This method samples a small subset of blocks to estimate bytes per row,
         ensuring optimal performance while maintaining accuracy.
         """
+        # Handle extremely small targets
+        if target_num_bytes_per_block < self._MIN_TARGET_BYTES_WARNING:
+            warnings.warn(
+                f"Target {target_num_bytes_per_block} bytes is extremely small. "
+                "Consider using at least 1KB for reasonable performance."
+            )
+            target_num_bytes_per_block = self._MIN_BYTES_PER_ROW_FALLBACK
+
         # Conservative fallback estimate (1KB per row)
-        fallback_rows_per_block = max(1, target_num_bytes_per_block // 1024)
+        fallback_rows_per_block = max(1, target_num_bytes_per_block // self._MIN_BYTES_PER_ROW_FALLBACK)
 
         try:
             # Get block metadata directly from the plan execution
@@ -1784,7 +1800,7 @@ class Dataset:
 
             # Sample up to 5 blocks for performance (reduced from 10)
             # This provides good accuracy while minimizing computation overhead
-            max_samples = min(5, len(metadata))
+            max_samples = min(self._MAX_SAMPLES_FOR_PERFORMANCE, len(metadata))
             total_bytes = 0
             total_rows = 0
             valid_samples = 0
@@ -1803,7 +1819,7 @@ class Dataset:
                     valid_samples += 1
 
                     # Early termination if we have enough samples
-                    if valid_samples >= 3:  # Minimum 3 samples for accuracy
+                    if valid_samples >= self._MIN_SAMPLES_FOR_ACCURACY:  # Minimum 3 samples for accuracy
                         break
 
             if valid_samples > 0 and total_rows > 0:
@@ -1812,12 +1828,13 @@ class Dataset:
 
                 # Check if individual rows are larger than target block size
                 if actual_bytes_per_row > target_num_bytes_per_block:
+                    suggested_size = int(actual_bytes_per_row * 1.5 // (1024*1024))
                     warnings.warn(
                         f"Individual rows ({actual_bytes_per_row:.0f} bytes on average) are larger than "
                         f"target_num_bytes_per_block ({target_num_bytes_per_block} bytes). "
                         f"Ray Data cannot split individual rows, so blocks will exceed the target size. "
-                        f"Consider using a larger target_num_bytes_per_block (e.g., "
-                        f"{int(actual_bytes_per_row * 2 // (1024*1024))}MB) or reducing row size through data preprocessing."
+                        f"Consider using target_num_bytes_per_block='{suggested_size}MB' or larger, "
+                        f"or reduce row size through data preprocessing."
                     )
                     # Return 1 row per block since we can't split rows
                     return 1
@@ -1847,6 +1864,13 @@ class Dataset:
         """
         import re
 
+        # Input validation and sanitization
+        if not isinstance(size_str, str):
+            raise TypeError(f"Expected string, got {type(size_str).__name__}")
+        
+        if not size_str:
+            raise ValueError("Size string cannot be empty")
+        
         # Convert to lowercase and remove whitespace
         size_str = size_str.lower().strip()
 
