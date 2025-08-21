@@ -685,7 +685,7 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     import ray.util.accelerators
 
     v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
-    # v100_resource_name = f"accelerator_type:{"V100"}"
+    # v100_resource_name = "accelerator_type:V100"
     ray.init(num_gpus=4, resources={v100_resource_name: 1})
 
 .. testcode::
