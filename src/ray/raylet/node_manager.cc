@@ -290,6 +290,7 @@ void NodeManager::RegisterGcs() {
       };
   RAY_CHECK_OK(gcs_client_.Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, nullptr));
+
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
