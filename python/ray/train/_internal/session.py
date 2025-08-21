@@ -24,6 +24,12 @@ from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
+from ray.train._internal.async_checkpoint import (
+    AsyncCheckpointWriter,
+    _AsyncCheckpointError,
+    _get_async_checkpoint_writer,
+    _shutdown_async_checkpoint_writer,
+)
 from ray.train.constants import (
     CHECKPOINT_DIR_NAME,
     DETAILED_AUTOFILLED_KEYS,
@@ -254,6 +260,9 @@ class _TrainSession:
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
 
+        # Shutdown async checkpoint writer and wait for pending uploads
+        _shutdown_async_checkpoint_writer()
+
         # Force a final (blocking) sync of artifacts in the trial path to storage.
         self.storage.persist_artifacts(force=True)
 
@@ -471,6 +480,94 @@ class _TrainSession:
 
         result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
+        self._report_training_result(result)
+
+    def async_report(
+        self, 
+        metrics: Dict, 
+        checkpoint: Optional[Checkpoint] = None,
+        flush: bool = False
+    ) -> None:
+        """Report metrics and optionally save a checkpoint asynchronously.
+
+        Unlike the regular `report` method, this uploads checkpoints in the background
+        and returns immediately, allowing training to continue without blocking.
+
+        Args:
+            metrics: The metrics you want to report.
+            checkpoint: The optional checkpoint you want to report.
+            flush: If True, check for and raise any errors from previous async uploads.
+        """
+        # Check for previous async upload errors if flush=True
+        if flush:
+            try:
+                async_writer = _get_async_checkpoint_writer()
+                async_writer.check_and_raise_errors()
+            except _AsyncCheckpointError as e:
+                raise RuntimeError(f"Previous async checkpoint upload failed: {e}") from e
+
+        # Special case: early fail for Torch tensors
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or report a `train.Checkpoint` "
+                    "with `ray.train.async_report` to store your Torch objects."
+                )
+
+        if self.ignore_report:
+            return
+
+        metrics = self._auto_fill_metrics(metrics)
+
+        if checkpoint:
+            self.storage._update_checkpoint_index(metrics)
+            
+            # Start async upload (non-blocking)
+            try:
+                async_writer = _get_async_checkpoint_writer()
+                async_writer.async_persist_checkpoint(
+                    checkpoint=checkpoint,
+                    storage_context=self.storage,
+                    metrics=metrics
+                )
+                logger.debug("Started async checkpoint upload")
+            except _AsyncCheckpointError as e:
+                # If we can't queue the upload (backpressure), fall back to sync
+                logger.warning(f"Async upload queue full, falling back to sync: {e}")
+                persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+                
+                # Set metadata and create result normally
+                if persisted_checkpoint and self.metadata:
+                    user_metadata = persisted_checkpoint.get_metadata()
+                    for k, v in self.metadata.items():
+                        if k not in user_metadata:
+                            user_metadata[k] = v
+                    persisted_checkpoint.set_metadata(user_metadata)
+                
+                result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+                self._report_training_result(result)
+                return
+
+            # For async case, we don't have a persisted checkpoint yet
+            # Create a local checkpoint reference for get_checkpoint()
+            self.loaded_checkpoint = checkpoint
+            metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
+        else:
+            metrics[CHECKPOINT_DIR_NAME] = None
+
+        # Always persist artifacts for consistency
+        force_artifact_sync = (
+            checkpoint and self.storage.sync_config.sync_artifacts_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
+
+        # Report with no checkpoint (async upload happening in background)
+        result = _TrainingResult(checkpoint=None, metrics=metrics)
         self._report_training_result(result)
 
     @property
@@ -799,6 +896,94 @@ def report(
         return ray.tune.report(metrics, checkpoint=checkpoint)
 
     get_session().report(metrics, checkpoint=checkpoint)
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def async_report(
+    metrics: Dict,
+    *,
+    checkpoint: Optional[Checkpoint] = None,
+    flush: bool = False,
+) -> None:
+    """Report metrics and optionally save a checkpoint asynchronously.
+
+    This is a non-blocking version of :func:`ray.train.report` that uploads 
+    checkpoints in the background, allowing training to continue immediately.
+    Designed for RL training on reasoning models that checkpoint frequently.
+
+    If a checkpoint is provided, it will be uploaded to storage in a background
+    thread while training continues. The upload happens asynchronously and does
+    not block the training step.
+
+    .. warning::
+
+        All workers must call `ray.train.async_report` the same number of times
+        so that Ray Train can properly synchronize the training state across
+        workers. Otherwise, your training will hang.
+
+    .. note::
+
+        This method provides backpressure control - if too many uploads are
+        pending, it will automatically fall back to synchronous uploading
+        to prevent unlimited queuing.
+
+    .. note::
+
+        Set `flush=True` periodically to check for and raise any errors from
+        previous async uploads. This is recommended every few iterations.
+
+    Example:
+
+        .. testcode::
+
+            import tempfile
+
+            from ray import train
+            from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
+
+
+            def train_func(config):
+                for epoch in range(config.get("num_epochs", 10)):
+                    # Do training...
+                    metrics = {"loss": ...}
+
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                       # Save the checkpoint...
+                       # torch.save(...)
+
+                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+
+                        # Non-blocking checkpoint upload
+                        train.async_report(metrics, checkpoint=checkpoint)
+                        
+                        # Check for errors every 10 epochs
+                        if epoch % 10 == 0:
+                            train.async_report({}, flush=True)
+
+            trainer = TorchTrainer(
+                train_func, 
+                run_config=train.RunConfig(storage_path="s3://my-bucket/checkpoints")
+            )
+
+    Args:
+        metrics: The metrics you want to report.
+        checkpoint: The optional checkpoint you want to report.
+        flush: If True, check for and raise any errors from previous async uploads.
+    """
+    # If we are running in a Tune function, fall back to regular report
+    # since Tune manages its own checkpoint lifecycle
+    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+    if _in_tune_session():
+        logger.warning(
+            "async_report called in Tune session, falling back to regular report"
+        )
+        import ray.tune
+        return ray.tune.report(metrics, checkpoint=checkpoint)
+
+    get_session().async_report(metrics, checkpoint=checkpoint, flush=flush)
 
 
 @PublicAPI(stability="stable")
