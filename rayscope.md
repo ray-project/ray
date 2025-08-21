@@ -14,14 +14,16 @@ conda activate rayenv
 export PYTHONPATH=/Users/sagar/workspace/codope/ray/python:$PYTHONPATH
 ```
 
-### Start a local cluster
+### Start a local cluster (and capture the API server address)
 
 - Option A: via CLI (dashboard can auto-pick a free port with `--dashboard-port=0`)
 
 ```bash
-python -m ray.scripts.scripts start --head --include-dashboard=True --num-cpus=4
-# If 8265 is occupied, add:
-# python -m ray.scripts.scripts start --head --include-dashboard=True --num-cpus=4 --dashboard-port=0
+python -m ray.scripts.scripts start --head --include-dashboard=True --num-cpus=4 --dashboard-port=0
+# The output prints an API address like:
+#   RAY_API_SERVER_ADDRESS='http://127.0.0.1:63241'
+# Export it so all commands use the same cluster:
+export API=http://127.0.0.1:63241   # <-- replace with the value printed above
 ```
 
 - Option B: in-process (quick test)
@@ -50,13 +52,17 @@ export PYTHONPATH=/Users/sagar/workspace/codope/ray/python:$PYTHONPATH
 
 python - <<'PY'
 import time
+import os
 import numpy as np
 import ray
 
-# Tip: to record object callsites for richer object insights,
-# start Ray with RAY_record_ref_creation_sites=1 in the environment.
 
-ray.init(address="auto")
+# Prefer the same address as the started cluster. If not set, try auto; if that fails, start local.
+addr = os.environ.get("RAY_ADDRESS", os.environ.get("API", "auto"))
+try:
+    ray.init(address=addr)
+except Exception:
+    ray.init()
 
 @ray.remote
 def sleep_and_return(i, secs=0.5, size_mb=5):
@@ -87,6 +93,25 @@ print("Actor result sample:", ray.get(actor_refs[-1]))
 print("Workload submitted; leaving others in-flight for observability...")
 time.sleep(5)
 PY
+
+# Optional: keep tasks in-flight so list/top show activity. Run in another terminal.
+```bash
+python - <<'PY'
+import time, os, ray
+addr = os.environ.get("RAY_ADDRESS", os.environ.get("API", "auto"))
+try:
+    ray.init(address=addr)
+except Exception:
+    ray.init()
+@ray.remote
+def f(t=10):
+    time.sleep(t)
+    return t
+while True:
+    _ = [f.remote(10) for _ in range(100)]
+    time.sleep(1)
+PY
+```
 ```
 
 ### Smoke test the new CLI commands
@@ -94,28 +119,29 @@ PY
 - Object listing (alias for the State API “list objects”)
 
 ```bash
-python -m ray.scripts.scripts object ls --address=auto --limit 10 --format table
+# Prefer using the explicit API to ensure same cluster.
+python -m ray.scripts.scripts object ls --address="$API" --limit 10 --format table
 
 # JSON output
-python -m ray.scripts.scripts object ls --address=auto --limit 10 --format json
+python -m ray.scripts.scripts object ls --address="$API" --limit 10 --format json
 
 # Server-side filter examples
-python -m ray.scripts.scripts object ls --address=auto --filter "ip=127.0.0.1" --limit 50 --format table
+python -m ray.scripts.scripts object ls --address="$API" --filter "ip=127.0.0.1" --limit 50 --format table
 ```
 
 - Lightweight terminal “top” snapshot (experimental)
 
 ```bash
-python -m ray.scripts.scripts top --address=auto --refresh 1.0 --show both
+python -m ray.scripts.scripts top --address="$API" --refresh 1.0 --show both
 # Press Ctrl+C to exit
 ```
 
 - Baseline state snapshots (useful for comparison)
 
 ```bash
-python -m ray.scripts.scripts list tasks  --address=auto --limit 20 --format table
-python -m ray.scripts.scripts list actors --address=auto --limit 20 --format table
-python -m ray.scripts.scripts list objects --address=auto --limit 20 --format table
+python -m ray.scripts.scripts list tasks  --address="$API" --limit 20 --format table
+python -m ray.scripts.scripts list actors --address="$API" --limit 20 --format table
+python -m ray.scripts.scripts list objects --address="$API" --limit 20 --format table
 ```
 
 ### Cleanup
@@ -130,8 +156,8 @@ python -m ray.scripts.scripts stop
 - CLI cannot find the cluster:
 
 ```bash
-# Ensure a cluster is running and pass an address
-python -m ray.scripts.scripts status --address=auto
+# Ensure a cluster is running and pass the same address
+python -m ray.scripts.scripts status --address="$API"
 ```
 
 - Dashboard port 8265 is in use:
