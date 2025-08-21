@@ -12,7 +12,7 @@ class BaseConnectorBackend(abc.ABC):
         """Base class for connector backends.
 
         Args:
-            kv_transfer_config: Configuration for the KV transfer.
+            llm_config: The llm configuration for this engine
         """
         self.llm_config = llm_config
 

@@ -178,8 +178,7 @@ class TestModelConfig:
             "max_replicas": 10,
         }
         assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0},
-            {"GPU": 1, "accelerator_type:A100-40G": 0.001},
+            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
         ]
         assert serve_options["placement_group_strategy"] == "STRICT_PACK"
         assert serve_options["name"] == "Test:test_model"
@@ -239,8 +238,9 @@ class TestModelConfig:
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
-            {"GPU": 1} for _ in range(6)
+
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
+            {"GPU": 1} for _ in range(5)
         ]
 
         # Test the custom resource bundle
@@ -249,8 +249,8 @@ class TestModelConfig:
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
             resources_per_bundle={"XPU": 1},
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
-            {"XPU": 1} for _ in range(6)
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0, "XPU": 1}] + [
+            {"XPU": 1} for _ in range(5)
         ]
 
     def test_engine_config_cached(self):

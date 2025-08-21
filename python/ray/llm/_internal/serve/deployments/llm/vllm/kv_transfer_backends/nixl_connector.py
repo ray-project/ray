@@ -17,6 +17,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
             )
             # If dp_rank is set, we should use the
             # base port + dp_rank as the side channel port
+            # due to a potential ray condition for getting the free ports.
             dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank", 0)
             port = base_port + dp_rank
             os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
