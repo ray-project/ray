@@ -179,7 +179,6 @@ ray_cc_test(
         ":util",
         "//:ray_fakes",
         "//:ray_mock",
-        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:ray_object",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/raylet:local_object_manager_interface",
