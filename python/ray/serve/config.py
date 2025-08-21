@@ -236,6 +236,10 @@ class AutoscalingConfig(BaseModel):
     # Tuple of (metric_name, promql_query)
     prometheus_custom_metrics: Optional[List[Tuple[str, Optional[str]]]] = None
 
+    # External metrics sources
+    # Tuple of (metric_name, Callable)
+    external_custom_metrics: Optional[List[Tuple[str, Callable]]] = None
+
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
