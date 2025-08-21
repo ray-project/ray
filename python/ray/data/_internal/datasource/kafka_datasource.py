@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Union
@@ -6,7 +5,6 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import pyarrow as pa
 
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import ReadTask
 from ray.data.datasource.streaming_datasource import (
     StreamingDatasource,
@@ -44,9 +42,14 @@ def _create_kafka_reader(
     kafka_config: Dict[str, Any],
     start_offset: Optional[int] = None,
     end_offset: Optional[int] = None,
-    max_records: int = 1000,
+    max_records: Optional[int] = None,
+    batch_timeout_ms: int = 1000,
+    fetch_max_wait_ms: int = 500,
 ) -> tuple[callable, callable]:
     """Create a Kafka reader function with encapsulated state.
+
+    This function creates a closure that encapsulates all state needed for
+    reading from a Kafka partition, avoiding the use of global variables.
 
     Args:
         topic: Kafka topic name.
@@ -55,12 +58,24 @@ def _create_kafka_reader(
         start_offset: Starting offset position.
         end_offset: Ending offset position.
         max_records: Maximum records to read per call.
+        batch_timeout_ms: Timeout for batch polling in milliseconds.
+        fetch_max_wait_ms: Maximum wait time for batching in milliseconds.
 
     Returns:
         Tuple of (read_function, get_position_function).
 
-    Yields:
-        Dictionary records from Kafka messages.
+    Examples:
+        Creating a Kafka reader:
+
+        .. testcode::
+
+            read_fn, get_pos_fn = _create_kafka_reader(
+                topic="my-topic",
+                partition=0,
+                kafka_config={"bootstrap.servers": "localhost:9092"},
+                start_offset=1000,
+                max_records=100
+            )
     """
     _check_import(module="kafka", package="kafka-python")
     from kafka import KafkaConsumer, TopicPartition
@@ -72,6 +87,10 @@ def _create_kafka_reader(
     topic_partition = TopicPartition(topic, partition)
     metrics = StreamingMetrics()
 
+    # Initialize max_records with default if not provided
+    if max_records is None:
+        max_records = 1000
+
     def read_partition() -> Iterator[Dict[str, Any]]:
         """Read records from Kafka partition, maintaining position state."""
         nonlocal current_offset, consumer
@@ -79,9 +98,22 @@ def _create_kafka_reader(
         try:
             # Initialize consumer if needed
             if consumer is None:
+                # Optimize Kafka consumer configuration for streaming performance
+                optimized_config = kafka_config.copy()
+
+                # Performance optimizations
+                optimized_config.update({
+                    "enable_auto_commit": False,  # Manual offset management
+                    "fetch.min.bytes": 1,  # Fetch even small batches
+                    "fetch.max.wait.ms": fetch_max_wait_ms,  # Wait for batching
+                    "max.partition.fetch.bytes": 1048576,  # 1MB per partition
+                    "receive.buffer.bytes": 32768,  # 32KB receive buffer
+                    "max.poll.records": 1000,  # Default batch size
+                    "max.poll.interval.ms": 300000,  # 5 min poll interval
+                })
+
                 consumer = KafkaConsumer(
-                    **kafka_config,
-                    enable_auto_commit=False,  # Manual offset management
+                    **optimized_config,
                     value_deserializer=lambda x: x.decode("utf-8") if x else None,
                     key_deserializer=lambda x: x.decode("utf-8") if x else None,
                 )
@@ -96,8 +128,12 @@ def _create_kafka_reader(
                     # Default to latest
                     consumer.seek_to_end(topic_partition)
 
-            # Poll for records
-            message_batch = consumer.poll(timeout_ms=1000, max_records=max_records)
+            # Poll for records with optimized batching
+            # Use fetch.max.wait.ms for better batching efficiency
+            message_batch = consumer.poll(
+                timeout_ms=batch_timeout_ms,
+                max_records=max_records
+            )
 
             if topic_partition in message_batch:
                 for message in message_batch[topic_partition]:
@@ -185,7 +221,9 @@ class KafkaDatasource(StreamingDatasource):
             :skipif: True
 
             import ray
-            from ray.data._internal.logical.operators.streaming_data_operator import StreamingTrigger
+            from ray.data._internal.logical.operators.streaming_data_operator import (
+                StreamingTrigger,
+            )
 
             # Read with fixed interval trigger
             trigger = StreamingTrigger.fixed_interval("10s")
@@ -208,7 +246,7 @@ class KafkaDatasource(StreamingDatasource):
         max_records_per_task: int = 1000,
         start_offset: Optional[str] = None,
         end_offset: Optional[str] = None,
-        **kwargs,
+        streaming_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize Kafka datasource.
 
@@ -218,7 +256,7 @@ class KafkaDatasource(StreamingDatasource):
             max_records_per_task: Maximum records per partition per task per batch.
             start_offset: Starting offset for reading.
             end_offset: Ending offset for reading.
-            **kwargs: Additional arguments passed to StreamingDatasource.
+            streaming_config: Additional streaming configuration.
         """
         self.topics = topics if isinstance(topics, list) else [topics]
         self.kafka_config = kafka_config
@@ -227,7 +265,10 @@ class KafkaDatasource(StreamingDatasource):
         streaming_config = {
             "topics": self.topics,
             "kafka_config": self.kafka_config,
-            "source_identifier": f"kafka://{kafka_config.get('bootstrap.servers', 'unknown')}/{','.join(self.topics)}",
+            "source_identifier": (
+                f"kafka://{kafka_config.get('bootstrap.servers', 'unknown')}/"
+                f"{','.join(self.topics)}"
+            ),
         }
 
         super().__init__(
@@ -235,7 +276,6 @@ class KafkaDatasource(StreamingDatasource):
             start_position=start_offset,
             end_position=end_offset,
             streaming_config=streaming_config,
-            **kwargs,
         )
 
     def _validate_config(self) -> None:
@@ -260,7 +300,11 @@ class KafkaDatasource(StreamingDatasource):
             )
 
     def get_name(self) -> str:
-        """Return datasource name."""
+        """Return datasource name.
+
+        Returns:
+            String representation of the datasource.
+        """
         return f"kafka://{','.join(self.topics)}"
 
     def get_streaming_partitions(self) -> List[Dict[str, Any]]:
@@ -310,7 +354,8 @@ class KafkaDatasource(StreamingDatasource):
         """Create a read task for a Kafka partition.
 
         Args:
-            partition_info: Partition information containing topic and partition details.
+            partition_info: Partition information containing topic and partition
+                details.
 
         Returns:
             ReadTask for reading from the partition.

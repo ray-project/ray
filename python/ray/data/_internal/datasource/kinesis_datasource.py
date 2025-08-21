@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional
@@ -6,7 +5,6 @@ from typing import Any, Dict, Iterator, List, Optional
 import pyarrow as pa
 
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import ReadTask
 from ray.data.datasource.streaming_datasource import (
     StreamingDatasource,
@@ -72,6 +70,10 @@ def _create_kinesis_reader(
     shard_iterator = None
     metrics = StreamingMetrics()
 
+    # Initialize max_records with default if not provided
+    if max_records is None:
+        max_records = 1000
+
     def read_shard() -> Iterator[Dict[str, Any]]:
         """Read records from Kinesis shard, maintaining position state."""
         nonlocal current_sequence_number, kinesis_client, shard_iterator
@@ -98,11 +100,14 @@ def _create_kinesis_reader(
                 )
                 shard_iterator = response["ShardIterator"]
 
-            # Read records from shard
+            # Read records from shard with optimized batching
             if shard_iterator:
                 try:
+                    # Optimize Kinesis read parameters for better performance
                     response = kinesis_client.get_records(
-                        ShardIterator=shard_iterator, Limit=max_records
+                        ShardIterator=shard_iterator,
+                        Limit=min(max_records, 10000),  # Kinesis max is 10k
+                        StreamARN=None,  # Use stream name instead
                     )
 
                     records = response["Records"]
@@ -115,7 +120,8 @@ def _create_kinesis_reader(
                             and record["SequenceNumber"] >= end_sequence
                         ):
                             logger.info(
-                                f"Reached end sequence {end_sequence} for {stream_name}:{shard_id}"
+                                f"Reached end sequence {end_sequence} for "
+                        f"{stream_name}:{shard_id}"
                             )
                             return  # Stop reading
 
@@ -142,6 +148,37 @@ def _create_kinesis_reader(
                 except (BotoCoreError, ClientError) as e:
                     logger.error(f"Error reading from Kinesis shard {shard_id}: {e}")
                     metrics.record_error()
+
+                    # Handle specific Kinesis errors with appropriate retry logic
+                    if "ExpiredIteratorException" in str(e):
+                        logger.warning(
+                            f"Shard iterator expired for {stream_name}:{shard_id}, "
+                            "refreshing..."
+                        )
+                        # Refresh shard iterator
+                        try:
+                            response = kinesis_client.get_shard_iterator(
+                                StreamName=stream_name,
+                                ShardId=shard_id,
+                                ShardIteratorType="LATEST",
+                            )
+                            shard_iterator = response["ShardIterator"]
+                            # Note: Retry logic is handled by the streaming framework
+                        except Exception as refresh_error:
+                            logger.error(
+                                f"Failed to refresh shard iterator: "
+                                f"{refresh_error}"
+                            )
+                            raise
+                    elif "ProvisionedThroughputExceededException" in str(e):
+                        logger.warning(
+                            f"Throughput exceeded for {stream_name}:{shard_id}, "
+                            "backing off..."
+                        )
+                        import time
+                        time.sleep(1)  # Back off for 1 second
+                        # Note: Retry logic is handled by the streaming framework
+
                     # Don't yield anything on error, let the retry logic handle it
 
         except Exception as e:
@@ -171,7 +208,9 @@ class KinesisDatasource(StreamingDatasource):
             :skipif: True
 
             import ray
-            from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
+            from ray.data._internal.datasource.kinesis_datasource import (
+                KinesisDatasource,
+            )
 
             # Read from Kinesis stream with default configuration
             ds = ray.data.read_kinesis(
@@ -187,7 +226,9 @@ class KinesisDatasource(StreamingDatasource):
             :skipif: True
 
             import ray
-            from ray.data._internal.logical.operators.streaming_data_operator import StreamingTrigger
+            from ray.data._internal.logical.operators.streaming_data_operator import (
+                StreamingTrigger,
+            )
 
             # Read with fixed interval trigger
             trigger = StreamingTrigger.fixed_interval("10s")
@@ -229,7 +270,10 @@ class KinesisDatasource(StreamingDatasource):
         streaming_config = {
             "stream_name": self.stream_name,
             "kinesis_config": self.kinesis_config,
-            "source_identifier": f"kinesis://{kinesis_config.get('region_name', 'unknown')}/{stream_name}",
+            "source_identifier": (
+                f"kinesis://{kinesis_config.get('region_name', 'unknown')}/"
+                f"{stream_name}"
+            ),
         }
 
         super().__init__(

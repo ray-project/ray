@@ -192,6 +192,18 @@ LEGACY_DEFAULT_BATCH_SIZE = 1024
 # streaming generator backpressure.
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
+# Default configuration for streaming datasources
+DEFAULT_STREAMING_BATCH_SIZE = 1000
+DEFAULT_STREAMING_TRIGGER_INTERVAL = "30s"
+DEFAULT_STREAMING_MAX_RETRIES = 3
+DEFAULT_STREAMING_RETRY_DELAY = 1.0
+
+# Advanced streaming configuration for production workloads
+DEFAULT_STREAMING_MAX_CONCURRENT_TASKS = 4
+DEFAULT_STREAMING_TASK_TIMEOUT = 300  # 5 minutes
+DEFAULT_STREAMING_HEARTBEAT_INTERVAL = 30  # 30 seconds
+DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD = 0.8  # 80% memory usage
+
 # Default value for whether or not to try to create directories for write
 # calls if the URI is an S3 URI.
 DEFAULT_S3_TRY_CREATE_DIR = False
@@ -404,14 +416,18 @@ class DataContext:
             transient errors when reading from remote storage systems.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
-        memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
-            map tasks won't record memory stats.
+        memory_usage_poll_interval_s: The interval to poll the USS of map tasks.
+            If `None`, map tasks won't record memory stats.
     """
 
     # `None` means the block size is infinite.
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
+
+    # Streaming datasource configuration (handled by properties)
+
+    # Advanced streaming configuration (handled by properties)
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
 
@@ -548,6 +564,20 @@ class DataContext:
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
 
+        # Initialize streaming configuration
+        self._streaming_batch_size = DEFAULT_STREAMING_BATCH_SIZE
+        self._streaming_trigger_interval = DEFAULT_STREAMING_TRIGGER_INTERVAL
+        self._streaming_max_retries = DEFAULT_STREAMING_MAX_RETRIES
+        self._streaming_retry_delay = DEFAULT_STREAMING_RETRY_DELAY
+
+        # Initialize advanced streaming configuration
+        self._streaming_max_concurrent_tasks = DEFAULT_STREAMING_MAX_CONCURRENT_TASKS
+        self._streaming_task_timeout = DEFAULT_STREAMING_TASK_TIMEOUT
+        self._streaming_heartbeat_interval = DEFAULT_STREAMING_HEARTBEAT_INTERVAL
+        self._streaming_backpressure_threshold = (
+            DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD
+        )
+
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
             is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
@@ -590,7 +620,8 @@ class DataContext:
 
         elif name == "target_shuffle_max_block_size":
             warnings.warn(
-                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead."
+                "`target_shuffle_max_block_size` is deprecated! "
+                "Configure `target_max_block_size` instead."
             )
 
             self.target_max_block_size = value
@@ -672,6 +703,78 @@ class DataContext:
     @shuffle_strategy.setter
     def shuffle_strategy(self, value: ShuffleStrategy) -> None:
         self._shuffle_strategy = value
+
+    @property
+    def streaming_batch_size(self) -> int:
+        """Default batch size for streaming datasources."""
+        return self._streaming_batch_size
+
+    @streaming_batch_size.setter
+    def streaming_batch_size(self, value: int) -> None:
+        self._streaming_batch_size = value
+
+    @property
+    def streaming_trigger_interval(self) -> str:
+        """Default trigger interval for streaming datasources."""
+        return self._streaming_trigger_interval
+
+    @streaming_trigger_interval.setter
+    def streaming_trigger_interval(self, value: str) -> None:
+        self._streaming_trigger_interval = value
+
+    @property
+    def streaming_max_retries(self) -> int:
+        """Maximum number of retries for streaming operations."""
+        return self._streaming_max_retries
+
+    @streaming_max_retries.setter
+    def streaming_max_retries(self, value: int) -> None:
+        self._streaming_max_retries = value
+
+    @property
+    def streaming_retry_delay(self) -> float:
+        """Delay between retries for streaming operations."""
+        return self._streaming_retry_delay
+
+    @streaming_retry_delay.setter
+    def streaming_retry_delay(self, value: float) -> None:
+        self._streaming_retry_delay = value
+
+    @property
+    def streaming_max_concurrent_tasks(self) -> int:
+        """Maximum number of concurrent streaming tasks."""
+        return self._streaming_max_concurrent_tasks
+
+    @streaming_max_concurrent_tasks.setter
+    def streaming_max_concurrent_tasks(self, value: int) -> None:
+        self._streaming_max_concurrent_tasks = value
+
+    @property
+    def streaming_task_timeout(self) -> int:
+        """Timeout for streaming tasks in seconds."""
+        return self._streaming_task_timeout
+
+    @streaming_task_timeout.setter
+    def streaming_task_timeout(self, value: int) -> None:
+        self._streaming_task_timeout = value
+
+    @property
+    def streaming_heartbeat_interval(self) -> int:
+        """Heartbeat interval for streaming tasks in seconds."""
+        return self._streaming_heartbeat_interval
+
+    @streaming_heartbeat_interval.setter
+    def streaming_heartbeat_interval(self, value: int) -> None:
+        self._streaming_heartbeat_interval = value
+
+    @property
+    def streaming_backpressure_threshold(self) -> float:
+        """Backpressure threshold for streaming operations (0.0 to 1.0)."""
+        return self._streaming_backpressure_threshold
+
+    @streaming_backpressure_threshold.setter
+    def streaming_backpressure_threshold(self, value: float) -> None:
+        self._streaming_backpressure_threshold = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.

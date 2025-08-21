@@ -1,12 +1,15 @@
 import functools
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
-from ray.data._internal.util import unify_ref_bundles_schema
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockMetadata, BlockMetadataWithSchema
+from ray.data.datasource import Datasource
+
+logger = logging.getLogger(__name__)
 
 # Optional import for cron scheduling support
 try:
@@ -156,7 +159,8 @@ class StreamingTrigger:
         Processes data based on a cron schedule expression.
 
         Args:
-            cron_expression: Cron expression defining the schedule (e.g., "0 */2 * * *" for every 2 hours).
+            cron_expression: Cron expression defining the schedule
+                (e.g., "0 */2 * * *" for every 2 hours).
             checkpoint_location: Optional checkpoint location for fault tolerance.
 
         Examples:
@@ -271,7 +275,7 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
 
     def __init__(
         self,
-        datasource: "Datasource",
+        datasource: Datasource,
         trigger: StreamingTrigger,
         datasource_config: Optional[Dict[str, Any]] = None,
         parallelism: int = -1,
@@ -290,6 +294,19 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
         self.datasource_config = datasource_config or {}
         self.parallelism = parallelism
 
+        # Get Ray Data context for configuration
+        from ray.data.context import DataContext
+        self._data_context = DataContext.get_current()
+
+        # Use context defaults for trigger if not specified
+        if trigger.trigger_type == "fixed_interval" and trigger.interval is None:
+            from datetime import timedelta
+            default_interval = self._data_context.streaming_trigger_interval
+            if isinstance(default_interval, str):
+                trigger.interval = StreamingTrigger._parse_interval(default_interval)
+            else:
+                trigger.interval = timedelta(seconds=30)  # Fallback default
+
     def output_data(self) -> Optional[List[RefBundle]]:
         """Streaming operators don't have pre-computed output data."""
         return None
@@ -305,17 +322,25 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
     @functools.cached_property
     def _cached_output_metadata(self) -> "BlockMetadataWithSchema":
         """Infer metadata and schema from streaming datasource."""
-        from ray.data.block import BlockMetadataWithSchema
         from ray.data._internal.util import unify_schemas_with_validation
 
         # Get a sample of read tasks to infer metadata and schema
         try:
-            # Use a small, constant number for schema inference to avoid performance issues
+            # Use a small, constant number for schema inference to avoid
+            # performance issues
             sample_parallelism = min(
                 3, max(1, self.parallelism if self.parallelism > 0 else 1)
             )
             read_tasks = self.datasource.get_read_tasks(sample_parallelism)
-        except Exception:
+
+            if not read_tasks:
+                logger.warning("No read tasks available for schema inference")
+                empty_meta = BlockMetadata(None, None, None, None)
+                return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
+
+        except Exception as e:
+            logger.warning(f"Failed to get read tasks for schema inference: {e}")
+            # Fallback to empty schema
             empty_meta = BlockMetadata(None, None, None, None)
             return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
 
@@ -340,7 +365,8 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
             if meta.input_files is not None:
                 input_files.extend(meta.input_files)
 
-        # Create streaming metadata - note we use estimated_rows_per_batch, not total rows
+        # Create streaming metadata - note we use estimated_rows_per_batch,
+        # not total rows
         streaming_meta = BlockMetadata(
             num_rows=estimated_rows_per_batch,
             size_bytes=size_bytes,
