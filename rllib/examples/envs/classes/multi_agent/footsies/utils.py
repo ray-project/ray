@@ -192,9 +192,7 @@ class WinratesCallback(RLlibCallback):
 
             # in case that all beginner RL Modules are already in the mix (together with the main policy),
             # we will add a new RL Module by taking main policy and adding an instance of it to the mix
-            if set(self.modules_in_mix) == set(
-                self.beginner_modules_progression_sequence
-            ).add(self.main_policy):
+            if set(self.modules_in_mix) == set(self.beginner_modules_progression_sequence).union([self.main_policy]):
                 new_module_id = f"{self.main_policy}_v{self._trained_policy_idx}"
                 self._trained_policy_idx += 1
 
