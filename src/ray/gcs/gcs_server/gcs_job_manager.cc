@@ -487,7 +487,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::RecordMetrics() {
