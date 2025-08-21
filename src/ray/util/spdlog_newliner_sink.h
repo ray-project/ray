@@ -24,7 +24,6 @@
 
 #include "absl/strings/str_split.h"
 #include "ray/util/compat.h"
-#include "ray/util/util.h"
 
 namespace ray {
 

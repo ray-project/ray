@@ -56,5 +56,8 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/util:network_util",
+        "//src/ray/util:process",
+        "//src/ray/util:time",
     ],
 )

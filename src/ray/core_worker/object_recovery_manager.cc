@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/util/util.h"
-
 namespace ray {
 namespace core {
 

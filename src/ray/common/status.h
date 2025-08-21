@@ -35,6 +35,7 @@
 #include "absl/strings/str_cat.h"
 #include "ray/common/macros.h"
 #include "ray/common/source_location.h"
+#include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 

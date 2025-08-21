@@ -9,6 +9,7 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/ipc:client_connection",
+        "//src/ray/util:network_util",
         "@boost//:asio",
         "@com_google_googletest//:gtest_main",
     ],

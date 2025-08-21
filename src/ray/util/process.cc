@@ -767,6 +767,11 @@ std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid) {
 #endif
 }
 
+void QuickExit() {
+  ray::RayLog::ShutDownRayLog();
+  _Exit(1);
+}
+
 }  // namespace ray
 
 namespace std {

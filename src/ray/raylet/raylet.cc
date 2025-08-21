@@ -29,7 +29,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
 
 namespace {
 

@@ -5,6 +5,7 @@ ray_cc_test(
     srcs = ["fallback_allocator_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:id",
         "//src/ray/object_manager/plasma:plasma_allocator",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
