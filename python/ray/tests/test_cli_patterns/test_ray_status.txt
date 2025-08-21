@@ -18,6 +18,6 @@ Total Usage:
  0.+
 
 From request_resources:
- \(no request_resources\(\)\)
+ \(none\)
 Pending Demands:
  \(no resource demands\)
