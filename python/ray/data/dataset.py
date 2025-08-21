@@ -1539,7 +1539,7 @@ class Dataset:
         Args:
             num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. This repartitions the dataset without shuffling.
+                repartition. Performs streaming repartitioning of the dataset (no shuffling).
                 Note that either `num_blocks` or
                 `target_num_rows_per_block` must be set, but not both. When
                 `target_num_rows_per_block` is set, it only repartitions
