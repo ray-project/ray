@@ -179,11 +179,11 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     elif isinstance(obj, (Sequence, set)):
         # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
         res = []
-        for v in obj:
-            res.append(sanitize_for_struct(v, truncate_length))
-            if len(res) >= truncate_length:
+        for i, v in enumerate(obj):
+            if i >= truncate_length:
                 res.append("...")
                 break
+            res.append(sanitize_for_struct(v, truncate_length))
         return res
     else:
         try:
