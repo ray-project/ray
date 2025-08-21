@@ -215,10 +215,14 @@ class _DeploymentHandleBase:
     def shutdown(self):
         if self._router:
             shutdown_future = self._router.shutdown()
-            # Synchronosly shutting down a router that's running in the same event
-            # loop is only best effort to avoid deadlock.
             if self._is_router_running_in_separate_loop():
                 shutdown_future.result()
+            else:
+                logger.warning(
+                    "Synchronously shutting down a router that's running in the same "
+                    "event loop can only be done best effort. Please use "
+                    "`shutdown_async` instead."
+                )
 
     async def shutdown_async(self):
         if self._router:
