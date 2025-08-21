@@ -47,18 +47,17 @@ using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  bool Subscribe(
+  void Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
-      const rpc::ChannelType channel_type,
+      rpc::ChannelType channel_type,
       const rpc::Address &owner_address,
-      const std::string &key_id_binary,
+      const std::optional<std::string> &key_id_binary,
       pubsub::SubscribeDoneCallback subscribe_done_callback,
       pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
     callbacks[worker_id].push_back(
-        std::make_pair(ObjectID::FromBinary(key_id_binary), subscription_callback));
-    return true;
+        std::make_pair(ObjectID::FromBinary(*key_id_binary), subscription_callback));
   }
 
   bool PublishObjectEviction(WorkerID worker_id = WorkerID::Nil()) {
@@ -87,25 +86,13 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
-  MOCK_METHOD6(SubscribeChannel,
-               bool(std::unique_ptr<rpc::SubMessage> sub_message,
-                    const rpc::ChannelType channel_type,
-                    const rpc::Address &owner_address,
-                    pubsub::SubscribeDoneCallback subscribe_done_callback,
-                    pubsub::SubscriptionItemCallback subscription_callback,
-                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
-
   MOCK_METHOD3(Unsubscribe,
-               bool(const rpc::ChannelType channel_type,
+               bool(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
-                    const std::string &key_id_binary));
-
-  MOCK_METHOD2(UnsubscribeChannel,
-               bool(const rpc::ChannelType channel_type,
-                    const rpc::Address &publisher_address));
+                    const std::optional<std::string> &key_id_binary));
 
   MOCK_CONST_METHOD3(IsSubscribed,
-                     bool(const rpc::ChannelType channel_type,
+                     bool(rpc::ChannelType channel_type,
                           const rpc::Address &publisher_address,
                           const std::string &key_id_binary));
 
@@ -459,7 +446,9 @@ TEST_F(LocalObjectManagerTest, TestPin) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
@@ -945,7 +934,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -995,7 +986,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
 
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -1054,7 +1047,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -1068,7 +1063,10 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // The last reference is deleted.
   EXPECT_CALL(*subscriber_,
-              Unsubscribe(_, _, object_ids[free_objects_batch_size - 1].Binary()));
+              Unsubscribe(_,
+                          _,
+                          std::make_optional<std::string>(
+                              object_ids[free_objects_batch_size - 1].Binary())));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -1136,7 +1134,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
 
   // Every object has gone out of scope.
   for (size_t i = 0; i < spilled_urls_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   // Now, deletion queue would process only the first spill set. Everything else won't be
@@ -1204,7 +1204,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
 
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -1256,7 +1258,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   ASSERT_EQ(GetCurrentSpilledCount(), object_ids_to_spill.size());
   ASSERT_EQ(GetCurrentSpilledBytes(), object_size * object_ids_to_spill.size());
 
-  EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[0].Binary()));
+  EXPECT_CALL(*subscriber_,
+              Unsubscribe(_, _, std::make_optional<std::string>(object_ids[0].Binary())));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   // Delete operation is called. In this case, the file with the url should not be
   // deleted.
@@ -1270,7 +1273,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
 
   // Everything else is now deleted.
   for (size_t i = 1; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -1337,7 +1342,9 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePin) {
   auto owner_id1 = WorkerID::FromBinary(owner_address.worker_id());
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
@@ -1378,7 +1385,9 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
   auto owner_id1 = WorkerID::FromBinary(owner_address.worker_id());
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
@@ -1604,7 +1613,9 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
 
   // Delete all (spilled) objects.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -1666,7 +1677,9 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
 
   // Delete all objects while they're being spilled.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -1737,7 +1750,9 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
 
   // Delete all objects while allocating an IO worker.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(
+        *subscriber_,
+        Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
