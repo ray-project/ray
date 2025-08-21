@@ -1630,7 +1630,7 @@ class Dataset:
                 raise ValueError(
                     f"`target_num_bytes_per_block` must be positive, got {target_num_bytes_per_block}"
                 )
-                    # Warn if target is very small (less than 1KB)
+                # Warn if target is very small (less than 1KB)
         if target_num_bytes_per_block < self._MIN_BYTES_PER_ROW_FALLBACK:
             warnings.warn(
                 f"`target_num_bytes_per_block` is very small ({target_num_bytes_per_block} bytes). "
@@ -1638,10 +1638,10 @@ class Dataset:
             )
         # Warn if target is very large (more than 1GB)
         elif target_num_bytes_per_block > self._MAX_TARGET_BYTES_WARNING:
-                warnings.warn(
-                    f"`target_num_bytes_per_block` is very large ({target_num_bytes_per_block} bytes). "
-                    "Large blocks may cause memory issues and slower processing."
-                )
+            warnings.warn(
+                f"`target_num_bytes_per_block` is very large ({target_num_bytes_per_block} bytes). "
+                "Large blocks may cause memory issues and slower processing."
+            )
 
         # 2. Set default target parameter if none specified (Apache Spark style)
         target_params = [
@@ -1788,7 +1788,9 @@ class Dataset:
             target_num_bytes_per_block = self._MIN_BYTES_PER_ROW_FALLBACK
 
         # Conservative fallback estimate (1KB per row)
-        fallback_rows_per_block = max(1, target_num_bytes_per_block // self._MIN_BYTES_PER_ROW_FALLBACK)
+        fallback_rows_per_block = max(
+            1, target_num_bytes_per_block // self._MIN_BYTES_PER_ROW_FALLBACK
+        )
 
         try:
             # Get block metadata directly from the plan execution
@@ -1819,7 +1821,9 @@ class Dataset:
                     valid_samples += 1
 
                     # Early termination if we have enough samples
-                    if valid_samples >= self._MIN_SAMPLES_FOR_ACCURACY:  # Minimum 3 samples for accuracy
+                    if (
+                        valid_samples >= self._MIN_SAMPLES_FOR_ACCURACY
+                    ):  # Minimum 3 samples for accuracy
                         break
 
             if valid_samples > 0 and total_rows > 0:
@@ -1828,7 +1832,7 @@ class Dataset:
 
                 # Check if individual rows are larger than target block size
                 if actual_bytes_per_row > target_num_bytes_per_block:
-                    suggested_size = int(actual_bytes_per_row * 1.5 // (1024*1024))
+                    suggested_size = int(actual_bytes_per_row * 1.5 // (1024 * 1024))
                     warnings.warn(
                         f"Individual rows ({actual_bytes_per_row:.0f} bytes on average) are larger than "
                         f"target_num_bytes_per_block ({target_num_bytes_per_block} bytes). "
@@ -1867,10 +1871,10 @@ class Dataset:
         # Input validation and sanitization
         if not isinstance(size_str, str):
             raise TypeError(f"Expected string, got {type(size_str).__name__}")
-        
+
         if not size_str:
             raise ValueError("Size string cannot be empty")
-        
+
         # Convert to lowercase and remove whitespace
         size_str = size_str.lower().strip()
 
