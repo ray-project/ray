@@ -51,6 +51,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "metrics_agent_client",
+    srcs = ["metrics_agent_client.cc"],
     hdrs = ["metrics_agent_client.h"],
     visibility = ["//visibility:public"],
     deps = [
