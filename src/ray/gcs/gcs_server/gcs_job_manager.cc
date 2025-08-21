@@ -171,7 +171,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  gcs_table_storage_.JobTable().Put(job_id, job_table_data, {std::move(on_done), io_context_});
+  gcs_table_storage_.JobTable().Put(
+      job_id, job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
