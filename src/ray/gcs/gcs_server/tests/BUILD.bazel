@@ -112,7 +112,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_fakes",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:node_manager",
