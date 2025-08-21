@@ -136,18 +136,23 @@ def _fill_column(column: pa.Array, fill_value: Any) -> pa.Array:
             fill_array = pa.array([fill_value] * len(column))
             return fill_array
 
-        # For regular columns, try to create a scalar with the column's type
-        try:
+        # For string columns, ensure the fill value is converted to string
+        if pa.types.is_string(column.type):
+            fill_value = str(fill_value)
             fill_scalar = pa.scalar(fill_value, type=column.type)
-        except (pa.ArrowInvalid, pa.ArrowTypeError):
-            # If type conversion fails, let PyArrow handle it by inferring from value
-            fill_scalar = pa.scalar(fill_value)
-            # Try to cast to column type, but if it fails, PyArrow will handle the type promotion
+        else:
+            # For regular columns, try to create a scalar with the column's type
             try:
-                fill_scalar = fill_scalar.cast(column.type)
-            except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
-                # If casting fails, use the inferred type
-                pass
+                fill_scalar = pa.scalar(fill_value, type=column.type)
+            except (pa.ArrowInvalid, pa.ArrowTypeError):
+                # If type conversion fails, let PyArrow handle it by inferring from value
+                fill_scalar = pa.scalar(fill_value)
+                # Try to cast to column type, but if it fails, PyArrow will handle the type promotion
+                try:
+                    fill_scalar = fill_scalar.cast(column.type)
+                except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
+                    # If casting fails, use the inferred type
+                    pass
 
         # Use PyArrow's fill_null to handle null values
         filled_column = pc.fill_null(column, fill_scalar)
