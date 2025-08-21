@@ -402,16 +402,15 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
 
   gcs_table_storage_.PlacementGroupTable().Put(
-    placement_group_id,
-    placement_group->GetPlacementGroupTableData(),
-    {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
-         const ray::Status &status) {
-       RAY_CHECK_OK(status);
-       CommitAllBundles(lease_status_tracker,
-                        schedule_failure_handler,
-                        schedule_success_handler);
-     },
-     io_context_});
+      placement_group_id,
+      placement_group->GetPlacementGroupTableData(),
+      {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
+           const ray::Status &status) {
+         RAY_CHECK_OK(status);
+         CommitAllBundles(
+             lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+       },
+       io_context_});
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(

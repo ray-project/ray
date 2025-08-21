@@ -90,11 +90,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
           .WithField("node_address", node_info.node_manager_address())
       << "Registering new node.";
 
-  auto on_done = [this,
-                  node_id,
-                  node_info_copy = node_info,
-                  reply,
-                  send_reply_callback](const Status &status) mutable {
+  auto on_done = [this, node_id, node_info_copy = node_info, reply, send_reply_callback](
+                     const Status &status) mutable {
     RAY_CHECK_OK(status) << "Failed to register node '" << node_id << "'.";
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
     AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
@@ -508,8 +505,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
-    gcs_table_storage_->NodeTable().Delete(
-        node_id, {[](const auto &) {}, io_context_});
+    gcs_table_storage_->NodeTable().Delete(node_id, {[](const auto &) {}, io_context_});
     dead_nodes_.erase(sorted_dead_node_list_.front().first);
     sorted_dead_node_list_.pop_front();
   }
