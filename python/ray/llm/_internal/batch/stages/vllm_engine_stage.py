@@ -462,7 +462,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        exclude_safetensors = self.engine_kwargs.get("load_format") == "runai_streamer"
+        exclude_safetensors = self.engine_kwargs.get("load_format") in [
+            "runai_streamer",
+            "tensorizer",
+        ]
         if exclude_safetensors:
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
