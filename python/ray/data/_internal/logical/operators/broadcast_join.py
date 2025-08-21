@@ -35,6 +35,18 @@ class BroadcastJoinFunction:
     Examples:
         .. testcode::
 
+            # Create sample datasets for demonstration
+            import ray
+            from ray.data import from_items
+
+            # Create small dataset (will be broadcasted)
+            small_data = [{"id": i, "name": f"item_{i}"} for i in range(3)]
+            small_ds = from_items(small_data)
+
+            # Create large dataset
+            large_data = [{"id": i, "value": f"val_{i}"} for i in range(10)]
+            large_ds = from_items(large_data)
+
             # Create a broadcast join function
             join_fn = BroadcastJoinFunction(
                 small_table_dataset=small_ds,

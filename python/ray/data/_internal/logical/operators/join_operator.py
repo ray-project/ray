@@ -43,6 +43,18 @@ class Join(NAry):
     Examples:
         .. testcode::
 
+            # Create sample datasets for demonstration
+            import ray
+            from ray.data import from_items
+
+            # Create left dataset
+            left_data = [{"id": i, "value": f"left_{i}"} for i in range(5)]
+            left_dataset = from_items(left_data)
+
+            # Create right dataset
+            right_data = [{"id": i, "value": f"right_{i}"} for i in range(3, 8)]
+            right_dataset = from_items(right_data)
+
             # Create a join operator for inner join
             join_op = Join(
                 left_input_op=left_dataset._logical_plan.dag,

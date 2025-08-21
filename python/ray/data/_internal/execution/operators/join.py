@@ -239,6 +239,23 @@ class JoinOperator(HashShufflingOperatorBase):
     Examples:
         .. testcode::
 
+            # Create sample datasets for demonstration
+            import ray
+            from ray.data import from_items
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            # Create left dataset
+            left_data = [{"id": i, "value": f"left_{i}"} for i in range(5)]
+            left_ds = from_items(left_data)
+
+            # Create right dataset
+            right_data = [{"id": i, "value": f"right_{i}"} for i in range(3, 8)]
+            right_ds = from_items(right_data)
+
+            # Get physical operators from the datasets
+            left_physical_op = left_ds._physical_plan.dag
+            right_physical_op = right_ds._physical_plan.dag
+
             # Create a join operator
             join_op = JoinOperator(
                 data_context=DataContext.get_current(),
