@@ -250,7 +250,21 @@ def format_table(table):
     default=2000,
     help="Max entries to fetch per resource (default: 2000).",
 )
-def top(address: str, refresh: float, show: str, limit: int):
+@click.option(
+    "--sort",
+    type=click.Choice(["cpu", "mem", "obj", "latency"]),
+    default="cpu",
+    help="Sort node table (cpu implemented; others are placeholders).",
+)
+@click.option(
+    "--node-regex",
+    type=str,
+    default=None,
+    help="Regex to filter nodes by IP or name.",
+)
+def top(
+    address: str, refresh: float, show: str, limit: int, sort: str, node_regex: str
+):
     """Lightweight terminal snapshot for cluster state (experimental).
 
     Prints counts of nodes/tasks/actors and refreshes periodically.
@@ -276,6 +290,7 @@ def top(address: str, refresh: float, show: str, limit: int):
 
     import sys
     import time as _time
+    import re
 
     try:
         while True:
@@ -298,18 +313,97 @@ def top(address: str, refresh: float, show: str, limit: int):
                     options=ListApiOptions(timeout=DEFAULT_RPC_TIMEOUT, limit=limit),
                     raise_on_missing_output=False,
                 )
+            # Optional: get object summary (best-effort)
+            total_objects = None
+            try:
+                from ray.util.state.common import SummaryResource, SummaryApiOptions
+
+                obj_summary = client.summary(
+                    SummaryResource.OBJECTS,
+                    options=SummaryApiOptions(timeout=DEFAULT_RPC_TIMEOUT),
+                    raise_on_missing_output=False,
+                )
+                # obj_summary is node_id->summary; just display presence
+                total_objects = sum(1 for _ in obj_summary)
+            except Exception:
+                total_objects = None
 
             node_dicts = _to_dicts(nodes)
+            # Filter by node regex
+            if node_regex:
+                r = re.compile(node_regex)
+                node_dicts = [
+                    n
+                    for n in node_dicts
+                    if r.search(n.get("node_ip", n.get("node_name", "")) or "")
+                ]
             live_nodes = sum(
                 1 for n in node_dicts if str(n.get("state", "")).upper() == "ALIVE"
             )
 
+            # Build per-node rows
+            def _res_total(n, key):
+                res = n.get("resources_total") or {}
+                return float(res.get(key, 0)) if isinstance(res, dict) else 0.0
+
+            rows = []
+            for n in node_dicts:
+                rows.append(
+                    {
+                        "node_ip": n.get("node_ip"),
+                        "node_name": n.get("node_name"),
+                        "is_head": bool(n.get("is_head_node")),
+                        "state": str(n.get("state", "")),
+                        "cpu": _res_total(n, "CPU"),
+                        "gpu": _res_total(n, "GPU"),
+                    }
+                )
+
+            if sort == "cpu":
+                rows.sort(key=lambda r: r["cpu"], reverse=True)
+
             # Clear screen and print a compact summary.
             sys.stdout.write("\x1b[2J\x1b[H")
             print("ray top (experimental) — Ctrl+C to exit")
-            print(
-                f"Nodes: {len(node_dicts)} (live: {live_nodes})  Tasks: {len(tasks)}  Actors: {len(actors)}"
+            # Cluster summary
+            t_by_state = {}
+            for t in _to_dicts(tasks):
+                st = str(t.get("state", "")).upper()
+                t_by_state[st] = t_by_state.get(st, 0) + 1
+            a_by_state = {}
+            for a in _to_dicts(actors):
+                st = str(a.get("state", "")).upper()
+                a_by_state[st] = a_by_state.get(st, 0) + 1
+
+            line = (
+                f"Nodes: {len(node_dicts)} (live: {live_nodes})  "
+                f"Tasks: RUNNING={t_by_state.get('RUNNING',0)} PENDING={t_by_state.get('PENDING',0)} FAILED={t_by_state.get('FAILED',0)}  "
+                f"Actors: ALIVE={a_by_state.get('ALIVE',0)} RESTARTING={a_by_state.get('RESTARTING',0)} DEAD={a_by_state.get('DEAD',0)}"
             )
+            print(line)
+            if total_objects is not None:
+                print(f"Objects (summary): nodes_reporting={total_objects}")
+
+            # Per-node table
+            header = ["IP/NAME", "HEAD", "STATE", "CPU(total)", "GPU(total)"]
+            print(
+                " ".join(
+                    [
+                        header[0].ljust(18),
+                        header[1].ljust(6),
+                        header[2].ljust(8),
+                        header[3].rjust(12),
+                        header[4].rjust(12),
+                    ]
+                )
+            )
+            for r in rows:
+                name = r["node_ip"] or (r.get("node_name") or "-")
+                head = "Y" if r["is_head"] else "-"
+                state = r["state"]
+                print(
+                    f"{str(name)[:18].ljust(18)} {head.ljust(6)} {state.ljust(8)} {str(int(r['cpu'])):>12} {str(int(r['gpu'])):>12}"
+                )
             _time.sleep(max(0.1, float(refresh)))
     except KeyboardInterrupt:
         return
