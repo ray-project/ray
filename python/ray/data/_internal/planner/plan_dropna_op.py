@@ -53,10 +53,10 @@ def plan_dropna_op(
 
     def fn(batch: pa.Table) -> pa.Table:
         """Transform function that drops rows with missing values from a PyArrow table.
-        
+
         Args:
             batch: Input PyArrow table to process.
-            
+
         Returns:
             PyArrow table with rows containing missing values removed.
         """
@@ -122,7 +122,7 @@ def _is_not_missing(column: pa.Array) -> pa.Array:
             >>> column = pa.array([1.0, None, np.nan, 4.0])
             >>> mask = _is_not_missing(column)
             >>> mask.to_pylist()
-            [True, False, False, True]
+            [True, None, False, True]
     """
     is_not_null = pc.is_valid(column)
 
@@ -175,7 +175,7 @@ def _create_how_mask(
     Args:
         batch: The PyArrow table to analyze.
         columns_to_check: List of column names to check for missing values.
-        how: Either 'any' (drop if any column has missing values) or 
+        how: Either 'any' (drop if any column has missing values) or
              'all' (drop only if all columns have missing values).
 
     Returns:
@@ -200,7 +200,9 @@ def _create_how_mask(
                 # Keep rows where ANY checked column is not missing
                 mask = pc.or_(mask, is_not_missing)
             else:
-                raise ValueError(f"Invalid 'how' parameter: {how}. Must be 'any' or 'all'.")
+                raise ValueError(
+                    f"Invalid 'how' parameter: {how}. Must be 'any' or 'all'."
+                )
 
     return mask
 

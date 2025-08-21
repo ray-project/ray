@@ -9,6 +9,10 @@ from ray.data.tests.conftest import *  # noqa
 
 def test_fillna_scalar_value():
     """Test fillna with scalar value fills all missing values."""
+    # Set preserve_order to True to ensure consistent row ordering
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
     ds = ray.data.from_items(
         [
             {"a": 1, "b": 2.0, "c": "x"},
@@ -33,6 +37,10 @@ def test_fillna_scalar_value():
 
 def test_fillna_dict_values():
     """Test fillna with dictionary values for column-specific filling."""
+    # Set preserve_order to True to ensure consistent row ordering
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
     ds = ray.data.from_items(
         [
             {"a": 1, "b": 2.0, "c": "x"},
@@ -57,6 +65,10 @@ def test_fillna_dict_values():
 
 def test_fillna_with_subset():
     """Test fillna with subset parameter to fill only specified columns."""
+    # Set preserve_order to True to ensure consistent row ordering
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
     ds = ray.data.from_items(
         [
             {"a": 1, "b": 2.0, "c": "x"},
@@ -98,6 +110,10 @@ def test_fillna_empty_dataset():
 
 def test_fillna_no_missing_values():
     """Test fillna on dataset with no missing values."""
+    # Set preserve_order to True to ensure consistent row ordering
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
     ds = ray.data.from_items(
         [
             {"a": 1, "b": 2.0, "c": "x"},
@@ -120,6 +136,10 @@ def test_fillna_no_missing_values():
 
 def test_fillna_different_dtypes():
     """Test fillna with different data types."""
+    # Set preserve_order to True to ensure consistent row ordering
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
     ds = ray.data.from_items(
         [
             {"int_col": 1, "float_col": 1.5, "str_col": "a", "bool_col": True},

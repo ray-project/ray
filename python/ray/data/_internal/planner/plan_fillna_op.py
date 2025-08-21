@@ -52,10 +52,10 @@ def plan_fillna_op(
 
     def fn(batch: pa.Table) -> pa.Table:
         """Transform function that fills missing values in a PyArrow table.
-        
+
         Args:
             batch: Input PyArrow table to process.
-            
+
         Returns:
             PyArrow table with missing values filled.
         """

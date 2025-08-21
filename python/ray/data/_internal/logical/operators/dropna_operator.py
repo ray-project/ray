@@ -14,24 +14,18 @@ from ray.data._internal.logical.operators.map_operator import AbstractMap
 
 class DropNa(AbstractMap):
     """Logical operator for dropna operation.
-    
+
     This operator represents the logical intent to remove rows containing
     missing values (null/None/NaN) from a dataset based on specified criteria.
-    
+
     Examples:
-        .. testcode::
-        
-            # Drop rows with any missing values
-            dropna_op = DropNa(input_op, how="any")
-            
-            # Drop rows only if all values are missing
-            dropna_op = DropNa(input_op, how="all")
-            
-            # Drop rows with missing values in specific columns
-            dropna_op = DropNa(input_op, subset=["col1", "col2"])
-            
-            # Keep rows with at least 2 non-missing values
-            dropna_op = DropNa(input_op, thresh=2)
+        This operator is used internally by Ray Data's dropna() method.
+
+        Typical usage:
+        - Drop rows with any missing values: DropNa(input_op, how="any")
+        - Drop rows only if all values are missing: DropNa(input_op, how="all")
+        - Drop rows with missing values in specific columns: DropNa(input_op, subset=["col1", "col2"])
+        - Keep rows with at least N non-missing values: DropNa(input_op, thresh=2)
 
     Args:
         input_op: The input logical operator.
@@ -69,9 +63,9 @@ class DropNa(AbstractMap):
     @property
     def how(self) -> str:
         """The strategy for determining which rows to drop.
-        
+
         Returns:
-            Either 'any' (drop if any column has missing values) or 
+            Either 'any' (drop if any column has missing values) or
             'all' (drop only if all columns have missing values).
         """
         return self._how
@@ -79,7 +73,7 @@ class DropNa(AbstractMap):
     @property
     def subset(self) -> Optional[List[str]]:
         """The subset of columns to consider for missing values.
-        
+
         Returns:
             List of column names, or None if all columns should be considered.
         """
@@ -88,7 +82,7 @@ class DropNa(AbstractMap):
     @property
     def thresh(self) -> Optional[int]:
         """The minimum number of non-missing values required to keep a row.
-        
+
         Returns:
             Integer threshold, or None if not using threshold-based dropping.
         """
@@ -96,7 +90,7 @@ class DropNa(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         """Check if this operator can modify the number of rows.
-        
+
         Returns:
             True, as dropna operations can remove rows from the dataset.
         """
