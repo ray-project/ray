@@ -685,7 +685,7 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     import ray.util.accelerators
 
     v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
-    # v100_resource_name = f"accelerator_type:{"V100"}"
+    # v100_resource_name = "accelerator_type:V100"
     ray.init(num_gpus=4, resources={v100_resource_name: 1})
 
 .. testcode::
@@ -699,4 +699,9 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.get(train.remote(1))
 
-See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types. Or conveniently discover all accelerator types using ``print(ray.util.accelerators.types)``.
+See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types. You can also discover them programmatically. For a simple list of all type constants, use ``print(ray.util.accelerators.TYPES)``. For a categorized list, use the ``print_all`` method as shown below.
+
+.. testcode::
+
+    from ray.util.accelerators.types import types
+    # types.print_all() # Uncomment to see the output
