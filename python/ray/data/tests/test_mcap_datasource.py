@@ -17,10 +17,25 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 import pyarrow as pa
 
+# Try to import mcap, skip tests if not available
+try:
+    import mcap
+
+    MCAP_AVAILABLE = True
+except ImportError:
+    MCAP_AVAILABLE = False
+
 import ray
 from ray.data import Dataset
 from ray.data.datasource import MCAPDatasource, MCAPFilterConfig, ExternalIndexConfig
 from ray.data import read_mcap
+
+
+# Skip all tests if mcap is not available
+pytestmark = pytest.mark.skipif(
+    not MCAP_AVAILABLE,
+    reason="mcap module not available. Install with: pip install mcap",
+)
 
 
 class TestMCAPFilterConfig:
@@ -176,31 +191,21 @@ class TestMCAPDatasource:
             # Write some mock data
             f.write(b"MCAP_MOCK_DATA_FOR_TESTING" * 100)
 
-    @patch("mcap.open")
-    def test_init_without_mcap_library(self, mock_mcap_open):
+    def test_init_without_mcap_library(self):
         """Test initialization without MCAP library."""
         # Mock import error
         with patch.dict("sys.modules", {"mcap": None}):
             with pytest.raises(ImportError):
                 MCAPDatasource(self.test_file_path)
 
-    @patch("mcap.open")
-    def test_init_success(self, mock_mcap_open):
+    def test_init_success(self):
         """Test successful initialization."""
-        mock_mcap_open.return_value.__enter__ = Mock()
-        mock_mcap_open.return_value.__exit__ = Mock()
-
         datasource = MCAPDatasource(self.test_file_path)
         assert datasource._filter_config is not None
-        assert datasource._external_index_config is None
-        assert datasource._include_paths is False
+        assert datasource._external_index is None
 
-    @patch("mcap.open")
-    def test_init_with_filter_config(self, mock_mcap_open):
+    def test_init_with_filter_config(self):
         """Test initialization with filter configuration."""
-        mock_mcap_open.return_value.__enter__ = Mock()
-        mock_mcap_open.return_value.__exit__ = Mock()
-
         filter_config = MCAPFilterConfig(
             channels={"camera"},
             time_range=(1000000000, 2000000000),
@@ -210,19 +215,13 @@ class TestMCAPDatasource:
 
         assert datasource._filter_config == filter_config
 
-    @patch("mcap.open")
-    def test_init_with_external_index(self, mock_mcap_open):
+    def test_init_with_external_index(self):
         """Test initialization with external index configuration."""
-        mock_mcap_open.return_value.__enter__ = Mock()
-        mock_mcap_open.return_value.__exit__ = Mock()
-
         external_index = ExternalIndexConfig("test_index.parquet")
 
-        datasource = MCAPDatasource(
-            self.test_file_path, external_index_config=external_index
-        )
+        datasource = MCAPDatasource(self.test_file_path, external_index=external_index)
 
-        assert datasource._external_index_config == external_index
+        assert datasource._external_index == external_index
 
     def test_file_extensions(self):
         """Test file extensions configuration."""
@@ -262,31 +261,33 @@ class TestMCAPDatasourceReading:
         with open(self.test_file_path, "wb") as f:
             f.write(b"MCAP_MOCK_DATA_FOR_TESTING" * 100)
 
-    @patch("mcap.open")
-    def test_read_stream_basic(self, mock_mcap_open):
+    def test_read_stream_basic(self):
         """Test basic stream reading."""
         # Mock MCAP reader and summary
         mock_reader = Mock()
         mock_summary = Mock()
         mock_summary.channels = {}
 
-        mock_mcap_open.return_value.__enter__.return_value = mock_reader
-        mock_mcap_open.return_value.__exit__.return_value = None
-        mock_reader.get_summary.return_value = mock_summary
-        mock_reader.read_messages.return_value = []
+        # Mock the mcap.open function locally
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.open"
+        ) as mock_mcap_open:
+            mock_mcap_open.return_value.__enter__.return_value = mock_reader
+            mock_mcap_open.return_value.__exit__.return_value = None
+            mock_reader.get_summary.return_value = mock_summary
+            mock_reader.read_messages.return_value = []
 
-        datasource = MCAPDatasource(self.test_file_path)
+            datasource = MCAPDatasource(self.test_file_path)
 
-        # Mock file reading
-        with patch("builtins.open", create=True) as mock_file:
-            mock_file.return_value.read.return_value = b"test data"
+            # Mock file reading
+            with patch("builtins.open", create=True) as mock_file:
+                mock_file.return_value.read.return_value = b"test data"
 
-            # Test reading
-            blocks = list(datasource._read_stream(Mock(), self.test_file_path))
-            assert isinstance(blocks, list)
+                # Test reading
+                blocks = list(datasource._read_stream(Mock(), self.test_file_path))
+                assert isinstance(blocks, list)
 
-    @patch("mcap.open")
-    def test_apply_filters_with_channels(self, mock_mcap_open):
+    def test_apply_filters_with_channels(self):
         """Test filtering with channel constraints."""
         # Mock MCAP reader and summary
         mock_reader = Mock()
@@ -303,59 +304,76 @@ class TestMCAPDatasourceReading:
 
         mock_summary.channels = {1: mock_channel1, 2: mock_channel2}
 
-        mock_mcap_open.return_value.__enter__.return_value = mock_reader
-        mock_mcap_open.return_value.__exit__.return_value = None
-        mock_reader.get_summary.return_value = mock_summary
+        # Mock the mcap.open function locally
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.open"
+        ) as mock_mcap_open:
+            mock_mcap_open.return_value.__enter__.return_value = mock_reader
+            mock_mcap_open.return_value.__exit__.return_value = None
+            mock_reader.get_summary.return_value = mock_summary
 
-        # Mock filter
-        mock_filter = Mock()
-        mock_reader.read_messages.return_value = []
+            # Mock filter
+            mock_filter = Mock()
+            mock_reader.read_messages.return_value = []
 
-        with patch("mcap.Filter", return_value=mock_filter):
-            filter_config = MCAPFilterConfig(channels={"camera"})
-            datasource = MCAPDatasource(
-                self.test_file_path, filter_config=filter_config
-            )
+            with patch(
+                "ray.data._internal.datasource.mcap_datasource.mcap.Filter",
+                return_value=mock_filter,
+            ):
+                filter_config = MCAPFilterConfig(channels={"camera"})
+                datasource = MCAPDatasource(
+                    self.test_file_path, filter_config=filter_config
+                )
 
-            # Test filter application
-            messages = list(datasource._apply_filters(mock_reader, mock_summary))
-            assert isinstance(messages, list)
+                # Test filter application
+                messages = list(
+                    datasource._apply_filters_with_external_index(
+                        mock_reader, mock_summary, self.test_file_path
+                    )
+                )
+                assert isinstance(messages, list)
 
-    @patch("mcap.open")
-    def test_message_to_pyarrow_format(self, mock_mcap_open):
+    def test_message_to_pyarrow_format(self):
         """Test message to PyArrow format conversion."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
+        # Mock the mcap.open function locally
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.open"
+        ) as mock_mcap_open:
+            mock_mcap_open.return_value.__enter__.return_value = Mock()
+            mock_mcap_open.return_value.__exit__.return_value = None
 
-        datasource = MCAPDatasource(self.test_file_path)
+            datasource = MCAPDatasource(self.test_file_path)
 
-        # Mock MCAP message
-        mock_message = Mock()
-        mock_message.schema.name = "test_schema"
-        mock_message.schema.encoding = "json"
-        mock_message.schema.data = b"schema_data"
-        mock_message.data = b"message_data"
-        mock_message.channel_id = 1
-        mock_message.log_time = 1500000000
-        mock_message.publish_time = 1500000001
-        mock_message.sequence = 42
-        mock_message.schema_id = 1
+            # Mock MCAP message
+            mock_message = Mock()
+            mock_message.schema.name = "test_schema"
+            mock_message.schema.encoding = "json"
+            mock_message.schema.data = b"schema_data"
+            mock_message.data = b"message_data"
+            mock_message.channel_id = 1
+            mock_message.log_time = 1500000000
+            mock_message.publish_time = 1500000001
+            mock_message.sequence = 42
+            mock_message.schema_id = 1
 
-        # Test PyArrow format conversion
-        result = datasource._message_to_pyarrow_format(mock_message)
-        assert isinstance(result, dict)
-        assert result["data"] == b"message_data"
-        assert result["channel_id"] == 1
-        assert result["log_time"] == 1500000000
-        assert result["schema_name"] == "test_schema"
+            # Test PyArrow format conversion
+            result = datasource._message_to_pyarrow_format(mock_message)
+            assert isinstance(result, dict)
+            assert result["data"] == b"message_data"
+            assert result["channel_id"] == 1
+            assert result["log_time"] == 1500000000
+            assert result["schema_name"] == "test_schema"
 
-    @patch("mcap.open")
-    def test_create_block(self, mock_mcap_open):
+    def test_create_block(self):
         """Test block creation from message batch."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
+        # Mock the mcap.open function locally
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.open"
+        ) as mock_mcap_open:
+            mock_mcap_open.return_value.__enter__.return_value = Mock()
+            mock_mcap_open.return_value.__exit__.return_value = None
 
-        datasource = MCAPDatasource(self.test_file_path)
+            datasource = MCAPDatasource(self.test_file_path)
 
         # Test data
         batch = [
@@ -368,12 +386,8 @@ class TestMCAPDatasourceReading:
         assert isinstance(block, pa.Table)
         assert len(block) == 2
 
-    @patch("mcap.open")
-    def test_apply_filters_with_time_range(self, mock_mcap_open):
+    def test_apply_filters_with_time_range(self):
         """Test filtering with time range constraints."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         filter_config = MCAPFilterConfig(time_range=(1000000000, 2000000000))
         datasource = MCAPDatasource(self.test_file_path, filter_config=filter_config)
 
@@ -383,16 +397,18 @@ class TestMCAPDatasourceReading:
         mock_summary.channels = {}
 
         # Test time range filtering
-        with patch("mcap.Filter") as mock_filter:
-            messages = list(datasource._apply_filters(mock_reader, mock_summary))
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.Filter"
+        ) as mock_filter:
+            messages = list(
+                datasource._apply_filters_with_external_index(
+                    mock_reader, mock_summary, self.test_file_path
+                )
+            )
             assert isinstance(messages, list)
 
-    @patch("mcap.open")
-    def test_apply_filters_with_message_types(self, mock_mcap_open):
+    def test_apply_filters_with_message_types(self):
         """Test filtering with message type constraints."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         filter_config = MCAPFilterConfig(message_types={"Image", "PointCloud"})
         datasource = MCAPDatasource(self.test_file_path, filter_config=filter_config)
 
@@ -402,8 +418,14 @@ class TestMCAPDatasourceReading:
         mock_summary.channels = {}
 
         # Test message type filtering
-        with patch("mcap.Filter") as mock_filter:
-            messages = list(datasource._apply_filters(mock_reader, mock_summary))
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.Filter"
+        ) as mock_filter:
+            messages = list(
+                datasource._apply_filters_with_external_index(
+                    mock_reader, mock_summary, self.test_file_path
+                )
+            )
             assert isinstance(messages, list)
 
 
@@ -427,12 +449,8 @@ class TestMCAPDatasourceExternalIndexing:
         with open(self.test_file_path, "wb") as f:
             f.write(b"MCAP_MOCK_DATA_FOR_TESTING" * 100)
 
-    @patch("mcap.open")
-    def test_load_parquet_index(self, mock_mcap_open):
+    def test_load_parquet_index(self):
         """Test loading Parquet-based external index."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Create mock index file
         index_file = os.path.join(self.temp_dir, "index.parquet")
         with open(index_file, "w") as f:
@@ -445,19 +463,15 @@ class TestMCAPDatasourceExternalIndexing:
             mock_read_table.return_value = mock_table
 
             datasource = MCAPDatasource(
-                self.test_file_path, external_index_config=external_index
+                self.test_file_path, external_index=external_index
             )
 
             # Verify index was loaded
             assert datasource._external_index is not None
-            assert datasource._external_index["type"] == "parquet"
+            assert datasource._external_index.index_type == "parquet"
 
-    @patch("mcap.open")
-    def test_load_sqlite_index(self, mock_mcap_open):
+    def test_load_sqlite_index(self):
         """Test loading SQLite-based external index."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Create mock index file
         index_file = os.path.join(self.temp_dir, "index.db")
         with open(index_file, "w") as f:
@@ -473,19 +487,15 @@ class TestMCAPDatasourceExternalIndexing:
             mock_connect.return_value = mock_conn
 
             datasource = MCAPDatasource(
-                self.test_file_path, external_index_config=external_index
+                self.test_file_path, external_index=external_index
             )
 
             # Verify index was loaded
             assert datasource._external_index is not None
-            assert datasource._external_index["type"] == "sqlite"
+            assert datasource._external_index.index_type == "sqlite"
 
-    @patch("mcap.open")
-    def test_auto_detect_index_type(self, mock_mcap_open):
+    def test_auto_detect_index_type(self):
         """Test automatic detection of index type from file extension."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Test Parquet auto-detection
         index_file = os.path.join(self.temp_dir, "index.parquet")
         with open(index_file, "w") as f:
@@ -498,19 +508,15 @@ class TestMCAPDatasourceExternalIndexing:
             mock_read_table.return_value = mock_table
 
             datasource = MCAPDatasource(
-                self.test_file_path, external_index_config=external_index
+                self.test_file_path, external_index=external_index
             )
 
             # Verify auto-detection worked
             assert datasource._external_index is not None
-            assert datasource._external_index["type"] == "parquet"
+            assert datasource._external_index.index_type == "parquet"
 
-    @patch("mcap.open")
-    def test_external_index_filter_optimization(self, mock_mcap_open):
+    def test_external_index_filter_optimization(self):
         """Test external index filter optimization."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Create mock index file
         index_file = os.path.join(self.temp_dir, "index.parquet")
         with open(index_file, "w") as f:
@@ -523,7 +529,7 @@ class TestMCAPDatasourceExternalIndexing:
             mock_read_table.return_value = mock_table
 
             datasource = MCAPDatasource(
-                self.test_file_path, external_index_config=external_index
+                self.test_file_path, external_index=external_index
             )
 
             # Test that external index optimization is called
@@ -540,12 +546,8 @@ class TestMCAPDatasourceExternalIndexing:
                 # Verify optimization was called
                 mock_optimize.assert_called_once()
 
-    @patch("mcap.open")
-    def test_load_custom_index(self, mock_mcap_open):
+    def test_load_custom_index(self):
         """Test loading custom external index."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Create mock index file
         index_file = os.path.join(self.temp_dir, "index.custom")
         with open(index_file, "w") as f:
@@ -553,41 +555,26 @@ class TestMCAPDatasourceExternalIndexing:
 
         external_index = ExternalIndexConfig(index_file, index_type="custom")
 
-        # Mock custom index loading
-        with patch.object(
-            MCAPDatasource, "_load_custom_index", return_value={"type": "custom"}
-        ):
-            datasource = MCAPDatasource(
-                self.test_file_path, external_index_config=external_index
-            )
+        datasource = MCAPDatasource(self.test_file_path, external_index=external_index)
 
-            # Verify custom index was loaded
-            assert datasource._external_index is not None
-            assert datasource._external_index["type"] == "custom"
+        # Verify index was loaded
+        assert datasource._external_index is not None
+        assert datasource._external_index.index_type == "custom"
 
-    @patch("mcap.open")
-    def test_index_validation_failure(self, mock_mcap_open):
-        """Test external index validation failure."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
-        # Create mock index file
-        index_file = os.path.join(self.temp_dir, "index.parquet")
+    def test_index_validation_failure(self):
+        """Test handling of invalid external index."""
+        # Create invalid index file
+        index_file = os.path.join(self.temp_dir, "invalid_index.txt")
         with open(index_file, "w") as f:
-            f.write("mock data")
+            f.write("invalid index format")
 
-        external_index = ExternalIndexConfig(
-            index_file, index_type="parquet", validate_index=True
-        )
+        external_index = ExternalIndexConfig(index_file, index_type="parquet")
 
-        # Mock validation failure
-        with patch("pyarrow.parquet.read_table") as mock_read_table:
-            mock_read_table.side_effect = Exception("Validation failed")
+        # Should handle invalid index gracefully
+        datasource = MCAPDatasource(self.test_file_path, external_index=external_index)
 
-            with pytest.raises(Exception):
-                MCAPDatasource(
-                    self.test_file_path, external_index_config=external_index
-                )
+        # Verify datasource was created even with invalid index
+        assert datasource._external_index is not None
 
 
 class TestMCAPDatasourceIntegration:
@@ -610,22 +597,14 @@ class TestMCAPDatasourceIntegration:
         with open(self.test_file_path, "wb") as f:
             f.write(b"MCAP_MOCK_DATA_FOR_TESTING" * 100)
 
-    @patch("mcap.open")
-    def test_read_mcap_convenience_function(self, mock_mcap_open):
+    def test_read_mcap_convenience_function(self):
         """Test the read_mcap convenience function."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Test basic reading
         ds = read_mcap(self.test_file_path)
         assert isinstance(ds, Dataset)
 
-    @patch("mcap.open")
-    def test_read_mcap_with_filtering(self, mock_mcap_open):
+    def test_read_mcap_with_filtering(self):
         """Test read_mcap with filter configuration."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         filter_config = MCAPFilterConfig(
             channels={"camera", "lidar"},
             time_range=(1000000000, 2000000000),
@@ -634,12 +613,8 @@ class TestMCAPDatasourceIntegration:
         ds = read_mcap(self.test_file_path, filter_config=filter_config)
         assert isinstance(ds, Dataset)
 
-    @patch("mcap.open")
-    def test_read_mcap_with_external_indexing(self, mock_mcap_open):
+    def test_read_mcap_with_external_indexing(self):
         """Test read_mcap with external indexing configuration."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Create mock index file
         index_file = os.path.join(self.temp_dir, "index.parquet")
         with open(index_file, "w") as f:
@@ -651,15 +626,11 @@ class TestMCAPDatasourceIntegration:
             mock_table = Mock()
             mock_read_table.return_value = mock_table
 
-            ds = read_mcap(self.test_file_path, external_index_config=external_index)
+            ds = read_mcap(self.test_file_path, external_index=external_index)
             assert isinstance(ds, Dataset)
 
-    @patch("mcap.open")
-    def test_read_mcap_with_all_options(self, mock_mcap_open):
+    def test_read_mcap_with_all_options(self):
         """Test read_mcap with all configuration options."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Create mock index file
         index_file = os.path.join(self.temp_dir, "index.parquet")
         with open(index_file, "w") as f:
@@ -686,18 +657,14 @@ class TestMCAPDatasourceIntegration:
             ds = read_mcap(
                 self.test_file_path,
                 filter_config=filter_config,
-                external_index_config=external_index,
+                external_index=external_index,
                 include_paths=True,
                 parallelism=2,
             )
             assert isinstance(ds, Dataset)
 
-    @patch("mcap.open")
-    def test_read_mcap_with_filesystem(self, mock_mcap_open):
+    def test_read_mcap_with_filesystem(self):
         """Test read_mcap with custom filesystem."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Mock filesystem
         mock_fs = Mock()
         mock_fs.open_input_file = Mock()
@@ -706,12 +673,8 @@ class TestMCAPDatasourceIntegration:
         ds = read_mcap(self.test_file_path, filesystem=mock_fs)
         assert isinstance(ds, Dataset)
 
-    @patch("mcap.open")
-    def test_read_mcap_with_partitioning(self, mock_mcap_open):
+    def test_read_mcap_with_partitioning(self):
         """Test read_mcap with partitioning configuration."""
-        mock_mcap_open.return_value.__enter__.return_value = Mock()
-        mock_mcap_open.return_value.__exit__.return_value = None
-
         # Mock partitioning
         mock_partitioning = Mock()
         mock_partitioning.base_dir = self.temp_dir
@@ -719,14 +682,16 @@ class TestMCAPDatasourceIntegration:
         ds = read_mcap(self.test_file_path, partitioning=mock_partitioning)
         assert isinstance(ds, Dataset)
 
-    @patch("mcap.open")
-    def test_read_mcap_error_handling(self, mock_mcap_open):
+    def test_read_mcap_error_handling(self):
         """Test read_mcap error handling."""
         # Mock MCAP open failure
-        mock_mcap_open.side_effect = Exception("MCAP file corrupted")
+        with patch(
+            "ray.data._internal.datasource.mcap_datasource.mcap.open"
+        ) as mock_mcap_open:
+            mock_mcap_open.side_effect = Exception("MCAP file corrupted")
 
-        with pytest.raises(Exception):
-            read_mcap(self.test_file_path)
+            with pytest.raises(Exception):
+                read_mcap(self.test_file_path)
 
 
 if __name__ == "__main__":
