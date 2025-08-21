@@ -20,9 +20,9 @@ class BaseConnectorBackend(abc.ABC):
     def kv_transfer_config(self) -> Dict[str, Any]:
         engine_kwargs = self.llm_config.engine_kwargs
         kv_transfer_config = engine_kwargs.get("kv_transfer_config")
-        assert kv_transfer_config is not None, (
-            "In Connector backend, kv_transfer_config is not set"
-        )
+        assert (
+            kv_transfer_config is not None
+        ), "In Connector backend, kv_transfer_config is not set"
         return kv_transfer_config
 
     def _get_unique_suffix(self, len: int = 6) -> str:

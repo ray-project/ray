@@ -94,7 +94,7 @@ def build_dp_deployment(
         dp_size=dp_size, dp_size_per_node=dp_size_per_node
     )
     deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
-    if options_override: 
+    if options_override:
         deployment_options.update(options_override)
 
     return DPServer.as_deployment(deployment_options).bind(

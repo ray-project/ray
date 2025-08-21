@@ -1,34 +1,32 @@
 import os
 
-from ray.llm._internal.serve.deployments.llm.vllm import kv_transfer_backends
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.base import (
     BaseConnectorBackend,
 )
 
 
 class NixlConnectorBackend(BaseConnectorBackend):
-    
-    
     def _set_side_channel_port(self):
         from vllm import envs as vllm_envs, utils as vllm_utils
-        
+
         if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-            base_port: int = int(self.llm_config.experimental_configs.get(
-                "NIXL_SIDE_CHANNEL_PORT_BASE",
-                vllm_utils.get_open_port()
-            ))
-            # If dp_rank is set, we should use the 
+            base_port: int = int(
+                self.llm_config.experimental_configs.get(
+                    "NIXL_SIDE_CHANNEL_PORT_BASE", vllm_utils.get_open_port()
+                )
+            )
+            # If dp_rank is set, we should use the
             # base port + dp_rank as the side channel port
             dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank", 0)
             port = base_port + dp_rank
             os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-        
+
     def _set_side_channel_host(self):
         from vllm import envs as vllm_envs, utils as vllm_utils
-        
+
         if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
             os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
-        
+
     def setup(self) -> None:
         """Initialize the NIXL connector backend.
 
@@ -43,7 +41,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
             ValueError: If the current vLLM version doesn't support the required
                        NIXL environment variables.
         """
-        from vllm import envs as vllm_envs, utils as vllm_utils
+        from vllm import envs as vllm_envs
 
         if (
             "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
@@ -54,7 +52,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
                 "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
                 "that you are using an older version of vLLM."
             )
-         
+
         self._set_side_channel_port()
         self._set_side_channel_host()
 
