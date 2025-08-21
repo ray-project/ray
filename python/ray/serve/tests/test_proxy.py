@@ -16,6 +16,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.test_utils import (
     ping_grpc_healthz,
     ping_grpc_list_applications,
+    request_with_retries,
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2
@@ -222,6 +223,44 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensures Healthz method on the worker node is draining.
     ping_grpc_healthz(worker_node_channel, test_draining=True)
+
+
+def _kill_http_proxies():
+    http_proxies = ray.get(
+        serve.context._global_client._controller.get_proxies.remote()
+    )
+    for http_proxy in http_proxies.values():
+        ray.kill(http_proxy, no_restart=False)
+
+
+def test_http_proxy_failure(serve_instance):
+    @serve.deployment(name="proxy_failure")
+    def function(_):
+        return "hello1"
+
+    serve.run(function.bind())
+
+    assert request_with_retries(timeout=1.0).text == "hello1"
+
+    for _ in range(10):
+        response = request_with_retries(timeout=30)
+        assert response.text == "hello1"
+
+    _kill_http_proxies()
+
+    def function2(_):
+        return "hello2"
+
+    serve.run(function.options(func_or_class=function2).bind())
+
+    def check_new():
+        for _ in range(10):
+            response = request_with_retries(timeout=30)
+            if response.text != "hello2":
+                return False
+        return True
+
+    wait_for_condition(check_new)
 
 
 if __name__ == "__main__":
