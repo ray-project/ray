@@ -26,7 +26,6 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/asio/postable.h"
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -102,11 +101,6 @@ struct RedisClientOptions {
 
   // Whether to use TLS/SSL for the connection.
   bool enable_ssl = false;
-
-  // The interval between health checks to Redis.
-  // If a health check fails, the client will crash the process.
-  // Set to 0 to disable health checking.
-  uint64_t heartbeat_interval_ms = 1000;
 };
 
 // StoreClient using Redis as persistence backend.
@@ -140,7 +134,6 @@ class RedisStoreClient : public StoreClient {
   /// \param options The options for connecting to Redis.
   explicit RedisStoreClient(instrumented_io_context &io_service,
                             const RedisClientOptions &options);
-  ~RedisStoreClient();
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
@@ -179,11 +172,12 @@ class RedisStoreClient : public StoreClient {
                      const std::string &key,
                      Postable<void(bool)> callback) override;
 
- private:
   // Check if Redis is available.
   //
   // \param callback The callback that will be called with a Status. OK means healthy.
   void AsyncCheckHealth(Postable<void(Status)> callback);
+
+ private:
 
   /// \class RedisScanner
   ///
@@ -304,8 +298,6 @@ class RedisStoreClient : public StoreClient {
 
   // The following context writes everything to the primary shard.
   std::shared_ptr<RedisContext> primary_context_;
-
-  std::shared_ptr<PeriodicalRunner> periodic_health_check_runner_;
 
   absl::Mutex mu_;
 
