@@ -466,6 +466,7 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 HEALTHY_MESSAGE = "success"
 
 # If throughput optimized Ray Serve is enabled, set the following constants.
+# This should be at the end.
 RAY_SERVE_THROUGHPUT_OPT = get_env_bool("RAY_SERVE_THROUGHPUT_OPT", "0")
 if RAY_SERVE_THROUGHPUT_OPT:
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = False
