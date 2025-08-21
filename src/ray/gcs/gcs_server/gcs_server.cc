@@ -133,12 +133,12 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
-        [store_client] {
-          store_client->AsyncCheckHealth(
+        [redis_store_client] {
+          redis_store_client->AsyncCheckHealth(
               {[](const Status &status) {
                  RAY_CHECK_OK(status) << "Redis connection failed unexpectedly.";
                },
-               io_service_});
+               io_context});
         },
         RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
         "GCSServer.redis_health_check");
@@ -610,7 +610,7 @@ void GcsServer::InitKVManager() {
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(
-      std::move(std::make_unique<StoreClientInternalKV>(store_client)),
+      std::make_unique<StoreClientInternalKV>(store_client),
       config_.raylet_config_list,
       io_context);
 
