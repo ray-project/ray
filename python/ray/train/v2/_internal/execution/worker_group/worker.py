@@ -134,8 +134,19 @@ class RayTrainWorker:
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        def train_fn_that_waits_for_threads():
+            train_fn()
+            condition = get_train_context().max_uploads_condition
+            with condition:
+                condition.wait_for(
+                    lambda: len(get_train_context().ordered_checkpoint_upload_threads)
+                    == 0
+                )
+
         # Create and start the training thread.
-        get_train_context().execution_context.training_thread_runner.run(train_fn)
+        get_train_context().execution_context.training_thread_runner.run(
+            train_fn_that_waits_for_threads
+        )
 
     def get_metadata(self) -> ActorMetadata:
         return ActorMetadata(

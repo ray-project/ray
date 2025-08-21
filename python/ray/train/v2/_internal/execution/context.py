@@ -369,7 +369,6 @@ class TrainContext:
                     self.ordered_checkpoint_upload_threads[
                         current_report_attempt_number
                     ].start()
-                    self.max_uploads_condition.notify_all()
             else:
                 raise ValueError(
                     f"Invalid checkpoint upload mode: {checkpoint_upload_mode}"
