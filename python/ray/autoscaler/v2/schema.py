@@ -305,7 +305,8 @@ class IPPRStatus:
 
     def need_sync_with_raylet(self) -> bool:
         return (
-            self.resized_at is not None
+            self.raylet_id is not None
+            and self.resized_at is not None
             and self.resized_status is None
             and self.desired_cpu == self.current_cpu
             and self.desired_memory == self.current_memory

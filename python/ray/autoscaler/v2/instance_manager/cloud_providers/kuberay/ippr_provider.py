@@ -14,14 +14,12 @@ from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_LABEL_KEY_TYPE,
     KUBERAY_LABEL_KEY_KIND,
+    KUBERAY_KIND_HEAD,
+    KUBERAY_KIND_WORKER,
     IKubernetesHttpApiClient,
     replace_patch,
 )
 from ray.autoscaler._private.kuberay.utils import parse_quantity
-from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
-    KUBERAY_KIND_HEAD,
-    KUBERAY_KIND_WORKER,
-)
 from ray.autoscaler.v2.schema import (
     IPPRStatus,
     IPPRSpecs,
