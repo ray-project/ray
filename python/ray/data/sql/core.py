@@ -9,12 +9,12 @@ import logging
 import time
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
-import ray.data
-import ray.data.aggregate
 import sqlglot
-from ray.data import Dataset
 from sqlglot import exp
 
+import ray.data
+import ray.data.aggregate
+from ray.data import Dataset
 from ray.data.sql.config import DEFAULT_CONFIG, SQLConfig
 from ray.data.sql.exceptions import (
     ColumnNotFoundError,
@@ -101,7 +101,7 @@ class SQLValidator:
             SQLParseError: If the query structure is invalid.
         """
         # Check for unsupported statement types
-        if not isinstance(ast, tuple(cls.SUPPORTED_STATEMENTS)):
+        if not isinstance(ast, cls.SUPPORTED_STATEMENTS):
             statement_type = type(ast).__name__
             raise UnsupportedOperationError(
                 f"{statement_type} statements",
@@ -119,14 +119,14 @@ class SQLValidator:
     @classmethod
     def _check_unsupported_features(cls, ast: exp.Expression, query: str) -> None:
         """Check for unsupported features in the AST."""
-        for node in ast.find_all(cls.UNSUPPORTED_FEATURES.keys()):
-            feature_type = type(node)
-            feature_name = feature_type.__name__
-            suggestion = cls.UNSUPPORTED_FEATURES[feature_type]
+        for feature_type in cls.UNSUPPORTED_FEATURES:
+            for node in ast.find_all(feature_type):
+                feature_name = feature_type.__name__
+                suggestion = cls.UNSUPPORTED_FEATURES[feature_type]
 
-            raise UnsupportedOperationError(
-                f"{feature_name} operations", suggestion=suggestion, query=query
-            )
+                raise UnsupportedOperationError(
+                    f"{feature_name} operations", suggestion=suggestion, query=query
+                )
 
     @classmethod
     def _validate_select_statement(cls, stmt: exp.Select, query: str) -> None:
