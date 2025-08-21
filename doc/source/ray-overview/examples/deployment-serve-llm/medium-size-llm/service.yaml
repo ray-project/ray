@@ -7,4 +7,4 @@ working_dir: .
 cloud:
 applications:
 # Point to your app in your Python module
-- import_path: serve_my_llama_3_1_70b:app
+- import_path: serve_llama_3_1_70b:app

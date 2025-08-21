@@ -1,6 +1,5 @@
 # client_url_image.py
 from urllib.parse import urljoin
-import base64
 from openai import OpenAI
 
 api_key = "FAKE_KEY"

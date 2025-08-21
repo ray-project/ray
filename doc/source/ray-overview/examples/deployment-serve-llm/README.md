@@ -16,7 +16,7 @@ Deploy medium size models using tensor parallelism across 4—8 GPUs on a single
 
 ---
 
-**[Large size LLM deployment](#)**  
+**[Large size LLM deployment](https://github.com/anyscale/templates/tree/main/templates/ray_serve_llm/end-to-end-examples/gargantuan_model)**  
 Deploy massive models using pipeline parallelism across a multi-node cluster, such as Deepseek-R1 or Llama-Nemotron-253B.  
 
 ---
