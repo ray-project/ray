@@ -1140,11 +1140,11 @@ def test_custom_request_router_kwargs(serve_instance):
 @pytest.mark.asyncio
 async def test_shutdown_async():
     """Test shutdown_async() properly shuts down serve."""
-    
+
     @serve.deployment
     def hello():
         return "Hello"
-    
+
     serve.run(hello.bind())
 
     assert _get_global_client() is not None
