@@ -288,8 +288,8 @@ void NodeManager::RegisterGcs() {
         HandleUnexpectedWorkerFailure(
             WorkerID::FromBinary(worker_failure_data.worker_id()));
       };
-  gcs_client_.Workers().AsyncSubscribeToWorkerFailures(worker_failure_handler, nullptr);
-
+  RAY_CHECK_OK(gcs_client_.Workers().AsyncSubscribeToWorkerFailures(
+      worker_failure_handler, nullptr));
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
@@ -305,7 +305,7 @@ void NodeManager::RegisterGcs() {
       HandleJobFinished(job_id, job_data);
     }
   };
-  gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr);
+  RAY_CHECK_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
   periodical_runner_->RunFnPeriodically(
       [this] {
