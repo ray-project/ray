@@ -155,7 +155,7 @@ def test_case_expression_creation():
 
     # Test with different data types
     expr = case(
-        [(col("is_active") == True, lit(1)), (col("is_active") == False, lit(0))],
+        [(col("is_active"), lit(1)), (~col("is_active"), lit(0))],
         default=lit(-1),
     )
     assert len(expr.when_clauses) == 2
@@ -302,7 +302,7 @@ def test_when_api_equivalence():
         [
             ((col("age") > 50) & (col("income") > 100000), lit("High Net Worth")),
             (col("age") > 30, lit("Adult")),
-            (col("is_student") == True, lit("Student")),
+            (col("is_student"), lit("Student")),
         ],
         default=lit("Young"),
     )
@@ -310,7 +310,7 @@ def test_when_api_equivalence():
     when_expr = (
         when((col("age") > 50) & (col("income") > 100000), lit("High Net Worth"))
         .when(col("age") > 30, lit("Adult"))
-        .when(col("is_student") == True, lit("Student"))
+        .when(col("is_student"), lit("Student"))
         .otherwise(lit("Young"))
     )
 
@@ -353,7 +353,7 @@ def test_case_expression_edge_cases():
     expr = case(
         [
             (
-                (col("age") > 18) & (col("age") < 65) & (col("is_employed") == True),
+                (col("age") > 18) & (col("age") < 65) & (col("is_employed")),
                 lit("Working Age"),
             )
         ],
@@ -401,12 +401,12 @@ def test_when_expression_edge_cases():
     assert len(expr.when_clauses) == 4
 
     # Test with empty conditions (should work)
-    expr = when(col("always_true") == True, lit("Always")).otherwise(lit("Never"))
+    expr = when(col("always_true"), lit("Always")).otherwise(lit("Never"))
     assert len(expr.when_clauses) == 1
 
     # Test with complex nested conditions
     expr = when(
-        ((col("age") > 18) & (col("income") > 50000)) | (col("is_student") == True),
+        ((col("age") > 18) & (col("income") > 50000)) | (col("is_student")),
         lit("Eligible"),
     ).otherwise(lit("Not Eligible"))
     assert len(expr.when_clauses) == 1

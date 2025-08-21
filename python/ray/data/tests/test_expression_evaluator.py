@@ -394,11 +394,11 @@ def test_case_expression_with_complex_conditions():
     expr = case(
         [
             (
-                (col("age") > 50) & (col("is_student") == False),
+                (col("age") > 50) & (~col("is_student")),
                 lit("Elder Non-Student"),
             ),
             (col("age") > 30, lit("Adult")),
-            (col("is_student") == True, lit("Student")),
+            (col("is_student"), lit("Student")),
         ],
         default=lit("Other"),
     )
