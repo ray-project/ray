@@ -249,9 +249,9 @@ class TestModelConfig:
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
             resources_per_bundle={"XPU": 1},
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0, "XPU": 1}] + [
-            {"XPU": 1} for _ in range(5)
-        ]
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 0, "XPU": 1}
+        ] + [{"XPU": 1} for _ in range(5)]
 
     def test_engine_config_cached(self):
         """Test that the engine config is cached and not recreated when calling
