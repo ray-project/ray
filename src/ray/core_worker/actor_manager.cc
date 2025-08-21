@@ -298,7 +298,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
                 this,
                 std::placeholders::_1,
                 std::placeholders::_2);
-  gcs_client_->Actors().AsyncSubscribe(
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       actor_notification_callback,
       [this, actor_id, cached_actor_name](Status status) {
@@ -313,7 +313,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
             cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
           }
         }
-      });
+      }));
 }
 
 void ActorManager::MarkActorKilledOrOutOfScope(
