@@ -75,16 +75,9 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &ids);
 
-/// Convert a flatbuffer string to a std::string.
-///
-/// @param fbb Reference to the flatbuffer builder.
-/// @param string A flatbuffers string.
-/// @return The std::string version of the flatbuffer string.
-std::string string_from_flatbuf(const flatbuffers::String &string);
-
 template <typename ID>
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-                                                    ID id) {
+                                                    const ID &id) {
   return fbb.CreateString(reinterpret_cast<const char *>(id.Data()), id.Size());
 }
 
@@ -94,9 +87,10 @@ ID from_flatbuf(const flatbuffers::String &string) {
 }
 
 template <typename ID>
-const std::vector<ID> from_flatbuf(
+std::vector<ID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
   std::vector<ID> ids;
+  ids.reserve(vector.size());
   for (int64_t i = 0; i < vector.size(); i++) {
     ids.push_back(from_flatbuf<ID>(*vector.Get(i)));
   }
@@ -107,6 +101,7 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ID ids[], int64_t num_ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  results.reserve(num_ids);
   for (int64_t i = 0; i < num_ids; i++) {
     results.push_back(to_flatbuf(fbb, ids[i]));
   }
@@ -117,7 +112,8 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
-  for (auto id : ids) {
+  results.reserve(ids.size());
+  for (auto &id : ids) {
     results.push_back(to_flatbuf(fbb, id));
   }
   return fbb.CreateVector(results);
@@ -127,18 +123,11 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
-  for (auto id : ids) {
+  results.reserve(ids.size());
+  for (auto &id : ids) {
     results.push_back(to_flatbuf(fbb, id));
   }
   return fbb.CreateVector(results);
-}
-
-static inline ray::rpc::ObjectReference ObjectIdToRef(
-    const ray::ObjectID &object_id, const ray::rpc::Address owner_address) {
-  ray::rpc::ObjectReference ref;
-  ref.set_object_id(object_id.Binary());
-  ref.mutable_owner_address()->CopyFrom(owner_address);
-  return ref;
 }
 
 static inline ray::ObjectID ObjectRefToId(const ray::rpc::ObjectReference &object_ref) {
@@ -148,26 +137,9 @@ static inline ray::ObjectID ObjectRefToId(const ray::rpc::ObjectReference &objec
 static inline std::vector<ray::ObjectID> ObjectRefsToIds(
     const std::vector<ray::rpc::ObjectReference> &object_refs) {
   std::vector<ray::ObjectID> object_ids;
+  object_ids.reserve(object_refs.size());
   for (const auto &ref : object_refs) {
     object_ids.push_back(ObjectRefToId(ref));
   }
   return object_ids;
-}
-
-static inline ray::rpc::ActorTableData::ActorState StringToActorState(
-    const std::string &actor_state_name) {
-  if (actor_state_name == "DEPENDENCIES_UNREADY") {
-    return ray::rpc::ActorTableData::DEPENDENCIES_UNREADY;
-  } else if (actor_state_name == "PENDING_CREATION") {
-    return ray::rpc::ActorTableData::PENDING_CREATION;
-  } else if (actor_state_name == "ALIVE") {
-    return ray::rpc::ActorTableData::ALIVE;
-  } else if (actor_state_name == "RESTARTING") {
-    return ray::rpc::ActorTableData::RESTARTING;
-  } else if (actor_state_name == "DEAD") {
-    return ray::rpc::ActorTableData::DEAD;
-  } else {
-    RAY_CHECK(false) << "Invalid actor state name:" << actor_state_name;
-    return {};
-  }
 }
