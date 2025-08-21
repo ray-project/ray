@@ -31,7 +31,7 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
+      - tmp-raydepsets/llm/requirements_compiled.txt
     output: python/requirements_compiled_ray_test_${PYTHON_VERSION}_${CUDA_CODE}.txt
     operation: compile
 
