@@ -843,7 +843,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
-  // Test 1: Requesting a negative total clamps instead of failing
+  // Test 1: Best effort downsizing
   rpc::ResizeLocalResourceInstancesRequest request;
   rpc::ResizeLocalResourceInstancesReply reply;
 
@@ -863,7 +863,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_TRUE(callback_called);
 
   // Simulate resource usage by allocating task resources through the local resource
-  // manager: Use 6 out of 8 CPUs
+  // manager: Use 6 out of 8 CPUs and 2 are free.
   const absl::flat_hash_map<std::string, double> task_resources = {{"CPU", 6.0}};
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -872,7 +872,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
           task_resources, task_allocation);
   EXPECT_TRUE(allocation_success);
 
-  // Now try to downsize CPU to 4 (less than 6 in use). Should clamp to 6, not fail.
+  // Now request to downsize CPU to 4. Should clamp to 6.
   callback_called = false;
   (*request.mutable_resources())["CPU"] = 4.0;
   reply.Clear();
@@ -885,8 +885,8 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
         EXPECT_TRUE(s.ok());
       });
   EXPECT_TRUE(callback_called);
-  // Total CPU should be clamped to in-use (8 total, 6 used -> 2 available -> target 4
-  // means reduce by 4; clamped to reduce by available 2 -> new total 6)
+  // Total CPU should be clamped to 6 because there are only 2 CPUs available.
+  // It should resize from 8 to 6 instead of resizing to 4.
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 
   // Test 2: Extreme request (e.g., 0). Should clamp to current usage.

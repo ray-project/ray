@@ -1892,8 +1892,8 @@ void NodeManager::HandleResizeLocalResourceInstances(
     double delta_value = target_value - current_total;
 
     // Clamp so current_available never goes below 0.
-    // For example, if delta_value is -4 but the current_available is 2.
-    // Then clamp delta_value to -2.
+    // For example, if delta_value is -4 but the current_available is 2,
+    // then clamp delta_value to -2.
     if (delta_value < -current_available) {
       delta_value = -current_available;
     }
