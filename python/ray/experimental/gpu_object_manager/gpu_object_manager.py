@@ -106,8 +106,8 @@ class GPUObjectManager:
                 __ray_get_cuda_device__
             )
         )
-        print(src_dev, dst_dev)
         if src_dev >= 0 and dst_dev >= 0 and src_dev == dst_dev:
+            print("try ipc transfer same gpu success")
             obj_id = obj_ref.hex()
             metas = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -341,6 +341,7 @@ class GPUObjectManager:
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
+            print("normal transfer")
             obj_id = obj_ref.hex()
             self._send_object(communicator.name, src_actor, obj_id, dst_rank)
             self._recv_object(

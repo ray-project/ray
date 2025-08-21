@@ -3,6 +3,7 @@ import torch
 import pytest
 import ray
 from ray.experimental.collective import create_collective_group
+import time
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -41,12 +42,16 @@ def test_ipc(ray_start_regular):
     create_collective_group(actors, backend="nccl")
 
     sender, receiver = actors[0], actors[1]
-    tensor = torch.randn((3,), device="cuda")
+    tensor = torch.randn((10,), device="cuda")
 
     ref = sender.echo.remote(tensor)
+    t0 = time.perf_counter()
     result = receiver.sum.remote(ref)
-
+    t1 = time.perf_counter()
     out = ray.get(result)
+    t2 = time.perf_counter()
+    print(f"ipc_submit_s={t1 - t0:.6f} ipc_get_s={t2 - t1:.6f} ipc_total_s={t2 - t0:.6f}")
+    
     assert out == tensor.sum().item()
 
 

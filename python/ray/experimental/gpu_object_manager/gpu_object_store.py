@@ -157,13 +157,11 @@ def _extract_cuda_metadata(tensor: torch.Tensor):
 def __ray_cuda_ipc_export__(self, obj_id: str):
     from ray._private.worker import global_worker
     tensors = global_worker.gpu_object_manager.gpu_object_store.get_object(obj_id)
+    
     metas = []
     for t in tensors:
-        try:
-            tensor_meta = _extract_cuda_metadata(t)
-            metas.append(tensor_meta)
-        except Exception as e:
-            raise RuntimeError("PyTorch does not support CUDA IPC on this build") from e
+        tensor_meta = _extract_cuda_metadata(t)
+        metas.append(tensor_meta)
 
     return metas
 
@@ -171,18 +169,11 @@ def __ray_cuda_ipc_export__(self, obj_id: str):
 # Import CUDA IPC handles and reconstruct tensors into the local GPU object store.
 # Expects the metadata returned by __ray_cuda_ipc_export__.
 def __ray_cuda_ipc_import__(self, obj_id: str, metas):
-    print("inside import")
-    try:
-        import torch as _torch
-        from torch.multiprocessing.reductions import rebuild_cuda_tensor
-    except ImportError:
-        raise
+    from torch.multiprocessing.reductions import rebuild_cuda_tensor
 
     tensors = []
     for meta in metas:
         t = rebuild_cuda_tensor(**meta)
-        print("t")
-        print(t)
         tensors.append(t)
 
     from ray._private.worker import global_worker
