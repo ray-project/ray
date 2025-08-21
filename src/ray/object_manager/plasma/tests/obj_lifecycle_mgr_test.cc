@@ -76,12 +76,12 @@ struct ObjectLifecycleManagerTest : public Test {
                                std::move(eviction_policy),
                                delete_object_cb,
                                std::move(stats_collector)));
-    sealed_object_.state = ObjectState::PLASMA_SEALED;
-    not_sealed_object_.state = ObjectState::PLASMA_CREATED;
-    one_ref_object_.state = ObjectState::PLASMA_SEALED;
-    one_ref_object_.ref_count = 1;
-    two_ref_object_.state = ObjectState::PLASMA_SEALED;
-    two_ref_object_.ref_count = 2;
+    sealed_object_.state_ = ObjectState::PLASMA_SEALED;
+    not_sealed_object_.state_ = ObjectState::PLASMA_CREATED;
+    one_ref_object_.state_ = ObjectState::PLASMA_SEALED;
+    one_ref_object_.ref_count_ = 1;
+    two_ref_object_.state_ = ObjectState::PLASMA_SEALED;
+    two_ref_object_.ref_count_ = 2;
   }
 
   MockEvictionPolicy *eviction_policy_;

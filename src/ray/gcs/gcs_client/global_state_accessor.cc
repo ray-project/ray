@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -429,7 +430,7 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
           ". The node registration may not be complete yet before the timeout." +
           " Try increase the RAY_raylet_start_wait_time_s config.");
     }
-    RAY_LOG(INFO) << "Retrying to get node with node ID " << node_id_hex_str;
+    RAY_LOG(DEBUG) << "Retrying to get node with node ID " << node_id_hex_str;
     // Some of the information may not be in GCS yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }

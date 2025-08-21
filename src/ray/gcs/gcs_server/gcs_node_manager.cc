@@ -25,6 +25,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/event.h"
 #include "ray/util/logging.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

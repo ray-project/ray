@@ -223,35 +223,35 @@ struct PlacementGroupCreationOptions {
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {})
-      : name(std::move(name)),
-        strategy(strategy),
-        bundles(std::move(bundles)),
-        is_detached(is_detached_p),
-        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        soft_target_node_id(soft_target_node_id),
-        bundle_label_selector(std::move(bundle_label_selector)) {
-    RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
+      : name_(std::move(name)),
+        strategy_(strategy),
+        bundles_(std::move(bundles)),
+        is_detached_(is_detached_p),
+        max_cpu_fraction_per_node_(max_cpu_fraction_per_node),
+        soft_target_node_id_(soft_target_node_id),
+        bundle_label_selector_(std::move(bundle_label_selector)) {
+    RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
 
   /// The name of the placement group.
-  const std::string name;
+  const std::string name_;
   /// The strategy to place the bundle in Placement Group.
-  const PlacementStrategy strategy = rpc::PACK;
+  const PlacementStrategy strategy_ = rpc::PACK;
   /// The resource bundles in this placement group.
-  const std::vector<std::unordered_map<std::string, double>> bundles;
+  const std::vector<std::unordered_map<std::string, double>> bundles_;
   /// Whether to keep the placement group persistent after its creator dead.
-  const bool is_detached = false;
+  const bool is_detached_ = false;
   /// The maximum fraction of CPU cores this placement group can take up on each node.
-  const double max_cpu_fraction_per_node;
+  const double max_cpu_fraction_per_node_;
   /// ID of the target node where bundles should be placed
   /// iff the target node has enough available resources and alive.
   /// Otherwise, the bundles can be placed elsewhere.
   /// Nil means there is no target node.
   /// This only applies to STRICT_PACK pg.
-  const NodeID soft_target_node_id;
+  const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
-  const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector;
+  const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
 };
 
 class ObjectLocation {
@@ -311,13 +311,13 @@ namespace std {
 template <>
 struct hash<ray::rpc::LineageReconstructionTask> {
   size_t operator()(const ray::rpc::LineageReconstructionTask &task) const {
-    size_t hash = std::hash<std::string>()(task.name());
-    hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    size_t hash_value = std::hash<std::string>()(task.name());
+    hash_value ^= std::hash<ray::rpc::TaskStatus>()(task.status());
     for (const auto &label : task.labels()) {
-      hash ^= std::hash<std::string>()(label.first);
-      hash ^= std::hash<std::string>()(label.second);
+      hash_value ^= std::hash<std::string>()(label.first);
+      hash_value ^= std::hash<std::string>()(label.second);
     }
-    return hash;
+    return hash_value;
   }
 };
 }  // namespace std

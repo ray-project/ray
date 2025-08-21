@@ -229,8 +229,8 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
 
             Column          Type
             ------          ----
-            text            <class 'object'>
-            tokenized_text  <class 'object'>
+            text            string
+            tokenized_text  list<item: string>
 
 .. _batch_inference_pytorch:
 
