@@ -74,13 +74,9 @@ def test_nested_thread_error(thread_runner):
                         dummy_condition.notify_all()
                     raise e
 
-            threading.Thread(target=nested_nested).start()
-
-            while True:
-                with dummy_condition:
-                    # Do this to avoid race condition in which notify_all happens before wait.
-                    if dummy_condition.wait(timeout=0.1):
-                        break
+            with dummy_condition:
+                threading.Thread(target=nested_nested).start()
+                dummy_condition.wait()
 
         nested()
 
