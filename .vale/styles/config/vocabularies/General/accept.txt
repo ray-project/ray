@@ -69,6 +69,7 @@ LMs
 LSH
 MCP
 Megatron
+Mixtral
 MLflow
 MLOps
 namespace
@@ -86,6 +87,7 @@ pretraining
 productionize
 Pythonic
 QPS
+Qwen
 retrigger
 RISECamp
 RLHF
