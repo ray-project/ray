@@ -9,7 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import (
-    ErrorResponse,
+    ErrorInfo,
     OpenAIHTTPException,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -73,7 +73,7 @@ def _extract_message(e):
 def get_response_for_error(
     e: Exception,
     request_id: str,
-) -> ErrorResponse:
+) -> ErrorInfo:
     if isinstance(e, HTTPException):
         status_code = e.status_code
     elif isinstance(e, OpenAIHTTPException):
@@ -110,7 +110,7 @@ def get_response_for_error(
     if "(Request ID: " not in internal_message:
         internal_message += f" (Request ID: {request_id})"
 
-    error_response = ErrorResponse(
+    error_response = ErrorInfo(
         message=f"Message: {message}, Internal exception: {internal_message}, original exception: {str(e)}",
         code=status_code,
         type=exc_type,

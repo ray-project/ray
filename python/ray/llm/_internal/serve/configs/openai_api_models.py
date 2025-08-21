@@ -21,6 +21,7 @@ from vllm.entrypoints.openai.protocol import (
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
     EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
+    ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
     ScoreRequest as vLLMScoreRequest,
     ScoreResponse as vLLMScoreResponse,
@@ -46,6 +47,8 @@ class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
 class ErrorResponse(vLLMErrorResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+
+ErrorInfo = vLLMErrorInfo
 
 # TODO (Kourosh): Upstream
 class CompletionRequest(vLLMCompletionRequest):
