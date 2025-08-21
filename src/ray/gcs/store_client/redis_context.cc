@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 
 #include <memory>
 #include <sstream>
@@ -23,7 +23,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
 
 extern "C" {
 #include "hiredis/async.h"

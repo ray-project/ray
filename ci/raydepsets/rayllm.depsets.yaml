@@ -16,6 +16,7 @@ build_arg_sets:
   append_flags:
     - --python-version=3.11
     - --unsafe-package ray
+    - --python-platform=linux
   build_arg_sets:
     - cpu
     - cu121
