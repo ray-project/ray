@@ -385,12 +385,12 @@ class LLMConfig(BaseModelExtended):
         if "memory" in ray_actor_options:
             replica_actor_resources["memory"] = ray_actor_options["memory"]
 
-            # Clean separation: custom path vs default path
+        # Clean separation: custom path vs default path
         if self._has_custom_placement_config(deployment_config):
-            # CUSTOM PATH: Use user config as-is, no modifications
+            # CUSTOM PATH: User specified placement groups - validate and use as-is
             self._validate_user_placement_config(deployment_config, engine_config)
         else:
-            # DEFAULT PATH: Generate topology-aware placement groups
+            # DEFAULT PATH: TP ranks colocated, PP ranks cross-node allowed
             self._apply_default_placement_config(
                 deployment_config, replica_actor_resources, engine_config
             )
@@ -410,13 +410,43 @@ class LLMConfig(BaseModelExtended):
         replica_actor_resources: Dict[str, float],
         engine_config,
     ) -> None:
-        """Apply topology-aware default placement group configuration."""
+        """Apply default placement group configuration.
+
+        Default strategy: TP ranks colocated, PP ranks cross-node allowed.
+        Creates one bundle per PP stage, each bundle gets tp_size GPUs.
+        If resources_per_bundle is specified, falls back to engine config logic.
+        """
+        # If resources_per_bundle is specified, use engine config logic for compatibility
+        if self.resources_per_bundle:
+            try:
+                bundles = engine_config.placement_bundles
+            except ValueError:
+                # May happen if all bundles are empty.
+                bundles = []
+
+            bundles = [replica_actor_resources] + bundles
+            deployment_config.update(
+                {
+                    "placement_group_bundles": bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
+            return
+
+        # New default behavior: TP ranks colocated, PP ranks cross-node allowed
         tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
         pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
 
-        # kourosh's recommended default: TP ranks colocated, PP cross-node allowed
         replica_bundle = replica_actor_resources
-        worker_bundles = [{"GPU": tp_size}] * pp_size  # One bundle per PP stage
+
+        # Create worker bundles with proper resource annotations
+        worker_bundle = {"GPU": tp_size}
+
+        # Add accelerator type annotation if specified
+        if self.accelerator_type:
+            worker_bundle[f"accelerator_type:{self.accelerator_type}"] = 0.001
+
+        worker_bundles = [worker_bundle.copy()] * pp_size  # One bundle per PP stage
 
         deployment_config.update(
             {

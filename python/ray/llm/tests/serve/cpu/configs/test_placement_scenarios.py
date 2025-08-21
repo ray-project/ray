@@ -20,7 +20,7 @@ class TestPlacementGroupScenarios:
 
         serve_options = config.get_serve_options()
 
-        # Should use default: replica + 1 bundle with 2 GPUs
+        # New default: replica + 1 bundle with 2 GPUs (TP colocated)
         expected_bundles = [{"CPU": 1, "GPU": 0}, {"GPU": 2}]
         assert serve_options["placement_group_bundles"] == expected_bundles
         assert serve_options["placement_group_strategy"] == "PACK"
@@ -87,7 +87,7 @@ class TestPlacementGroupScenarios:
 
         serve_options = config.get_serve_options()
 
-        # Should use default: replica + 3 bundles (one per PP stage), each with 2 GPUs
+        # New default: replica + 3 bundles (one per PP stage), each with 2 GPUs (TP colocated)
         expected_bundles = [
             {"CPU": 1, "GPU": 0},  # Replica
             {"GPU": 2},  # PP stage 0
