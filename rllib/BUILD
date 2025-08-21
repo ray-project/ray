@@ -5024,6 +5024,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/multi_agent/shared_encoder_cartpole",
+    size = "medium",
+    srcs = ["examples/multi_agent/shared_encoder_cartpole.py"],
+    args = [
+        "--stop-iter=10",
+    ],
+    main = "examples/multi_agent/shared_encoder_cartpole.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 # @OldAPIStack
 py_test(
     name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_tf_old_api_stack",

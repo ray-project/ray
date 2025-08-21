@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
+    get_application_url,
 )
 from ray.serve.schema import (
     ApplicationStatus,
@@ -558,23 +559,24 @@ def test_change_route_prefix(serve_instance):
         "import_path": "ray.serve.tests.test_config_files.pid.node",
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-
     wait_for_condition(check_running)
-    pid1 = httpx.get("http://localhost:8000/old").json()[0]
-
+    url = get_application_url()
+    pid1 = httpx.get(url).json()[0]
     # Redeploy application with route prefix /new.
     app_config["route_prefix"] = "/new"
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-
+    wait_for_condition(check_running)
     # Check that the old route is gone and the response from the new route
     # has the same PID (replica wasn't restarted).
     def check_switched():
         # Old route should be gone
-        resp = httpx.get("http://localhost:8000/old")
+        url = get_application_url(exclude_route_prefix=True)
+        resp = httpx.get(f"{url}/old")
         assert "Path '/old' not found." in resp.text
 
         # Response from new route should be same PID
-        pid2 = httpx.get("http://localhost:8000/new").json()[0]
+        url = get_application_url(exclude_route_prefix=True)
+        pid2 = httpx.get(f"{url}/new").json()[0]
         assert pid2 == pid1
         return True
 

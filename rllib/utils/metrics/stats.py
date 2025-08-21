@@ -244,7 +244,8 @@ class Stats:
         self._throughput_stats = None
         if throughput is not False:
             self._throughput_stats = Stats(
-                # We have to check for bool here because in Python, bool is a subclass of int
+                # We have to check for bool here because in Python, bool is a subclass
+                # of int.
                 init_values=[throughput]
                 if (
                     isinstance(throughput, (int, float))
@@ -259,9 +260,9 @@ class Stats:
                 throughput_ema_coeff=None,
             )
             if init_values is not None:
-                self._last_push_time = time.perf_counter()
+                self._last_throughput_measure_time = time.perf_counter()
             else:
-                self._last_push_time = (
+                self._last_throughput_measure_time = (
                     -1
                 )  # Track last push time for throughput calculation
 
@@ -303,14 +304,7 @@ class Stats:
         self.check_value(value)
         # If throughput tracking is enabled, calculate it based on time between pushes
         if self.has_throughput:
-            current_time = time.perf_counter()
-            if self._last_push_time >= 0:
-                time_diff = current_time - self._last_push_time
-                if time_diff > 0:  # Avoid division by zero
-                    current_throughput = value / time_diff
-                    self._throughput_stats.push(current_throughput)
-            self._last_push_time = current_time
-
+            self._recompute_throughput(value)
         # Handle different reduction methods
         if self._window is not None:
             # For windowed operations, append to values and trim if needed
@@ -448,11 +442,7 @@ class Stats:
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
-                # If we clear on reduce, following reduce calls should not return the
-                # old values.
-                self._has_new_values = True
             else:
-                self._has_new_values = False
                 self._set_values(reduced_internal_values_list)
         else:
             reduced_internal_values_list = None
@@ -510,10 +500,6 @@ class Stats:
             other: The other Stats object to merge values from.
         """
         self.values.extend(other.values)
-
-        # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self.has_throughput:
-            self._throughput_stats.merge_on_time_axis(other._throughput_stats)
 
         # Mark that we have new values since we modified the values list
         self._has_new_values = True
@@ -588,9 +574,8 @@ class Stats:
                         continue
                     tmp_values.append(stats.values[-i])
 
-                # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
-                # TODO (sven) : explain why all this
-
+                # Now reduce across `tmp_values` based on the reduce-settings of this
+                # Stats.
                 if self._reduce_per_index_on_aggregate:
                     n_values = 1
                 else:
@@ -604,10 +589,10 @@ class Stats:
                     # We add [sum(tmp_values) / n_values] * n_values to the new values
                     # list instead of tmp_values, because every incoming element should
                     # have the same weight.
-                    reduced_value = (
-                        self._reduced_values(values=tmp_values)[0][0] / n_values
-                    )
-                    new_values.extend([reduced_value] * n_values)
+                    added_sum = self._reduced_values(values=tmp_values)[0][0]
+                    new_values.extend([added_sum / n_values] * n_values)
+                    if self.has_throughput:
+                        self._recompute_throughput(added_sum)
                 else:
                     new_values.extend(
                         self._reduced_values(values=tmp_values)[0] * n_values
@@ -620,15 +605,36 @@ class Stats:
 
             self._set_values(list(reversed(new_values)))
 
-        # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self.has_throughput:
-            other_throughput_stats = [
-                other._throughput_stats for other in others if other.has_throughput
-            ]
-            self._throughput_stats.merge_in_parallel(*other_throughput_stats)
-
         # Mark that we have new values since we modified the values list
         self._has_new_values = True
+
+    def _clear_throughput(self) -> None:
+        """Clears the throughput Stats, if applicable and `self` has throughput.
+
+        Also resets `self._last_throughput_measure_time` to -1 such that the Stats
+        object has to create a new timestamp first, before measuring any new throughput
+        values.
+        """
+        if self.has_throughput:
+            self._throughput_stats._set_values([])
+            self._last_throughput_measure_time = -1
+
+    def _recompute_throughput(self, value) -> None:
+        """Recomputes the current throughput value of this Stats instance."""
+        # Make sure this Stats object does measure throughput.
+        assert self.has_throughput
+        # Take the current time stamp.
+        current_time = time.perf_counter()
+        # Check, whether we have a previous timestamp (non -1).
+        if self._last_throughput_measure_time >= 0:
+            # Compute the time delta.
+            time_diff = current_time - self._last_throughput_measure_time
+            # Avoid divisions by zero.
+            if time_diff > 0:
+                # Push new throughput value into our throughput stats object.
+                self._throughput_stats.push(value / time_diff)
+        # Update the time stamp of the most recent throughput computation (this one).
+        self._last_throughput_measure_time = current_time
 
     @staticmethod
     def _numpy_if_necessary(values):
@@ -979,29 +985,14 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
         new_root_stats = True
     else:
         new_root_stats = False
+        # Nothing to be merged
+        if len(incoming_stats) == 0:
+            return base_stats
 
     if new_root_stats:
         # We need to deepcopy here first because stats from incoming_stats may be altered in the future
         base_stats = copy.deepcopy(incoming_stats[0])
-    elif len(incoming_stats) > 0:
-        # Special case: `base_stats` is a lifetime sum (reduce=sum,
-        # clear_on_reduce=False) -> We subtract the previous value (from 2
-        # `reduce()` calls ago) from all to-be-merged stats, so we don't count
-        # twice the older sum from before.
-        if (
-            base_stats._reduce_method == "sum"
-            and base_stats._inf_window
-            and base_stats._clear_on_reduce is False
-        ):
-            for stat in incoming_stats:
-                reduce_by = stat.get_reduce_history()[-2][0]
-                if not math.isnan(reduce_by):
-                    base_stats.values[-1] -= reduce_by
-    else:
-        # Nothing to be merged
-        return base_stats
-
-    if new_root_stats:
+        base_stats._clear_throughput()
         # Note that we may take a mean of means here, which is not the same as a
         # mean of all values. In the future, we could implement a weighted mean
         # of means here by introducing a new Stats object that counts samples
@@ -1009,6 +1000,33 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
         if len(incoming_stats) > 1:
             base_stats.merge_in_parallel(*incoming_stats[1:])
     elif len(incoming_stats) > 0:
+        # Special case: `base_stats` is a lifetime sum (reduce=sum,
+        # clear_on_reduce=False) -> We subtract the previous value (from 2
+        # `reduce()` calls ago) from all to-be-merged stats, so we don't count
+        # twice the older sum from before.
+
+        # Also, for the merged, new throughput value, we need to find out what the
+        # actual value-delta is between before the last reduce and the current one.
+
+        added_sum = 0.0  # Used in `base_stats._recompute_throughput` if applicable.
+        if (
+            base_stats._reduce_method == "sum"
+            and base_stats._inf_window
+            and base_stats._clear_on_reduce is False
+        ):
+            for stat in incoming_stats:
+                # Subtract "lifetime counts" from the Stat's values to not count
+                # older "lifetime counts" more than once.
+                _hist = stat.get_reduce_history()
+                prev_reduction, new_reduction = _hist[-2][0], _hist[-1][0]
+                # This may not be populated yet -> use 0 then.
+                if np.isnan(prev_reduction):
+                    prev_reduction = 0
+                base_stats.values[-1] -= prev_reduction
+                # Keep track of how many counts we actually gained (for throughput
+                # recomputation).
+                added_sum += new_reduction - prev_reduction
+
         if len(incoming_stats) > 1:
             # There are more than one incoming parallel others -> Merge all of
             # them in parallel (equal importance).
@@ -1022,5 +1040,8 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
             base_stats._set_values(incoming_stats[0].values.copy())
         else:
             base_stats.merge_on_time_axis(incoming_stats[0])
+            # Keep track of throughput through the sum of added counts.
+            if base_stats.has_throughput:
+                base_stats._recompute_throughput(added_sum)
 
     return base_stats
