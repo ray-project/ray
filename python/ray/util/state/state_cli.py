@@ -607,7 +607,9 @@ def object_state_cli_group(ctx):
 
 
 @object_state_cli_group.command(name="ls")
-@click.option("--format", default="default", type=click.Choice(_get_available_formats()))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.option(
     "-f",
     "--filter",
@@ -648,7 +650,9 @@ def object_ls(
     format = AvailableFormat(format)
     client = StateApiClient(address=address)
     filter = [_parse_filter(f) for f in filter]
-    options = ListApiOptions(limit=limit, timeout=timeout, filters=filter, detail=detail)
+    options = ListApiOptions(
+        limit=limit, timeout=timeout, filters=filter, detail=detail
+    )
     try:
         data = client.list(
             resource,

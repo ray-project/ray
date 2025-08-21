@@ -269,7 +269,9 @@ def top(address: str, refresh: float, show: str, limit: int):
                 out.append(d())
             else:
                 d2 = getattr(it, "dict", None)
-                out.append(d2() if callable(d2) else getattr(it, "__dict__", {}) or dict(it))
+                out.append(
+                    d2() if callable(d2) else getattr(it, "__dict__", {}) or dict(it)
+                )
         return out
 
     import sys
@@ -298,15 +300,20 @@ def top(address: str, refresh: float, show: str, limit: int):
                 )
 
             node_dicts = _to_dicts(nodes)
-            live_nodes = sum(1 for n in node_dicts if str(n.get("state", "")).upper() == "ALIVE")
+            live_nodes = sum(
+                1 for n in node_dicts if str(n.get("state", "")).upper() == "ALIVE"
+            )
 
             # Clear screen and print a compact summary.
             sys.stdout.write("\x1b[2J\x1b[H")
             print("ray top (experimental) — Ctrl+C to exit")
-            print(f"Nodes: {len(node_dicts)} (live: {live_nodes})  Tasks: {len(tasks)}  Actors: {len(actors)}")
+            print(
+                f"Nodes: {len(node_dicts)} (live: {live_nodes})  Tasks: {len(tasks)}  Actors: {len(actors)}"
+            )
             _time.sleep(max(0.1, float(refresh)))
     except KeyboardInterrupt:
         return
+
 
 @cli.command()
 @click.option(
