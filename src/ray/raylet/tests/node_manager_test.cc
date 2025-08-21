@@ -756,12 +756,17 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   (*request.mutable_resources())["CPU"] = 8.0;
   (*request.mutable_resources())["memory"] = 16000000.0;
 
+  bool callback_called = false;
+
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
         EXPECT_TRUE(s.ok());
       });
+  EXPECT_TRUE(callback_called);
 
   // Check that reply contains the updated resources
   EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
@@ -772,12 +777,16 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   (*request.mutable_resources())["memory"] = 8000000.0;
 
   reply.Clear();
+  callback_called = false;
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
         EXPECT_TRUE(s.ok());
       });
+  EXPECT_TRUE(callback_called);
 
   // Check that reply contains the updated (reduced) resources
   EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
@@ -785,12 +794,16 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
 
   // Test 3: No changes (same values)
   reply.Clear();
+  callback_called = false;
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
         EXPECT_TRUE(s.ok());
       });
+  EXPECT_TRUE(callback_called);
 
   // Should still succeed and return current state
   EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
@@ -801,12 +814,16 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   (*request.mutable_resources())["CPU"] = 8.0;  // Double the CPU
 
   reply.Clear();
+  callback_called = false;
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
         EXPECT_TRUE(s.ok());
       });
+  EXPECT_TRUE(callback_called);
 
   // Check that CPU was updated, and memory was unchanged
   EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
