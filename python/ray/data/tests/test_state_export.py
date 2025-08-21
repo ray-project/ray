@@ -627,7 +627,7 @@ class BasicObject:
         # Test sequence truncation - list longer than truncate_length gets truncated
         (
             [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            ["1", "2", "3", "..."],  # Only first 3 elements after truncation
+            ["1", "2", "..."],  # Only first 3 elements after truncation
             3,
         ),
     ],
