@@ -3507,6 +3507,7 @@ ypy-websocket==0.8.4 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-ydoc
 zipp==3.19.2 \
+    --hash=sha256:bf1dcf6450f873a13e952a29504887c89e6de7506209e5b1bcc3460135d4de19 \
     --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt

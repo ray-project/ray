@@ -2105,6 +2105,7 @@ yarl==1.18.3 \
     #   -c python/lock_files/llm/ray_test_py311_cu128.lock
     #   aiohttp
 zipp==3.19.2 \
+    --hash=sha256:bf1dcf6450f873a13e952a29504887c89e6de7506209e5b1bcc3460135d4de19 \
     --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
     # via
     #   -c python/lock_files/llm/ray_test_py311_cu128.lock
