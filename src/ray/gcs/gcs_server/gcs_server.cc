@@ -35,8 +35,8 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {
@@ -156,6 +156,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
+      "127.0.0.1",
+      config_.metrics_agent_port,
+      io_context_provider_.GetDefaultIOContext(),
+      client_call_manager_);
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -187,7 +192,7 @@ void GcsServer::GetOrGenerateClusterId(
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
          if (!provided_cluster_id.has_value()) {
-           instrumented_io_context &io_context = continuation.io_context();
+           instrumented_io_context &io_ctx = continuation.io_context();
            ClusterID cluster_id = ClusterID::FromRandom();
            RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
            kv_manager_->GetInstance().Put(
@@ -202,7 +207,7 @@ void GcsServer::GetOrGenerateClusterId(
                       .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
                                 cluster_id);
                 },
-                io_context});
+                io_ctx});
          } else {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
            RAY_LOG(INFO).WithField(cluster_id)
@@ -268,6 +273,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init usage stats client.
   InitUsageStatsClient();
+
+  // Init OpenTelemetry exporter.
+  metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+    stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
+  });
 
   // Start RPC server when all tables have finished loading initial
   // data.
