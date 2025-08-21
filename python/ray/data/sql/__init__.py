@@ -60,11 +60,11 @@ from ray.data.sql.core import (
     sql,
 )
 from ray.data.sql.exceptions import (
-    SQLError,
-    SQLParseError,
-    SQLExecutionError,
-    TableNotFoundError,
     ColumnNotFoundError,
+    SQLError,
+    SQLExecutionError,
+    SQLParseError,
+    TableNotFoundError,
 )
 
 # Public API exports

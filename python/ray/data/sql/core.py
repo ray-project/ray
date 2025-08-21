@@ -15,15 +15,15 @@ import sqlglot
 from ray.data import Dataset
 from sqlglot import exp
 
-from ray.data.sql.config import DEFAULT_CONFIG, LogLevel, SQLConfig
+from ray.data.sql.config import DEFAULT_CONFIG, SQLConfig
 from ray.data.sql.exceptions import (
     ColumnNotFoundError,
+    SchemaError,
     SQLError,
     SQLExecutionError,
     SQLParseError,
     TableNotFoundError,
     UnsupportedOperationError,
-    SchemaError,
 )
 
 

@@ -404,26 +404,21 @@ def get_supported_sql_features():
 
 
 def get_feature_suggestion(feature_name: str):
-    """Get suggested alternatives for unsupported SQL features.
+    """Get a helpful suggestion for an unsupported SQL feature.
+
+    This function provides user-friendly suggestions for unsupported SQL features,
+    helping users understand alternatives or workarounds available in Ray Data.
 
     Args:
         feature_name: Name of the unsupported SQL feature.
 
     Returns:
-        String with suggestion if available, None otherwise.
-
-    Examples:
-        .. testcode::
-
-            from ray.data.sql.utils import get_feature_suggestion
-            suggestion = get_feature_suggestion("median")
-            print(suggestion)
-            # Output: "Use approximation with percentile or sorting operations"
+        A helpful suggestion string, or None if no suggestion is available.
     """
     from ray.data.sql.parser import (
         UNSUPPORTED_AGGREGATE_SUGGESTIONS,
-        UNSUPPORTED_FUNCTION_SUGGESTIONS,
         UNSUPPORTED_CONSTRUCTS,
+        UNSUPPORTED_FUNCTION_SUGGESTIONS,
         UNSUPPORTED_OPERATORS,
     )
 

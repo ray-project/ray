@@ -17,7 +17,6 @@ from sqlglot import exp
 from ray.data import Dataset
 from ray.data.sql.config import SQLConfig
 
-
 # Core SQL Operation Data Classes
 
 

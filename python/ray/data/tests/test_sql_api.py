@@ -61,7 +61,7 @@ def debug_registry_state(test_name=""):
         executor_registry_id = id(engine.executor.registry)
         global_registry_id = id(registry)
 
-        print(f"Registry object IDs:")
+        print("Registry object IDs:")
         print(f" Global: {global_registry_id}")
         print(f" Engine: {engine_registry_id}")
         print(f" Executor: {executor_registry_id}")
