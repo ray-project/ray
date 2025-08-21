@@ -19,10 +19,10 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/gcs:gcs_callback",
-        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
-        "//src/ray/gcs/store_client:gcs_observable_store_client",
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client",
         "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -48,7 +48,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:status",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_service_rpc",
+        "//src/ray/rpc:gcs_server",
     ],
 )
 
@@ -80,7 +80,7 @@ ray_cc_library(
     hdrs = ["store_client_kv.h"],
     deps = [
         ":gcs_kv_manager",
-        "//src/ray/gcs/store_client:gcs_store_client",
+        "//src/ray/gcs/store_client",
     ],
 )
 
@@ -91,6 +91,7 @@ ray_cc_library(
     deps = [
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/rpc:gcs_server",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -103,20 +104,8 @@ ray_cc_library(
     deps = [
         "//src/ray/common:runtime_env",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_service_rpc",
-        "//src/ray/rpc:node_manager_rpc",
+        "//src/ray/rpc:gcs_server",
         "//src/ray/util:thread_checker",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_redis_failure_detector",
-    srcs = ["gcs_redis_failure_detector.cc"],
-    hdrs = ["gcs_redis_failure_detector.h"],
-    deps = [
-        "//src/ray/common:asio",
-        "//src/ray/common:ray_config",
-        "//src/ray/gcs:gcs_redis_client",
     ],
 )
 
@@ -129,7 +118,7 @@ ray_cc_library(
         ":gcs_table_storage",
         ":gcs_usage_stats_client",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/rpc:gcs_service_rpc",
+        "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
     ],
 )
@@ -194,8 +183,8 @@ ray_cc_library(
         "//src/ray/common:runtime_env",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/rpc:core_worker_rpc",
-        "//src/ray/rpc:gcs_service_rpc",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:event",
         "//src/ray/util:thread_checker",
@@ -233,7 +222,6 @@ ray_cc_library(
         ":gcs_job_manager",
         ":gcs_kv_manager",
         ":gcs_pubsub_handler",
-        ":gcs_redis_failure_detector",
         ":gcs_runtime_env_handler",
         ":gcs_server_io_context_policy",
         ":gcs_state_util",
@@ -243,18 +231,24 @@ ray_cc_library(
         ":gcs_usage_stats_client",
         ":gcs_worker_manager",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/gcs/store_client:gcs_observable_store_client",
+        "//src/ray/gcs/store_client",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:observable_store_client",
+        "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
-        "//src/ray/pubsub:pubsub_lib",
+        "//src/ray/pubsub:publisher",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/raylet_client:raylet_client_lib",
-        "//src/ray/rpc:core_worker_rpc",
-        "//src/ray/rpc:gcs_service_rpc",
-        "//src/ray/rpc:node_manager_rpc",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:gcs_server",
+        "//src/ray/rpc:node_manager_client",
         "//src/ray/util:counter_map",
+        "//src/ray/util:exponential_backoff",
+        "//src/ray/util:network_util",
         "//src/ray/util:thread_checker",
         "//src/ray/util:throttler",
+        "//src/ray/util:time",
         "//src/ray/util:type_traits",
         "@boost//:bimap",
         "@com_google_absl//absl/container:btree",
@@ -270,6 +264,7 @@ ray_cc_binary(
     deps = [
         ":gcs_server_lib",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",

@@ -140,7 +140,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               AsyncGetAll,
               (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                int64_t timeout_ms,
-               std::optional<NodeID> node_id),
+               const std::vector<NodeID> &node_ids),
               (override));
   MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
@@ -192,11 +192,7 @@ namespace gcs {
 
 class MockErrorInfoAccessor : public ErrorInfoAccessor {
  public:
-  MOCK_METHOD(void,
-              AsyncReportJobError,
-              (const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
+  MOCK_METHOD(void, AsyncReportJobError, (rpc::ErrorTableData data), (override));
 };
 
 }  // namespace gcs

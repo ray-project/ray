@@ -24,7 +24,6 @@
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace stats {

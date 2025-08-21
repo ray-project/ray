@@ -10,7 +10,7 @@ import tree
 import abc
 
 
-from ray.rllib.models.distributions import Distribution
+from ray.rllib.core.distribution.distribution import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, SMALL_NUMBER

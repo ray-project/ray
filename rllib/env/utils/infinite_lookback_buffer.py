@@ -13,8 +13,10 @@ from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     to_jsonable_if_needed,
 )
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class InfiniteLookbackBuffer:
     @property
     def space(self):
