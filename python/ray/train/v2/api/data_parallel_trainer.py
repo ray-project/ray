@@ -209,7 +209,7 @@ class DataParallelTrainer:
     def _initialize_and_run_local_controller(
         self, train_func: Callable[[], None]
     ) -> Result:
-        return self._local_mode_controller.initialize_and_run_local_controller(
+        return self._get_local_mode_controller().initialize_and_run_local_controller(
             train_func
         )
 
