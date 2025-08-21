@@ -24,6 +24,7 @@
 #include "absl/strings/match.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {

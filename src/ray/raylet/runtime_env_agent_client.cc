@@ -29,6 +29,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace beast = boost::beast;  // from <boost/beast.hpp>

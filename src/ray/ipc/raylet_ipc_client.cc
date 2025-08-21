@@ -26,6 +26,7 @@
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
 
 namespace {
 
@@ -280,7 +281,20 @@ void RayletIpcClient::SubscribePlasmaReady(const ObjectID &object_id,
 }
 
 void ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+  // Check if the Raylet process is still alive.
+  // If we know the Raylet PID, check using that.
+  // Else, assume the Raylet is our parent process.
+  bool raylet_alive = true;
+  auto raylet_pid = RayConfig::instance().RAYLET_PID();
+  if (!raylet_pid.empty()) {
+    if (!IsProcessAlive(static_cast<pid_t>(std::stoi(raylet_pid)))) {
+      raylet_alive = false;
+    }
+  } else if (!IsParentProcessAlive()) {
+    raylet_alive = false;
+  }
+
+  if (!status.ok() && !raylet_alive) {
     RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
                         "Raylet is dead. Status: "
                      << status;

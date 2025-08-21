@@ -28,7 +28,7 @@
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
 
 namespace ray {
 

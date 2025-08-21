@@ -25,7 +25,7 @@
 
 #include "ray/util/random.h"
 #include "ray/util/string_utils.h"
-#include "ray/util/timestamp_utils.h"
+#include "ray/util/time.h"
 
 using json = nlohmann::json;
 

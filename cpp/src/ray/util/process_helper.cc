@@ -21,7 +21,6 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

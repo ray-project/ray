@@ -27,7 +27,8 @@ namespace plasma {
 namespace {
 const int64_t kMB = 1024 * 1024;
 std::string CreateTestDir() {
-  path directory = std::filesystem::temp_directory_path() / GenerateUUIDV4();
+  path directory =
+      std::filesystem::temp_directory_path() / ray::UniqueID::FromRandom().Hex();
   create_directories(directory);
   return directory.string();
 }

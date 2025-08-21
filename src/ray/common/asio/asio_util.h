@@ -25,7 +25,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/util/array.h"
 #include "ray/util/thread_utils.h"
-#include "ray/util/util.h"
 
 template <typename Duration>
 std::shared_ptr<boost::asio::deadline_timer> execute_after(

@@ -27,7 +27,7 @@
 #include "ray/core_worker/actor_manager.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
