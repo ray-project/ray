@@ -1,4 +1,4 @@
-group: deps
+group: dependencies
 depends_on:
   - forge
 steps:
