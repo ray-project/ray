@@ -301,7 +301,6 @@ class WhenExpr(Expr):
         condition: The boolean condition expression for this WHEN clause
         value: The value expression when this condition is True
         next_when: Optional link to the next WHEN clause in the chain
-        default: Optional default value (only set when .otherwise() is called)
 
     Example:
         >>> from ray.data.expressions import col, lit, when
@@ -314,7 +313,6 @@ class WhenExpr(Expr):
     condition: Expr
     value: Expr
     next_when: Optional["WhenExpr"] = None
-    default: Optional[Expr] = None
 
     def when(self, condition: Expr, value: Expr) -> "WhenExpr":
         """Add another WHEN clause to the case statement.
@@ -371,15 +369,6 @@ class WhenExpr(Expr):
                     self.next_when is not None
                     and other.next_when is not None
                     and self.next_when.structurally_equals(other.next_when)
-                )
-            )
-            and (
-                self.default is None
-                and other.default is None
-                or (
-                    self.default is not None
-                    and other.default is not None
-                    and self.default.structurally_equals(other.default)
                 )
             )
         )

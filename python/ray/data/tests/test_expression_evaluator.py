@@ -643,8 +643,10 @@ def test_case_expression_complex_nested_conditions():
                 | (col("is_student") & col("has_credit")),
                 lit("Premium"),
             ),
-            ((col("age") > 30) & (col("income") > 50000))
-            | (col("is_student"), lit("Standard")),
+            (
+                ((col("age") > 30) & (col("income") > 50000)) | col("is_student"),
+                lit("Standard"),
+            ),
             (col("age") > 18, lit("Basic")),
         ],
         default=lit("Limited"),
