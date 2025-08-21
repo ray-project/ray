@@ -462,5 +462,9 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
     "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1
 )
 
+# Feature flag to fail the deployment if the rank is not set.
+# TODO (abrar): Remove this flag after the feature is stable.
+RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
