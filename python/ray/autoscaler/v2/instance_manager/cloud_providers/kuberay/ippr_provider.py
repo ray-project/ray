@@ -118,33 +118,27 @@ class KubeRayIPPRProvider:
 
     def sync_with_raylets(self) -> None:
         for ippr_status in self._ippr_statuses.values():
-            if (
-                ippr_status.resized_at is not None
-                and ippr_status.resized_status is None
-                and ippr_status.desired_cpu == ippr_status.current_cpu
-                and ippr_status.desired_memory == ippr_status.current_memory
-            ):
-                try:
-                    raylet_addr = _get_raylet_address(
-                        self._gcs_client, ippr_status.raylet_id
+            if not ippr_status.need_sync_with_raylet():
+                continue
+            try:
+                raylet_addr = _get_raylet_address(
+                    self._gcs_client, ippr_status.raylet_id
+                )
+                if not raylet_addr:
+                    raise RuntimeError(
+                        f"Raylet address not found for pod {ippr_status.cloud_instance_id}"
                     )
-                    if not raylet_addr:
-                        raise RuntimeError(
-                            f"Raylet address not found for pod {ippr_status.cloud_instance_id}"
-                        )
-                    _resize_raylet_resources(
-                        raylet_addr,
-                        ippr_status.current_cpu,
-                        ippr_status.current_memory,
-                    )
-                    self._patch_ippr_status(ippr_status, resized_at=None)
-                    logger.info(
-                        f"Pod {ippr_status.cloud_instance_id} resized successfully"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}"
-                    )
+                _resize_raylet_resources(
+                    raylet_addr,
+                    ippr_status.current_cpu,
+                    ippr_status.current_memory,
+                )
+                self._patch_ippr_status(ippr_status, resized_at=None)
+                logger.info(f"Pod {ippr_status.cloud_instance_id} resized successfully")
+            except Exception as e:
+                logger.error(
+                    f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}"
+                )
 
     def sync_ippr_status_from_pods(self, pods: List[Dict[str, Any]]) -> None:
         self._ippr_statuses = {}
