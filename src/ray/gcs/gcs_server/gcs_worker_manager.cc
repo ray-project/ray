@@ -257,7 +257,7 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
         }
       };
 
-  gcs_table_storage_.WorkerTable().Get(worker_id, {on_worker_get_done, io_context_});
+  gcs_table_storage_.WorkerTable().Get(worker_id, {std::move(on_worker_get_done), io_context_});
 }
 
 void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
