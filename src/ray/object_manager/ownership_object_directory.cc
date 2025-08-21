@@ -370,14 +370,14 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_locations_message()->Swap(request.get());
 
-    RAY_CHECK(object_location_subscriber_->Subscribe(
+    object_location_subscriber_->Subscribe(
         std::move(sub_message),
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
         owner_address,
         object_id.Binary(),
         /*subscribe_done_callback=*/nullptr,
         /*Success callback=*/msg_published_callback,
-        /*Failure callback=*/failure_callback));
+        /*Failure callback=*/failure_callback);
 
     auto location_state = LocationListenerState();
     location_state.owner_address = owner_address;
