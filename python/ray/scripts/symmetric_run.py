@@ -130,7 +130,7 @@ SEPARATOR REQUIREMENT:
     help="If provided, wait for this number of nodes to start.",
 )
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
-def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
+def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
     separator = all_args.index("--")
 
@@ -144,7 +144,7 @@ def symmetric_run(address, wait_for_nnodes, ray_args_and_entrypoint):
 
     ray_start_args = curate_and_validate_ray_start_args(run_and_start_args)
 
-    min_nodes = 1 if wait_for_nnodes is None else wait_for_nnodes
+    min_nodes = 1 if min_nodes is None else min_nodes
 
     if not entrypoint_on_head:
         raise click.ClickException("No entrypoint command provided.")
