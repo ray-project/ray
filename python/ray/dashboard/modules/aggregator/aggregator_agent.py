@@ -7,8 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
 from ray.dashboard.modules.aggregator.ray_events_publisher import (
-    ExternalSvcPublisher,
+    AsyncHttpPublisherClient,
     NoopPublisher,
+    RayEventsPublisher,
 )
 
 from ray.dashboard.modules.aggregator.bounded_queue import BoundedQueue
@@ -188,15 +189,18 @@ class AggregatorAgent(
             logger.info(
                 f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
             )
-            self._external_svc_publisher = ExternalSvcPublisher(
-                endpoint=self._events_export_addr,
-                events_filter_fn=self._can_expose_event,
+            self._HttpEndpointPublisher = RayEventsPublisher(
+                name="http-endpoint-publisher",
+                publish_client=AsyncHttpPublisherClient(
+                    endpoint=self._events_export_addr,
+                    events_filter_fn=self._can_expose_event,
+                ),
             )
         else:
             logger.info(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
-            self._external_svc_publisher = NoopPublisher()
+            self._HttpEndpointPublisher = NoopPublisher()
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -266,7 +270,7 @@ class AggregatorAgent(
 
         if draining_event_batch:
             frozen_batch = tuple(draining_event_batch)
-            self._external_svc_publisher.publish_events(frozen_batch)
+            self._HttpEndpointPublisher.enqueue_batch(frozen_batch)
 
     async def _build_event_batches(self) -> None:
         """
@@ -281,7 +285,7 @@ class AggregatorAgent(
                 break
 
             # If destination queue is full, wait a bit before pulling from buffer
-            if not self._external_svc_publisher.can_accept_events():
+            if not self._HttpEndpointPublisher.can_accept_events():
                 await asyncio.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
                 continue
 
@@ -296,7 +300,7 @@ class AggregatorAgent(
             if event_batch:
                 frozen_batch = tuple(event_batch)
                 # Enqueue batch to publishers
-                self._external_svc_publisher.publish_events(frozen_batch)
+                self._HttpEndpointPublisher.enqueue_batch(frozen_batch)
 
                 # Reset local batch
                 event_batch.clear()
@@ -306,7 +310,7 @@ class AggregatorAgent(
 
     async def _publisher_event_loop(self):
         # Start destination specific publishers
-        self._external_svc_publisher.start()
+        self._HttpEndpointPublisher.start()
         # Launch one batching task to continuously build batches of events and enqueue to publishers
         batching_task = asyncio.create_task(
             self._build_event_batches(),
@@ -318,7 +322,7 @@ class AggregatorAgent(
         finally:
             # Drain any remaining items and shutdown publisher
             await self._drain_event_buffer_to_publishers()
-            await self._external_svc_publisher.shutdown()
+            await self._HttpEndpointPublisher.shutdown()
             self._update_metrics()
 
     def _create_and_start_publisher_loop(self) -> None:
@@ -338,7 +342,7 @@ class AggregatorAgent(
             return
 
         external_svc_publisher_metrics = (
-            self._external_svc_publisher.get_and_reset_metrics()
+            self._HttpEndpointPublisher.get_and_reset_metrics()
         )
 
         with self._lock:

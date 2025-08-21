@@ -5,42 +5,44 @@ import asyncio
 from unittest.mock import Mock
 
 from ray.dashboard.modules.aggregator.ray_events_publisher import (
-    RayEventsPublisherBase,
-    ExternalSvcPublisher,
+    RayEventsPublisher,
+    AsyncHttpPublisherClient,
     NoopPublisher,
     PublishStats,
+    PublisherClientInterface,
 )
 from ray.core.generated import events_base_event_pb2
 from typing import Optional
 from google.protobuf.timestamp_pb2 import Timestamp
 
 
-class MockPublisher(RayEventsPublisherBase):
-    """Test implementation of RayEventsPublisherBase."""
+class MockPublisherClient(PublisherClientInterface):
+    """Test implementation of PublisherClientInterface."""
 
     def __init__(
         self,
         publish_result: Optional[PublishStats] = None,
-        item_size: int = 1,
+        batch_size: int = 1,
         side_effect=None,
-        **kwargs,
     ):
-        super().__init__(**kwargs)
         self.publish_result = publish_result or PublishStats(True, 1, 0)
-        self.item_size = item_size
+        self.batch_size = batch_size
         self.publish_calls = []
         self._side_effect = side_effect
 
-    async def _async_publish(self, item) -> PublishStats:
-        self.publish_calls.append(item)
+    async def publish(self, batch) -> PublishStats:
+        self.publish_calls.append(batch)
         if self._side_effect is not None:
             if asyncio.iscoroutinefunction(self._side_effect):
-                return await self._side_effect(item)
-            return self._side_effect(item)
+                return await self._side_effect(batch)
+            return self._side_effect(batch)
         return self.publish_result
 
-    def _count_num_events(self, item) -> int:
-        return self.item_size
+    def count_num_events_in_batch(self, batch) -> int:
+        return self.batch_size
+
+    async def close(self) -> None:
+        pass
 
 
 @pytest.fixture
@@ -50,102 +52,98 @@ def base_kwargs():
         "name": "test",
         "queue_max_size": 10,
         "max_retries": 2,
-        "initial_backoff": 0.01,
-        "max_backoff": 0.1,
-        "jitter_ratio": 0.1,
+        "initial_backoff": 0,
+        "max_backoff": 0,
+        "jitter_ratio": 0,
     }
 
 
 @pytest_asyncio.fixture
 async def mock_publisher(base_kwargs):
     """Create a mock publisher for testing inside an active event loop."""
-    publisher = MockPublisher(**base_kwargs)
-    publisher.start()
+    client = MockPublisherClient()
     try:
+        publisher = RayEventsPublisher(publish_client=client, **base_kwargs)
         yield publisher
     finally:
-        await publisher.shutdown()
+        publisher.shutdown()
 
 
-class TestRayEventsPublisherBase:
-    """Test the abstract base class functionality."""
+class TestRayEventsPublisher:
+    """Test the main RayEventsPublisher functionality."""
 
     @pytest.mark.asyncio
-    def test_has_capacity_and_enqueue(self, mock_publisher):
-        """Test that full queue drops oldest item."""
+    async def test_has_capacity_and_enqueue(self, mock_publisher):
+        """Test that full queue drops oldest batch."""
+        publisher = mock_publisher
+        publisher.start()
         # Fill queue
         for i in range(10):
-            mock_publisher.publish_events(f"item_{i}")
+            publisher.enqueue_batch(f"batch_{i}")
 
         # Add one more - should drop oldest
-        mock_publisher.publish_events("new_item")
-        metrics = mock_publisher.get_and_reset_metrics()
-        assert metrics["queue_dropped"] == 1  # item_size = 1
+        publisher.enqueue_batch("new_batch")
 
-    @pytest.mark.asyncio
-    async def test_start_and_stop_publishers(self, mock_publisher):
-        """Test that start and async shutdown work."""
-        mock_publisher.start()
-        await mock_publisher.shutdown()  # should not block or error
+        metrics = publisher.get_and_reset_metrics()
+        print(metrics)
+        assert metrics["queue_dropped"] == 1  # batch_size = 1
 
     @pytest.mark.asyncio
     async def test_publish_with_retries_failure_then_success(self, base_kwargs):
         """Test publish that fails then succeeds."""
         call_count = {"count": 0}
 
-        # fail the first publish call but succed on retry
-        def side_effect(item):
+        # fail the first publish call but succeed on retry
+        def side_effect(batch):
             call_count["count"] += 1
             if call_count["count"] == 1:
                 return PublishStats(False, 0, 0)
             return PublishStats(True, 1, 0)
 
-        pub = MockPublisher(side_effect=side_effect, **base_kwargs)
-        await pub._async_publish_with_retries("test_item")
+        client = MockPublisherClient(side_effect=side_effect)
+        publisher = RayEventsPublisher(publish_client=client, **base_kwargs)
+        publisher.start()
 
-        assert len(pub.publish_calls) == 2
-        metrics = pub.get_and_reset_metrics()
+        publisher.enqueue_batch("test_batch")
+        await publisher.shutdown()  # process batch and shutdown
+
+        assert len(client.publish_calls) == 2
+        metrics = publisher.get_and_reset_metrics()
         assert metrics["published"] == 1
         assert metrics["failed"] == 0
 
     @pytest.mark.asyncio
     async def test_publish_with_retries_max_retries_exceeded(self, base_kwargs):
         """Test publish that fails all retries."""
-        pub = MockPublisher(
-            publish_result=PublishStats(False, 0, 0),
-            **base_kwargs,
-        )
-        await pub._async_publish_with_retries("test_item")
+        client = MockPublisherClient(publish_result=PublishStats(False, 0, 0))
+        publisher = RayEventsPublisher(publish_client=client, **base_kwargs)
+        publisher.start()
+
+        publisher.enqueue_batch("test_batch")
+        await publisher.shutdown()  # process batch and shutdown
 
         # Should try max_retries + 1 times (initial + 2 retries)
-        assert len(pub.publish_calls) == 3
-        metrics = pub.get_and_reset_metrics()
-        assert metrics["failed"] == 1  # item_size = 1
+        assert len(client.publish_calls) == 3
+        metrics = publisher.get_and_reset_metrics()
+        assert metrics["failed"] == 1  # batch_size = 1
 
 
-class TestExternalSvcPublisher:
-    """Test external HTTP publisher implementation."""
-
-    @pytest.fixture
-    def external_publisher_kwargs(self, base_kwargs):
-        """External publisher specific kwargs (without injected session)."""
-        ext_kwargs = base_kwargs.copy()
-        # Remove 'name' as ExternalPublisher doesn't take it directly
-        ext_kwargs.pop("name", None)
-        ext_kwargs.update(
-            {
-                "endpoint": "http://example.com/events",
-                "events_filter_fn": lambda x: True,  # Allow all events
-                "timeout": 5.0,
-            }
-        )
-        return ext_kwargs
+class TestAsyncHttpPublisherClient:
+    """Test HTTP publisher client implementation."""
 
     @pytest.fixture
-    def external_publisher(self, external_publisher_kwargs):
-        """Create external publisher for testing."""
-        kwargs = external_publisher_kwargs.copy()
-        return ExternalSvcPublisher(**kwargs)
+    def client_kwargs(self):
+        """HTTP client specific kwargs."""
+        return {
+            "endpoint": "http://example.com/events",
+            "events_filter_fn": lambda x: True,  # Allow all events
+            "timeout": 5.0,
+        }
+
+    @pytest.fixture
+    def http_client(self, client_kwargs):
+        """Create HTTP client for testing."""
+        return AsyncHttpPublisherClient(**client_kwargs)
 
     class _FakeResponse:
         def __init__(self, raise_exc: Optional[Exception] = None):
@@ -162,7 +160,7 @@ class TestExternalSvcPublisher:
                 raise self._raise_exc
 
     class _FakeSession:
-        def __init__(self, response: "TestExternalSvcPublisher._FakeResponse"):
+        def __init__(self, response: "TestAsyncHttpPublisherClient._FakeResponse"):
             self._response = response
             self.post_calls = []
 
@@ -174,42 +172,32 @@ class TestExternalSvcPublisher:
             return
 
     @pytest.mark.asyncio
-    async def test_publish_empty_batch(self, external_publisher):
-        external_publisher.start()
-        external_publisher.publish_events([])
-        await external_publisher.shutdown()
-        metrics = external_publisher.get_and_reset_metrics()
-        assert metrics["published"] == 0
-        assert metrics["failed"] == 0
+    async def test_publish_empty_batch(self, http_client):
+        """Test publishing empty batch."""
+        result = await http_client.publish([])
+        assert result.publish_status is True
+        assert result.num_events_published == 0
+        assert result.num_events_filtered_out == 0
 
     @pytest.mark.asyncio
-    async def test_publish_all_filtered_out(self, base_kwargs):
+    async def test_publish_all_filtered_out(self):
         """When all events are filtered, should succeed with filtered count set to num events and no HTTP call."""
-        kwargs = base_kwargs.copy()
-        kwargs.pop("name", None)
-        kwargs.update(
-            {
-                "endpoint": "http://example.com/events",
-                "events_filter_fn": lambda x: False,  # Filter out all events
-                "timeout": 5.0,
-            }
+        client = AsyncHttpPublisherClient(
+            endpoint="http://example.com/events",
+            events_filter_fn=lambda x: False,  # Filter out all events
+            timeout=5.0,
         )
-        publisher = ExternalSvcPublisher(**kwargs)
 
         events = [Mock(spec=events_base_event_pb2.RayEvent) for _ in range(2)]
-        publisher.start()
-        publisher.publish_events(events)
-        await publisher.shutdown()
+        result = await client.publish(events)
 
-        metrics = publisher.get_and_reset_metrics()
-        assert metrics["published"] == 0
-        assert metrics["filtered_out"] == 2
+        assert result.publish_status is True
+        assert result.num_events_published == 0
+        assert result.num_events_filtered_out == 2
 
     @pytest.mark.asyncio
-    async def test_publish_success(
-        self,
-        external_publisher_kwargs,
-    ):
+    async def test_publish_success(self, client_kwargs):
+        """Test successful HTTP publish."""
         fake_resp = self._FakeResponse()
         events = [
             events_base_event_pb2.RayEvent(
@@ -229,21 +217,19 @@ class TestExternalSvcPublisher:
                 message="world",
             ),
         ]
-        publisher = ExternalSvcPublisher(**external_publisher_kwargs)
-        publisher.set_session(self._FakeSession(fake_resp))
-        publisher.start()
-        publisher.publish_events(events)
-        await publisher.shutdown()
 
-        metrics = publisher.get_and_reset_metrics()
-        assert metrics["published"] == 2
-        assert metrics["filtered_out"] == 0
+        client = AsyncHttpPublisherClient(**client_kwargs)
+        client.set_session(self._FakeSession(fake_resp))
+
+        result = await client.publish(events)
+
+        assert result.publish_status is True
+        assert result.num_events_published == 2
+        assert result.num_events_filtered_out == 0
 
     @pytest.mark.asyncio
-    async def test_publish_http_error(
-        self,
-        external_publisher_kwargs,
-    ):
+    async def test_publish_http_error(self, client_kwargs):
+        """Test HTTP error handling."""
         fake_resp = self._FakeResponse(raise_exc=Exception("HTTP error"))
         events = [
             events_base_event_pb2.RayEvent(
@@ -256,14 +242,20 @@ class TestExternalSvcPublisher:
             )
         ]
 
-        publisher = ExternalSvcPublisher(**external_publisher_kwargs)
-        publisher.set_session(self._FakeSession(fake_resp))
-        publisher.start()
-        publisher.publish_events(events)
-        await publisher.shutdown()
+        client = AsyncHttpPublisherClient(**client_kwargs)
+        client.set_session(self._FakeSession(fake_resp))
 
-        metrics = publisher.get_and_reset_metrics()
-        assert metrics["failed"] == len(events)
+        result = await client.publish(events)
+
+        assert result.publish_status is False
+        assert result.num_events_published == 0
+
+    @pytest.mark.asyncio
+    async def test_count_events_in_batch(self, http_client):
+        """Test counting events in batch."""
+        events = [Mock(spec=events_base_event_pb2.RayEvent) for _ in range(3)]
+        count = http_client.count_num_events_in_batch(events)
+        assert count == 3
 
 
 class TestNoopPublisher:
@@ -280,7 +272,7 @@ class TestNoopPublisher:
 
         # These should return expected values
         assert publisher.can_accept_events() is True
-        publisher.publish_events("anything")
+        publisher.enqueue_batch("anything")
         metrics = publisher.get_and_reset_metrics()
         assert metrics == {
             "published": 0,
