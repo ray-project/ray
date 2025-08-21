@@ -2,7 +2,12 @@ from typing import Union
 
 import numpy as np
 import pyarrow as pa
-from pydantic import BaseModel, field_validator
+
+try:
+    from pydantic import BaseModel, field_validator
+except ImportError:
+    pass
+
 
 from ray.util.annotations import PublicAPI
 
