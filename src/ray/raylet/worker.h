@@ -245,10 +245,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
   bool IsAvailableForScheduling() const {
-    return !IsDead()                        // Not dead
-           && GetAssignedTaskId().IsNil()   // No assigned task
-           && !IsBlocked()                  // Not blocked
-           && GetActorId().IsNil();         // No assigned actor
+    return !IsDead()                       // Not dead
+           && GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                 // Not blocked
+           && GetActorId().IsNil();        // No assigned actor
   }
 
   rpc::CoreWorkerClientInterface *rpc_client() {
