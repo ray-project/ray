@@ -1646,7 +1646,7 @@ class Dataset:
         if len(target_params_set) == 0:
             # Default to 128 MB target bytes per block (Apache Spark standard)
             target_num_bytes_per_block = 128 * 1024 * 1024
-            print(
+            logger.info(
                 f"Using default target of {target_num_bytes_per_block // (1024 * 1024)} MB per block (Apache Spark standard)"
             )
         elif len(target_params_set) > 1:
@@ -6683,6 +6683,31 @@ class Dataset:
                 self._current_executor.shutdown(force=False)
         except TypeError:
             pass
+
+
+class MaterializedDataset(Dataset, Generic[T]):
+    """A Dataset materialized in Ray memory, e.g., via `.materialize()`.
+
+    The blocks of a MaterializedDataset object are materialized into Ray object store
+    memory, which means that this class can be shared or iterated over by multiple Ray
+    tasks without re-executing the underlying computations for producing the stream.
+    """
+
+    def num_blocks(self) -> int:
+        """Return the number of blocks of this :class:`MaterializedDataset`.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100).repartition(10).materialize()
+            >>> ds.num_blocks()
+            10
+
+        Time complexity: O(1)
+
+        Returns:
+            The number of blocks of this :class:`Dataset`.
+        """
+        return self._plan.initial_num_blocks()
 
 
 @PublicAPI(stability="beta")
