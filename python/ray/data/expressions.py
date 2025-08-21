@@ -333,7 +333,7 @@ def _create_udf_callable(fn: Callable, return_dtype: DataType):
 
 
 @PublicAPI(stability="alpha")
-def udf(fn: Optional[Callable] = None, *, return_dtype: DataType):
+def udf(fn: Optional[Callable] = None, *, return_dtype: DataType) -> Callable:
     """
     Decorator to convert a UDF into an expression-compatible function.
 
