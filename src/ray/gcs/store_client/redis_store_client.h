@@ -178,7 +178,6 @@ class RedisStoreClient : public StoreClient {
   void AsyncCheckHealth(Postable<void(Status)> callback);
 
  private:
-
   /// \class RedisScanner
   ///
   /// This class is used to HSCAN data from a Redis table.
