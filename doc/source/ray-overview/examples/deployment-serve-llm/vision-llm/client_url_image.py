@@ -1,4 +1,4 @@
-#client_url_image.py
+# client_url_image.py
 from urllib.parse import urljoin
 import base64
 from openai import OpenAI
@@ -15,12 +15,17 @@ response = client.chat.completions.create(
             "role": "user",
             "content": [
                 {"type": "text", "text": "What is in this image?"},
-                {"type": "image_url", "image_url": {"url": "http://images.cocodataset.org/val2017/000000039769.jpg"}}
-            ]
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+                    },
+                },
+            ],
         }
     ],
     temperature=0.5,
-    stream=True
+    stream=True,
 )
 
 for chunk in response:

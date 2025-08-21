@@ -9,7 +9,7 @@ client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 response = client.chat.completions.create(
     model="my-llama-3.1-8b",
     messages=[{"role": "user", "content": "Tell me a joke"}],
-    stream=True
+    stream=True,
 )
 
 for chunk in response:

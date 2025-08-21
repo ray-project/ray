@@ -1,4 +1,4 @@
-#serve_llama_3_1_70b.py
+# serve_llama_3_1_70b.py
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
@@ -12,7 +12,8 @@ llm_config = LLMConfig(
     accelerator_type="A100-40G",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=2, max_replicas=4,
+            min_replicas=2,
+            max_replicas=4,
         )
     ),
     engine_kwargs=dict(
@@ -21,7 +22,7 @@ llm_config = LLMConfig(
         # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
         hf_token=os.environ["HF_TOKEN"],
         # Split weights among 8 GPUs in the node
-        tensor_parallel_size=8
+        tensor_parallel_size=8,
     ),
 )
 

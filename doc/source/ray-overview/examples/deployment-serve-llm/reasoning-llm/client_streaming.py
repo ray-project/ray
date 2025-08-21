@@ -1,9 +1,9 @@
-#client_streaming.py
+# client_streaming.py
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = <YOUR-TOKEN-HERE>
-base_url = <YOUR-ENDPOINT-HERE>
+api_key = "FAKE_KEY"
+base_url = "http://localhost:8000"
 
 client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 
@@ -11,9 +11,12 @@ client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 response = client.chat.completions.create(
     model="my-qwq-32B",
     messages=[
-        {"role": "user", "content": "I need to plan a trip to Paris from Seattle. Can you help me research flight costs, create an itinerary for 3 days, and suggest restaurants based on my dietary restrictions (vegetarian)?"}
+        {
+            "role": "user",
+            "content": "I need to plan a trip to Paris from Seattle. Can you help me research flight costs, create an itinerary for 3 days, and suggest restaurants based on my dietary restrictions (vegetarian)?",
+        }
     ],
-    stream=True
+    stream=True,
 )
 
 # Stream

@@ -1,4 +1,4 @@
-#serve_qwen_VL.py
+# serve_qwen_VL.py
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
@@ -11,13 +11,14 @@ llm_config = LLMConfig(
     accelerator_type="L40S",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=2, max_replicas=2,
+            min_replicas=2,
+            max_replicas=2,
         )
     ),
     engine_kwargs=dict(
         max_model_len=8192,
         ### Uncomment if your model is gated and need your Huggingface Token to access it
-        #hf_token=os.environ["HF_TOKEN"],
+        # hf_token=os.environ["HF_TOKEN"],
     ),
 )
 
