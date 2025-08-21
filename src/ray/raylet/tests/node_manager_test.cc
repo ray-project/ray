@@ -821,27 +821,25 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {
   (*request.mutable_resources())["GPU"] = 4.0;  // GPU is a unit instance resource
 
   bool callback_called = false;
-  Status callback_status;
 
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
-      [&callback_called, &callback_status](
+      [&callback_called](
           Status s, std::function<void()> success, std::function<void()> failure) {
         callback_called = true;
-        callback_status = s;
+        EXPECT_FALSE(s.ok());
+        EXPECT_TRUE(s.IsInvalidArgument());
+        // Check the error message contains expected details
+        std::string error_msg = s.message();
+        EXPECT_TRUE(error_msg.find("Cannot resize unit instance resource 'GPU'") !=
+                    std::string::npos);
+        EXPECT_TRUE(error_msg.find("Unit instance resources") != std::string::npos);
+        EXPECT_TRUE(error_msg.find("cannot be resized dynamically") != std::string::npos);
       });
 
   // The callback should have been called with an InvalidArgument status
   EXPECT_TRUE(callback_called);
-  EXPECT_FALSE(callback_status.ok());
-  EXPECT_TRUE(callback_status.IsInvalidArgument());
-  // Check the error message contains expected details
-  std::string error_msg = callback_status.message();
-  EXPECT_TRUE(error_msg.find("Cannot resize unit instance resource 'GPU'") !=
-              std::string::npos);
-  EXPECT_TRUE(error_msg.find("Unit instance resources") != std::string::npos);
-  EXPECT_TRUE(error_msg.find("cannot be resized dynamically") != std::string::npos);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
