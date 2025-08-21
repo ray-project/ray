@@ -60,7 +60,7 @@ class KubeRayIPPRProvider:
 
         def _get_ippr_group_spec(
             group_spec: Dict[str, Any], worker_group_spec: Dict[str, Any]
-        ) -> None:
+        ) -> IPPRGroupSpec:
             ray_start_params = worker_group_spec.get("rayStartParams", {})
             if "num-cpus" in ray_start_params or "memory" in ray_start_params:
                 raise ValueError(
@@ -225,6 +225,8 @@ class KubeRayIPPRProvider:
                             {
                                 "raylet-id": resize.raylet_id,
                                 "resized-at": resized_at,
+                                "adjusted-max-cpu": resize.adjusted_max_cpu,
+                                "adjusted-max-memory": resize.adjusted_max_memory,
                             }
                         )
                     }
@@ -375,6 +377,8 @@ def _set_ippr_status_for_pod(
         pod_ippr_status = json.loads(pod_ippr_status_json)
         ippr_status.raylet_id = pod_ippr_status.get("raylet-id")
         ippr_status.resized_at = pod_ippr_status.get("resized-at")
+        ippr_status.adjusted_max_cpu = pod_ippr_status.get("adjusted-max-cpu")
+        ippr_status.adjusted_max_memory = pod_ippr_status.get("adjusted-max-memory")
 
     for condition in pod.get("status", {}).get("conditions", []):
         if condition["type"] == "PodResizePending" and condition["status"] == "True":
@@ -394,20 +398,28 @@ def _set_ippr_status_for_pod(
                     if match.group(1) == "cpu":
                         diff = spec_cpu - (remaining / 1000)
                         ippr_status.suggested_cpu = ippr_status.desired_cpu - diff
+                        ippr_status.adjusted_max_cpu = ippr_status.suggested_cpu
                     else:
                         diff = spec_memory - int(remaining)
                         ippr_status.suggested_memory = ippr_status.desired_memory - diff
+                        ippr_status.adjusted_max_memory = ippr_status.suggested_memory
             elif ippr_status.resized_status == "infeasible":
                 match = re.search(
                     r"Node didn't have enough capacity: (cpu|memory), requested: (\d+), capacity: (\d+)",
                     ippr_status.resized_message or "",
                 )
                 if match:
+                    requested = int(match.group(2))
                     capacity = int(match.group(3))
+                    diff = requested - capacity
                     if match.group(1) == "cpu":
-                        ippr_status.suggested_cpu = capacity / 1000
+                        ippr_status.suggested_cpu = ippr_status.desired_cpu - (
+                            diff / 1000
+                        )
+                        ippr_status.adjusted_max_cpu = ippr_status.suggested_cpu
                     else:
-                        ippr_status.suggested_memory = capacity
+                        ippr_status.suggested_memory = ippr_status.desired_memory - diff
+                        ippr_status.adjusted_max_memory = ippr_status.suggested_memory
             break
         elif (
             condition["type"] == "PodResizeInProgress" and condition["status"] == "True"
@@ -417,6 +429,15 @@ def _set_ippr_status_for_pod(
             if condition.get("reason") == "Error":
                 ippr_status.resized_status = "error"
             break
+
+    if ippr_status.adjusted_max_memory is not None:
+        ippr_status.desired_memory = min(
+            ippr_status.adjusted_max_memory, ippr_status.desired_memory
+        )
+        ippr_status.current_memory = min(
+            ippr_status.adjusted_max_memory, ippr_status.current_memory
+        )
+
     return (
         ippr_status,
         {

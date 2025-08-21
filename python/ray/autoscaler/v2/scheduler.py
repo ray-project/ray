@@ -1541,38 +1541,44 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Try scheduling resource requests with IPPR
         existing_nodes = target_nodes
         target_nodes = []
+        ippr_candidates = []
 
         for node in existing_nodes:
             if node.ippr_status is not None and node.ippr_status.can_resize_up():
-                node.update_total_resources(
-                    {
-                        "CPU": node.ippr_status.spec.max_cpu,
-                        "memory": node.ippr_status.spec.max_memory,
-                    }
-                )
+                ippr_candidates.append(node)
+            else:
+                target_nodes.append(node)
 
-        while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
+        for node in ippr_candidates:
+            node.update_total_resources(
+                {
+                    "CPU": node.ippr_status.max_cpu(),
+                    "memory": node.ippr_status.max_memory(),
+                }
+            )
+
+        while len(requests_to_sched) > 0 and len(ippr_candidates) > 0:
             (
                 best_node,
                 requests_to_sched,
-                existing_nodes,
+                ippr_candidates,
             ) = ResourceDemandScheduler._sched_best_node(
-                requests_to_sched, existing_nodes, resource_request_source
+                requests_to_sched, ippr_candidates, resource_request_source
             )
             if best_node is None:
-                # No existing nodes can schedule any more requests.
+                # No ippr nodes can schedule any more requests.
                 break
 
             best_node.ippr_status.update(
                 raylet_id=best_node.ray_node_id,
-                desired_cpu=best_node.ippr_status.spec.max_cpu,
-                desired_memory=best_node.ippr_status.spec.max_memory,
+                desired_cpu=best_node.ippr_status.max_cpu(),
+                desired_memory=best_node.ippr_status.max_memory(),
             )
 
             target_nodes.append(best_node)
 
-        # If there's any existing nodes left, we will add to the target nodes
-        target_nodes.extend(existing_nodes)
+        # If there's any ippr candidates left, we will add to the target nodes
+        target_nodes.extend(ippr_candidates)
 
         # Try scheduling resource requests with new nodes.
         node_pools = [

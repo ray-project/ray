@@ -268,6 +268,8 @@ class IPPRStatus:
     resized_message: Optional[str] = None
     suggested_cpu: Optional[float] = None
     suggested_memory: Optional[int] = None
+    adjusted_max_cpu: Optional[float] = None
+    adjusted_max_memory: Optional[int] = None
     raylet_id: Optional[str] = None
 
     def update(
@@ -301,10 +303,15 @@ class IPPRStatus:
     def is_finished(self) -> bool:
         return self.resized_status is None
 
+    def max_cpu(self) -> float:
+        return self.adjusted_max_cpu or self.spec.max_cpu
+
+    def max_memory(self) -> int:
+        return self.adjusted_max_memory or self.spec.max_memory
+
     def can_resize_up(self) -> bool:
         return self.is_finished() and (
-            self.current_cpu < self.spec.max_cpu
-            or self.current_memory < self.spec.max_memory
+            self.current_cpu < self.max_cpu() or self.current_memory < self.max_memory()
         )
 
     def is_timeout(self) -> bool:
