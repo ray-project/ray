@@ -1073,6 +1073,30 @@ class ServeController:
             return None
         return status[0].to_proto().SerializeToString()
 
+    def get_deployment_num_replicas(
+        self, name: str, app_name: str = SERVE_DEFAULT_APP_NAME
+    ) -> Union[None, int]:
+        """Get the number of replicas for a deployment.
+
+        Args:
+            name: Deployment name.
+            app_name: Application name.
+
+        Returns:
+            Number of replicas for the deployment, or None if deployment doesn't exist.
+        """
+        from ray.serve._private.common import DeploymentID
+
+        deployment_id = DeploymentID(name=name, app_name=app_name)
+        deployment_details = self.deployment_state_manager.get_deployment_details(
+            deployment_id
+        )
+
+        if deployment_details is None:
+            return None
+
+        return deployment_details.target_num_replicas
+
     def get_docs_path(self, name: str):
         """Docs path for application.
 

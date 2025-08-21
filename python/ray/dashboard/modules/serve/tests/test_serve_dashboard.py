@@ -19,12 +19,14 @@ from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetail
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
+from ray import serve
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 
 SERVE_HEAD_URL = "http://localhost:8265/api/serve/applications/"
+SERVE_DEPLOYMENT_SCALE_URL = "http://localhost:8265/api/serve/applications/{application_name}/deployments/{deployment_name}/scale"
 
 
 def deploy_config_multi_app(config: Dict, url: str):
@@ -570,6 +572,108 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
                 assert os.path.exists(file_path)
 
     print("Finished checking application details.")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_deployment_scale_not_started(ray_start_stop):
+    """Test the deployment scale endpoint when Serve hasn't started yet."""
+    url = SERVE_DEPLOYMENT_SCALE_URL.format(
+        application_name="test_app", deployment_name="test_deployment"
+    )
+    response = requests.get(url, timeout=5)
+
+    assert response.status_code == 404
+    assert "No Serve instance running" in response.text
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_deployment_scale_deployment_not_found(ray_start_stop):
+    """Test the deployment scale endpoint with non-existent deployment."""
+    # Start serve but don't deploy anything
+    serve.start()
+
+    try:
+        # Test non-existent app
+        url = SERVE_DEPLOYMENT_SCALE_URL.format(
+            application_name="nonexistent_app", deployment_name="test"
+        )
+        response = requests.get(url, timeout=5)
+        assert response.status_code == 404
+        assert "not found" in response.text
+    finally:
+        serve.shutdown()
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_deployment_scale(ray_start_stop):
+    """Test the deployment scale endpoint with valid deployments."""
+
+    def verify_deployment_scale(
+        app_name, expected_replicas, deployment_name, deployment_class
+    ):
+        """Helper function to deploy an app and verify its scale endpoint."""
+        if app_name == "default":
+            serve.run(deployment_class.bind())
+        else:
+            serve.run(deployment_class.bind(), name=app_name)
+
+        # Wait for deployment to be ready
+        wait_for_condition(
+            lambda: requests.get(SERVE_HEAD_URL).json()["applications"][app_name][
+                "status"
+            ]
+            == "RUNNING",
+            timeout=10,
+        )
+
+        # Test the scale endpoint
+        url = SERVE_DEPLOYMENT_SCALE_URL.format(
+            application_name=app_name, deployment_name=deployment_name
+        )
+        response = requests.get(url, timeout=5)
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"num_replicas": expected_replicas}
+
+        serve.delete(app_name)
+
+    test_cases = [
+        {
+            "app_name": "single_app",
+            "num_replicas": 1,
+        },
+        {
+            "app_name": "multi_replica_app",
+            "num_replicas": 3,
+        },
+        {
+            "app_name": "default",
+            "num_replicas": 2,
+        },
+    ]
+
+    for test_case in test_cases:
+
+        @serve.deployment(num_replicas=test_case["num_replicas"])
+        class DeploymentClass:
+            def __init__(self):
+                pass
+
+            def __call__(self):
+                return "test"
+
+        verify_deployment_scale(
+            test_case["app_name"],
+            test_case["num_replicas"],
+            "DeploymentClass",
+            DeploymentClass,
+        )
 
 
 if __name__ == "__main__":

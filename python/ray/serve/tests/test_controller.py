@@ -273,6 +273,62 @@ def test_get_deployment_config(serve_instance):
     assert isinstance(deployment_config, DeploymentConfig)
 
 
+def test_get_deployment_num_replicas(serve_instance):
+    """Test getting deployment replica count."""
+
+    controller = _get_global_client()._controller
+
+    # Before any deployment is created, the replica count should be None.
+    num_replicas = ray.get(controller.get_deployment_num_replicas.remote("nonexistent"))
+    assert num_replicas is None
+
+    # Test with default app name and single replica
+    @serve.deployment(num_replicas=1)
+    class SingleReplicaApp:
+        pass
+
+    serve.run(SingleReplicaApp.bind())
+    num_replicas = ray.get(
+        controller.get_deployment_num_replicas.remote("SingleReplicaApp")
+    )
+    assert num_replicas == 1
+    serve.delete(SERVE_DEFAULT_APP_NAME)
+
+    # Test with multiple replicas
+    @serve.deployment(num_replicas=3)
+    class MultiReplicaApp:
+        pass
+
+    serve.run(MultiReplicaApp.bind())
+    num_replicas = ray.get(
+        controller.get_deployment_num_replicas.remote(
+            "MultiReplicaApp", SERVE_DEFAULT_APP_NAME
+        )
+    )
+    assert num_replicas == 3
+    serve.delete(SERVE_DEFAULT_APP_NAME)
+
+    # Test with custom app name
+    @serve.deployment(num_replicas=2)
+    class CustomAppDeployment:
+        pass
+
+    serve.run(CustomAppDeployment.bind(), name="custom_app")
+    num_replicas = ray.get(
+        controller.get_deployment_num_replicas.remote(
+            "CustomAppDeployment", "custom_app"
+        )
+    )
+    assert num_replicas == 2
+    serve.delete("custom_app")
+
+    # Test non-existent deployment in existing app
+    num_replicas = ray.get(
+        controller.get_deployment_num_replicas.remote("nonexistent", "custom_app")
+    )
+    assert num_replicas is None
+
+
 if __name__ == "__main__":
     import sys
 

@@ -165,6 +165,46 @@ class ServeHead(SubprocessModule):
         else:
             return Response()
 
+    @routes.get(
+        "/api/serve/applications/{application_name}/deployments/{deployment_name}/scale"
+    )
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    @validate_endpoint()
+    async def get_deployment_scale(self, req: Request) -> Response:
+        application_name = req.match_info["application_name"]
+        deployment_name = req.match_info["deployment_name"]
+
+        controller = await self.get_serve_controller()
+        if controller is None:
+            return Response(
+                status=404,
+                text="No Serve instance running on this Ray cluster.",
+            )
+
+        try:
+            num_replicas = await controller.get_deployment_num_replicas.remote(
+                deployment_name, application_name
+            )
+
+            if num_replicas is None:
+                return Response(
+                    status=404,
+                    text=f"Deployment '{deployment_name}' not found in application '{application_name}'.",
+                )
+
+            return Response(
+                text=json.dumps({"num_replicas": num_replicas}),
+                content_type="application/json",
+            )
+        except ray.exceptions.RayTaskError as e:
+            return Response(
+                status=503,
+                text=(
+                    "Failed to get deployment scale information from the controller. "
+                    f"The GCS may be down, please retry later: {e}"
+                ),
+            )
+
     def validate_http_options(self, client, http_options):
         divergent_http_options = []
 
