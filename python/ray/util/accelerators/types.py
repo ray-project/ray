@@ -3,6 +3,7 @@ from ray.util.annotations import PublicAPI
 import ray.util.accelerators.accelerators as _accelerators
 
 
+@PublicAPI(stability="alpha")
 class AcceleratorTypes:
     def __init__(self):
         self._all_constants = {
