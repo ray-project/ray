@@ -3794,7 +3794,7 @@ class AlgorithmConfig(_Config):
                 True).
             restart_failed_sub_environments: If True and any sub-environment (within
                 a vectorized env) throws any error during env stepping, the
-                Sampler tries to restart the faulty sub-environment. This is done
+                EnvRunner tries to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
                 the EnvRunner crashing. You can raise
                 `ray.rllib.env.env_runner.StepFailedRecreateEnvError` from your

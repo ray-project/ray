@@ -77,7 +77,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             self.assertTrue(sum_ in [128, 129])
 
     def test_async_vector_env(self):
-        """Tests, whether SingleAgentGymEnvRunner can run with vector envs."""
+        """Tests, whether SingleAgentEnvRunner can run with vector envs."""
 
         for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
@@ -103,7 +103,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             env_runner.stop()
 
     def test_distributed_env_runner(self):
-        """Tests, whether SingleAgentGymEnvRunner can be distributed."""
+        """Tests, whether SingleAgentEnvRunner can be distributed."""
 
         remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentEnvRunner)
 
@@ -146,7 +146,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
     @patch("ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):
-        """Tests, whether SingleAgentGymEnvRunner can handle StepFailedResetRequired."""
+        """Tests, whether SingleAgentEnvRunner can handle StepFailedResetRequired."""
         # Define an env that raises StepFailedResetRequired
 
         class ErrorRaisingEnv(gym.Env):
