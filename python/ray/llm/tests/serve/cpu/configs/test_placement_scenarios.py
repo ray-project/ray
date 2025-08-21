@@ -1,125 +1,91 @@
 import sys
-from unittest.mock import Mock
 
 import pytest
 
-
-class MockLLMConfig:
-    """Mock LLMConfig for testing placement group logic."""
-
-    def __init__(self, rank_to_bundle_index=None):
-        self.rank_to_bundle_index = rank_to_bundle_index
-
-    def _has_custom_placement_config(self, deployment_config):
-        return (
-            "placement_group_bundles" in deployment_config
-            or "placement_group_strategy" in deployment_config
-        )
-
-    def _apply_default_placement_config(
-        self, deployment_config, replica_actor_resources, engine_config
-    ):
-        """Apply topology-aware default placement."""
-        tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
-        pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
-
-        # TP ranks colocated, PP cross-node allowed
-        replica_bundle = replica_actor_resources
-        worker_bundles = [{"GPU": tp_size}] * pp_size
-
-        deployment_config.update(
-            {
-                "placement_group_bundles": [replica_bundle] + worker_bundles,
-                "placement_group_strategy": "PACK",
-            }
-        )
-
-    def process_placement_config(
-        self, deployment_config, replica_actor_resources, engine_config
-    ):
-        """Main logic for placement group processing."""
-        if self._has_custom_placement_config(deployment_config):
-            # CUSTOM PATH: Use as-is, no modifications
-            pass  # Don't modify user config
-        else:
-            # DEFAULT PATH: Generate topology-aware placement groups
-            self._apply_default_placement_config(
-                deployment_config, replica_actor_resources, engine_config
-            )
-        return deployment_config
+from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
 
 
 class TestPlacementGroupScenarios:
-    """Test placement group scenarios for distributed tensor parallelism."""
+    """Test placement group scenarios for tensor and pipeline parallelism."""
 
-    def test_tp2_single_node_default(self):
-        """Test TP=2 single node (default behavior)."""
-        config = MockLLMConfig()
-        deployment_config = {}
-        replica_resources = {"CPU": 1, "GPU": 0}
-        engine_config = Mock()
-        engine_config.tensor_parallel_degree = 2
-        engine_config.pipeline_parallel_degree = 1
-
-        result = config.process_placement_config(
-            deployment_config, replica_resources, engine_config
+    def test_tensor_parallel_default_placement(self, disable_placement_bundles):
+        """Test TP=2 default placement strategy (single node)."""
+        config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "tensor_parallel_size": 2,
+                "pipeline_parallel_size": 1,
+            },
         )
+
+        serve_options = config.get_serve_options()
 
         # Should use default: replica + 1 bundle with 2 GPUs
         expected_bundles = [{"CPU": 1, "GPU": 0}, {"GPU": 2}]
-        assert result["placement_group_bundles"] == expected_bundles
-        assert result["placement_group_strategy"] == "PACK"
+        assert serve_options["placement_group_bundles"] == expected_bundles
+        assert serve_options["placement_group_strategy"] == "PACK"
 
-    def test_tp2_multi_node_custom(self):
-        """Test TP=2 multi node (custom override)."""
-        config = MockLLMConfig()
-        deployment_config = {
-            "placement_group_bundles": [{"CPU": 1, "GPU": 0}, {"GPU": 1}, {"GPU": 1}],
-            "placement_group_strategy": "PACK",
-        }
-        replica_resources = {"CPU": 1, "GPU": 0}
-        engine_config = Mock()
-
-        result = config.process_placement_config(
-            deployment_config, replica_resources, engine_config
+    def test_tensor_parallel_cross_node_custom_placement(
+        self, disable_placement_bundles
+    ):
+        """Test TP=2 cross-node placement (custom override for single GPU nodes)."""
+        config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "tensor_parallel_size": 2,
+                "pipeline_parallel_size": 1,
+            },
+            deployment_config={
+                "placement_group_bundles": [
+                    {"CPU": 1, "GPU": 0},
+                    {"GPU": 1},
+                    {"GPU": 1},
+                ],
+                "placement_group_strategy": "PACK",
+            },
         )
+
+        serve_options = config.get_serve_options()
 
         # Should use custom config unchanged
         expected_bundles = [{"CPU": 1, "GPU": 0}, {"GPU": 1}, {"GPU": 1}]
-        assert result["placement_group_bundles"] == expected_bundles
-        assert result["placement_group_strategy"] == "PACK"
+        assert serve_options["placement_group_bundles"] == expected_bundles
+        assert serve_options["placement_group_strategy"] == "PACK"
 
-    def test_tp2_pp3_all_same_node_custom(self):
-        """Test TP=2, PP=3 all ranks on same node (custom)."""
-        config = MockLLMConfig()
-        deployment_config = {
-            "placement_group_bundles": [{"CPU": 1, "GPU": 6}],
-            "placement_group_strategy": "STRICT_PACK",
-        }
-        replica_resources = {"CPU": 1, "GPU": 0}
-        engine_config = Mock()
-
-        result = config.process_placement_config(
-            deployment_config, replica_resources, engine_config
+    def test_mixed_parallelism_single_node_custom_placement(
+        self, disable_placement_bundles
+    ):
+        """Test TP=2, PP=3 all ranks on same node (custom configuration)."""
+        config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "tensor_parallel_size": 2,
+                "pipeline_parallel_size": 3,
+            },
+            deployment_config={
+                "placement_group_bundles": [{"CPU": 1, "GPU": 6}],
+                "placement_group_strategy": "STRICT_PACK",
+            },
         )
+
+        serve_options = config.get_serve_options()
 
         # Should use custom config unchanged
         expected_bundles = [{"CPU": 1, "GPU": 6}]
-        assert result["placement_group_bundles"] == expected_bundles
-        assert result["placement_group_strategy"] == "STRICT_PACK"
+        assert serve_options["placement_group_bundles"] == expected_bundles
+        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
 
-    def test_tp2_pp3_tp_same_node_pp_cross_node_default(self):
-        """Test TP=2, PP=3 with TP same node, PP cross-node (default)."""
-        config = MockLLMConfig()
-        deployment_config = {}
-        replica_resources = {"CPU": 1, "GPU": 0}
-        engine_config = Mock()
-        engine_config.tensor_parallel_degree = 2
-        engine_config.pipeline_parallel_degree = 3
-
-        result = config.process_placement_config(
-            deployment_config, replica_resources, engine_config
+    def test_mixed_parallelism_default_placement(self, disable_placement_bundles):
+        """Test TP=2, PP=3 default placement (TP colocated, PP cross-node allowed)."""
+        config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "tensor_parallel_size": 2,
+                "pipeline_parallel_size": 3,
+            },
         )
+
+        serve_options = config.get_serve_options()
 
         # Should use default: replica + 3 bundles (one per PP stage), each with 2 GPUs
         expected_bundles = [
@@ -128,46 +94,48 @@ class TestPlacementGroupScenarios:
             {"GPU": 2},  # PP stage 1
             {"GPU": 2},  # PP stage 2
         ]
-        assert result["placement_group_bundles"] == expected_bundles
-        assert result["placement_group_strategy"] == "PACK"
+        assert serve_options["placement_group_bundles"] == expected_bundles
+        assert serve_options["placement_group_strategy"] == "PACK"
 
-    def test_tp2_pp3_all_multi_node_custom(self):
-        """Test TP=2, PP=3 all multi-node (custom for 1×GPU nodes)."""
-        config = MockLLMConfig()
-        deployment_config = {
-            "placement_group_bundles": [{"CPU": 1, "GPU": 0}] + [{"GPU": 1}] * 6,
-            "placement_group_strategy": "PACK",
-        }
-        replica_resources = {"CPU": 1, "GPU": 0}
-        engine_config = Mock()
-
-        result = config.process_placement_config(
-            deployment_config, replica_resources, engine_config
+    def test_mixed_parallelism_fully_distributed_custom_placement(
+        self, disable_placement_bundles
+    ):
+        """Test TP=2, PP=3 fully distributed (custom for single GPU per node scenario)."""
+        config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "tensor_parallel_size": 2,
+                "pipeline_parallel_size": 3,
+            },
+            deployment_config={
+                "placement_group_bundles": [{"CPU": 1, "GPU": 0}] + [{"GPU": 1}] * 6,
+                "placement_group_strategy": "PACK",
+            },
         )
+
+        serve_options = config.get_serve_options()
 
         # Should use custom config unchanged
         expected_bundles = [{"CPU": 1, "GPU": 0}] + [{"GPU": 1}] * 6
-        assert result["placement_group_bundles"] == expected_bundles
-        assert result["placement_group_strategy"] == "PACK"
+        assert serve_options["placement_group_bundles"] == expected_bundles
+        assert serve_options["placement_group_strategy"] == "PACK"
 
-    def test_no_replica_resource_merging_in_custom_path(self):
-        """Test that custom placement configs are not modified."""
-        config = MockLLMConfig()
-        deployment_config = {
-            "placement_group_bundles": [{"GPU": 1}, {"GPU": 1}],
-            "placement_group_strategy": "PACK",
-        }
-        replica_resources = {"CPU": 2, "GPU": 0, "memory": 1000}
-        engine_config = Mock()
-
-        original_bundles = deployment_config["placement_group_bundles"].copy()
-        result = config.process_placement_config(
-            deployment_config, replica_resources, engine_config
+    def test_custom_placement_config_preservation(self, disable_placement_bundles):
+        """Test that custom placement configurations are preserved without modification."""
+        config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            deployment_config={
+                "placement_group_bundles": [{"GPU": 1}, {"GPU": 1}],
+                "placement_group_strategy": "PACK",
+            },
         )
 
-        # User bundles should be completely unchanged
-        assert result["placement_group_bundles"] == original_bundles
-        assert result["placement_group_bundles"][0] == {"GPU": 1}
+        serve_options = config.get_serve_options()
+
+        # User bundles should be completely unchanged (no replica resource merging)
+        expected_bundles = [{"GPU": 1}, {"GPU": 1}]
+        assert serve_options["placement_group_bundles"] == expected_bundles
+        assert serve_options["placement_group_strategy"] == "PACK"
 
 
 if __name__ == "__main__":
