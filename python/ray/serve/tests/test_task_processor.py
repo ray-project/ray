@@ -1,7 +1,6 @@
 import json
 import sys
 import tempfile
-import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,7 +8,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig
 from ray.serve.task_consumer import (
     instantiate_adapter_from_config,
@@ -244,19 +243,24 @@ class TestTaskConsumerWithRayServe:
 
         tracker = ProcessedTasksTracker.remote()
 
+        # Create a SignalActor to control task processing timing
+        processing_signal = SignalActor.remote()
+
         @serve.deployment(num_replicas=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
-            def __init__(self, tracker_ref):
+            def __init__(self, tracker_ref, signal_ref):
                 self.tracker = tracker_ref
+                self.signal = signal_ref
                 self.local_processed = []
 
             @task_handler(name="process_request")
             def process_request(self, data):
                 ray.get(self.tracker.add_task.remote(data))
                 self.local_processed.append(data)
-                # Simulate some processing time
-                time.sleep(1)
+                # Use SignalActor to simulate processing time instead of time.sleep
+                self.signal.wait.remote()
+
                 return f"Processed: {data}"
 
             def get_local_processed(self):
@@ -264,7 +268,7 @@ class TestTaskConsumerWithRayServe:
 
         # First deployment - send tasks and process some
         serve.run(
-            ServeTaskConsumer.bind(tracker),
+            ServeTaskConsumer.bind(tracker, processing_signal),
             name="test_task_consumer_persistence_across_restarts_v1",
         )
 
@@ -273,6 +277,17 @@ class TestTaskConsumerWithRayServe:
         for i in range(num_tasks):
             task_id_ref = send_request_to_queue.remote(processor_config, f"task_{i}")
             task_ids.append(ray.get(task_id_ref))
+
+        # Wait for tasks to start processing (they will be waiting on signal)
+        def wait_for_task_waiters():
+            num_waiters = ray.get(processing_signal.cur_num_waiters.remote())
+            return num_waiters >= 2
+
+        wait_for_condition(wait_for_task_waiters, timeout=10)
+
+        # Release signal to allow 2 tasks to complete
+        for _ in range(2):
+            ray.get(processing_signal.send.remote(clear=True))
 
         # Wait for at least 2 tasks to be processed
         def wait_for_some_tasks():
@@ -304,11 +319,24 @@ class TestTaskConsumerWithRayServe:
             tasks_before_restart < num_tasks
         ), "All tasks were processed before restart, test cannot verify persistence"
 
+        # Create a new SignalActor for the second deployment
+        processing_signal2 = SignalActor.remote()
+
         # Restart the deployment with a new instance
         handle2 = serve.run(
-            ServeTaskConsumer.bind(tracker),
+            ServeTaskConsumer.bind(tracker, processing_signal2),
             name="test_task_consumer_persistence_across_restarts_v2",
         )
+
+        # Wait for remaining tasks to start processing
+        def wait_for_remaining_task_waiters():
+            num_waiters = ray.get(processing_signal2.cur_num_waiters.remote())
+            return num_waiters == (num_tasks - tasks_before_restart)
+
+        wait_for_condition(wait_for_remaining_task_waiters, timeout=10)
+
+        # Release signals to allow all remaining tasks to complete
+        ray.get(processing_signal2.send.remote())
 
         # Wait for all tasks to be eventually processed
         def wait_for_all_tasks():
