@@ -87,5 +87,33 @@ def test_deprecation_warnings():
         assert accelerators.NVIDIA_TESLA_K80 == "NVIDIA_TESLA_K80"
 
 
+def test_get_accelerator_type():
+    """Test accessing accelerator types in different ways."""
+    # Test access TYPES constants
+    assert isinstance(accelerators.TYPES, str)
+    assert "NVIDIA_A100" in accelerators.TYPES
+    assert "NVIDIA_H100" in accelerators.TYPES
+    assert "AMD_INSTINCT_MI300A" in accelerators.TYPES
+
+    # import the types instance and test its methods
+    from ray.util.accelerators.types import types
+    assert isinstance(types.nvidia_types, str)
+    assert "NVIDIA_A100" in types.nvidia_types
+    assert "NVIDIA_H100" in types.nvidia_types
+
+    assert isinstance(types.amd_types, str)
+    assert "AMD_INSTINCT_MI300A" in types.amd_types
+
+    assert isinstance(types.intel_types, str)
+    assert isinstance(types.google_types, str)
+    assert isinstance(types.huawei_types, str)
+    assert isinstance(types.aws_types, str)
+
+    assert callable(types.print_all)
+
+    assert isinstance(types.all_constants, str)
+    assert len(types.all_constants) > 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
