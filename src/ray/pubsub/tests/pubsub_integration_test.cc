@@ -239,10 +239,11 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
 
   std::vector<rpc::ActorTableData> actors_2;
   auto subscriber_2 = CreateSubscriber();
-  subscriber_2->SubscribeChannel(
+  subscriber_2->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_ACTOR_CHANNEL,
       address_proto_,
+      /*key_id=*/std::nullopt,
       /*subscribe_done_callback=*/
       [&counter](Status status) {
         RAY_CHECK_OK(status);
@@ -293,7 +294,9 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
 
   subscriber_1->Unsubscribe(
       rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_, subscribed_actor);
-  subscriber_2->UnsubscribeChannel(rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_);
+  subscriber_2->Unsubscribe(rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                            address_proto_,
+                            /*key_id=*/std::nullopt);
 
   // Waiting here is necessary to avoid invalid memory access during shutdown.
   // TODO(mwtian): cancel inflight polls during subscriber shutdown, and remove the

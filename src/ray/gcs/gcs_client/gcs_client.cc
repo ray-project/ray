@@ -38,8 +38,6 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
   explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
       : rpc_client_(rpc_client) {}
 
-  ~GcsSubscriberClient() final = default;
-
   void PubsubLongPolling(
       const rpc::PubsubLongPollingRequest &request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final;
@@ -47,8 +45,6 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
   void PubsubCommandBatch(
       const rpc::PubsubCommandBatchRequest &request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
-
-  std::string DebugString() const final { return ""; }
 
  private:
   const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;

@@ -20,11 +20,11 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -143,7 +143,7 @@ class TaskManagerTest : public ::testing::Test {
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
-        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
+        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
         mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
         reference_counter_(std::make_shared<ReferenceCounter>(
@@ -215,7 +215,7 @@ class TaskManagerTest : public ::testing::Test {
   bool did_queue_generator_resubmit_ = false;
   rpc::Address addr_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
-  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounter> reference_counter_;

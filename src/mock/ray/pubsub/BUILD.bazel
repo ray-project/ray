@@ -7,11 +7,3 @@ ray_cc_library(
         "//src/ray/pubsub:publisher_interface",
     ],
 )
-
-ray_cc_library(
-    name = "mock_subscriber",
-    hdrs = ["subscriber.h"],
-    deps = [
-        "//src/ray/pubsub:subscriber_interface",
-    ],
-)
