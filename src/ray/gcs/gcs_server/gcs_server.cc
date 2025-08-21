@@ -131,6 +131,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     auto redis_store_client =
         std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions());
     // Health check Redis periodically and crash if it becomes unavailable.
+    // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
         [store_client] {
           store_client->AsyncCheckHealth(
