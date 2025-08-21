@@ -187,9 +187,9 @@ class AsyncCheckpointWriter:
             maxsize=self._max_pending_uploads
         )
         self._completed_tasks: queue.Queue[_AsyncCheckpointTask] = queue.Queue()
-        self._failed_tasks: queue.Queue[Tuple[_AsyncCheckpointTask, Exception]] = (
-            queue.Queue()
-        )
+        self._failed_tasks: queue.Queue[
+            Tuple[_AsyncCheckpointTask, Exception]
+        ] = queue.Queue()
         self._shutdown = False
         self._lock = threading.Lock()
 

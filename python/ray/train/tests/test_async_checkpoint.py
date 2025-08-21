@@ -1,24 +1,21 @@
 """Tests for async checkpoint functionality in Ray Train."""
 
-import json
 import os
 import tempfile
 import time
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pyarrow.fs
+import pytest
 
 from ray.train import Checkpoint, async_report
 from ray.train._internal.async_checkpoint import (
     AsyncCheckpointWriter,
     _AsyncCheckpointError,
-    _AsyncCheckpointTask,
-    _get_async_checkpoint_writer,
     _shutdown_async_checkpoint_writer,
 )
-from ray.train._internal.session import _TrainSession, init_session, shutdown_session
+from ray.train._internal.session import init_session, shutdown_session
 from ray.train._internal.storage import StorageContext
 
 
