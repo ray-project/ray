@@ -1,34 +1,25 @@
+from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
 import pyarrow as pa
 
-try:
-    from pydantic import BaseModel, field_validator
-except ImportError:
-    pass
-
-
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class DataType(BaseModel):
+@dataclass
+class DataType:
     """A simplified Ray Data DataType supporting Arrow, NumPy, and Python types."""
 
     internal_type: Union[pa.DataType, np.dtype, type]
 
-    class Config:
-        arbitrary_types_allowed = True
-
-    @field_validator("internal_type")
-    @classmethod
-    def validate_type(cls, v):
-        if not isinstance(v, (pa.DataType, np.dtype, type)):
+    def __post_init__(self):
+        """Validate the internal_type after initialization."""
+        if not isinstance(self.internal_type, (pa.DataType, np.dtype, type)):
             raise TypeError(
                 "DataType supports only PyArrow DataType, NumPy dtype, or Python type."
             )
-        return v
 
     # Type checking methods
     def is_arrow_type(self) -> bool:
