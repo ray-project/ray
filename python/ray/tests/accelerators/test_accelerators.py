@@ -7,15 +7,26 @@ from ray.util.annotations import RayDeprecationWarning
 
 def test_basic_accelerators():
     """Test basic accelerator constants and warnings."""
-    with pytest.warns(RayDeprecationWarning):
+    with pytest.warns(
+        UserWarning,
+        match="NVIDIA_A100 can be replaced with NVIDIA_A100_40G or NVIDIA_A100_80G for more precise accelerator specification.",
+    ):
         assert accelerators.NVIDIA_A100 == "A100"
+
+    with pytest.warns(
+        RayDeprecationWarning,
+        match="NVIDIA_TESLA_A100 is deprecated, use NVIDIA_A100 instead.",
+    ):
+        assert accelerators.NVIDIA_TESLA_A100 == "A100"
+
+    with pytest.warns(RayDeprecationWarning):
+        assert accelerators.AMD_INSTINCT_MI100 == "AMD-Instinct-MI100"
+
     with pytest.raises(
         AttributeError,
         match="module 'ray.util.accelerators' has no attribute 'NVIDIA_INVALID'",
     ):
         _ = accelerators.NVIDIA_INVALID
-    with pytest.warns(RayDeprecationWarning):
-        assert accelerators.NVIDIA_TESLA_A100 == "A100"
 
 
 def test_nvidia_accelerators():
@@ -78,15 +89,6 @@ def test_huawei_accelerators():
 def test_aws_accelerators():
     """Test all AWS accelerator constants."""
     assert accelerators.AWS_NEURON_CORE == "aws-neuron-core"
-
-
-def test_deprecation_warnings():
-    """Test that appropriate deprecation warnings are raised."""
-    with pytest.warns(
-        RayDeprecationWarning,
-        match="NVIDIA_A100 can be replaced with NVIDIA_A100_40G or NVIDIA_A100_80G",
-    ):
-        assert accelerators.NVIDIA_TESLA_K80 == "NVIDIA_TESLA_K80"
 
 
 def test_get_accelerator_type():

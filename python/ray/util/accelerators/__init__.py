@@ -32,7 +32,8 @@ def __getattr__(name):
 
         elif name == "NVIDIA_A100":
             warnings.warn(
-                "NVIDIA_A100 can be replaced with NVIDIA_A100_40G or NVIDIA_A100_80G for more precise accelerator specification."
+                "NVIDIA_A100 can be replaced with NVIDIA_A100_40G or NVIDIA_A100_80G for more precise accelerator specification.",
+                UserWarning,
             )
 
         else:
