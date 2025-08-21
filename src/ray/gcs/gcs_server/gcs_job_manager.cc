@@ -436,7 +436,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
