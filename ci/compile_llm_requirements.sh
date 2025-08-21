@@ -14,9 +14,7 @@ fi
 mkdir -p tmp-raydepsets/llm/
 
 # Remove the GPU constraints
-cp python/requirements_compiled.txt tmp-raydepsets/llm/requirements_compiled.txt
-sed -e '/^--extra-index-url /d' -e '/^--find-links /d' tmp-raydepsets/llm/requirements_compiled.txt > tmp-raydepsets/llm/requirements_compiled.txt.tmp
-mv tmp-raydepsets/llm/requirements_compiled.txt.tmp tmp-raydepsets/llm/requirements_compiled.txt
+sed -e '/^--extra-index-url /d' -e '/^--find-links /d' python/requirements_compiled.txt > tmp-raydepsets/llm/requirements_compiled.txt
 
 bazel run //ci/raydepsets:raydepsets -- build "${CONFIG_PATH}"
 
