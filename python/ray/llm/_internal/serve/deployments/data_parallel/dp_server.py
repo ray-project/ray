@@ -76,6 +76,7 @@ def build_dp_deployment(
     llm_config: LLMConfig,
     *,
     name_prefix: Optional[str] = None,
+    options_override: Optional[dict] = None,
 ) -> Application:
     """Build a data parallel LLM deployment."""
     dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
@@ -89,10 +90,12 @@ def build_dp_deployment(
     # the number of ranks per node because that has special semantics in vLLM.
     dp_size_per_node = llm_config.experimental_configs.get("dp_size_per_node", None)
 
-    deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
     dp_rank_assigner = DPRankAssigner.bind(
         dp_size=dp_size, dp_size_per_node=dp_size_per_node
     )
+    deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
+    if options_override: 
+        deployment_options.update(options_override)
 
     return DPServer.as_deployment(deployment_options).bind(
         llm_config=llm_config, dp_rank_assigner=dp_rank_assigner

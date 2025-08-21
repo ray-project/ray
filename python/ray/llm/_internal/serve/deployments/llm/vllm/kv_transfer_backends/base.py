@@ -1,17 +1,29 @@
 import abc
 import random
 import string
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
+
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.configs.server_models import LLMConfig
 
 
 class BaseConnectorBackend(abc.ABC):
-    def __init__(self, kv_transfer_config: Dict[str, Any]):
+    def __init__(self, llm_config: "LLMConfig"):
         """Base class for connector backends.
 
         Args:
             kv_transfer_config: Configuration for the KV transfer.
         """
-        self.kv_transfer_config = kv_transfer_config
+        self.llm_config = llm_config
+
+    @property
+    def kv_transfer_config(self) -> Dict[str, Any]:
+        engine_kwargs = self.llm_config.engine_kwargs
+        kv_transfer_config = engine_kwargs.get("kv_transfer_config")
+        assert kv_transfer_config is not None, (
+            "In Connector backend, kv_transfer_config is not set"
+        )
+        return kv_transfer_config
 
     def _get_unique_suffix(self, len: int = 6) -> str:
         """Generates unique alphanumeric suffix.
