@@ -34,7 +34,6 @@ class InMemoryStoreClient : public StoreClient {
  public:
   explicit InMemoryStoreClient() = default;
 
-  // ---- StoreClient overrides (now return void) ----
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
                 std::string data,
