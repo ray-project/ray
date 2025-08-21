@@ -58,6 +58,7 @@ from ray.util.placement_group import validate_placement_group
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
+replica_rank_context = {}
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
 
@@ -99,6 +100,7 @@ class MockReplicaActorWrapper:
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path = None
+        self._rank = replica_rank_context.get(replica_id.unique_id, None)
 
     @property
     def is_cross_language(self) -> bool:
@@ -217,8 +219,10 @@ class MockReplicaActorWrapper:
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
-    def start(self, deployment_info: DeploymentInfo):
+    def start(self, deployment_info: DeploymentInfo, rank: Optional[int] = None):
         self.started = True
+        self._rank = rank
+        replica_rank_context[self._replica_id.unique_id] = rank
 
         def _on_scheduled_stub(*args, **kwargs):
             pass
@@ -235,10 +239,20 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
         )
 
-    def reconfigure(self, version: DeploymentVersion):
+    @property
+    def rank(self) -> Optional[int]:
+        return self._rank
+
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: int = None,
+    ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
         self.version = version
+        self._rank = rank
+        replica_rank_context[self._replica_id.unique_id] = rank
         return updating
 
     def recover(self):
@@ -247,6 +261,7 @@ class MockReplicaActorWrapper:
 
         self.recovering = True
         self.started = False
+        self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
@@ -379,6 +394,7 @@ def mock_deployment_state_manager(
         )
 
         dead_replicas_context.clear()
+        replica_rank_context.clear()
 
 
 @pytest.fixture
@@ -2649,7 +2665,7 @@ class TestActorReplicaWrapper:
         )
         max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
-        replica_scheduling_request = actor_replica.start(d_info)
+        replica_scheduling_request = actor_replica.start(d_info, rank=0)
         assert (
             "max_concurrency" in replica_scheduling_request.actor_options
             and replica_scheduling_request.actor_options["max_concurrency"]

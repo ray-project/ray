@@ -141,10 +141,8 @@ def shutdown():
 @DeveloperAPI
 def get_replica_context() -> ReplicaContext:
     """Returns the deployment and replica tag from within a replica at runtime.
-
     A replica tag uniquely identifies a single replica for a Ray Serve
     deployment.
-
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
 
@@ -158,6 +156,10 @@ def get_replica_context() -> ReplicaContext:
                 def __init__(self):
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
+
+    Returns:
+        ReplicaContext containing information about the current deployment
+        and replica.
 
     """
     internal_replica_context = _get_internal_replica_context()
