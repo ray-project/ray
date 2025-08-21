@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -177,6 +178,9 @@ class CoreWorkerProcessImpl {
 
   /// The proxy service handler that routes the RPC calls to the core worker.
   std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
+
+  /// The client to export metrics to the metrics agent.
+  std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 };
 }  // namespace core
 }  // namespace ray

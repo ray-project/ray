@@ -285,6 +285,8 @@ int main(int argc, char *argv[]) {
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
   std::unique_ptr<ray::raylet::DependencyManager> dependency_manager;
+  /// The client to export metrics to the metrics agent.
+  std::unique_ptr<ray::rpc::MetricsAgentClientImpl> metrics_agent_client;
   /// Map of workers leased out to clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
@@ -827,6 +829,12 @@ int main(int argc, char *argv[]) {
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name}};
     ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+    metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+        "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);
+    metrics_agent_client->WaitForServerReady(
+        [metrics_agent_port](const ray::Status &server_status) {
+          ray::stats::InitOpenTelemetryExporter(metrics_agent_port, server_status);
+        });
 
     // Initialize event framework. This should be done after the node manager is
     // initialized.
