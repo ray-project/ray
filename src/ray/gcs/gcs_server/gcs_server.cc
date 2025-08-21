@@ -594,8 +594,6 @@ void GcsServer::InitUsageStatsClient() {
 }
 
 void GcsServer::InitKVManager() {
-  // TODO(yic): Use a factory with configs
-  std::unique_ptr<InternalKVInterface> instance;
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
