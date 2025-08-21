@@ -19,9 +19,12 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.test_utils import check_replica_counts, get_application_url
+from ray.serve._private.test_utils import (
+    check_replica_counts,
+    get_application_url,
+    request_with_retries,
+)
 from ray.serve.schema import LoggingConfig, ServeDeploySchema
-from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
 
 
@@ -51,9 +54,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
@@ -96,9 +97,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
         lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
     )
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
