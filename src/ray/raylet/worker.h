@@ -246,7 +246,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
 
   bool IsAvailableForScheduling() const {
     return !IsDead()                        // Not dead
-           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && GetAssignedTaskId().IsNil()   // No assigned task
            && !IsBlocked()                  // Not blocked
            && GetActorId().IsNil();         // No assigned actor
   }
