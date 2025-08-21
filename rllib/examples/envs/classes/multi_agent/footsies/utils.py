@@ -191,19 +191,25 @@ class WinratesCallback(RLlibCallback):
             for module_id in self.beginner_modules_progression_sequence:
                 if module_id not in self.modules_in_mix:
                     new_module_id = module_id
-                    new_module_spec = RLModuleSpec(module_class=self.beginner_modules[new_module_id],
-                                                   observation_space=_main_module.observation_space)
+                    new_module_spec = RLModuleSpec(
+                        module_class=self.beginner_modules[new_module_id],
+                        observation_space=_main_module.observation_space,
+                    )
                     break
 
             # in case that all beginner RL Modules are already in the mix (together with the main policy),
             # we will add a new RL Module by taking main policy and adding an instance of it to the mix
-            if set(self.modules_in_mix) == set(self.beginner_modules_progression_sequence).union([self.main_policy]):
+            if set(self.modules_in_mix) == set(
+                self.beginner_modules_progression_sequence
+            ).union([self.main_policy]):
                 new_module_id = f"{self.main_policy}_v{self._trained_policy_idx}"
                 new_module_spec = RLModuleSpec.from_module(_main_module)
                 self._trained_policy_idx += 1
 
             assert new_module_id is not None, f"New RL Module_id should not be None."
-            assert new_module_spec is not None, f"New RL Module_spec should not be None."
+            assert (
+                new_module_spec is not None
+            ), f"New RL Module_spec should not be None."
 
             # create new policy mapping function, to ensure that the main policy plays against newly added policy
             new_mapping_fn = Matchmaker(
