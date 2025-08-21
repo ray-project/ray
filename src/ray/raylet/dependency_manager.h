@@ -22,9 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -43,7 +41,7 @@ class TaskDependencyManagerInterface {
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
-  virtual ~TaskDependencyManagerInterface(){};
+  virtual ~TaskDependencyManagerInterface() = default;
 };
 
 /// \class DependencyManager
@@ -94,7 +92,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param object_id The object to check for.
   /// \return Whether the object is local.
-  bool CheckObjectLocal(const ObjectID &object_id) const;
+  bool CheckObjectLocal(const ObjectID &object_id) const override;
 
   /// Get the address of the owner of this object. An address will only be
   /// returned if the caller previously specified that this object is required
@@ -158,7 +156,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \param required_objects The objects required by the task.
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects,
-                               const TaskMetricsKey &task_key);
+                               const TaskMetricsKey &task_key) override;
 
   /// Cancel a task's dependencies. We will no longer attempt to fetch any
   /// remote dependencies, if no other task or worker requires them.
@@ -167,7 +165,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param task_id The task that requires the objects.
   /// \param required_objects The objects required by the task.
-  void RemoveTaskDependencies(const TaskID &task_id);
+  void RemoveTaskDependencies(const TaskID &task_id) override;
 
   /// Handle an object becoming locally available.
   ///
@@ -188,7 +186,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// Check whether a requested task's dependencies are not being fetched to
   /// the local node due to lack of memory.
-  bool TaskDependenciesBlocked(const TaskID &task_id) const;
+  bool TaskDependenciesBlocked(const TaskID &task_id) const override;
 
   /// Returns debug string for class.
   ///
@@ -227,13 +225,13 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
-    TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
+    TaskDependencies(absl::flat_hash_set<ObjectID> deps,
                      CounterMap<std::pair<std::string, bool>> &counter_map,
-                     const TaskMetricsKey &task_key)
+                     TaskMetricsKey task_key)
         : dependencies_(std::move(deps)),
           num_missing_dependencies_(dependencies_.size()),
           waiting_task_counter_map_(counter_map),
-          task_key_(task_key) {
+          task_key_(std::move(task_key)) {
       if (num_missing_dependencies_ > 0) {
         waiting_task_counter_map_.Increment(task_key_);
       }
@@ -310,7 +308,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// The set of locally available objects. This is used to determine which
   /// tasks are ready to run and which `ray.wait` requests can be finished.
-  std::unordered_set<ray::ObjectID> local_objects_;
+  absl::flat_hash_set<ObjectID> local_objects_;
 
   /// Counts the number of active task dependency fetches by task name. The counter
   /// total will be less than or equal to the size of queued_task_requests_.

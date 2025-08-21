@@ -15,7 +15,6 @@
 #include "ray/ipc/raylet_ipc_client.h"
 
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,31 +26,40 @@
 #include "ray/ipc/client_connection.h"
 #include "ray/util/logging.h"
 
+namespace ray::ipc {
+
 namespace {
 
-flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
-  return ray::protocol::CreateAddress(fbb,
-                                      fbb.CreateString(address.node_id()),
-                                      fbb.CreateString(address.ip_address()),
-                                      address.port(),
-                                      fbb.CreateString(address.worker_id()));
+flatbuffers::Offset<protocol::Address> AddressToFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb, const rpc::Address &address) {
+  return protocol::CreateAddress(fbb,
+                                 fbb.CreateString(address.node_id()),
+                                 fbb.CreateString(address.ip_address()),
+                                 address.port(),
+                                 fbb.CreateString(address.worker_id()));
 }
 
-flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
-                      const std::vector<ray::rpc::Address> &addresses) {
-  std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
+                      const std::vector<rpc::Address> &addresses) {
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
-    address_vec.push_back(to_flatbuf(fbb, addr));
+    address_vec.push_back(AddressToFlatbuffer(fbb, addr));
   }
   return fbb.CreateVector(address_vec);
 }
 
-}  // namespace
+void ShutdownIfLocalRayletDisconnected(const Status &status) {
+  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+    RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
+                        "Raylet is dead. Status: "
+                     << status;
+    QuickExit();
+  }
+}
 
-namespace ray::ipc {
+}  // namespace
 
 RayletIpcClient::RayletIpcClient(instrumented_io_context &io_service,
                                  const std::string &address,
@@ -98,7 +106,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
   bool success = reply_message->success();
   if (!success) {
-    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+    return Status::Invalid(reply_message->failure_reason()->str());
   }
 
   *node_id = NodeID::FromBinary(reply_message->node_id()->str());
@@ -164,7 +172,7 @@ Status RayletIpcClient::AnnounceWorkerPortForDriver(int port,
   if (reply_message->success()) {
     return Status::OK();
   }
-  return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  return Status::Invalid(reply_message->failure_reason()->str());
 }
 
 Status RayletIpcClient::ActorCreationTaskDone() {
@@ -273,19 +281,10 @@ void RayletIpcClient::SubscribePlasmaReady(const ObjectID &object_id,
                                            const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSubscribePlasmaReady(
-      fbb, to_flatbuf(fbb, object_id), to_flatbuf(fbb, owner_address));
+      fbb, to_flatbuf(fbb, object_id), AddressToFlatbuffer(fbb, owner_address));
   fbb.Finish(message);
 
   RAY_CHECK_OK(WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
-}
-
-void ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-    RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
-                        "Raylet is dead. Status: "
-                     << status;
-    QuickExit();
-  }
 }
 
 Status RayletIpcClient::WriteMessage(MessageType type,
