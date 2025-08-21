@@ -9,10 +9,12 @@ import pyarrow.compute as pc
 
 from ray.data.expressions import (
     BinaryExpr,
+    CaseExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
     Operation,
+    WhenExpr,
 )
 
 _PANDAS_EXPR_OPS_MAP = {
@@ -58,7 +60,20 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
-        raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
+    if isinstance(expr, CaseExpr):
+        # Evaluate case statement: test each condition in order
+        for condition, value in expr.when_clauses:
+            if _eval_expr_recursive(condition, batch, ops):
+                return _eval_expr_recursive(value, batch, ops)
+        # If no conditions match, return default value
+        return _eval_expr_recursive(expr.default, batch, ops)
+    if isinstance(expr, WhenExpr):
+        # WhenExpr should not be evaluated directly - it should be converted to CaseExpr first
+        raise TypeError(
+            "WhenExpr cannot be evaluated directly. Use .otherwise() to complete the case statement."
+        )
+
+    raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
 def eval_expr(expr: "Expr", batch) -> Any:
