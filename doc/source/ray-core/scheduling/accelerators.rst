@@ -699,4 +699,9 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.get(train.remote(1))
 
-See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types. Or conveniently discover all accelerator types using ``print(ray.util.accelerators.types)``.
+See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types. You can also discover them programmatically. For a simple list of all type constants, use ``print(ray.util.accelerators.TYPES)``. For a categorized list, use the ``print_all`` method as shown below.
+
+.. testcode::
+
+    from ray.util.accelerators.types import types
+    # types.print_all() # Uncomment to see the output
