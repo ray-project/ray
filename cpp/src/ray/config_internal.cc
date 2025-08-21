@@ -22,6 +22,7 @@
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
+#include "ray/common/id.h"
 #include "ray/util/network_util.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
@@ -235,7 +236,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       ray_namespace = FLAGS_ray_job_namespace.CurrentValue();
     }
     if (ray_namespace.empty()) {
-      ray_namespace = GenerateUUIDV4();
+      ray_namespace = UniqueID::FromRandom().Hex();
     }
   }
 

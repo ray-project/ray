@@ -27,7 +27,7 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto &kAllocation = obj.GetAllocation();
 
   bytes_by_loc_seal_.Increment(
-      {/*fallback_allocated*/ kAllocation.fallback_allocated, /*sealed*/ false},
+      {/*fallback_allocated*/ kAllocation.fallback_allocated_, /*sealed*/ false},
       kObjectSize);
 
   num_objects_created_total_ += 1;
@@ -65,8 +65,8 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
 
   const auto &kAllocation = obj.GetAllocation();
-  bytes_by_loc_seal_.Swap({kAllocation.fallback_allocated, /* sealed */ false},
-                          {kAllocation.fallback_allocated, /* sealed */ true},
+  bytes_by_loc_seal_.Swap({kAllocation.fallback_allocated_, /* sealed */ false},
+                          {kAllocation.fallback_allocated_, /* sealed */ true},
                           kObjectSize);
 
   num_objects_unsealed_--;
@@ -91,7 +91,7 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kSource = obj.GetSource();
   const auto &kAllocation = obj.GetAllocation();
 
-  bytes_by_loc_seal_.Decrement({kAllocation.fallback_allocated, obj.Sealed()},
+  bytes_by_loc_seal_.Decrement({kAllocation.fallback_allocated_, obj.Sealed()},
                                kObjectSize);
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {

@@ -26,13 +26,14 @@
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
 
 namespace {
 
 flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
   return ray::protocol::CreateAddress(fbb,
-                                      fbb.CreateString(address.raylet_id()),
+                                      fbb.CreateString(address.node_id()),
                                       fbb.CreateString(address.ip_address()),
                                       address.port(),
                                       fbb.CreateString(address.worker_id()));
@@ -74,7 +75,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             const std::string &ip_address,
                                             const std::string &serialized_job_config,
                                             const StartupToken &startup_token,
-                                            NodeID *raylet_id,
+                                            NodeID *node_id,
                                             int *assigned_port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
@@ -101,7 +102,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
   }
 
-  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
+  *node_id = NodeID::FromBinary(reply_message->node_id()->str());
   *assigned_port = reply_message->port();
   return Status::OK();
 }
@@ -280,7 +281,20 @@ void RayletIpcClient::SubscribePlasmaReady(const ObjectID &object_id,
 }
 
 void ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+  // Check if the Raylet process is still alive.
+  // If we know the Raylet PID, check using that.
+  // Else, assume the Raylet is our parent process.
+  bool raylet_alive = true;
+  auto raylet_pid = RayConfig::instance().RAYLET_PID();
+  if (!raylet_pid.empty()) {
+    if (!IsProcessAlive(static_cast<pid_t>(std::stoi(raylet_pid)))) {
+      raylet_alive = false;
+    }
+  } else if (!IsParentProcessAlive()) {
+    raylet_alive = false;
+  }
+
+  if (!status.ok() && !raylet_alive) {
     RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
                         "Raylet is dead. Status: "
                      << status;
