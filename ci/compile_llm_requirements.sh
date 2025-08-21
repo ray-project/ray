@@ -20,4 +20,5 @@ mv tmp-raydepsets/llm/requirements_compiled.txt.tmp tmp-raydepsets/llm/requireme
 
 bazel run //ci/raydepsets:raydepsets -- build "${CONFIG_PATH}"
 
+rm -rf tmp-raydepsets/
 echo "--- Done"
