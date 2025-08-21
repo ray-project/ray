@@ -99,7 +99,7 @@ def create_column_mapping(
     return mapping
 
 
-def _is_create_table_as(ast) -> bool:
+def _is_create_table_as(ast: exp.Expression) -> bool:
     """Check if the AST represents a CREATE TABLE ... AS SELECT ... statement.
 
     Args:

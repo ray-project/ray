@@ -7,9 +7,9 @@ WHERE clauses, ORDER BY, and LIMIT operations.
 
 from typing import List, Optional, Tuple, Union
 
-import ray
 from sqlglot import exp
 
+import ray
 from ray.data import Dataset
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.config import JoinInfo, SQLConfig
@@ -277,6 +277,11 @@ class FilterHandler:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize FilterHandler.
+
+        Args:
+            config: SQL configuration object containing settings for filtering.
+        """
         self.config = config
         self.compiler = ExpressionCompiler(config)
         self._logger = setup_logger("FilterHandler")
@@ -310,6 +315,11 @@ class OrderHandler:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize OrderHandler.
+
+        Args:
+            config: SQL configuration object containing settings for ordering.
+        """
         self.config = config
         self._logger = setup_logger("OrderHandler")
 
@@ -423,6 +433,11 @@ class LimitHandler:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize LimitHandler.
+
+        Args:
+            config: SQL configuration object containing settings for limiting.
+        """
         self.config = config
         self._logger = setup_logger("LimitHandler")
 

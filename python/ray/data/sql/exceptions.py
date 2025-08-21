@@ -82,10 +82,6 @@ class TableNotFoundError(SQLError):
     This exception is raised when a SQL query references a table that
     has not been registered with the SQL engine.
 
-    Args:
-        table_name: Name of the table that was not found.
-        available_tables: List of available table names, if provided.
-
     Examples:
         >>> try:
         ...     sql("SELECT * FROM nonexistent_table")
@@ -101,6 +97,15 @@ class TableNotFoundError(SQLError):
         line: Optional[int] = None,
         column: Optional[int] = None,
     ):
+        """Initialize TableNotFoundError.
+
+        Args:
+            table_name: Name of the table that was not found.
+            available_tables: List of available table names, if provided.
+            query: The SQL query that caused the error, if provided.
+            line: Line number in the query where the error occurred, if provided.
+            column: Column number in the query where the error occurred, if provided.
+        """
         self.table_name = table_name
         self.available_tables = available_tables or []
 
@@ -116,11 +121,6 @@ class ColumnNotFoundError(SQLError):
 
     This exception is raised when a SQL query references a column that
     does not exist in the specified table.
-
-    Args:
-        column_name: Name of the column that was not found.
-        table_name: Name of the table where the column was expected.
-        available_columns: List of available column names, if provided.
 
     Examples:
         >>> try:
@@ -138,6 +138,16 @@ class ColumnNotFoundError(SQLError):
         line: Optional[int] = None,
         column: Optional[int] = None,
     ):
+        """Initialize ColumnNotFoundError.
+
+        Args:
+            column_name: Name of the column that was not found.
+            table_name: Name of the table where the column was expected.
+            available_columns: List of available column names, if provided.
+            query: The SQL query that caused the error, if provided.
+            line: Line number in the query where the error occurred, if provided.
+            column: Column number in the query where the error occurred, if provided.
+        """
         self.column_name = column_name
         self.table_name = table_name
         self.available_columns = available_columns or []
@@ -157,10 +167,6 @@ class UnsupportedOperationError(SQLError):
     This exception is raised when a SQL query contains operations or
     constructs that are not yet supported by the Ray Data SQL engine.
 
-    Args:
-        operation: Name of the unsupported operation.
-        suggestion: Optional suggestion for alternative approaches.
-
     Examples:
         >>> try:
         ...     sql("SELECT DISTINCT name FROM users")
@@ -176,6 +182,15 @@ class UnsupportedOperationError(SQLError):
         line: Optional[int] = None,
         column: Optional[int] = None,
     ):
+        """Initialize UnsupportedOperationError.
+
+        Args:
+            operation: Name of the unsupported operation.
+            suggestion: Optional suggestion for alternative approaches.
+            query: The SQL query that caused the error, if provided.
+            line: Line number in the query where the error occurred, if provided.
+            column: Column number in the query where the error occurred, if provided.
+        """
         self.operation = operation
         self.suggestion = suggestion
 

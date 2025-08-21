@@ -224,6 +224,11 @@ class AggregateAnalyzer:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize AggregateAnalyzer.
+
+        Args:
+            config: SQL configuration object containing settings for analysis.
+        """
         self.config = config
         self._logger = setup_logger("AggregateAnalyzer")
 

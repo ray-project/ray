@@ -20,7 +20,6 @@ from ray.data.sql.config import LogicalPlan, SQLConfig
 from ray.data.sql.schema import SchemaManager
 from ray.data.sql.utils import SUPPORTED_AGGREGATES, setup_logger
 
-
 # Supported general functions (non-aggregate)
 SUPPORTED_FUNCTIONS = {
     # String functions
@@ -197,6 +196,11 @@ class SQLParser:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize SQLParser.
+
+        Args:
+            config: SQL configuration object containing settings for parsing.
+        """
         self.config = config
         self._logger = setup_logger("SQLParser")
 
@@ -317,6 +321,11 @@ class ASTOptimizer:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize ASTOptimizer.
+
+        Args:
+            config: SQL configuration object containing settings for optimization.
+        """
         self.config = config
         self._logger = setup_logger("ASTOptimizer")
 
@@ -413,6 +422,11 @@ class LogicalPlanner:
     """
 
     def __init__(self, config: SQLConfig):
+        """Initialize LogicalPlanner.
+
+        Args:
+            config: SQL configuration object containing settings for planning.
+        """
         self.config = config
         self._logger = setup_logger("LogicalPlanner")
 
