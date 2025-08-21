@@ -1678,57 +1678,60 @@ def test_one_liner_actor_method_invocation(shutdown_only):
 
 
 def test_get_actor_after_same_name_actor_dead(shutdown_only):
-    ray.init(namespace="test")
+    ACTOR_NAME = "test_actor"
+    NAMESPACE_NAME = "test_namespace"
+
+    ray.init(namespace=NAMESPACE_NAME)
 
     @ray.remote
     class Actor:
         def get_pid(self):
             return os.getpid()
 
-    def get_pid(actor):
-        while True:
-            try:
-                return ray.get(actor.get_pid.remote())
-            except Exception:
-                pass
+    a = Actor.options(name=ACTOR_NAME, max_restarts=0, max_task_retries=-1).remote()
 
-    a = Actor.options(name="test", max_restarts=1).remote()
-
-    pid = get_pid(a)
-    os.kill(pid, signal.SIGKILL)
-
-    pid = get_pid(a)
+    pid = ray.get(a.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
 
     wait_for_condition(lambda: ray.state.actors(a._actor_id.hex())["State"] == "DEAD")
 
     # When a reference is held, the name cannot be reused.
     with pytest.raises(ValueError):
-        Actor.options(name="test", max_restarts=1).remote()
+        Actor.options(name=ACTOR_NAME).remote()
 
-    # triger rpc reply: WaitForActorRefDeleted
+    # Deleting the remaining reference so the name can be reused
     del a
 
     b = None
 
     def wait_new_actor_ready():
         nonlocal b
-        b = Actor.options(name="test", max_restarts=1).remote()
+        b = Actor.options(name=ACTOR_NAME).remote()
         return True
 
     wait_for_condition(wait_new_actor_ready)
 
-    # Ensure actor(b) is alive
     ray.get(b.__ray_ready__.remote())
-    _ = ray.get_actor("test", namespace="test")
+    _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
 
     # ray.kill can proactively release the name.
     ray.kill(b)
     wait_for_condition(lambda: ray.state.actors(b._actor_id.hex())["State"] == "DEAD")
 
-    c = Actor.options(name="test", max_restarts=1).remote()
+    c = Actor.options(name=ACTOR_NAME, lifetime="detached").remote()
     ray.get(c.__ray_ready__.remote())
-    _ = ray.get_actor("test", namespace="test")
+    _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
+
+    pid = ray.get(c.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+
+    wait_for_condition(lambda: ray.state.actors(c._actor_id.hex())["State"] == "DEAD")
+
+    # Detached actors do not subscribe to reference counting, so
+    # they release the actor name when the actor is dead, without waiting for the reference count
+    # to be released or the execution of ray.kill.
+    d = Actor.options(name=ACTOR_NAME).remote()
+    ray.get(d.__ray_ready__.remote())
 
 
 if __name__ == "__main__":
