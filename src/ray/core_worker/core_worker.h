@@ -247,12 +247,6 @@ class CoreWorker {
   ///
   void Shutdown();
 
-  /// Check if the core worker is currently shutting down.
-  /// This can be used to avoid operations that might fail during shutdown.
-  ///
-  /// \return true if shutdown has been initiated, false otherwise.
-  bool IsShuttingDown() const;
-
   /// Start receiving and executing tasks.
   void RunTaskExecutionLoop();
 

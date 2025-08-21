@@ -921,12 +921,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       if (!direct_or.ok()) {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to handle dynamic task return: " << direct_or.status();
-        // Treat as system failure for this attempt and fail immediately to avoid hangs.
         Status st = direct_or.status();
+        rpc::ErrorType err_type = rpc::ErrorType::WORKER_DIED;
+        if (st.IsObjectStoreFull() || st.IsTransientObjectStoreFull()) {
+          err_type = rpc::ErrorType::OUT_OF_MEMORY;
+        }
+        rpc::RayErrorInfo err_info;
+        err_info.set_error_message(st.ToString());
         FailOrRetryPendingTask(task_id,
-                               rpc::ErrorType::WORKER_DIED,
+                               err_type,
                                &st,
-                               /*ray_error_info=*/nullptr,
+                               /*ray_error_info=*/&err_info,
                                /*mark_task_object_failed=*/true,
                                /*fail_immediately=*/true);
         return;
