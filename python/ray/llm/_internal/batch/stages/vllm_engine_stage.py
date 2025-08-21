@@ -11,6 +11,7 @@ from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+import torch
 from pydantic import BaseModel, Field, root_validator
 
 import ray
@@ -109,6 +110,11 @@ class vLLMOutputData(BaseModel):
             data.num_generated_tokens = len(output.outputs[0].token_ids)
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
+            if (
+                isinstance(data.embeddings, torch.Tensor)
+                and data.embeddings.dtype == torch.bfloat16
+            ):
+                data.embeddings = data.embeddings.to(torch.float32)
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
