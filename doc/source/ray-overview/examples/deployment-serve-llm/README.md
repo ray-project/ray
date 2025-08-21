@@ -7,7 +7,7 @@ Each tutorial includes development and production setups, tips for configuring y
 ## Tutorial Categories
 
 **[Small size LLM deployment](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/deployment-serve-llm/notebooks/small-size-llm.ipynb)**  
-Deploy small size models using tensor parallelism across 4—8 GPUs on a single node, such as Llama 3 8B, Mistral 7B, or Phi-2.  
+Deploy small size models on a single GPU, such as Llama 3 8B, Mistral 7B, or Phi-2.  
 
 ---
 
