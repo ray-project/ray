@@ -90,8 +90,11 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
           .WithField("node_address", node_info.node_manager_address())
       << "Registering new node.";
 
-  auto on_done = [this, node_id, node_info_copy = node_info, reply, send_reply_callback](
-                     const Status &status) mutable {
+  auto on_done = [this,
+                  node_id,
+                  node_info_copy = node_info,
+                  reply,
+                  send_reply_callback](const Status &status) mutable {
     RAY_CHECK_OK(status) << "Failed to register node '" << node_id << "'.";
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
     AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
@@ -115,16 +118,16 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     if (head_nodes.size() == 1) {
       OnNodeFailure(head_nodes[0],
                     [this, node_id, node_info, on_done = std::move(on_done)]() {
-                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                          node_id, node_info, {on_done, io_context_}));
+                      gcs_table_storage_->NodeTable().Put(
+                          node_id, node_info, {on_done, io_context_});
                     });
     } else {
-      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-          node_id, node_info, {std::move(on_done), io_context_}));
+      gcs_table_storage_->NodeTable().Put(
+          node_id, node_info, {std::move(on_done), io_context_});
     }
   } else {
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-        node_id, node_info, {std::move(on_done), io_context_}));
+    gcs_table_storage_->NodeTable().Put(
+        node_id, node_info, {std::move(on_done), io_context_});
   }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
@@ -168,8 +171,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
     gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta);
     WriteNodeExportEvent(*node);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_}));
+  gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -469,8 +471,8 @@ void GcsNodeManager::OnNodeFailure(
       }
       gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_delta));
     };
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-        node_id, *node, {std::move(on_done), io_context_}));
+    gcs_table_storage_->NodeTable().Put(
+        node_id, *node, {std::move(on_done), io_context_});
   } else if (node_table_updated_callback != nullptr) {
     node_table_updated_callback();
   }
@@ -506,8 +508,8 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(
-        node_id, {[](const auto &) {}, io_context_}));
+    gcs_table_storage_->NodeTable().Delete(
+        node_id, {[](const auto &) {}, io_context_});
     dead_nodes_.erase(sorted_dead_node_list_.front().first);
     sorted_dead_node_list_.pop_front();
   }
