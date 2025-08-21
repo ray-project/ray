@@ -471,6 +471,18 @@ class _TrainSession:
         self.storage.persist_artifacts(force=force_artifact_sync)
 
         # Set additional user metadata from the Trainer.
+        self._set_checkpoint_metadata(persisted_checkpoint)
+
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+
+        self._report_training_result(result)
+
+    def _set_checkpoint_metadata(self, persisted_checkpoint: Optional[Checkpoint]) -> None:
+        """Set additional user metadata from the Trainer on a persisted checkpoint.
+        
+        Args:
+            persisted_checkpoint: The checkpoint to set metadata on. No-op if None.
+        """
         if persisted_checkpoint and self.metadata:
             user_metadata = persisted_checkpoint.get_metadata()
             for k, v in self.metadata.items():
@@ -479,10 +491,6 @@ class _TrainSession:
                 if k not in user_metadata:
                     user_metadata[k] = v
             persisted_checkpoint.set_metadata(user_metadata)
-
-        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
-
-        self._report_training_result(result)
 
     def async_report(
         self, 
@@ -547,12 +555,7 @@ class _TrainSession:
                 persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
                 
                 # Set metadata and create result normally
-                if persisted_checkpoint and self.metadata:
-                    user_metadata = persisted_checkpoint.get_metadata()
-                    for k, v in self.metadata.items():
-                        if k not in user_metadata:
-                            user_metadata[k] = v
-                    persisted_checkpoint.set_metadata(user_metadata)
+                self._set_checkpoint_metadata(persisted_checkpoint)
                 
                 result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
                 self._report_training_result(result)
