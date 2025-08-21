@@ -288,8 +288,6 @@ class GcsServer {
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
-  /// Grpc based pubsub's periodical runner.
-  std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
