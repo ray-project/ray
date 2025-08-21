@@ -477,9 +477,11 @@ class _TrainSession:
 
         self._report_training_result(result)
 
-    def _set_checkpoint_metadata(self, persisted_checkpoint: Optional[Checkpoint]) -> None:
+    def _set_checkpoint_metadata(
+        self, persisted_checkpoint: Optional[Checkpoint]
+    ) -> None:
         """Set additional user metadata from the Trainer on a persisted checkpoint.
-        
+
         Args:
             persisted_checkpoint: The checkpoint to set metadata on. No-op if None.
         """
@@ -493,10 +495,10 @@ class _TrainSession:
             persisted_checkpoint.set_metadata(user_metadata)
 
     def async_report(
-        self, 
-        metrics: Dict, 
+        self,
+        metrics: Dict,
         checkpoint: Optional[Checkpoint] = None,
-        flush: bool = False
+        flush: bool = False,
     ) -> None:
         """Report metrics and optionally save a checkpoint asynchronously.
 
@@ -514,7 +516,9 @@ class _TrainSession:
                 async_writer = _get_async_checkpoint_writer()
                 async_writer.check_and_raise_errors()
             except _AsyncCheckpointError as e:
-                raise RuntimeError(f"Previous async checkpoint upload failed: {e}") from e
+                raise RuntimeError(
+                    f"Previous async checkpoint upload failed: {e}"
+                ) from e
 
         # Special case: early fail for Torch tensors
         if "torch" in sys.modules:
@@ -536,14 +540,12 @@ class _TrainSession:
 
         if checkpoint:
             self.storage._update_checkpoint_index(metrics)
-            
+
             # Start async upload (non-blocking)
             try:
                 async_writer = _get_async_checkpoint_writer()
                 async_writer.async_persist_checkpoint(
-                    checkpoint=checkpoint,
-                    storage_context=self.storage,
-                    metrics=metrics
+                    checkpoint=checkpoint, storage_context=self.storage, metrics=metrics
                 )
                 logger.debug("Started async checkpoint upload")
             except _AsyncCheckpointError as e:
@@ -552,12 +554,16 @@ class _TrainSession:
                     f"Async upload queue full (pending: {async_writer.get_stats()['pending_uploads']}, "
                     f"concurrent: {async_writer._max_concurrent_uploads}), falling back to sync upload: {e}"
                 )
-                persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
-                
+                persisted_checkpoint = self.storage.persist_current_checkpoint(
+                    checkpoint
+                )
+
                 # Set metadata and create result normally
                 self._set_checkpoint_metadata(persisted_checkpoint)
-                
-                result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+
+                result = _TrainingResult(
+                    checkpoint=persisted_checkpoint, metrics=metrics
+                )
                 self._report_training_result(result)
                 return
 
@@ -916,7 +922,7 @@ def async_report(
 ) -> None:
     """Report metrics and optionally save a checkpoint asynchronously.
 
-    This is a non-blocking version of :func:`ray.train.report` that uploads 
+    This is a non-blocking version of :func:`ray.train.report` that uploads
     checkpoints in the background, allowing training to continue immediately.
     Designed for RL training on reasoning models that checkpoint frequently.
 
@@ -965,13 +971,13 @@ def async_report(
 
                         # Non-blocking checkpoint upload
                         train.async_report(metrics, checkpoint=checkpoint)
-                        
+
                         # Check for errors every 10 epochs
                         if epoch % 10 == 0:
                             train.async_report({}, flush=True)
 
             trainer = TorchTrainer(
-                train_func, 
+                train_func,
                 run_config=train.RunConfig(storage_path="s3://my-bucket/checkpoints")
             )
 
@@ -989,6 +995,7 @@ def async_report(
             "async_report called in Tune session, falling back to regular report"
         )
         import ray.tune
+
         return ray.tune.report(metrics, checkpoint=checkpoint)
 
     get_session().async_report(metrics, checkpoint=checkpoint, flush=flush)

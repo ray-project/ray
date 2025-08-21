@@ -378,6 +378,20 @@ py_test(
 )
 
 py_test(
+    name = "test_async_checkpoint",
+    size = "medium",
+    srcs = ["tests/test_async_checkpoint.py"],
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
