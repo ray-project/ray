@@ -29,6 +29,7 @@ from ray.serve._private.request_router.request_router import (
 )
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.config import RequestRouterConfig
+from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -1134,6 +1135,24 @@ def test_custom_request_router_kwargs(serve_instance):
 
     handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
     assert handle.remote().result() == "Hello, world!"
+
+
+@pytest.mark.asyncio
+async def test_shutdown_async():
+    """Test shutdown_async() properly shuts down serve."""
+    
+    @serve.deployment
+    def hello():
+        return "Hello"
+    
+    serve.run(hello.bind())
+
+    assert _get_global_client() is not None
+
+    await serve.shutdown_async()
+
+    with pytest.raises(RayServeException):
+        _get_global_client()
 
 
 if __name__ == "__main__":

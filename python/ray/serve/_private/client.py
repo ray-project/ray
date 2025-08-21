@@ -137,7 +137,9 @@ class ServeControllerClient:
 
         if ray.is_initialized() and not self._shutdown:
             try:
-                await self._controller.graceful_shutdown.remote(timeout=timeout_s)
+                await asyncio.wait_for(
+                    self._controller.graceful_shutdown.remote(), timeout=timeout_s
+                )
             except ray.exceptions.RayActorError:
                 # Controller has been shut down.
                 pass
