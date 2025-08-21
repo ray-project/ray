@@ -534,6 +534,17 @@ class ReporterAgent(
             output=output, success=success, warning=warning
         )
 
+    async def HealthCheck(
+        self,
+        _request: reporter_pb2.HealthCheckRequest,
+        _context: ServicerContext,
+    ) -> reporter_pb2.HealthCheckReply:
+        """This is a health check endpoint for the reporter agent.
+
+        It is used to check if the reporter agent is ready to receive requests.
+        """
+        return reporter_pb2.HealthCheckReply()
+
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:
