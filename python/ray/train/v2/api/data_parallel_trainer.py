@@ -78,7 +78,6 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        backend_for_local_mode: Optional[LocalController] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
@@ -89,12 +88,6 @@ class DataParallelTrainer:
         self.data_config = dataset_config or DataConfig()
 
         self.running_in_local_mode = self.scaling_config.num_workers == 0
-        if self.running_in_local_mode:
-            self.backend_for_local_mode = backend_for_local_mode or LocalController(
-                datasets=self.datasets,
-            )
-        else:
-            self.backend_for_local_mode = None
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -156,6 +149,9 @@ class DataParallelTrainer:
 
             return result
 
+    def _get_local_mode_controller(self) -> LocalController:
+        return LocalController(datasets=self.datasets)
+
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
         callbacks = _initialize_env_callbacks()
@@ -213,7 +209,7 @@ class DataParallelTrainer:
     def _initialize_and_run_local_controller(
         self, train_func: Callable[[], None]
     ) -> Result:
-        return self.backend_for_local_mode.initialize_and_run_local_controller(
+        return self._local_mode_controller.initialize_and_run_local_controller(
             train_func
         )
 
