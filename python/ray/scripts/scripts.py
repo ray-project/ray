@@ -226,6 +226,90 @@ def format_table(table):
 
 @cli.command()
 @click.option(
+    "--address",
+    required=False,
+    type=str,
+    default=None,
+    help="Override the address to connect to (e.g., auto, 127.0.0.1:6379).",
+)
+@click.option(
+    "--refresh",
+    type=float,
+    default=1.0,
+    help="Refresh interval in seconds (default: 1.0).",
+)
+@click.option(
+    "--show",
+    type=click.Choice(["tasks", "actors", "both"]),
+    default="both",
+    help="Which entities to include in counts (default: both).",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=2000,
+    help="Max entries to fetch per resource (default: 2000).",
+)
+def top(address: str, refresh: float, show: str, limit: int):
+    """Lightweight terminal snapshot for cluster state (experimental).
+
+    Prints counts of nodes/tasks/actors and refreshes periodically.
+    """
+    # Import lazily to avoid hard dependency at import time.
+    from ray.util.state import StateApiClient
+    from ray.util.state.common import ListApiOptions, StateResource, DEFAULT_RPC_TIMEOUT
+
+    client = StateApiClient(address=address)
+
+    def _to_dicts(items):
+        out = []
+        for it in items:
+            d = getattr(it, "asdict", None)
+            if callable(d):
+                out.append(d())
+            else:
+                d2 = getattr(it, "dict", None)
+                out.append(d2() if callable(d2) else getattr(it, "__dict__", {}) or dict(it))
+        return out
+
+    import sys
+    import time as _time
+
+    try:
+        while True:
+            nodes = client.list(
+                StateResource.NODES,
+                options=ListApiOptions(timeout=DEFAULT_RPC_TIMEOUT, limit=1000),
+                raise_on_missing_output=False,
+            )
+            tasks = []
+            actors = []
+            if show in ("tasks", "both"):
+                tasks = client.list(
+                    StateResource.TASKS,
+                    options=ListApiOptions(timeout=DEFAULT_RPC_TIMEOUT, limit=limit),
+                    raise_on_missing_output=False,
+                )
+            if show in ("actors", "both"):
+                actors = client.list(
+                    StateResource.ACTORS,
+                    options=ListApiOptions(timeout=DEFAULT_RPC_TIMEOUT, limit=limit),
+                    raise_on_missing_output=False,
+                )
+
+            node_dicts = _to_dicts(nodes)
+            live_nodes = sum(1 for n in node_dicts if str(n.get("state", "")).upper() == "ALIVE")
+
+            # Clear screen and print a compact summary.
+            sys.stdout.write("\x1b[2J\x1b[H")
+            print("ray top (experimental) — Ctrl+C to exit")
+            print(f"Nodes: {len(node_dicts)} (live: {live_nodes})  Tasks: {len(tasks)}  Actors: {len(actors)}")
+            _time.sleep(max(0.1, float(refresh)))
+    except KeyboardInterrupt:
+        return
+
+@cli.command()
+@click.option(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
@@ -2729,12 +2813,14 @@ try:
         ray_list,
         logs_state_cli_group,
         summary_state_cli_group,
+        object_state_cli_group,
     )
 
     cli.add_command(ray_list, name="list")
     cli.add_command(ray_get, name="get")
     add_command_alias(summary_state_cli_group, name="summary", hidden=False)
     add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+    add_command_alias(object_state_cli_group, name="object", hidden=False)
 except ImportError as e:
     logger.debug(f"Integrating ray state command line tool failed: {e}")
 
