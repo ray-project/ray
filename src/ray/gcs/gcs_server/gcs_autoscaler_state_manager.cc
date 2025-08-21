@@ -616,10 +616,10 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
       RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
                        << " with infeasible_shapes=" << resource_shapes_str;
 
-      raylet_client->CancelTasksWithResourceShapes(
+      raylet_client->CancelLeasesWithResourceShapes(
           infeasible_shapes,
           [node_id](const Status &status,
-                    const rpc::CancelTasksWithResourceShapesReply &) {
+                    const rpc::CancelLeasesWithResourceShapesReply &) {
             if (status.ok()) {
               RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
             } else {

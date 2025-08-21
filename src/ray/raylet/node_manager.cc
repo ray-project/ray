@@ -33,11 +33,10 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
-#include "ray/common/task/task_common.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/ipc/client_connection.h"
@@ -408,7 +407,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
       << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Leases of this job may already arrived but failed to pop a worker because the job
-  // config is not local yet. So we trigger dispatching again here to try to
+  // config is not local yet. So we trigger granting again here to try to
   // reschedule these leases.
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
@@ -1174,7 +1173,7 @@ Status NodeManager::RegisterForNewDriver(
   // Compute a dummy driver lease id from a given driver.
   // The lease id set in the worker here should be consistent with the lease
   // id set in the core worker.
-  const LeaseID driver_lease_id = LeaseID::DriverLeaseID(worker->WorkerId());
+  const LeaseID driver_lease_id = LeaseID::DriverLeaseId(worker->WorkerId());
   worker->GrantLeaseId(driver_lease_id);
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
@@ -1409,7 +1408,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Return the resources that were being used by this worker.
     local_lease_manager_.ReleaseWorkerResources(worker);
 
-    // Since some resources may have been released, we can try to dispatch more tasks.
+    // Since some resources may have been released, we can try to grant more leases.
     cluster_lease_manager_.ScheduleAndGrantLeases();
   } else if (is_driver) {
     // The client is a driver.
@@ -1608,9 +1607,9 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleCancelTasksWithResourceShapes(
-    rpc::CancelTasksWithResourceShapesRequest request,
-    rpc::CancelTasksWithResourceShapesReply *reply,
+void NodeManager::HandleCancelLeasesWithResourceShapes(
+    rpc::CancelLeasesWithResourceShapesRequest request,
+    rpc::CancelLeasesWithResourceShapesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto &resource_shapes = request.resource_shapes();
   std::vector<ResourceSet> target_resource_shapes;
@@ -1685,8 +1684,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = lease.GetLeaseSpecification().ActorId();
   }
 
-  const auto &task_spec = lease.GetLeaseSpecification();
-  worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+  const auto &lease_spec = lease.GetLeaseSpecification();
+  worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
 
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](

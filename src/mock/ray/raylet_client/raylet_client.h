@@ -132,9 +132,9 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(
       void,
-      CancelTasksWithResourceShapes,
+      CancelLeasesWithResourceShapes,
       ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
-       const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback),
+       const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback),
       (override));
   MOCK_METHOD(void,
               IsLocalWorkerDead,

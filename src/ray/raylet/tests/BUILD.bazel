@@ -69,7 +69,6 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:id",
-        "//src/ray/common:task_common",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/raylet:placement_group_resource_manager",
         "@com_google_googletest//:gtest_main",
@@ -101,7 +100,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/common:test_util",
         "//src/ray/raylet:lease_dependency_manager",
         "@com_google_googletest//:gtest_main",
@@ -117,6 +116,7 @@ ray_cc_test(
         ":util",
         "//:ray_mock",
         "//src/ray/common:id",
+        "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/raylet:local_lease_manager",
@@ -134,7 +134,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":util",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy",
         "@com_google_googletest//:gtest_main",
     ],
@@ -149,7 +149,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":util",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy",
         "@com_google_googletest//:gtest_main",
     ],
@@ -164,7 +164,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":util",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy",
         "@com_google_googletest//:gtest_main",
     ],
@@ -180,7 +180,9 @@ ray_cc_test(
         "//:ray_fakes",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_subscriber",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/raylet:local_object_manager_interface",
         "//src/ray/raylet:node_manager",

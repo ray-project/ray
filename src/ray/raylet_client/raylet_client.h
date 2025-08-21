@@ -25,7 +25,6 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
@@ -203,9 +202,9 @@ class RayletClientInterface {
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
-  virtual void CancelTasksWithResourceShapes(
+  virtual void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback) = 0;
 
   virtual void IsLocalWorkerDead(
       const WorkerID &worker_id,
@@ -324,9 +323,9 @@ class RayletClient : public RayletClientInterface {
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
-  void CancelTasksWithResourceShapes(
+  void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback)
       override;
 
   void IsLocalWorkerDead(

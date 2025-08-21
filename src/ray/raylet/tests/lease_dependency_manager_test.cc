@@ -23,7 +23,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/object_manager.h"
-#include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 
 namespace ray {

@@ -481,7 +481,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
-      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
+      // Will reschedule ready leases in `NodeManager::HandleJobStarted`.
       *status = PopWorkerStatus::JobConfigMissing;
       process_failed_job_config_missing_++;
       return {Process(), (StartupToken)-1};
@@ -631,7 +631,7 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
     auto &requests = state.pending_registration_requests;
     auto it = std::find(requests.begin(), requests.end(), pop_worker_request);
     if (it != requests.end()) {
-      // Pop and fail the task...
+      // Pop and fail the lease...
       requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
@@ -1049,10 +1049,10 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  // Since the worker is now idle, unset its assigned task ID.
+  // Since the worker is now idle, verify that it has no assigned lease ID.
   RAY_CHECK(worker->GetGrantedLeaseId().IsNil())
       << "Idle workers cannot have an assigned lease ID";
-  // Find a task that this worker can fit. If there's none, put it in the idle pool.
+  // Find a lease that this worker can fit. If there's none, put it in the idle pool.
   // First find in pending_registration_requests, then in pending_start_requests.
   std::shared_ptr<PopWorkerRequest> pop_worker_request = nullptr;
   auto &state = GetStateForLanguage(worker->GetLanguage());
@@ -1084,7 +1084,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   if (pop_worker_request) {
     bool used = pop_worker_request->callback_(worker, PopWorkerStatus::OK, "");
     if (!used) {
-      // Retry PushWorker. Maybe it can be used by other tasks.
+      // Retry PushWorker. Maybe it can be used by other leases.
       // Can we have tail call optimization for this? :)
       return PushWorker(worker);
     }
@@ -1157,7 +1157,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   }
 
   // Compute the soft limit for the number of idle workers to keep around.
-  // This assumes the common case where each task requires 1 CPU.
+  // This assumes the common case where each lease requires 1 CPU.
   const auto num_desired_idle_workers = get_num_cpus_available_();
   RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
                  << ", idle workers that are eligible to kill: "
@@ -1255,7 +1255,7 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
   // For scheduling requests with a root detached actor ID, ensure that either the
   // worker has _no_ detached actor ID or it matches the request.
   // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
-  // which is checked below. The pop_worker_request for a task rooted in a detached
+  // which is checked below. The pop_worker_request for a lease rooted in a detached
   // actor will have the job ID of the job that created the detached actor.
   if (!pop_worker_request.root_detached_actor_id_.IsNil() &&
       !worker.GetRootDetachedActorId().IsNil() &&
@@ -1282,8 +1282,8 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
     return WorkerUnfitForLeaseReason::OTHERS;
   }
   // Skip workers with a mismatched runtime_env.
-  // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
-  // worker with a runtime_env because the task is expected to run in the base
+  // Even if the lease doesn't have a runtime_env specified, we cannot schedule it to a
+  // worker with a runtime_env because the lease is expected to run in the base
   // environment.
   if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash_) {
     return WorkerUnfitForLeaseReason::RUNTIME_ENV_MISMATCH;
@@ -1441,7 +1441,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
   idle_of_all_languages_.erase(lit);
 
   // Assigned workers should always match the request's job_id
-  // *except* if the task originates from a detached actor.
+  // *except* if the lease originates from a detached actor.
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
             worker->GetAssignedJobId() == pop_worker_request.job_id_ ||
             !pop_worker_request.root_detached_actor_id_.IsNil());
@@ -1449,7 +1449,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
 }
 
 void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {
-  // If there's an idle worker that fits the task, use it.
+  // If there's an idle worker that fits the lease, use it.
   // Else, start a new worker.
   auto worker = FindAndPopIdleWorker(*pop_worker_request);
   if (worker == nullptr) {
@@ -1465,7 +1465,7 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
 void WorkerPool::PrestartWorkers(const LeaseSpecification &lease_spec,
                                  int64_t backlog_size) {
   int64_t num_available_cpus = get_num_cpus_available_();
-  // Code path of task that needs a dedicated worker.
+  // Code path of lease that needs a dedicated worker.
   RAY_LOG(DEBUG) << "PrestartWorkers, num_available_cpus " << num_available_cpus
                  << " backlog_size " << backlog_size << " lease spec "
                  << lease_spec.DebugString() << " has runtime env "

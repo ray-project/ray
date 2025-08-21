@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_killing_policy.h"
 

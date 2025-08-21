@@ -27,7 +27,7 @@ class FakeRayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
   void RequestWorkerLease(
-      const rpc::LeaseSpec &task_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1,
@@ -114,9 +114,9 @@ class FakeRayletClient : public RayletClientInterface {
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {}
 
-  void CancelTasksWithResourceShapes(
+  void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback)
       override {}
 
   void IsLocalWorkerDead(

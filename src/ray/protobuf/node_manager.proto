@@ -297,7 +297,7 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
-message CancelTasksWithResourceShapesRequest {
+message CancelLeasesWithResourceShapesRequest {
   message ResourceShape {
     // A map from resource name to the quantity of that resource. This map represents
     // the resource request shape of a task.
@@ -307,7 +307,7 @@ message CancelTasksWithResourceShapesRequest {
   repeated ResourceShape resource_shapes = 1;
 }
 
-message CancelTasksWithResourceShapesReply {
+message CancelLeasesWithResourceShapesReply {
   // Empty
 }
 
@@ -403,8 +403,8 @@ service NodeManagerService {
   // request.
   // Failure: This doesn't explicitly retry, only logs on failure, but autoscaler will
   // keep calling this so it will be retried at a layer above.
-  rpc CancelTasksWithResourceShapes(CancelTasksWithResourceShapesRequest)
-      returns (CancelTasksWithResourceShapesReply);
+  rpc CancelLeasesWithResourceShapes(CancelLeasesWithResourceShapesRequest)
+      returns (CancelLeasesWithResourceShapesReply);
   // Request a worker from the raylet.
   // Failure: Does retry if request to remote raylet fails. Just logs warning if request
   // to local raylet fails.

@@ -21,7 +21,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"

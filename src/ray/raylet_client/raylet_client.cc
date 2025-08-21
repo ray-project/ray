@@ -23,7 +23,6 @@
 #include "absl/synchronization/notification.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray::raylet {
@@ -46,7 +45,7 @@ void RayletClient::RequestWorkerLease(
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
   // The unsafe allocating here is actually safe because the life-cycle of
-  // task_spec is longer than request.
+  // lease_spec is longer than request.
   // Request will be sent before the end of this call, and after that, it won't be
   // used any more.
   request->unsafe_arena_set_allocated_resource_spec(
@@ -77,7 +76,7 @@ void RayletClient::ReportWorkerBacklog(
       request,
       [](const Status &status, rpc::ReportWorkerBacklogReply &&reply /*unused*/) {
         RAY_LOG_IF_ERROR(INFO, status)
-            << "Error reporting task backlog information: " << status;
+            << "Error reporting lease backlog information: " << status;
       });
 }
 
@@ -312,19 +311,19 @@ void RayletClient::GetResourceLoad(
   grpc_client_->GetResourceLoad(request, callback);
 }
 
-void RayletClient::CancelTasksWithResourceShapes(
+void RayletClient::CancelLeasesWithResourceShapes(
     const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
-  rpc::CancelTasksWithResourceShapesRequest request;
+    const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback) {
+  rpc::CancelLeasesWithResourceShapesRequest request;
 
   for (const auto &resource_shape : resource_shapes) {
-    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+    rpc::CancelLeasesWithResourceShapesRequest::ResourceShape *resource_shape_proto =
         request.add_resource_shapes();
     resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
                                                            resource_shape.end());
   }
 
-  grpc_client_->CancelTasksWithResourceShapes(request, callback);
+  grpc_client_->CancelLeasesWithResourceShapes(request, callback);
 }
 
 void RayletClient::NotifyGCSRestart(

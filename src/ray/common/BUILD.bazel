@@ -140,6 +140,9 @@ ray_cc_library(
     ],
 )
 
+# TODO(joshlee): split out the scheduling dependencies into a separate bazel target
+# and have lease and task bazel targets depend on this
+
 ray_cc_library(
     name = "task_common",
     srcs = [

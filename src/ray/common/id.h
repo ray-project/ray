@@ -344,7 +344,7 @@ class LeaseID : public BaseID<LeaseID> {
 
   /// Creates a `LeaseID` from a specific worker ID.
   ///
-  /// \param worker_id The worker id to which this lease belongs.
+  /// \param worker_id The worker ID to which this lease belongs.
   ///
   /// \return The `LeaseID` for the worker lease.
   static LeaseID FromWorkerId(const WorkerID &worker_id);
@@ -353,13 +353,13 @@ class LeaseID : public BaseID<LeaseID> {
   /// driver as we need a predetermined lease value that can be calculated indepently by
   /// the raylet without having to send the ID over.
   ///
-  /// \param worker_id The driver id to which this lease belongs.
+  /// \param driver_id The driver ID to which this lease belongs.
   ///
   /// \return The `LeaseID` for the worker lease.
-  static LeaseID DriverLeaseID(const WorkerID &worker_id);
+  static LeaseID DriverLeaseId(const WorkerID &driver_id);
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
-  // Currently it should only be used in the GCS so not a problem.
+  // Currently it's only used in the GCS so not a problem.
   static LeaseID FromRandom();
 
   LeaseID() : BaseID() {}

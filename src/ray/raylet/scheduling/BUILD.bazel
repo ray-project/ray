@@ -35,7 +35,6 @@ ray_cc_library(
     deps = [
         "//src/ray/common:lease",
         "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
         "//src/ray/protobuf:node_manager_cc_proto",
     ],
 )
@@ -47,8 +46,8 @@ ray_cc_library(
     deps = [
         ":local_resource_manager",
         "//src/ray/common:grpc_util",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:container_util",
         "//src/ray/util:logging",
@@ -91,7 +90,6 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -112,7 +110,7 @@ ray_cc_library(
     hdrs = ["local_lease_manager_interface.h"],
     deps = [
         ":scheduler_internal",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -123,9 +121,9 @@ ray_cc_library(
     hdrs = ["local_resource_manager.h"],
     deps = [
         "//src/ray/common:grpc_util",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",
-        "//src/ray/common:task_common",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
@@ -142,8 +140,8 @@ ray_cc_library(
     deps = [
         ":local_lease_manager_interface",
         ":scheduler_internal",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -162,7 +160,7 @@ ray_cc_library(
     hdrs = ["policy/scheduling_context.h"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -173,7 +171,7 @@ ray_cc_library(
     hdrs = ["policy/affinity_with_bundle_scheduling_policy.h"],
     deps = [
         ":scheduling_policy",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
     ],
 )
 
@@ -186,7 +184,7 @@ ray_cc_library(
         ":scheduling_context",
         ":scheduling_policy",
         ":scorer",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
     ],
 )
 
@@ -260,7 +258,7 @@ ray_cc_library(
     name = "scorer",
     srcs = ["policy/scorer.cc"],
     hdrs = ["policy/scorer.h"],
-    deps = ["//src/ray/common:task_common"],
+    deps = ["//src/ray/common:lease"],
 )
 
 ray_cc_library(
@@ -268,6 +266,6 @@ ray_cc_library(
     hdrs = ["policy/scheduling_policy.h"],
     deps = [
         ":scheduling_options",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
     ],
 )

@@ -26,9 +26,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/id.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/local_object_manager.h"
@@ -268,7 +268,7 @@ int main(int argc, char *argv[]) {
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
-  /// dispatching tasks.
+  /// granting leases.
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -280,7 +280,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::IObjectDirectory> object_directory;
   /// Manages client requests for object transfers and availability.
   std::unique_ptr<ray::ObjectManagerInterface> object_manager;
-  /// A manager to resolve objects needed by queued tasks and workers that
+  /// A manager to resolve objects needed by queued leases and workers that
   /// called `ray.get` or `ray.wait`.
   std::unique_ptr<ray::raylet::LeaseDependencyManager> lease_dependency_manager;
   /// Map of workers leased out to clients.
@@ -507,12 +507,12 @@ int main(int argc, char *argv[]) {
             return node_manager_config.num_workers_soft_limit;
           }
           // If no limit is provided, use the available number of CPUs,
-          // assuming that each incoming task will likely require 1 CPU.
+          // assuming that each incoming lease will likely require 1 CPU.
           // We floor the available CPUs to the nearest integer to avoid
           // starting too many workers when there is less than 1 CPU left.
           // Otherwise, we could end up repeatedly starting the worker, then
           // killing it because it idles for too long. The downside is that
-          // we will be slower to schedule tasks that could use a fraction
+          // we will be slower to schedule leases that could use a fraction
           // of a CPU.
           return static_cast<int64_t>(
               cluster_resource_scheduler->GetLocalResourceManager()
@@ -700,19 +700,19 @@ int main(int argc, char *argv[]) {
     auto get_node_info_func = [&](const NodeID &id) {
       return gcs_client->Nodes().Get(id);
     };
-    auto announce_infeasible_task = [](const ray::RayLease &lease) {
-      /// Publish the infeasible task error to GCS so that drivers can subscribe to it
+    auto announce_infeasible_lease = [](const ray::RayLease &lease) {
+      /// Publish the infeasible lease error to GCS so that drivers can subscribe to it
       /// and print.
       bool suppress_warning = false;
 
       if (!lease.GetLeaseSpecification().PlacementGroupBundleId().first.IsNil()) {
-        // If the task is part of a placement group, do nothing. If necessary, the
+        // If the lease is part of a placement group, do nothing. If necessary, the
         // infeasible warning should come from the placement group scheduling, not the
-        // task scheduling.
+        // lease scheduling.
         suppress_warning = true;
       }
 
-      // Push a warning to the task's driver that this task is currently infeasible.
+      // Push a warning to the lease's driver that this lease is currently infeasible.
       if (!suppress_warning) {
         std::ostringstream error_message;
         error_message
@@ -724,7 +724,7 @@ int main(int argc, char *argv[]) {
                "resources. The required resources may be added as autoscaling takes "
                "place "
                "or placement groups are scheduled. Otherwise, consider reducing the "
-               "resource requirements of the task.";
+               "resource requirements of the lease.";
         std::string error_message_str = error_message.str();
         RAY_LOG(WARNING) << error_message_str;
       }
@@ -764,7 +764,7 @@ int main(int argc, char *argv[]) {
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
                                                            *cluster_resource_scheduler,
                                                            get_node_info_func,
-                                                           announce_infeasible_task,
+                                                           announce_infeasible_lease,
                                                            *local_lease_manager);
 
     auto raylet_client_factory = [&](const NodeID &id) {

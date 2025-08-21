@@ -361,7 +361,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool CleanupLease(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Convert a worker to an actor since it's finished an actor creation task.
-  /// \param worker The worker that finished the task.
+  /// \param worker The worker that was granted the actor creation lease.
   /// \param lease The lease of the actor creation task.
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
                             const RayLease &lease);
@@ -407,12 +407,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
                      bool force = false);
-
-  /// When a job finished, loop over all of the queued tasks for that job and
-  /// treat them as failed.
-  ///
-  /// \param job_id The job that exited.
-  void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handles the event that a job is started.
   ///
@@ -519,10 +513,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetResourceLoadReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `CancelTasksWithResourceShapes` request.
-  void HandleCancelTasksWithResourceShapes(
-      rpc::CancelTasksWithResourceShapesRequest request,
-      rpc::CancelTasksWithResourceShapesReply *reply,
+  /// Handle a `CancelLeasesWithResourceShapes` request.
+  void HandleCancelLeasesWithResourceShapes(
+      rpc::CancelLeasesWithResourceShapesRequest request,
+      rpc::CancelLeasesWithResourceShapesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PrepareBundleResources` request.

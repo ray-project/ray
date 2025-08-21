@@ -31,6 +31,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
+#include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
