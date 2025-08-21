@@ -217,7 +217,7 @@ class AggregatorAgent(
         Receives events from the request, adds them to the event buffer,
         """
         if not self._event_processing_enabled:
-            return events_event_aggregator_service_pb2.AddEventReply()
+            return events_event_aggregator_service_pb2.AddEventsReply()
 
         # TODO(myan) #54515: Considering adding a mechanism to also send out the events
         # metadata (e.g. dropped task attempts) to help with event processing at the
