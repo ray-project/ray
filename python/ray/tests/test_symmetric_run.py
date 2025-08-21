@@ -1,3 +1,5 @@
+import sys
+import pytest
 from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
@@ -150,3 +152,7 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 ]
                 assert len(ray_start_calls) > 0
                 assert "--num-cpus=4" in ray_start_calls[0][0][0]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
