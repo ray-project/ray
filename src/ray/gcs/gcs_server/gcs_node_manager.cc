@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/node_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 
 #include <limits>
 #include <memory>
@@ -21,8 +21,9 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/event.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -529,7 +530,7 @@ std::string GcsNodeManager::DebugString() const {
 
 void GcsNodeManager::UpdateAliveNode(
     const NodeID &node_id,
-    const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   auto maybe_node_info = GetAliveNode(node_id);
   if (maybe_node_info == absl::nullopt) {
     return;
