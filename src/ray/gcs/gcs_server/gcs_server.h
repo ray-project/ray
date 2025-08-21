@@ -211,7 +211,7 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
-  RedisClientOptions GcsServer::GetRedisClientOptions();
+  RedisClientOptions GetRedisClientOptions();
 
   void TryGlobalGC();
 
