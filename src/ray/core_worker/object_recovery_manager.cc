@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/util/util.h"
-
 namespace ray {
 namespace core {
 
@@ -71,8 +69,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     // gcs_client.
     object_lookup_(
         object_id,
-        [this](const ObjectID &object_id, std::vector<rpc::Address> locations) {
-          PinOrReconstructObject(object_id, std::move(locations));
+        [this](const ObjectID &object_id_to_lookup, std::vector<rpc::Address> locations) {
+          PinOrReconstructObject(object_id_to_lookup, std::move(locations));
         });
   } else if (requires_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Recovery already started for object";

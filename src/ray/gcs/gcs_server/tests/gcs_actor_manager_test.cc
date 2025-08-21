@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/pubsub/publisher.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
@@ -128,7 +129,8 @@ class GcsActorManagerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
-    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
+    gcs_table_storage_ =
+        std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto scheduler = std::make_unique<MockActorScheduler>();
@@ -1162,12 +1164,13 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  Status status = gcs_actor_manager_->CreateActor(
+  Status create_status = gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
                          const rpc::PushTaskReply &reply,
                          const Status &status) { finished_actors.emplace_back(actor); });
 
+  ASSERT_TRUE(create_status.ok());
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.pop_back();
 
@@ -1185,9 +1188,9 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
     auto request1 = Mocker::GenRegisterActorRequest(job_id_other,
                                                     /*max_restarts=*/0,
                                                     /*detached=*/false);
-    Status status =
-        gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
-    ASSERT_TRUE(status.ok());
+    Status register_status =
+        gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
+    ASSERT_TRUE(register_status.ok());
     io_service_.run_one();
   }
 
