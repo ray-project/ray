@@ -22,7 +22,7 @@
 
 namespace {
 
-static constexpr const char kObjectInPlasmaStr[] =
+static const std::string kObjectInPlasmaStr = // NOLINT
     std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
 
 std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
