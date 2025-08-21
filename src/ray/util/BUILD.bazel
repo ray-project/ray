@@ -112,6 +112,8 @@ ray_cc_library(
     deps = [
         ":logging",
         ":mutex_protected",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -123,7 +125,7 @@ ray_cc_library(
         ":logging",
         ":random",
         ":string_utils",
-        ":timestamp_utils",
+        ":time",
         "//src/ray/protobuf:event_cc_proto",
         "//src/ray/protobuf:export_event_cc_proto",
         "@boost//:asio",
@@ -145,8 +147,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "timestamp_utils",
-    hdrs = ["timestamp_utils.h"],
+    name = "time",
+    srcs = ["time.cc"],
+    hdrs = ["time.h"],
 )
 
 ray_cc_library(
@@ -219,26 +222,19 @@ ray_cc_library(
     srcs = ["network_util.cc"],
     hdrs = ["network_util.h"],
     deps = [
+        ":filesystem",
+        ":string_utils",
         "@boost//:asio",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
 
-# TODO(hjiang): Split URL related functions into a separate util target.
 ray_cc_library(
-    name = "util",
-    srcs = ["util.cc"],
-    hdrs = ["util.h"],
-    deps = [
-        ":filesystem",
-        ":logging",
-        ":macros",
-        ":process",
-        ":string_utils",
-        "//src/ray/thirdparty:sha256",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
+    name = "raii",
+    hdrs = ["raii.h"],
+    deps = [],
 )
 
 ray_cc_library(
@@ -261,8 +257,8 @@ ray_cc_library(
     name = "shared_lru",
     hdrs = ["shared_lru.h"],
     deps = [
+        ":logging",
         ":map_utils",
-        ":util",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -288,16 +284,19 @@ ray_cc_library(
     hdrs = ["pipe_logger.h"],
     deps = [
         ":compat",
+        ":logging",
         ":spdlog_fd_sink",
         ":spdlog_newliner_sink",
         ":stream_redirection_options",
         ":thread_utils",
-        ":util",
         "//src/ray/common:ray_config",
+        "//src/ray/common:status",
         "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -309,9 +308,8 @@ ray_cc_library(
         ":pipe_logger",
         ":scoped_dup2_wrapper",
         ":stream_redirection_options",
-        ":util",
         "//src/ray/util/internal:stream_redirection_handle",
-        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -320,7 +318,7 @@ ray_cc_library(
     hdrs = ["spdlog_fd_sink.h"],
     deps = [
         ":compat",
-        ":util",
+        "//src/ray/common:status",
         "@com_github_spdlog//:spdlog",
     ],
 )
@@ -330,7 +328,6 @@ ray_cc_library(
     hdrs = ["spdlog_newliner_sink.h"],
     deps = [
         ":compat",
-        ":util",
         "@com_github_spdlog//:spdlog",
     ],
 )
@@ -340,7 +337,7 @@ ray_cc_library(
     srcs = ["temporary_directory.cc"],
     hdrs = ["temporary_directory.h"],
     deps = [
-        ":util",
+        "//src/ray/common:id",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
