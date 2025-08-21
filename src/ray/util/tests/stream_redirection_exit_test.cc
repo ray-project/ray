@@ -21,10 +21,11 @@
 #include <string>
 #include <thread>
 
+#include "absl/strings/str_format.h"
+#include "ray/common/id.h"
 #include "ray/common/tests/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/stream_redirection.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -34,7 +35,8 @@ constexpr std::string_view kLogLine2 = "world";
 }  // namespace
 
 TEST(LoggingUtilTest, RedirectStderr) {
-  const std::string test_file_path = absl::StrFormat("%s.err", GenerateUUIDV4());
+  const std::string test_file_path =
+      absl::StrFormat("%s.err", UniqueID::FromRandom().Hex());
 
   // Works via `dup`, so have to execute before we redirect via `dup2` and close stderr.
   testing::internal::CaptureStderr();
