@@ -99,6 +99,9 @@ def train_func(config):
         if episode % 10 == 0 and episode > 0:
             print(f"Episode {episode}: Checking for async upload errors...")
             train.async_report({}, flush=True)
+            
+            # Print upload status  
+            train.print_async_checkpoint_status()
         
         time.sleep(0.01)
     

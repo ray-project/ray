@@ -29,6 +29,8 @@ from ray.train._internal.async_checkpoint import (
     _AsyncCheckpointError,
     _get_async_checkpoint_writer,
     _shutdown_async_checkpoint_writer,
+    get_async_checkpoint_metrics,
+    print_async_checkpoint_status,
 )
 from ray.train.constants import (
     CHECKPOINT_DIR_NAME,
@@ -538,7 +540,10 @@ class _TrainSession:
                 logger.debug("Started async checkpoint upload")
             except _AsyncCheckpointError as e:
                 # If we can't queue the upload (backpressure), fall back to sync
-                logger.warning(f"Async upload queue full, falling back to sync: {e}")
+                logger.warning(
+                    f"Async upload queue full (pending: {async_writer.get_stats()['pending_uploads']}, "
+                    f"concurrent: {async_writer._max_concurrent_uploads}), falling back to sync upload: {e}"
+                )
                 persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
                 
                 # Set metadata and create result normally
