@@ -29,7 +29,6 @@ Core Classes
    RaySQL
    SQLConfig
    LogLevel
-   QueryResult
 
 Engine Management
 =================
@@ -39,16 +38,6 @@ Engine Management
 
    get_engine
    get_registry
-
-Testing and Examples
-====================
-
-.. autosummary::
-   :toctree: doc/
-
-   run_comprehensive_tests
-   example_usage
-   example_sqlglot_features
 
 Query Execution Functions
 =========================
@@ -101,13 +90,6 @@ LogLevel
 .. autoclass:: LogLevel
    :members:
 
-QueryResult
------------
-
-.. autoclass:: QueryResult
-   :members:
-   :special-members: __init__
-
 Engine Management Functions
 ===========================
 
@@ -119,22 +101,4 @@ get_engine
 get_registry
 ------------
 
-.. autofunction:: get_registry
-
-Testing and Example Functions
-=============================
-
-run_comprehensive_tests
------------------------
-
-.. autofunction:: run_comprehensive_tests
-
-example_usage
--------------
-
-.. autofunction:: example_usage
-
-example_sqlglot_features
------------------------
-
-.. autofunction:: example_sqlglot_features 
+.. autofunction:: get_registry 
