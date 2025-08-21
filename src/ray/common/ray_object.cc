@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-#include "msgpack/msgpack.hpp"
+#include <msgpack.hpp>  // NOLINT
 
 namespace {
 

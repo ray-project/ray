@@ -860,8 +860,8 @@ RAY_CONFIG(int64_t,
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
-RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
-RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
+RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)  // NOLINT
+RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)  // NOLINT
 
 // Instruct the Python default worker to preload the specified imports.
 // This is specified as a comma-separated list.
@@ -930,7 +930,7 @@ RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
 
 // Configuration for pipe logger buffer size.
-RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
+RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)  // NOLINT
 
 // Configuration to enable or disable the infeasible task early termination feature. If
 // set to true, whenever the autoscaler detects that a task is infeasible, the task will
