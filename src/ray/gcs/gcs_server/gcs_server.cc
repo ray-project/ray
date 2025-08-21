@@ -133,7 +133,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
-        [redis_store_client] {
+        [redis_store_client, io_context] {
           redis_store_client->AsyncCheckHealth(
               {[](const Status &status) {
                  RAY_CHECK_OK(status) << "Redis connection failed unexpectedly.";
