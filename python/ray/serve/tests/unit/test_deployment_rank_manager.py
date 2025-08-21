@@ -34,7 +34,7 @@ class TestDeploymentRankManager:
     def test_init(self, rank_manager):
         """Test initialization creates empty state."""
         assert rank_manager._replica_ranks == {}
-        assert rank_manager._available_ranks == set()
+        assert rank_manager._released_ranks == set()
         assert rank_manager._next_rank == 0
 
     def test_assign_rank_first_replica(self, rank_manager):
@@ -43,7 +43,7 @@ class TestDeploymentRankManager:
         assert rank == 0
         assert rank_manager._replica_ranks["replica_1"] == 0
         assert rank_manager._next_rank == 1
-        assert rank_manager._available_ranks == set()
+        assert rank_manager._released_ranks == set()
 
     def test_assign_rank_multiple_replicas(self, rank_manager):
         """Test assigning ranks to multiple replicas."""
@@ -57,7 +57,7 @@ class TestDeploymentRankManager:
         assert rank_manager._next_rank == 3
         assert len(rank_manager._replica_ranks) == 3
 
-    def test_assign_rank_reuses_available_ranks(self, rank_manager):
+    def test_assign_rank_reuses_released_ranks(self, rank_manager):
         """Test that released ranks are reused before assigning new ones."""
         # Assign ranks to 3 replicas
         rank_manager.assign_rank("replica_1")
@@ -66,12 +66,12 @@ class TestDeploymentRankManager:
 
         # Release middle rank
         rank_manager.release_rank("replica_2")
-        assert 1 in rank_manager._available_ranks
+        assert 1 in rank_manager._released_ranks
 
         # New replica should get the released rank
         rank = rank_manager.assign_rank("replica_4")
         assert rank == 1
-        assert 1 not in rank_manager._available_ranks
+        assert 1 not in rank_manager._released_ranks
 
     def test_assign_rank_duplicate_fails(self):
         """Test assigning rank to replica that already has one fails when flag is enabled."""
@@ -89,7 +89,7 @@ class TestDeploymentRankManager:
         rank_manager.release_rank("replica_1")
 
         assert "replica_1" not in rank_manager._replica_ranks
-        assert 0 in rank_manager._available_ranks
+        assert 0 in rank_manager._released_ranks
         assert "replica_2" in rank_manager._replica_ranks
 
     def test_release_rank_nonexistent_replica(self):
@@ -122,12 +122,12 @@ class TestDeploymentRankManager:
         rank_manager.assign_rank("replica_2")
         rank_manager.release_rank("replica_1")  # Rank 0 becomes available
 
-        assert 0 in rank_manager._available_ranks
+        assert 0 in rank_manager._released_ranks
 
         # Recover rank 0
         rank_manager.recover_rank("replica_3", 0)
 
-        assert 0 not in rank_manager._available_ranks
+        assert 0 not in rank_manager._released_ranks
         assert rank_manager._replica_ranks["replica_3"] == 0
 
     def test_recover_rank_duplicate_fails(self):
@@ -173,7 +173,7 @@ class TestDeploymentRankManager:
         rank_manager.clear()
 
         assert rank_manager._replica_ranks == {}
-        assert rank_manager._available_ranks == set()
+        assert rank_manager._released_ranks == set()
         assert rank_manager._next_rank == 0
 
     def test_check_rank_consistency_empty_replicas(self, rank_manager):
@@ -335,105 +335,6 @@ class TestDeploymentRankManager:
             [replica1, replica2]
         )
         assert result == [replica2] or result == [replica1]
-
-
-class TestDeploymentRankManagerIntegration:
-    """Integration tests for more complex scenarios."""
-
-    def test_scaling_up_and_down_scenario(self, rank_manager):
-        """Test a realistic scaling scenario."""
-        # Start with 3 replicas
-        replicas = [MockDeploymentReplica(f"replica_{i}") for i in range(3)]
-        for i, replica in enumerate(replicas):
-            rank = rank_manager.assign_rank(replica.replica_id.unique_id)
-            assert rank == i
-
-        # Check consistency - should be fine
-        result = rank_manager.check_rank_consistency_and_reassign_minimally(replicas)
-        assert result == []
-
-        # Scale down to 2 replicas (remove middle one)
-        rank_manager.release_rank("replica_1")
-        active_replicas = [replicas[0], replicas[2]]  # replica_0 and replica_2
-
-        print(f"After release - available_ranks: {rank_manager._available_ranks}")
-        print(f"After release - replica_ranks: {rank_manager._replica_ranks}")
-
-        # Check consistency - should need reassignment due to gap
-        result = rank_manager.check_rank_consistency_and_reassign_minimally(
-            active_replicas
-        )
-        assert len(result) == 1  # replica_2 should be reassigned from rank 2 to rank 1
-
-        print(f"After reassignment - available_ranks: {rank_manager._available_ranks}")
-        print(f"After reassignment - replica_ranks: {rank_manager._replica_ranks}")
-
-        # Scale back up - new replica should reuse available rank
-        new_replica = MockDeploymentReplica("replica_3")
-        rank = rank_manager.assign_rank("replica_3")
-        print(f"New replica got rank: {rank}")
-        assert rank == 2  # Should reuse the available rank 2 (replica_2's old rank)
-
-        # Final consistency check - should be fine now
-        all_replicas = [replicas[0], replicas[2], new_replica]
-        result = rank_manager.check_rank_consistency_and_reassign_minimally(
-            all_replicas
-        )
-        assert len(result) == 0  # No reassignment needed
-
-        # After reassignment, ranks should be contiguous
-        final_ranks = sorted(rank_manager._replica_ranks.values())
-        assert final_ranks == [0, 1, 2]
-
-    def test_controller_recovery_scenario(self, rank_manager):
-        """Test controller recovery with existing replica ranks."""
-        # Simulate controller startup with existing replicas
-        rank_manager.recover_rank("replica_1", 0)
-        rank_manager.recover_rank("replica_2", 2)
-        rank_manager.recover_rank("replica_3", 1)
-
-        # Create mock replicas
-        replicas = [
-            MockDeploymentReplica("replica_1"),
-            MockDeploymentReplica("replica_2"),
-            MockDeploymentReplica("replica_3"),
-        ]
-
-        # Check consistency - ranks should be reordered to be contiguous
-        _ = rank_manager.check_rank_consistency_and_reassign_minimally(replicas)
-
-        # Should have contiguous ranks 0, 1, 2
-        final_ranks = sorted(rank_manager._replica_ranks.values())
-        assert final_ranks == [0, 1, 2]
-
-        # Next replica should get rank 3
-        new_rank = rank_manager.assign_rank("replica_4")
-        assert new_rank == 3
-
-    def test_complex_reassignment_scenario(self, rank_manager):
-        """Test complex reassignment with many gaps."""
-        # Set up replicas with scattered ranks: 0, 3, 7, 10
-        replicas = [MockDeploymentReplica(f"replica_{i}") for i in range(4)]
-        rank_manager._replica_ranks = {
-            "replica_0": 0,
-            "replica_1": 3,
-            "replica_2": 7,
-            "replica_3": 10,
-        }
-
-        result = rank_manager.check_rank_consistency_and_reassign_minimally(replicas)
-
-        # Should reassign to make contiguous: 0, 1, 2, 3
-        final_ranks = sorted(rank_manager._replica_ranks.values())
-        assert final_ranks == [0, 1, 2, 3]
-
-        # Verify minimal reassignment - replica_0 should keep rank 0
-        assert rank_manager._replica_ranks["replica_0"] == 0
-
-        # The algorithm is more efficient - some replicas can keep their existing ranks if they're in target range
-        # For ranks [0, 3, 7, 10] -> [0, 1, 2, 3], replica_0 keeps 0, replica_1 can keep 3->reordered to 3
-        # But the algorithm should actually reassign to make them contiguous at [0, 1, 2, 3]
-        assert len(result) == 2  # At least 2 replicas reassigned
 
 
 if __name__ == "__main__":

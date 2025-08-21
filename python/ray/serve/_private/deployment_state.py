@@ -1400,7 +1400,7 @@ class DeploymentRankManager:
         # Maps replica_id to assigned rank
         self._replica_ranks: Dict[str, int] = {}
         # Set of available ranks (initially empty, grows as target replicas change)
-        self._available_ranks: Set[int] = set()
+        self._released_ranks: Set[int] = set()
         # Next rank to assign (increments as new replicas are created)
         self._next_rank: int = 0
         # Whether to fail on rank errors (for testing control)
@@ -1425,9 +1425,9 @@ class DeploymentRankManager:
             )
 
         # First try to reuse an available rank
-        if self._available_ranks:
-            rank = min(self._available_ranks)
-            self._available_ranks.remove(rank)
+        if self._released_ranks:
+            rank = min(self._released_ranks)
+            self._released_ranks.remove(rank)
         else:
             # Otherwise use the next available rank
             rank = self._next_rank
@@ -1445,7 +1445,7 @@ class DeploymentRankManager:
             raise RuntimeError(f"Replica {replica_id} has no rank assigned")
 
         rank = self._replica_ranks.pop(replica_id)
-        self._available_ranks.add(rank)
+        self._released_ranks.add(rank)
 
     def recover_rank(self, replica_id: str, rank: int) -> None:
         """Recover a rank from a live replica during controller restart.
@@ -1462,8 +1462,8 @@ class DeploymentRankManager:
         self._replica_ranks[replica_id] = rank
 
         # Update available ranks tracking
-        if rank in self._available_ranks:
-            self._available_ranks.remove(rank)
+        if rank in self._released_ranks:
+            self._released_ranks.remove(rank)
 
         # Update next_rank to ensure we don't assign duplicates
         if rank >= self._next_rank:
@@ -1633,9 +1633,9 @@ class DeploymentRankManager:
             # Update the rank mapping
             self._replica_ranks[replica_id] = new_rank
             # Remove the newly assigned rank from available ranks
-            self._available_ranks.discard(new_rank)
+            self._released_ranks.discard(new_rank)
             # Add the old rank back to available ranks for reuse
-            self._available_ranks.add(old_rank)
+            self._released_ranks.add(old_rank)
 
         # Log the reassignment summary
         logger.info(
@@ -1648,7 +1648,7 @@ class DeploymentRankManager:
     def clear(self) -> None:
         """Clear all rank data. Used for testing and reset."""
         self._replica_ranks.clear()
-        self._available_ranks.clear()
+        self._released_ranks.clear()
         self._next_rank = 0
 
 
