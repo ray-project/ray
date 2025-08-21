@@ -82,8 +82,10 @@ def test_aws_accelerators():
 
 def test_deprecation_warnings():
     """Test that appropriate deprecation warnings are raised."""
-    with pytest.warns(RayDeprecationWarning,
-                      match="NVIDIA_A100 can be replaced with NVIDIA_A100_40G or NVIDIA_A100_80G"):
+    with pytest.warns(
+        RayDeprecationWarning,
+        match="NVIDIA_A100 can be replaced with NVIDIA_A100_40G or NVIDIA_A100_80G",
+    ):
         assert accelerators.NVIDIA_TESLA_K80 == "NVIDIA_TESLA_K80"
 
 
@@ -97,6 +99,7 @@ def test_get_accelerator_type():
 
     # import the types instance and test its methods
     from ray.util.accelerators.types import types
+
     assert isinstance(types.nvidia_types, str)
     assert "NVIDIA_A100" in types.nvidia_types
     assert "NVIDIA_H100" in types.nvidia_types

@@ -6,8 +6,9 @@ from ray.util.accelerators.types import AcceleratorTypes
 
 # Get all GPU constant names
 _GPU_CONSTANTS = [
-    name for name in dir(_accelerators)
-    if not (name.startswith('__') and name.endswith('__'))
+    name
+    for name in dir(_accelerators)
+    if not (name.startswith("__") and name.endswith("__"))
 ]
 
 __all__ = ["tpu"] + _GPU_CONSTANTS + ["NVIDIA_TESLA_A100"] + ["TYPES"]
@@ -39,7 +40,7 @@ def __getattr__(name):
                 f"Accessing GPU constants via this method (ray.util.accelerators.{name}) is deprecated and will be removed in a future version. "
                 f"Please use just strings instead ('{getattr(_accelerators, name)}').",
                 RayDeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
 
         return getattr(_accelerators, name)

@@ -6,21 +6,55 @@ class AcceleratorTypes:
         self._all_constants = {
             name: getattr(_accelerators, name)
             for name in dir(_accelerators)
-            if not (name.startswith('__') and name.endswith('__'))
+            if not (name.startswith("__") and name.endswith("__"))
         }
 
-        self.nvidia_types = "\n".join(sorted([name for name in self._all_constants.keys()
-                                  if name.startswith('NVIDIA_')]))
-        self.amd_types = "\n".join(sorted([name for name in self._all_constants.keys()
-                               if name.startswith('AMD_')]))
-        self.intel_types = "\n".join(sorted([name for name in self._all_constants.keys()
-                                 if name.startswith('INTEL_')]))
-        self.google_types = "\n".join(sorted([name for name in self._all_constants.keys()
-                                 if name.startswith('GOOGLE_')]))
-        self.huawei_types = "\n".join(sorted([name for name in self._all_constants.keys()
-                                 if name.startswith('HUAWEI_')]))
-        self.aws_types = "\n".join(sorted([name for name in self._all_constants.keys()
-                              if name.startswith('AWS_')]))
+        self.nvidia_types = "\n".join(
+            sorted(
+                [
+                    name
+                    for name in self._all_constants.keys()
+                    if name.startswith("NVIDIA_")
+                ]
+            )
+        )
+        self.amd_types = "\n".join(
+            sorted(
+                [name for name in self._all_constants.keys() if name.startswith("AMD_")]
+            )
+        )
+        self.intel_types = "\n".join(
+            sorted(
+                [
+                    name
+                    for name in self._all_constants.keys()
+                    if name.startswith("INTEL_")
+                ]
+            )
+        )
+        self.google_types = "\n".join(
+            sorted(
+                [
+                    name
+                    for name in self._all_constants.keys()
+                    if name.startswith("GOOGLE_")
+                ]
+            )
+        )
+        self.huawei_types = "\n".join(
+            sorted(
+                [
+                    name
+                    for name in self._all_constants.keys()
+                    if name.startswith("HUAWEI_")
+                ]
+            )
+        )
+        self.aws_types = "\n".join(
+            sorted(
+                [name for name in self._all_constants.keys() if name.startswith("AWS_")]
+            )
+        )
 
     def print_all(self):
         """Print all accelerator types categorized by vendor"""
