@@ -173,7 +173,10 @@ class WinratesCallback(RLlibCallback):
         result: Dict,
         **kwargs,
     ) -> None:
+        _main_module = algorithm.get_module(self.main_policy)
         new_module_id = None
+        new_module_spec = None
+
         win_rate = result[ENV_RUNNER_RESULTS][
             f"footsies/win_rates/{self.main_policy}/vs_any"
         ]
@@ -188,15 +191,19 @@ class WinratesCallback(RLlibCallback):
             for module_id in self.beginner_modules_progression_sequence:
                 if module_id not in self.modules_in_mix:
                     new_module_id = module_id
+                    new_module_spec = RLModuleSpec(module_class=self.beginner_modules[new_module_id],
+                                                   observation_space=_main_module.observation_space)
                     break
 
             # in case that all beginner RL Modules are already in the mix (together with the main policy),
             # we will add a new RL Module by taking main policy and adding an instance of it to the mix
             if set(self.modules_in_mix) == set(self.beginner_modules_progression_sequence).union([self.main_policy]):
                 new_module_id = f"{self.main_policy}_v{self._trained_policy_idx}"
+                new_module_spec = RLModuleSpec.from_module(_main_module)
                 self._trained_policy_idx += 1
 
             assert new_module_id is not None, f"New RL Module_id should not be None."
+            assert new_module_spec is not None, f"New RL Module_spec should not be None."
 
             # create new policy mapping function, to ensure that the main policy plays against newly added policy
             new_mapping_fn = Matchmaker(
@@ -209,26 +216,25 @@ class WinratesCallback(RLlibCallback):
                 ]
             ).agent_to_module_mapping_fn
 
-            main_module = algorithm.get_module(self.main_policy)
             algorithm.add_module(
                 module_id=new_module_id,
-                module_spec=RLModuleSpec.from_module(main_module),
+                module_spec=new_module_spec,
                 new_agent_to_module_mapping_fn=new_mapping_fn,
                 add_to_learners=False,
             )
-
             algorithm.set_state(
                 {
                     "learner_group": {
                         "learner": {
                             "rl_module": {
-                                new_module_id: main_module.get_state(),
+                                new_module_id: _main_module.get_state(),
                             }
                         }
                     }
                 }
             )
 
+            # we added a new RL Module to the mix, so we need to update the current mix size and the modules ids in the mix
             self._current_mix_size += 1
             self.modules_in_mix.append(new_module_id)
 
