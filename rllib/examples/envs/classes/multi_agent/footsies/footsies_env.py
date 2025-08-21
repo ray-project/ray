@@ -2,7 +2,11 @@ from typing import Any
 
 import numpy as np
 from gymnasium import spaces
-
+from pettingzoo.utils.env import (
+    AgentID,
+    ActionType,
+    ObsType,
+)
 from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
@@ -12,11 +16,6 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary i
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
-)
-from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
-    AgentID,
-    ActionType,
-    ObsType,
 )
 
 
