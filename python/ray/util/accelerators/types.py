@@ -11,79 +11,34 @@ class AcceleratorTypes:
             if not (name.startswith("__") and name.endswith("__"))
         }
 
-        self.nvidia_types = "\n".join(
-            sorted(
+        VENDORS = ["NVIDIA", "AMD", "INTEL", "GOOGLE", "HUAWEI", "AWS"]
+        for vendor in VENDORS:
+            vendor_lower = vendor.lower()
+            type_list = sorted(
                 [
                     name
                     for name in self._all_constants.keys()
-                    if name.startswith("NVIDIA_")
+                    if name.startswith(f"{vendor}_")
                 ]
             )
-        )
-        self.amd_types = "\n".join(
-            sorted(
-                [name for name in self._all_constants.keys() if name.startswith("AMD_")]
-            )
-        )
-        self.intel_types = "\n".join(
-            sorted(
-                [
-                    name
-                    for name in self._all_constants.keys()
-                    if name.startswith("INTEL_")
-                ]
-            )
-        )
-        self.google_types = "\n".join(
-            sorted(
-                [
-                    name
-                    for name in self._all_constants.keys()
-                    if name.startswith("GOOGLE_")
-                ]
-            )
-        )
-        self.huawei_types = "\n".join(
-            sorted(
-                [
-                    name
-                    for name in self._all_constants.keys()
-                    if name.startswith("HUAWEI_")
-                ]
-            )
-        )
-        self.aws_types = "\n".join(
-            sorted(
-                [name for name in self._all_constants.keys() if name.startswith("AWS_")]
-            )
-        )
+            setattr(self, f"{vendor_lower}_types", "\n".join(type_list))
 
     @PublicAPI(stability="alpha")
     def print_all(self):
         """Print all accelerator types categorized by vendor"""
-        if self.nvidia_types:
-            print("\nNVIDIA Accelerators:")
-            print(self.nvidia_types)
-
-        if self.amd_types:
-            print("\nAMD Accelerators:")
-            print(self.amd_types)
-
-        if self.intel_types:
-            print("\nIntel Accelerators:")
-            print(self.intel_types)
-
-        if self.google_types:
-            print("\nGoogle Accelerators:")
-            print(self.google_types)
-
-        if self.huawei_types:
-            print("\nHuawei Accelerators:")
-            print(self.huawei_types)
-
-        if self.aws_types:
-            print("\nAWS Accelerators:")
-            print(self.aws_types)
+        vendor_map = {
+            "nvidia": "NVIDIA",
+            "amd": "AMD",
+            "intel": "Intel",
+            "google": "Google",
+            "huawei": "Huawei",
+            "aws": "AWS",
+        }
+        for vendor_key, vendor_name in vendor_map.items():
+            type_string = getattr(self, f"{vendor_key}_types")
+            if type_string:
+                print(f"\n{vendor_name} Accelerators:")
+                print(type_string)
 
     @property
     def all_constants(self):
