@@ -29,8 +29,11 @@ class Preprocessor:
         )
         ds = ds.map_batches(
             EmbedImages,
-            fn_constructor_kwargs={"model_id": "openai/clip-vit-base-patch32"},
-            fn_kwargs={"device": "cuda"},
+            fn_constructor_kwargs={
+                "model_id": "openai/clip-vit-base-patch32", 
+                "device": "cuda",
+            },  # class kwargs
+            fn_kwargs={},
             concurrency=4,
             batch_size=64,
             num_gpus=1,

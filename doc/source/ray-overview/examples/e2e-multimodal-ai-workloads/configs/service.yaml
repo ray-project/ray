@@ -1,0 +1,64 @@
+# View the docs https://docs.anyscale.com/reference/service-api#serviceconfig.
+
+name: doggos-app
+
+# When empty, use the default image. This can be an Anyscale-provided base image
+# like anyscale/ray:2.43.0-slim-py312-cu125, a user-provided base image (provided
+# that it meets certain specs), or you can build new images using the Anyscale
+# image builder at https://console.anyscale-staging.com/v2/container-images.
+image_uri:  anyscale/ray:2.48.0-slim-py312-cu128
+# containerfile: /home/ray/default/containerfile
+
+# When empty, Anyscale will auto-select the instance types. You can also specify
+# minimum and maximum resources.
+compute_config:
+#   head_node:
+#     instance_type: m5.2xlarge
+#   worker_nodes:
+#     - instance_type: m5.16xlarge
+#       min_nodes: 0
+#       max_nodes: 100
+#     - instance_type: m7a.24xlarge
+#       min_nodes: 0
+#       max_nodes: 100
+#       market_type: PREFER_SPOT # Defaults to ON_DEMAND
+#     - instance_type: g4dn.2xlarge
+#       min_nodes: 0
+#       max_nodes: 100
+#       market_type: PREFER_SPOT # Defaults to ON_DEMAND
+#   min_resources:
+#     CPU: 100
+#     GPU: 1
+#   max_resources:
+#     CPU: 5000
+#     GPU: 100
+
+# Path to a local directory or a remote URI to a .zip file (S3, GS, HTTP) that
+# will be the working directory for the job. The files in the directory will be
+# automatically uploaded to the job environment in Anyscale.
+working_dir: /home/ray/default
+excludes: # (Optional) List of files to exclude from being packaged up for the job.
+    - .git
+    - .env
+    - .venv
+    - '**/*.egg-info/**'
+    - '**/.DS_Store/**'
+    - '**/__pycache__/**'
+  
+requirements: # (Optional) List of requirements files to install. Can also be a path to a requirements.txt.
+    # - emoji==1.2.0
+    # - numpy==1.19.5
+env_vars: # (Optional) Dictionary of environment variables to set in the job.
+    # MY_ENV_VAR: my_value
+    # ANOTHER_ENV_VAR: another_value
+py_modules: # (Optional) A list of local directories or remote URIs that will be added to the Python path.
+    # - /path/to/my_module
+    # - s3://my_bucket/my_module
+py_executable: uv run  # python
+
+# When empty, this uses the default Anyscale Cloud in your organization.
+cloud:
+
+# Speciy the Ray Serve app to deploy.
+applications:
+- import_path: doggos.serve:app

@@ -14,7 +14,7 @@ notebooks/03-Online-Serving
 </div>
 
 💻 Run this entire tutorial on [Anyscale](https://www.anyscale.com/) for free:
-**https://console.anyscale.com/template-preview/image-search-and-classification**
+**https://console.anyscale.com/template-preview/image-search-and-classification** or access the repo [here](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads).
 
 This tutorial focuses on the fundamental challenges of multimodal AI workloads at scale:
 
@@ -47,10 +47,39 @@ Learn more about Anyscale Workspaces in the [official documentation](https://doc
   <img src="https://raw.githubusercontent.com/anyscale/multimodal-ai/refs/heads/main/images/compute.png" width=600>
 </div>
 
+### Additional dependencies
+
+You can choose to manage the additional dependencies via `uv` or `pip`. 
+
+#### UV
+
+```bash
+# UV setup instructions
+uv init .  # this creates pyproject.toml, uv lockfile, etc.
+ray_wheel_url=http://localhost:9478/ray/$(pip freeze | grep -oP '^ray @ file:///home/ray/\.whl/\K.*')
+uv add "$ray_wheel_url[data, train, tune, serve]"  # to use anyscale's performant ray runtime
+uv add $(grep -v '^\s*#' requirements.txt)
+uv add --editable ./doggos
+```
+
+#### Pip
+
+```bash
+# Pip setup instructions
+pip install -q -r /home/ray/default/requirements.txt
+pip install -e ./doggos
+```
+
 **Note**: Run the entire tutorial for free on [Anyscale](https://console.anyscale.com/)—all dependencies come pre-installed, and compute autoscales automatically. To run it elsewhere, install the dependencies from the [`containerfile`](https://github.com/anyscale/multimodal-ai/tree/main/containerfile) and provision the appropriate GPU resources.
 
 ## Production
 Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to deploy [highly available services](https://docs.anyscale.com/platform/services) and run [reliable batch jobs](https://docs.anyscale.com/platform/jobs). Developing in an environment nearly identical to production—a multi-node cluster—drastically accelerates the dev-to-prod transition. This tutorial also introduces proprietary RayTurbo features that optimize workloads for performance, fault tolerance, scale, and observability.
+
+```bash
+anyscale job submit -f /home/ray/default/configs/generate_embeddings.yaml
+anyscale job submit -f /home/ray/default/configs/train_model.yaml
+anyscale service deploy -f /home/ray/default/configs/service.yaml
+```
 
 ## No infrastructure headaches
 Abstract away infrastructure from your ML/AI developers so they can focus on their core ML development. You can additionally better manage compute resources and costs with [enterprise governance and observability](https://www.anyscale.com/blog/enterprise-governance-observability) and [admin capabilities](https://docs.anyscale.com/administration/overview) so you can set [resource quotas](https://docs.anyscale.com/reference/resource-quotas/), set [priorities for different workloads](https://docs.anyscale.com/administration/cloud-deployment/global-resource-scheduler) and gain [observability of your utilization across your entire compute fleet](https://docs.anyscale.com/administration/resource-management/telescope-dashboard).
