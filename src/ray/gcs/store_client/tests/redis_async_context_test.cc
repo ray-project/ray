@@ -24,6 +24,7 @@
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/util/logging.h"
 #include "ray/util/path_utils.h"
+#include "ray/util/raii.h"
 
 extern "C" {
 #include "hiredis/async.h"

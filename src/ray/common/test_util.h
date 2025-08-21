@@ -21,7 +21,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/common.pb.h"
 namespace ray {
 

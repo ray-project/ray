@@ -36,6 +36,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {

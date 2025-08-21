@@ -50,7 +50,7 @@
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
+#include "ray/util/network_util.h"
 
 namespace ph = boost::placeholders;
 namespace fb = plasma::flatbuf;
@@ -78,7 +78,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                          ray::DeleteObjectCallback delete_object_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
-      acceptor_(main_service, ParseUrlEndpoint(socket_name)),
+      acceptor_(main_service, ray::ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       allocator_(allocator),
       fs_monitor_(fs_monitor),

@@ -18,8 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/util/util.h"
-
 namespace ray {
 namespace rpc {
 

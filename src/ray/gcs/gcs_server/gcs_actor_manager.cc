@@ -25,6 +25,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/time.h"
 
 namespace {
 /// The error message constructed from below methods is user-facing, so please avoid

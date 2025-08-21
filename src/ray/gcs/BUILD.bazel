@@ -11,6 +11,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:export_task_event_cc_proto",
+        "//src/ray/util:time",
     ],
 )
 
