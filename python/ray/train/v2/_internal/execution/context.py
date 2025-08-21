@@ -107,7 +107,7 @@ class TrainContext:
     num_attempted_reported_checkpoints: int = 0
     report_order_condition: threading.Condition = threading.Condition()
     max_uploads_condition: threading.Condition = threading.Condition()
-    ordered_checkpoint_upload_threads: Dict[str, threading.Thread] = field(
+    ordered_checkpoint_upload_threads: Dict[int, threading.Thread] = field(
         default_factory=dict
     )
 
