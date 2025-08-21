@@ -598,6 +598,84 @@ def summary_state_cli_group(ctx):
     pass
 
 
+# Experimental: `ray object ls` as a convenience alias to `ray list objects`
+@click.group("object")
+@click.pass_context
+def object_state_cli_group(ctx):
+    """Object tooling (experimental)."""
+    pass
+
+
+@object_state_cli_group.command(name="ls")
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
+@click.option(
+    "-f",
+    "--filter",
+    help=(
+        "A key, predicate, and value to filter the result. "
+        "E.g., --filter 'key=value' or --filter 'key!=value'. "
+        "You can specify multiple --filter options. Predicates are ANDed. "
+        "String filter values are case-insensitive."
+    ),
+    multiple=True,
+)
+@click.option(
+    "--limit",
+    default=DEFAULT_LIMIT,
+    type=int,
+    help=("Maximum number of entries to return. 100 by default."),
+)
+@click.option(
+    "--detail",
+    help=(
+        "If the flag is set, the output will contain data in more details. "
+        "Note that the API could query more sources to obtain information in a greater detail."
+    ),
+    is_flag=True,
+    default=False,
+)
+@timeout_option
+@address_option
+def object_ls(
+    format: str,
+    filter: List[str],
+    limit: int,
+    detail: bool,
+    timeout: float,
+    address: str,
+):
+    resource = StateResource.OBJECTS
+    format = AvailableFormat(format)
+    client = StateApiClient(address=address)
+    filter = [_parse_filter(f) for f in filter]
+    options = ListApiOptions(
+        limit=limit, timeout=timeout, filters=filter, detail=detail
+    )
+    try:
+        data = client.list(
+            resource,
+            options=options,
+            raise_on_missing_output=False,
+            _explain=_should_explain(format),
+        )
+    except RayStateApiException as e:
+        raise click.UsageError(str(e))
+
+    if detail and format == AvailableFormat.DEFAULT:
+        format = AvailableFormat.YAML
+
+    print(
+        format_list_api_output(
+            state_data=data,
+            schema=resource_to_schema(resource),
+            format=format,
+            detail=detail,
+        )
+    )
+
+
 @summary_state_cli_group.command(name="tasks")
 @timeout_option
 @address_option
