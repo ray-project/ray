@@ -304,7 +304,7 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
       worker_data->set_num_paused_threads(current_num_paused_threads +
                                           num_paused_threads_delta);
       gcs_table_storage_.WorkerTable().Put(
-          worker_id, *worker_data, {on_worker_update_done, io_context_});
+          worker_id, *worker_data, {std::move(on_worker_update_done), io_context_});
     }
   };
 
