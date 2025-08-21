@@ -112,8 +112,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:ray_fakes",
         ":gcs_server_test_util",
+        "//:ray_fakes",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:node_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
@@ -407,10 +407,10 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/util:string_utils",
         "//src/ray/gcs/gcs_server:node_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest",
     ],
 )
