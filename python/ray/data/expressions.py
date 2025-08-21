@@ -517,6 +517,14 @@ def case(when_clauses: List[Tuple[Expr, Expr]], default: Expr) -> CaseExpr:
     if not when_clauses:
         raise ValueError("case() must have at least one when clause")
 
+    # Validate that each when_clause is a proper (condition, value) tuple
+    for i, when_clause in enumerate(when_clauses):
+        if not isinstance(when_clause, tuple) or len(when_clause) != 2:
+            raise ValueError(
+                f"when_clauses[{i}] must be a tuple with exactly 2 elements "
+                f"(condition, value), got {when_clause!r}"
+            )
+
     return CaseExpr(when_clauses, default)
 
 

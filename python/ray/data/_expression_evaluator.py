@@ -82,8 +82,23 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
             return np.select(conditions, choices, default=default)
         elif isinstance(batch, pa.Table):
             # For Arrow, use pyarrow.compute.case_when
-            # Convert to arrays if needed and use case_when
-            return pc.case_when(conditions, choices, default=default)
+            # PyArrow case_when expects:
+            # - cond: a struct array of boolean conditions
+            # - *cases: the case values (one for each condition, plus default)
+
+            # Create a struct array from the conditions
+            if len(conditions) == 1:
+                # Single condition case
+                cond_struct = pa.StructArray.from_arrays(
+                    [conditions[0]], names=["cond0"]
+                )
+                return pc.case_when(cond_struct, choices[0], default)
+            else:
+                # Multiple conditions case
+                cond_names = [f"cond{i}" for i in range(len(conditions))]
+                cond_struct = pa.StructArray.from_arrays(conditions, names=cond_names)
+                # Pass all choices plus default as separate arguments
+                return pc.case_when(cond_struct, *choices, default)
         else:
             # Fallback for other types (should not happen in practice)
             raise TypeError(
