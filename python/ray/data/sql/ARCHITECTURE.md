@@ -33,16 +33,16 @@ graph TB
         A[SQL Query String] --> B[ray.data.sql()]
         C[Ray Dataset] --> D[register_table()]
     end
-    
+
     subgraph "Core Engine"
         B --> E[RaySQL Engine]
         D --> F[DatasetRegistry]
         E --> G[SQLParser]
-        G --> H[ASTOptimizer] 
+        G --> H[ASTOptimizer]
         H --> I[LogicalPlanner]
         I --> J[QueryExecutor]
     end
-    
+
     subgraph "Execution Layer"
         J --> K[ProjectionAnalyzer]
         J --> L[AggregateAnalyzer]
@@ -51,7 +51,7 @@ graph TB
         J --> O[OrderHandler]
         J --> P[LimitHandler]
     end
-    
+
     subgraph "Expression System"
         K --> Q[ExpressionCompiler]
         L --> Q
@@ -59,16 +59,16 @@ graph TB
         N --> Q
         Q --> R[Python Callables]
     end
-    
+
     subgraph "Schema System"
         F --> S[SchemaManager]
         S --> T[Automatic Type Inference]
     end
-    
+
     subgraph "Output"
         J --> U[Ray Dataset Result]
     end
-    
+
     F -.-> J
     S -.-> J
     R -.-> U
@@ -102,7 +102,7 @@ sequenceDiagram
     participant Registry as DatasetRegistry
     participant Schema as SchemaManager
     participant Dataset as Ray Dataset
-    
+
     User->>Registry: register_table("users", dataset)
     Registry->>Dataset: Validate dataset type
     Registry->>Schema: infer_schema_from_dataset()
@@ -122,7 +122,7 @@ sequenceDiagram
     participant Optimizer as ASTOptimizer
     participant Executor as QueryExecutor
     participant Result as Ray Dataset
-    
+
     User->>Engine: sql("SELECT name FROM users WHERE age > 25")
     Engine->>Parser: parse(query)
     Parser-->>Engine: SQLGlot AST
@@ -165,21 +165,21 @@ classDiagram
         +list_tables(): List[str]
         +clear()
     }
-    
+
     class SchemaManager {
         -_schemas: Dict[str, TableSchema]
         +infer_schema_from_dataset(name, dataset)
         +get_schema(name): TableSchema
         +register_schema(name, schema)
     }
-    
+
     class TableSchema {
         +name: str
         +columns: Dict[str, ColumnInfo]
         +add_column(name, type)
         +get_column(name): ColumnInfo
     }
-    
+
     DatasetRegistry --> SchemaManager
     SchemaManager --> TableSchema
 ```
@@ -208,26 +208,26 @@ classDiagram
         -_execute_simple_query(ast)
         -_execute_group_by_query(ast)
     }
-    
+
     class JoinHandler {
         +apply_joins(dataset, ast, registry)
         +apply_single_join(left, join_ast, registry)
         -_extract_join_info(join_ast)
     }
-    
+
     class ProjectionAnalyzer {
         +analyze_projections(exprs, dataset)
         -_analyze_single_expression(expr)
         -_handle_star_expression()
     }
-    
+
     class ExpressionCompiler {
         +compile(expr): Callable
         -_compile_column(expr)
         -_compile_arithmetic(expr)
         -_compile_comparison(expr)
     }
-    
+
     QueryExecutor --> JoinHandler
     QueryExecutor --> ProjectionAnalyzer
     ProjectionAnalyzer --> ExpressionCompiler
@@ -256,7 +256,7 @@ flowchart TD
     E --> F[SELECT projection]
     F --> G[ORDER BY sorting]
     G --> H[LIMIT row restriction]
-    
+
     subgraph "Ray Dataset Operations"
         A1[Dataset lookup from registry]
         B1[dataset.join() with Ray join API]
@@ -267,7 +267,7 @@ flowchart TD
         G1[dataset.sort() with sort keys]
         H1[dataset.limit() with row count]
     end
-    
+
     A -.-> A1
     B -.-> B1
     C -.-> C1
@@ -317,7 +317,7 @@ The expression compilation system represents one of the most sophisticated aspec
 ```mermaid
 graph LR
     subgraph "SQL Expression Types"
-        A[Column References] 
+        A[Column References]
         B[Arithmetic Operations]
         C[Comparison Operations]
         D[Logical Operations]
@@ -325,18 +325,18 @@ graph LR
         F[Aggregate Functions]
         G[Literal Values]
     end
-    
+
     subgraph "Compilation Process"
         H[SQLGlot AST] --> I[ExpressionCompiler]
         I --> J[Type Analysis]
         J --> K[Python Lambda Generation]
     end
-    
+
     subgraph "Execution"
         K --> L[Row Dictionary Input]
         L --> M[Computed Value Output]
     end
-    
+
     A --> H
     B --> H
     C --> H
@@ -405,7 +405,7 @@ The compiler supports a comprehensive range of SQL expression types:
 # "age > 25" -> lambda row: row["age"] > 25 if row["age"] is not None else None
 
 # Complex expression with multiple operations:
-# "UPPER(name) LIKE 'A%'" -> lambda row: str(row["name"]).upper().startswith('A') 
+# "UPPER(name) LIKE 'A%'" -> lambda row: str(row["name"]).upper().startswith('A')
 #                            if row["name"] is not None else None
 ```
 
@@ -442,14 +442,14 @@ graph TB
         C[RIGHT JOIN]
         D[FULL OUTER JOIN]
     end
-    
+
     subgraph "Ray Dataset Join API"
         E[join_type='inner']
         F[join_type='left_outer']
         G[join_type='right_outer']
         H[join_type='full_outer']
     end
-    
+
     subgraph "Join Processing Steps"
         I[Extract table names]
         J[Resolve datasets from registry]
@@ -458,17 +458,17 @@ graph TB
         M[Validate column existence]
         N[Execute Ray Dataset join]
     end
-    
+
     A --> E
     B --> F
     C --> G
     D --> H
-    
+
     E --> I
     F --> I
     G --> I
     H --> I
-    
+
     I --> J --> K --> L --> M --> N
 ```
 
@@ -512,7 +512,7 @@ flowchart TD
     C -->|No| E[Take Sample Rows]
     E --> F[Analyze Each Column]
     F --> G[Map Python Types to SQL Types]
-    
+
     subgraph "Type Mapping Rules"
         H[None → NULL]
         I[bool → BOOLEAN]
@@ -521,21 +521,21 @@ flowchart TD
         L[str → VARCHAR]
         M[other → VARCHAR]
     end
-    
+
     G --> H
     G --> I
     G --> J
     G --> K
     G --> L
     G --> M
-    
+
     H --> N[Create TableSchema]
     I --> N
     J --> N
     K --> N
     L --> N
     M --> N
-    
+
     N --> O[Register Schema]
 ```
 
@@ -582,14 +582,14 @@ graph TD
     F --> G[Ray-specific Predicate Pushdown]
     G --> H[Join Reordering]
     H --> I[Optimized AST]
-    
+
     subgraph "Optimization Benefits"
         J[Reduced Data Movement]
         K[Faster Query Execution]
         L[Lower Memory Usage]
         M[Better Parallelization]
     end
-    
+
     I -.-> J
     I -.-> K
     I -.-> L
@@ -642,13 +642,13 @@ classDiagram
         +enable_custom_optimizer: bool
         +enable_logical_planning: bool
     }
-    
+
     class LogLevel {
         ERROR
-        INFO  
+        INFO
         DEBUG
     }
-    
+
     SQLConfig --> LogLevel
 ```
 
@@ -708,13 +708,13 @@ flowchart TD
     J --> K{Runtime Error?}
     K -->|Yes| L[Execution Error]
     K -->|No| M[Success Result]
-    
+
     subgraph "Error Recovery"
         N[Detailed Error Messages]
         O[Suggested Corrections]
         P[Available Tables/Columns]
     end
-    
+
     C --> N
     E --> O
     G --> P
@@ -784,23 +784,23 @@ graph LR
         B[Medium Data<br/>1-100GB]
         C[Large Data<br/>> 100GB]
     end
-    
+
     subgraph "Processing Model"
         D[Local Processing]
         E[Multi-core Processing]
         F[Distributed Processing]
     end
-    
+
     subgraph "Performance Benefits"
         G[Linear Scalability]
         H[Fault Tolerance]
         I[Memory Efficiency]
     end
-    
+
     A --> D
     B --> E
     C --> F
-    
+
     D --> G
     E --> H
     F --> I
@@ -847,27 +847,27 @@ graph TB
     subgraph "Ray Data SQL API"
         A[SQL Engine]
     end
-    
+
     subgraph "Ray Core"
         B[Ray Tasks]
-        C[Ray Actors] 
+        C[Ray Actors]
         D[Object Store]
         E[Distributed Scheduler]
     end
-    
+
     subgraph "Ray Data"
         F[Dataset API]
         G[Preprocessing]
         H[ML Pipelines]
     end
-    
+
     subgraph "Ray Ecosystem"
         I[Ray Train]
         J[Ray Tune]
         K[Ray Serve]
         L[Ray Cluster]
     end
-    
+
     A --> B
     A --> C
     A --> D
@@ -1107,4 +1107,4 @@ The Ray Data SQL API has a comprehensive roadmap for expanding functionality and
   - Data quality validation and monitoring
   - Compliance reporting for regulatory requirements
 
-This comprehensive enhancement roadmap ensures that the Ray Data SQL API will continue to evolve as a leading solution for distributed SQL processing, maintaining its position at the forefront of modern data analytics platforms while preserving the core benefits of Ray's distributed execution model. 
+This comprehensive enhancement roadmap ensures that the Ray Data SQL API will continue to evolve as a leading solution for distributed SQL processing, maintaining its position at the forefront of modern data analytics platforms while preserving the core benefits of Ray's distributed execution model.

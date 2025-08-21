@@ -7,9 +7,9 @@ of parsed SQL ASTs by applying the appropriate operations to Ray Datasets.
 
 from typing import Any, Callable, Dict, List, Tuple
 
-import ray
 from sqlglot import exp
 
+import ray
 from ray.data import Dataset
 from ray.data.sql.config import SQLConfig
 from ray.data.sql.execution.analyzers import AggregateAnalyzer, ProjectionAnalyzer

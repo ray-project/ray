@@ -6,7 +6,9 @@ helping catch unsupported features during parsing with helpful error messages.
 """
 
 from typing import Dict, List, Optional, Set, Type
+
 from sqlglot import exp
+
 from ray.data.sql.utils import setup_logger
 
 

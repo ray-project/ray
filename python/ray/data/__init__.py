@@ -14,7 +14,8 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.dataset import Dataset, Schema, ClickHouseTableSettings
+from ray.data._internal.datasource.clickhouse_datasink import SinkMode
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -71,6 +72,29 @@ from ray.data.read_api import (  # noqa: F401
     read_videos,
     read_webdataset,
 )
+
+# Import SQL API
+try:
+    from ray.data.sql import (
+        ColumnNotFoundError,
+        LogLevel,
+        RaySQL,
+        SQLConfig,
+        SQLError,
+        SQLExecutionError,
+        SQLParseError,
+        TableNotFoundError,
+        clear_tables,
+        get_engine,
+        get_registry,
+        get_schema,
+        list_tables,
+        register_table,
+        sql,
+    )
+except ImportError:
+    # SQL module not available, skip import
+    pass
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
@@ -173,4 +197,20 @@ __all__ = [
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",
+    # SQL API exports
+    "sql",
+    "register_table",
+    "list_tables",
+    "get_schema",
+    "clear_tables",
+    "get_engine",
+    "get_registry",
+    "RaySQL",
+    "SQLConfig",
+    "LogLevel",
+    "SQLError",
+    "SQLParseError",
+    "SQLExecutionError",
+    "TableNotFoundError",
+    "ColumnNotFoundError",
 ]

@@ -57,14 +57,14 @@ flowchart TD
         DATASET_REG["Dataset Registration<br/>register_table('users', dataset)"]
         CONFIG["Configuration<br/>SQLConfig(log_level=DEBUG)"]
     end
-    
+
     %% Public API Layer
     subgraph API_LAYER ["Public API Layer"]
         SQL_FUNC["sql() Function<br/>Main Query Interface"]
         REG_FUNC["register_table()<br/>Table Registration"]
         UTIL_FUNCS["Utility Functions<br/>list_tables(), get_schema()"]
     end
-    
+
     %% SQL Processing Pipeline
     subgraph PROCESSING ["SQL Processing Pipeline"]
         direction TB
@@ -73,14 +73,14 @@ flowchart TD
         OPTIMIZE["Query Optimizer<br/>Predicate Pushdown<br/>Join Reordering"]
         PLAN["Logical Planner<br/>Ray Operations"]
     end
-    
+
     %% Data Management Layer
     subgraph DATA_MGMT ["Data Management"]
         REGISTRY["Dataset Registry<br/>Table Management"]
         SCHEMA_MGR["Schema Manager<br/>Type Inference"]
         CONFIG_MGR["Configuration Manager<br/>Runtime Settings"]
     end
-    
+
     %% Execution Engine
     subgraph EXECUTION ["Query Execution Engine"]
         direction TB
@@ -89,7 +89,7 @@ flowchart TD
         ANALYZERS["Query Analyzers<br/>Projection, Aggregate"]
         COMPILER["Expression Compiler<br/>SQL to Python Functions"]
     end
-    
+
     %% Ray Data Integration
     subgraph RAY_LAYER ["Ray Data Layer"]
         direction LR
@@ -97,42 +97,42 @@ flowchart TD
         RAY_OPS["Ray Operations<br/>map, filter, join"]
         RAY_COMPUTE["Ray Compute<br/>Distributed Execution"]
     end
-    
+
     %% Result Layer
     subgraph RESULT ["Result Output"]
         RESULT_DS["Result Dataset<br/>Ray Dataset Object"]
         MATERIALIZE["Materialization<br/>.take(), .count()"]
     end
-    
+
     %% Flow Connections
     SQL_QUERY --> SQL_FUNC
     DATASET_REG --> REG_FUNC
     CONFIG --> CONFIG_MGR
-    
+
     SQL_FUNC --> PARSE
     REG_FUNC --> REGISTRY
-    
+
     PARSE --> VALIDATE
     VALIDATE --> OPTIMIZE
     OPTIMIZE --> PLAN
-    
+
     PLAN --> COORD
     COORD --> HANDLERS
     COORD --> ANALYZERS
     HANDLERS --> COMPILER
     ANALYZERS --> COMPILER
-    
+
     REGISTRY --> SCHEMA_MGR
     SCHEMA_MGR --> COORD
     CONFIG_MGR --> COORD
-    
+
     COMPILER --> RAY_DATASETS
     RAY_DATASETS --> RAY_OPS
     RAY_OPS --> RAY_COMPUTE
-    
+
     RAY_COMPUTE --> RESULT_DS
     RESULT_DS --> MATERIALIZE
-    
+
     %% Styling
     classDef userLayer fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef apiLayer fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
@@ -141,7 +141,7 @@ flowchart TD
     classDef execLayer fill:#fff8e1,stroke:#fbc02d,stroke-width:2px
     classDef rayLayer fill:#fce4ec,stroke:#c2185b,stroke-width:2px
     classDef resultLayer fill:#e0f2f1,stroke:#00695c,stroke-width:2px
-    
+
     class USER userLayer
     class API_LAYER apiLayer
     class PROCESSING processLayer
@@ -178,7 +178,7 @@ sequenceDiagram
     Ray->>Ray: Distributed processing
     Ray->>Result: Return result dataset
     Result->>User: Lazy Ray Dataset
-    
+
     Note over User,Result: Query execution is lazy - actual computation happens on .take(), .count(), etc.
 ```
 
@@ -192,28 +192,28 @@ graph LR
         MySQL["MySQL<br/>Basic Support"]
         BigQuery["BigQuery<br/>Standard SQL"]
     end
-    
+
     subgraph "Core Engine"
         SQLGlot["SQLGlot<br/>SQL Parser<br/>Dialect Conversion"]
         RaySQL["RaySQL Engine<br/>Query Coordinator<br/>Execution Manager"]
     end
-    
+
     subgraph "Ray Integration"
         Datasets["Ray Datasets<br/>Distributed Data"]
         Operations["Ray Operations<br/>Parallel Processing"]
         Cluster["Ray Cluster<br/>Compute Resources"]
     end
-    
+
     DuckDB --> SQLGlot
     PostgreSQL --> SQLGlot
     MySQL --> SQLGlot
     BigQuery --> SQLGlot
-    
+
     SQLGlot --> RaySQL
     RaySQL --> Datasets
     Datasets --> Operations
     Operations --> Cluster
-    
+
     style SQLGlot fill:#fff3e0,stroke:#f57c00
     style RaySQL fill:#e3f2fd,stroke:#1976d2
     style Datasets fill:#f3e5f5,stroke:#7b1fa2
@@ -297,8 +297,8 @@ products = ray.data.from_items([...])
 
 # SQL automatically finds tables by variable name
 result = ray.data.sql("""
-    SELECT c.name, p.price 
-    FROM customers c 
+    SELECT c.name, p.price
+    FROM customers c
     JOIN products p ON c.product_id = p.id
 """)
 ```
@@ -343,13 +343,13 @@ SELECT * FROM users WHERE email IS NOT NULL;
 
 ```sql
 -- Inner join
-SELECT u.name, o.amount 
-FROM users u 
+SELECT u.name, o.amount
+FROM users u
 JOIN orders o ON u.id = o.user_id;
 
 -- Left join
-SELECT u.name, o.amount 
-FROM users u 
+SELECT u.name, o.amount
+FROM users u
 LEFT JOIN orders o ON u.id = o.user_id;
 ```
 
@@ -358,11 +358,11 @@ LEFT JOIN orders o ON u.id = o.user_id;
 ```sql
 -- Group with aggregates
 SELECT city, COUNT(*) as user_count, AVG(age) as avg_age
-FROM users 
+FROM users
 GROUP BY city;
 
 -- Global aggregates
-SELECT COUNT(*) as total_users, AVG(age) as avg_age 
+SELECT COUNT(*) as total_users, AVG(age) as avg_age
 FROM users;
 ```
 
@@ -450,7 +450,7 @@ SELECT name, age,
 FROM users u1;
 
 -- Subquery in WHERE clause
-SELECT * FROM users 
+SELECT * FROM users
 WHERE age > (SELECT AVG(age) FROM users WHERE city = 'Seattle');
 ```
 
@@ -458,7 +458,7 @@ WHERE age > (SELECT AVG(age) FROM users WHERE city = 'Seattle');
 
 ```sql
 -- Basic window functions
-SELECT name, age, 
+SELECT name, age,
        ROW_NUMBER() OVER (PARTITION BY city ORDER BY age) as rank_in_city
 FROM users;
 ```
@@ -607,12 +607,12 @@ dev_config = SQLConfig(
     log_level=LogLevel.DEBUG,
     enable_query_timing=True,
     enable_execution_stats=True,
-    
+
     # Behavior
     case_sensitive=True,
     strict_mode=True,
     enable_auto_registration=True,
-    
+
     # Performance
     max_join_partitions=50,
     warn_on_large_results=True
@@ -628,12 +628,12 @@ prod_config = SQLConfig(
     enable_sqlglot_optimizer=True,
     enable_predicate_pushdown=True,
     enable_column_pruning=True,
-    
+
     # Resource management
     max_join_partitions=200,
     max_memory_usage_gb=32,
     enable_streaming_execution=True,
-    
+
     # Security
     enable_auto_registration=False,
     continue_on_error=False,
@@ -648,12 +648,12 @@ memory_config = SQLConfig(
     max_memory_usage_gb=16,
     enable_memory_monitoring=True,
     memory_pressure_threshold=0.8,
-    
+
     # Streaming and batching
     enable_streaming_execution=True,
     default_batch_size=10000,
     adaptive_batch_sizing=True,
-    
+
     # Spill-to-disk
     enable_disk_spill=True,
     spill_directory="/tmp/ray_sql",
@@ -772,13 +772,13 @@ register_table("sales", sales)
 
 # Sales by region
 regional_sales = sql("""
-    SELECT 
+    SELECT
         region,
         COUNT(*) as num_sales,
         SUM(amount) as total_revenue,
         AVG(amount) as avg_sale
-    FROM sales 
-    GROUP BY region 
+    FROM sales
+    GROUP BY region
     ORDER BY total_revenue DESC
 """)
 
@@ -807,7 +807,7 @@ register_table("orders", orders)
 
 # Customer spending by tier
 tier_analysis = sql("""
-    SELECT 
+    SELECT
         c.tier,
         COUNT(c.id) as num_customers,
         SUM(o.amount) as total_spent,
@@ -828,15 +828,15 @@ for row in tier_analysis.take_all():
 ```python
 # Use SQL for complex aggregation, then Ray operations for further processing
 summary = sql("""
-    SELECT region, SUM(amount) as revenue 
-    FROM sales 
+    SELECT region, SUM(amount) as revenue
+    FROM sales
     GROUP BY region
 """)
 
 # Continue with Ray Dataset operations
 processed = summary.filter(lambda row: row["revenue"] > 500).map(
     lambda row: {
-        **row, 
+        **row,
         "performance": "high" if row["revenue"] > 1000 else "medium"
     }
 )
@@ -892,11 +892,11 @@ from ray.data.sql import sql, SQLConfig, LogLevel
 config = SQLConfig(log_level=LogLevel.DEBUG)
 with DataContext() as ctx:
     ctx.sql_config = config
-    
+
     start_time = time.time()
     result = sql("SELECT * FROM large_table WHERE condition")
     execution_time = time.time() - start_time
-    
+
     print(f"Query executed in {execution_time:.2f}s")
     print(f"Result contains {result.count()} rows")
     print(f"Memory usage: {result.size_bytes() / 1024 / 1024:.1f} MB")
