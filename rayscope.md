@@ -166,7 +166,7 @@ python -m ray.scripts.scripts status --address="$API"
 python -m ray.scripts.scripts start --head --dashboard-port=0
 ```
 
-- Imports fail or CLI not found:
+- Import fail or CLI not found:
 
 ```bash
 conda activate rayenv
