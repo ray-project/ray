@@ -1,3 +1,5 @@
+from ray.util.annotations import PublicAPI
+
 import ray.util.accelerators.accelerators as _accelerators
 
 
@@ -56,6 +58,7 @@ class AcceleratorTypes:
             )
         )
 
+    @PublicAPI(stability="alpha")
     def print_all(self):
         """Print all accelerator types categorized by vendor"""
         if self.nvidia_types:
