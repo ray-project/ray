@@ -278,15 +278,6 @@ class RayActorOptionsSchema(BaseModel):
         return v
 
 
-@PublicAPI(stability="alpha")
-class ApplicationAutoscalingConfig(BaseModel):
-    """
-    Controls autoscaling behaviour at the application level by coordinating across multiple deployments belonging to the application.
-    this can optionally be included in `ServeApplicationSchema` to override deployment
-    options specified in code.
-    """
-
-
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     """
@@ -576,11 +567,6 @@ class ServeApplicationSchema(BaseModel):
     logging_config: LoggingConfig = Field(
         default=None,
         description="Logging config for configuring serve application logs.",
-    )
-
-    application_autoscaling_config: ApplicationAutoscalingConfig = Field(
-        default=None,
-        description="Application level autoscaling policy.",
     )
 
     @property

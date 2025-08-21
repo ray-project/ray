@@ -617,7 +617,6 @@ def test_num_replicas_auto_api(serve_instance):
         "smoothing_factor": 1.0,
         "initial_replicas": None,
         "agg_function": "mean",
-        "custom_policy": None,
         "prometheus_custom_metrics": None,
     }
 
@@ -638,7 +637,6 @@ def test_num_replicas_auto_basic(serve_instance):
                     "metrics_interval_s": 1.0,
                     "upscale_delay_s": 1.0,
                     "agg_function": "mean",
-                    "custom_policy": None,
                     "prometheus_custom_metrics": None,
                 },
                 "graceful_shutdown_timeout_s": 1,
@@ -675,7 +673,6 @@ def test_num_replicas_auto_basic(serve_instance):
         "smoothing_factor": 1.0,
         "initial_replicas": None,
         "agg_function": "mean",
-        "custom_policy": None,
         "prometheus_custom_metrics": None,
     }
 

@@ -1,7 +1,6 @@
 import json
 import logging
 import warnings
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -160,14 +159,6 @@ class RequestRouterConfig(BaseModel):
         return cloudpickle.loads(self._serialized_request_router_cls)
 
 
-@dataclass
-@PublicAPI(stability="alpha")
-class AutoscalingPolicyConfig:
-    name: Union[str, Callable]
-    timeout_s: float = 5.0
-    dry_run: bool = False
-
-
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
@@ -240,9 +231,6 @@ class AutoscalingConfig(BaseModel):
     # The method to aggregate metrics within look_back_period_s on the controller for autoscaling, defaults to "mean"
     # May be one of "mean", "min", "max", "sum"
     agg_function: Optional[str] = "mean"
-
-    # Deployment scoped autoscaling policy
-    custom_policy: Optional[AutoscalingPolicyConfig] = None
 
     # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
     # Tuple of (metric_name, promql_query)

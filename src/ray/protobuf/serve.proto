@@ -87,25 +87,10 @@ message AutoscalingConfig {
   // Options: "mean", "min", "max", "sum"
   string agg_function = 16;
 
-  // Custom autoscaling policy configuration.
-  optional AutoscalingPolicyConfig custom_policy = 17;
-
   // Custom Prometheus metrics for autoscaling.
   // Wrapped in a message to preserve presence (None vs empty list) to match
   // Python type Optional[List[Tuple[str, str]]].
   optional PrometheusCustomMetrics prometheus_custom_metrics = 18;
-}
-
-// Configuration for custom autoscaling policies.
-message AutoscalingPolicyConfig {
-  // Name or import path of the policy function.
-  string name = 1;
-
-  // Timeout for policy execution in seconds.
-  double timeout_s = 2;
-
-  // Whether to run in dry-run mode.
-  bool dry_run = 3;
 }
 
 // Custom Prometheus metric configuration for autoscaling.
