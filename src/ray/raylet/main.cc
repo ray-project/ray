@@ -38,9 +38,11 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
+#include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
 
 using json = nlohmann::json;
@@ -852,7 +854,7 @@ int main(int argc, char *argv[]) {
         drain_request->reason() ==
             ray::rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION &&
         drain_request->deadline_timestamp_ms() != 0 &&
-        drain_request->deadline_timestamp_ms() < current_sys_time_ms()) {
+        drain_request->deadline_timestamp_ms() < ray::current_sys_time_ms()) {
       node_death_info.set_reason(ray::rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
       node_death_info.set_reason_message(drain_request->reason_message());
     } else {

@@ -5,11 +5,15 @@ ray_cc_library(
     srcs = [
         "core_worker.cc",
         "core_worker_process.cc",
+        "core_worker_shutdown_executor.cc",
+        "shutdown_coordinator.cc",
     ],
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
         "core_worker_rpc_proxy.h",
+        "core_worker_shutdown_executor.h",
+        "shutdown_coordinator.h",
     ],
     deps = [
         ":actor_handle",
@@ -42,7 +46,6 @@ ray_cc_library(
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:core_worker_server",
         "//src/ray/stats:stats_lib",
-        "//src/ray/util",
         "//src/ray/util:container_util",
         "//src/ray/util:env",
         "//src/ray/util:event",
@@ -82,6 +85,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
+        "//src/ray/util:process",
     ],
 )
 
@@ -247,9 +251,9 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
+        "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -268,6 +272,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
@@ -349,6 +354,7 @@ ray_cc_library(
         "//src/ray/ipc:raylet_ipc_client_interface",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],

@@ -36,7 +36,6 @@
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {

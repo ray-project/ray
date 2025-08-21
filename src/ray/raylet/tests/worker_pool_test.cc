@@ -35,6 +35,7 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
+#include "ray/util/raii.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 using json = nlohmann::json;

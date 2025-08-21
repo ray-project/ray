@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
@@ -28,7 +29,6 @@
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "mock/ray/object_manager/plasma/client.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
@@ -392,7 +392,7 @@ class NodeManagerTest : public ::testing::Test {
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
 
-    core_worker_subscriber_ = std::make_unique<pubsub::MockSubscriber>();
+    core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
 
@@ -410,7 +410,6 @@ class NodeManagerTest : public ::testing::Test {
     EXPECT_CALL(*mock_gcs_client_, DebugString()).WillRepeatedly(Return(""));
     EXPECT_CALL(*mock_object_manager_, DebugString()).WillRepeatedly(Return(""));
     EXPECT_CALL(*mock_object_directory_, DebugString()).WillRepeatedly(Return(""));
-    EXPECT_CALL(*core_worker_subscriber_, DebugString()).WillRepeatedly(Return(""));
 
     raylet_node_id_ = NodeID::FromRandom();
 
@@ -510,7 +509,7 @@ class NodeManagerTest : public ::testing::Test {
   rpc::RayletClientPool raylet_client_pool_;
 
   NodeID raylet_node_id_;
-  std::unique_ptr<pubsub::MockSubscriber> core_worker_subscriber_;
+  std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManagerInterface> cluster_lease_manager_;

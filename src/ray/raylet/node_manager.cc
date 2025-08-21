@@ -50,7 +50,8 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/time.h"
 
 namespace {
 
@@ -342,7 +343,7 @@ void NodeManager::RegisterGcs() {
         [this] {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
-          RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
+          RAY_LOG(INFO) << PrependToEachLine(debug_msg.str(), "[state-dump] ");
           ReportWorkerOOMKillStats();
         },
         event_stats_print_interval_ms,

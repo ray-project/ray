@@ -25,7 +25,6 @@
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
-#include "ray/util/util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
