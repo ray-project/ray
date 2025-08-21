@@ -1494,7 +1494,6 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
@@ -1517,9 +1516,11 @@ class Dataset:
 
         .. note::
 
-            Repartition has two modes. If ``shuffle=False``, Ray Data performs the
-            minimal data movement needed to equalize block sizes. Otherwise, Ray Data
-            performs a full distributed shuffle.
+            Repartition has three modes. If ``shuffle=False``, Ray Data performs the
+            minimal data movement needed to equalize block sizes. If ``shuffle=True``,
+            Ray Data performs a full distributed shuffle. If ``target_num_rows_per_block``
+            is set, it will repartition blocks larger than the target size. The
+            repartitioned dataset will not be shuffled.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
@@ -1538,7 +1539,8 @@ class Dataset:
         Args:
             num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition without shuffling. Note that either `num_blocks` or
+                repartition. This repartitions the dataset without shuffling.
+                Note that either `num_blocks` or
                 `target_num_rows_per_block` must be set, but not both. When
                 `target_num_rows_per_block` is set, it only repartitions
                 :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
