@@ -19,7 +19,7 @@
 #include "gmock/gmock.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"

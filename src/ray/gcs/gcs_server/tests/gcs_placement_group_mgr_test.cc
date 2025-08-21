@@ -26,7 +26,7 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/node_manager.h"
 // clang-format on
 
 namespace ray {
