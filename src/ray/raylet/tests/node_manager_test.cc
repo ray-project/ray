@@ -844,43 +844,39 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {
   EXPECT_TRUE(error_msg.find("cannot be resized dynamically") != std::string::npos);
 }
 
-TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesFailedPreconditions) {
-  // Test 1: Negative resource values
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
+  // Test 1: Requesting a negative total clamps instead of failing
   rpc::ResizeLocalResourceInstancesRequest request;
   rpc::ResizeLocalResourceInstancesReply reply;
 
-  (*request.mutable_resources())["CPU"] = -1.0;  // Negative value should cause issues
-
-  bool callback_called = false;
-  Status callback_status;
-
-  node_manager_->HandleResizeLocalResourceInstances(
-      request,
-      &reply,
-      [&callback_called, &callback_status](
-          Status s, std::function<void()> success, std::function<void()> failure) {
-        callback_called = true;
-        callback_status = s;
-      });
-
-  // The callback should have been called with an error status
-  EXPECT_TRUE(callback_called);
-  EXPECT_FALSE(callback_status.ok());
-  EXPECT_TRUE(callback_status.IsRpcError());
-  EXPECT_EQ(callback_status.rpc_code(),
-            static_cast<int>(grpc::StatusCode::FAILED_PRECONDITION));
-  // Check the error message contains expected details for insufficient resources
-  std::string error_msg = callback_status.message();
-  EXPECT_TRUE(error_msg.find("Cannot resize CPU to -1") != std::string::npos);
-  EXPECT_TRUE(error_msg.find("would make available resources negative") !=
-              std::string::npos);
-
-  // Test 2: Downsizing below resource usage
-  // First set up resources with some in use
-  callback_called = false;
+  // Initialize resources to a known state
   (*request.mutable_resources())["CPU"] = 8.0;
   (*request.mutable_resources())["memory"] = 16000000.0;
 
+  bool callback_called = false;
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+
+  // Simulate resource usage by allocating task resources through the local resource
+  // manager: Use 6 out of 8 CPUs
+  const absl::flat_hash_map<std::string, double> task_resources = {{"CPU", 6.0}};
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool allocation_success =
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          task_resources, task_allocation);
+  EXPECT_TRUE(allocation_success);
+
+  // Now try to downsize CPU to 4 (less than 6 in use). Should clamp to 6, not fail.
+  callback_called = false;
+  (*request.mutable_resources())["CPU"] = 4.0;
   reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
@@ -890,47 +886,26 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesFailedPreconditions) {
         callback_called = true;
         EXPECT_TRUE(s.ok());
       });
-
   EXPECT_TRUE(callback_called);
+  // Total CPU should be clamped to in-use (8 total, 6 used -> 2 available -> target 4
+  // means reduce by 4; clamped to reduce by available 2 -> new total 6)
+  EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 
-  // Simulate resource usage by allocating task resources through the local resource
-  // manager
-  const absl::flat_hash_map<std::string, double> task_resources = {
-      {"CPU", 6.0}};  // Use 6 out of 8 CPUs
-
-  std::shared_ptr<TaskResourceInstances> task_allocation =
-      std::make_shared<TaskResourceInstances>();
-  bool allocation_success =
-      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-          task_resources, task_allocation);
-
-  EXPECT_TRUE(allocation_success);
-
-  // Now try to downsize CPU to 4 (which should fail since 6 CPUs are in use)
+  // Test 2: Extreme request (e.g., 0). Should clamp to current usage.
   callback_called = false;
-  (*request.mutable_resources())["CPU"] = 4.0;  // Less than the 6 in use
-
+  (*request.mutable_resources())["CPU"] = 0.0;
   reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
-      [&callback_called, &callback_status](
+      [&callback_called](
           Status s, std::function<void()> success, std::function<void()> failure) {
         callback_called = true;
-        callback_status = s;
+        EXPECT_TRUE(s.ok());
       });
-
-  // The callback should have been called with an error status
   EXPECT_TRUE(callback_called);
-  EXPECT_FALSE(callback_status.ok());
-  EXPECT_TRUE(callback_status.IsRpcError());
-  EXPECT_EQ(callback_status.rpc_code(),
-            static_cast<int>(grpc::StatusCode::FAILED_PRECONDITION));
-  // Check the error message contains expected details for insufficient resources
-  error_msg = callback_status.message();
-  EXPECT_TRUE(error_msg.find("Cannot resize CPU to 4") != std::string::npos);
-  EXPECT_TRUE(error_msg.find("would make available resources negative") !=
-              std::string::npos);
+  // With 6 used, total should remain 6
+  EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
 
 }  // namespace ray::raylet

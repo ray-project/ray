@@ -462,11 +462,12 @@ service NodeManagerService {
       returns (CancelResourceReserveReply);
   // Adjust the total number of local resource instances on the raylet to match the
   // specified values.
-  // Success: Returns the updated total and available resources for the node.
+  // Success: Returns the updated total resources for the node. If downsizing would make
+  // available resources negative, the raylet clamps the reduction so that available
+  // becomes zero.
   // Failure: Returns INVALID_ARGUMENT if the request attempts to resize a unit instance
-  // resource (e.g., GPU), as these cannot be resized by this API.
-  // Returns FAILED_PRECONDITION if downsizing would result in negative available
-  // resources. In the cases of network errors, the caller should retry the request.
+  // resource (e.g., GPU), as these cannot be resized by this API. In the cases of
+  // network errors, the caller should retry the request.
   rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
       returns (ResizeLocalResourceInstancesReply);
   // Cancel a pending lease request. This only returns success if the

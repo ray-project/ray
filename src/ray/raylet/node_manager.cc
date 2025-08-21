@@ -1872,7 +1872,8 @@ void NodeManager::HandleResizeLocalResourceInstances(
                                           .ToNodeResourceSet()
                                           .GetResourceMap();
 
-  // Calculate delta resource map (target - current) and validate
+  // Calculate delta resource map (target - current) and clamp to avoid
+  // making available resources negative
   absl::flat_hash_map<std::string, double> delta_resource_map;
   for (const auto &[resource_name, target_value] : target_resource_map) {
     double current_total = 0.0;
@@ -1890,21 +1891,11 @@ void NodeManager::HandleResizeLocalResourceInstances(
 
     double delta_value = target_value - current_total;
 
-    // Check if applying delta would make available resources negative
-    if (double new_available = current_available + delta_value; new_available < 0.0) {
-      std::string error_msg = absl::StrFormat(
-          "Cannot resize %s to %g: would make available resources negative "
-          "(current_available=%g, delta=%g, new_available=%g). ",
-          resource_name,
-          target_value,
-          current_available,
-          delta_value,
-          new_available);
-      send_reply_callback(
-          Status::RpcError(error_msg, grpc::StatusCode::FAILED_PRECONDITION),
-          nullptr,
-          nullptr);
-      return;
+    // Clamp so current_available never goes below 0.
+    // For example, if delta_value is -4 but the current_available is 2.
+    // Then clamp delta_value to -2.
+    if (delta_value < -current_available) {
+      delta_value = -current_available;
     }
 
     if (delta_value != 0.0) {
