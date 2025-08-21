@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import random
 from hashlib import sha256
 from pathlib import Path
@@ -9,6 +10,12 @@ from azure.common.credentials import get_cli_profile
 from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
+
+from ray.autoscaler._private.util import (
+    generate_rsa_key_pair,
+    generate_ssh_key_name,
+    generate_ssh_key_paths,
+)
 
 UNIQUE_ID_LEN = 4
 
@@ -218,22 +225,104 @@ def _configure_resource_group(config):
 
 
 def _configure_key_pair(config):
+    """
+    Configure SSH keypair. Use user specified custom paths, otherwise,
+    generate Ray-specific keypair in this format: "ray-autoscaler_azure_{region}_{resource_group}_{ssh_user}_{index}"
+    """
     ssh_user = config["auth"]["ssh_user"]
     public_key = None
-    # search if the keys exist
-    for key_type in ["ssh_private_key", "ssh_public_key"]:
-        try:
-            key_path = Path(config["auth"][key_type]).expanduser()
-        except KeyError:
-            raise Exception("Config must define {}".format(key_type))
-        except TypeError:
-            raise Exception("Invalid config value for {}".format(key_type))
 
-        assert key_path.is_file(), "Could not find ssh key: {}".format(key_path)
+    # Check if user specified custom SSH key paths
+    user_specified_private_key = "ssh_private_key" in config["auth"]
+    user_specified_public_key = "ssh_public_key" in config["auth"]
 
-        if key_type == "ssh_public_key":
-            with open(key_path, "r") as f:
+    # Validate that the user either specfied both keys or none, but not just one
+    if user_specified_private_key != user_specified_public_key:
+        if user_specified_private_key:
+            missing_key, specified_key = "ssh_public_key", "ssh_private_key"
+        else:
+            missing_key, specified_key = "ssh_private_key", "ssh_public_key"
+        raise ValueError(
+            f"{specified_key} is specified but {missing_key} is missing. "
+            "Both SSH key paths must be specified together, or omit both from "
+            "your config to use auto-generated keys."
+        )
+
+    if user_specified_private_key and user_specified_public_key:
+        # User specified custom paths
+        private_key_path = Path(config["auth"]["ssh_private_key"]).expanduser()
+        public_key_path = Path(config["auth"]["ssh_public_key"]).expanduser()
+
+        # Validate that user-specified keys exist
+        missing_keys = []
+        if not private_key_path.is_file():
+            missing_keys.append(f"ssh_private_key: {private_key_path}")
+        if not public_key_path.is_file():
+            missing_keys.append(f"ssh_public_key: {public_key_path}")
+
+        if missing_keys:
+            raise ValueError(
+                "SSH key files from config do not exist: {}. "
+                "Please create the keys or remove the custom paths from your config "
+                "to use auto-generated keys.".format(", ".join(missing_keys))
+            )
+        logger.info(
+            "Using specified SSH keys from config: {} and {}".format(
+                private_key_path, public_key_path
+            )
+        )
+
+        with open(public_key_path, "r") as f:
+            public_key = f.read()
+    else:
+        # Generate Ray-specific keys
+        region = config["provider"]["location"]
+        resource_group = config["provider"]["resource_group"]
+
+        # Generate single deterministic key name for this configuration
+        key_name = generate_ssh_key_name(
+            "azure", None, region, resource_group, ssh_user
+        )
+        public_key_path, private_key_path = generate_ssh_key_paths(key_name)
+
+        # Check if this key pair already exists
+        if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+            logger.info(
+                "Using existing Ray-specific SSH keys: {} and {}".format(
+                    private_key_path, public_key_path
+                )
+            )
+            with open(public_key_path, "r") as f:
                 public_key = f.read()
+        else:
+            # Create a key pair since it doesn't exist locally
+            logger.info(
+                "Generating new Ray-specific SSH key pair at {} and {}".format(
+                    private_key_path, public_key_path
+                )
+            )
+            os.makedirs(os.path.dirname(private_key_path), exist_ok=True)
+            public_key, private_key = generate_rsa_key_pair()
+            with open(
+                private_key_path,
+                "w",
+                opener=lambda path, flags: os.open(path, flags, 0o600),
+            ) as f:
+                f.write(private_key)
+            with open(public_key_path, "w") as f:
+                f.write(public_key)
+
+        assert os.path.exists(
+            private_key_path
+        ), "Private key file {} not found for user {}".format(
+            private_key_path, ssh_user
+        )
+
+    config["auth"]["ssh_private_key"] = private_key_path
+    config["auth"]["ssh_public_key"] = public_key_path
+    if "file_mounts" not in config:
+        config["file_mounts"] = {}
+    config["file_mounts"]["~/.ssh/id_rsa.pub"] = public_key_path
 
     for node_type in config["available_node_types"].values():
         azure_arm_parameters = node_type["node_config"].setdefault(

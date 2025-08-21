@@ -990,3 +990,47 @@ def format_no_node_type_string(node_type: dict):
         output_lines.append(output_line)
 
     return "\n  ".join(output_lines)
+
+
+def generate_rsa_key_pair():
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(
+        backend=default_backend(), public_exponent=65537, key_size=2048
+    )
+
+    public_key = (
+        key.public_key()
+        .public_bytes(
+            serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
+        )
+        .decode("utf-8")
+    )
+
+    pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+    return public_key, pem
+
+
+def generate_ssh_key_paths(key_name):
+    public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    return public_key_path, private_key_path
+
+
+def generate_ssh_key_name(provider, i, region, identifier, ssh_user):
+    RAY_PREFIX = "ray-autoscaler"
+    if i is not None:
+        return "{}_{}_{}_{}_{}_{}".format(
+            RAY_PREFIX, provider, region, identifier, ssh_user, i
+        )
+    else:
+        return "{}_{}_{}_{}_{}".format(
+            RAY_PREFIX, provider, region, identifier, ssh_user
+        )
