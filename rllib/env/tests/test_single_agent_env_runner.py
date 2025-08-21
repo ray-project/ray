@@ -1,12 +1,14 @@
 from functools import partial
-import unittest
+from unittest.mock import patch
 
+import unittest
 import gymnasium as gym
 
 import ray
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check
@@ -75,7 +77,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             self.assertTrue(sum_ in [128, 129])
 
     def test_async_vector_env(self):
-        """Tests, whether SingleAgentGymEnvRunner can run with vector envs."""
+        """Tests, whether SingleAgentEnvRunner can run with vector envs."""
 
         for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
@@ -101,7 +103,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             env_runner.stop()
 
     def test_distributed_env_runner(self):
-        """Tests, whether SingleAgentGymEnvRunner can be distributed."""
+        """Tests, whether SingleAgentEnvRunner can be distributed."""
 
         remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentEnvRunner)
 
@@ -141,6 +143,54 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                             for i in range(config.num_envs_per_env_runner)
                         ],
                     )
+
+    @patch("ray.rllib.env.env_runner.logger")
+    def test_step_failed_reset_required(self, mock_logger):
+        """Tests, whether SingleAgentEnvRunner can handle StepFailedResetRequired."""
+        # Define an env that raises StepFailedResetRequired
+
+        class ErrorRaisingEnv(gym.Env):
+            def __init__(self, config=None):
+                # As per gymnasium standard, provide observation and action spaces in your
+                # constructor.
+                self.observation_space = gym.spaces.Discrete(2)
+                self.action_space = gym.spaces.Discrete(2)
+                self.exception_type = config["exception_type"]
+
+            def reset(self, *, seed=None, options=None):
+                return self.observation_space.sample(), {}
+
+            def step(self, action):
+                raise self.exception_type()
+
+        config = (
+            AlgorithmConfig()
+            .environment(
+                ErrorRaisingEnv,
+                env_config={"exception_type": StepFailedRecreateEnvError},
+            )
+            .env_runners(num_envs_per_env_runner=1, rollout_fragment_length=10)
+            .fault_tolerance(restart_failed_sub_environments=True)
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+
+        # Check that we don't log the error on the first step (because we don't raise StepFailedResetRequired)
+        # We need two steps because the first one naturally raises ResetNeeded because we try to step before the env is reset.
+        env_runner._try_env_reset()
+        env_runner._try_env_step(actions=[None])
+
+        assert mock_logger.exception.call_count == 0
+
+        config.environment(ErrorRaisingEnv, env_config={"exception_type": ValueError})
+
+        env_runner = SingleAgentEnvRunner(config=config)
+
+        # Check that we don't log the error on the first step (because we don't raise StepFailedResetRequired)
+        # We need two steps because the first one naturally raises ResetNeeded because we try to step before the env is reset.
+        env_runner._try_env_reset()
+        env_runner._try_env_step(actions=[None])
+
+        assert mock_logger.exception.call_count == 1
 
 
 if __name__ == "__main__":
