@@ -4,25 +4,27 @@ Example is based on the Footsies environment (https://github.com/chasemcd/Footsi
 Footsies is a two-player fighting game where each player controls a character
 and tries to hit the opponent while avoiding being hit.
 """
-
-
+import functools
 from pathlib import Path
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
 from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
+    NoopFixedRLModule,
+)
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     FootsiesEnv,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
     Matchmaker,
+    WinratesCallback,
 )
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
-from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -65,6 +67,29 @@ parser.add_argument(
     default="linux_server",
     help="Target binary for Footsies environment (default: linux_server)",
 )
+parser.add_argument(
+    "--win-rate-threshold",
+    type=float,
+    default=0.9,
+    help="The main policy should have at least 'win-rate-threshold' win rate against "
+    "other policy to advance to the next level. Moving to the next level "
+    "means adding a new policy to the mix. The initial mix size is 2: 'main policy' vs 'other'.",
+)
+parser.add_argument(
+    "--target-mix-size",
+    type=int,
+    default=6,
+    help="Target number of policies (RLModules) in the mix to consider the test passed. "
+    "The initial mix size is 2: 'main policy' vs. 'other'. "
+    "`--target-mix-size=6` means that 4 new policies will be added to the mix. "
+    "Whether to add new policy is decided by checking the '--win-rate-threshold' ",
+)
+parser.add_argument(
+    "--rollout-fragment-length",
+    type=int,
+    default=256,
+    help="The length of each rollout fragment to be collected by the EnvRunners.",
+)
 
 
 def env_creator(env_config: EnvContext) -> FootsiesEnv:
@@ -85,9 +110,10 @@ def env_creator(env_config: EnvContext) -> FootsiesEnv:
 
 
 if __name__ == "__main__":
+    main_policy = "lstm"
     args = parser.parse_args()
 
-    register_env("FootsiesEnv", env_creator)
+    register_env(name="FootsiesEnv", env_creator=env_creator)
 
     config = (
         PPOConfig()
@@ -116,32 +142,35 @@ if __name__ == "__main__":
         )
         .env_runners(
             env_runner_cls=MultiAgentEnvRunner,
-            num_env_runners=25,
-            num_cpus_per_env_runner=0.2,
+            num_env_runners=args.num_env_runners or 1,
+            num_cpus_per_env_runner=1,
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
-            rollout_fragment_length=256,
+            rollout_fragment_length=args.rollout_fragment_length,
             episodes_to_numpy=False,
         )
         .training(
-            train_batch_size_per_learner=256 * 25,
+            train_batch_size_per_learner=args.rollout_fragment_length
+            * (args.num_env_runners or 1),
             lr=3e-4,
             entropy_coeff=0.01,
+            num_epochs=30,
+            minibatch_size=128,
         )
         .multi_agent(
             policies={
-                "lstm",
-                "random",
+                main_policy,
+                "noop",
             },
             policy_mapping_fn=Matchmaker(
-                [Matchup("lstm", "random", 1.0)]
-            ).policy_mapping_fn,
-            policies_to_train=["lstm"],
+                [Matchup(main_policy, "noop", 1.0)]
+            ).agent_to_module_mapping_fn,
+            policies_to_train=[main_policy],
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
                 rl_module_specs={
-                    "lstm": RLModuleSpec(
+                    main_policy: RLModuleSpec(
                         module_class=LSTMContainingRLModule,
                         model_config={
                             "lstm_cell_size": 128,
@@ -149,37 +178,43 @@ if __name__ == "__main__":
                             "max_seq_len": 64,
                         },
                     ),
-                    "random": RLModuleSpec(module_class=RandomRLModule),
+                    "noop": RLModuleSpec(module_class=NoopFixedRLModule),
                 },
             )
         )
         .evaluation(
-            evaluation_num_env_runners=2,
+            evaluation_num_env_runners=1,
             evaluation_interval=1,
-            evaluation_duration="auto",
+            # Evaluation duration in episodes is greater than 100 because some episodes may end with both players dead or alive.
+            # In this case, the winrates are not logged, and we need to ensure that we have enough episodes to compute the winrates.
+            evaluation_duration=1000,
+            evaluation_duration_unit="episodes",
             evaluation_parallel_to_training=True,
             evaluation_force_reset_envs_before_iteration=True,
             evaluation_config={
                 "env_config": {"evaluation": True},
                 "multiagent": {
                     "policy_mapping_fn": Matchmaker(
-                        [
-                            Matchup(
-                                "lstm",
-                                eval_policy,
-                                1 / (len(eval_policies) + 1),
-                            )
-                            for eval_policy in eval_policies + ["random"]
-                        ]
-                    ).policy_mapping_fn,
+                        [Matchup(main_policy, "noop", 1.0)]
+                    ).agent_to_module_mapping_fn,
                 },
             },
+        )
+        .callbacks(
+            functools.partial(
+                WinratesCallback,
+                win_rate_threshold=args.win_rate_threshold,
+                target_mix_size=args.target_mix_size,
+                main_policy=main_policy,
+                starting_modules=[main_policy, "noop"],
+            )
         )
     )
 
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         TRAINING_ITERATION: args.stop_iters,
+        "target_mix_size": args.target_mix_size,
     }
 
     # Run the experiment
@@ -187,5 +222,4 @@ if __name__ == "__main__":
         config,
         args,
         stop=stop,
-        # keep_ray_up=True,
     )
