@@ -2206,7 +2206,7 @@ def read_mcap(
     datasource = MCAPDatasource(
         paths,
         filter_config=filter_config,
-        external_index_config=external_index_config,
+        external_index=external_index_config,
         filesystem=filesystem,
         meta_provider=meta_provider,
         partition_filter=partition_filter,

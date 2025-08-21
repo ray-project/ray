@@ -130,15 +130,18 @@ class MCAPDatasource(FileBasedDatasource):
     5. **Error Handling**: Robust error handling with detailed logging
 
     Example:
-        >>> from ray.data.datasource import MCAPDatasource
-        >>> datasource = MCAPDatasource(
-        ...     paths="data.mcap",
-        ...     filter_config=MCAPFilterConfig(
-        ...         channels={"camera", "lidar"},
-        ...         time_range=(1000000000, 2000000000)
-        ...     )
-        ... )
-        >>> dataset = ray.data.read_datasource(datasource)
+        # Create an MCAP datasource with filtering configuration
+        # from ray.data.datasource import MCAPDatasource
+        #
+        # datasource = MCAPDatasource(
+        #     paths="/path/to/your/data.mcap",
+        #     filter_config=MCAPFilterConfig(
+        #         channels={"camera", "lidar"},
+        #         time_range=(1000000000, 2000000000)
+        #     )
+        # )
+        #
+        # dataset = ray.data.read_datasource(datasource)
     """
 
     _FILE_EXTENSIONS = ["mcap"]
@@ -169,7 +172,7 @@ class MCAPDatasource(FileBasedDatasource):
         # Extract include_paths from kwargs
         self._include_paths = file_based_datasource_kwargs.get("include_paths", False)
 
-    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+    def _read_stream(self, f: "pa.NativeFile", path: str) -> Iterator[Block]:
         """Read MCAP file and yield blocks of message data.
 
         This method implements the core reading logic with predicate pushdown

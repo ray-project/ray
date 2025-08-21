@@ -18,12 +18,9 @@ import pytest
 import pyarrow as pa
 
 # Try to import mcap, skip tests if not available
-try:
-    import mcap
+import importlib.util
 
-    MCAP_AVAILABLE = True
-except ImportError:
-    MCAP_AVAILABLE = False
+MCAP_AVAILABLE = importlib.util.find_spec("mcap") is not None
 
 import ray
 from ray.data import Dataset
@@ -397,9 +394,7 @@ class TestMCAPDatasourceReading:
         mock_summary.channels = {}
 
         # Test time range filtering
-        with patch(
-            "ray.data._internal.datasource.mcap_datasource.mcap.Filter"
-        ) as mock_filter:
+        with patch("ray.data._internal.datasource.mcap_datasource.mcap.Filter"):
             messages = list(
                 datasource._apply_filters_with_external_index(
                     mock_reader, mock_summary, self.test_file_path
@@ -418,9 +413,7 @@ class TestMCAPDatasourceReading:
         mock_summary.channels = {}
 
         # Test message type filtering
-        with patch(
-            "ray.data._internal.datasource.mcap_datasource.mcap.Filter"
-        ) as mock_filter:
+        with patch("ray.data._internal.datasource.mcap_datasource.mcap.Filter"):
             messages = list(
                 datasource._apply_filters_with_external_index(
                     mock_reader, mock_summary, self.test_file_path
