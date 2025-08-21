@@ -1538,7 +1538,7 @@ class Dataset:
         Args:
             num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. Note that either `num_blocks` or
+                repartition without shuffling. Note that either `num_blocks` or
                 `target_num_rows_per_block` must be set, but not both. When
                 `target_num_rows_per_block` is set, it only repartitions
                 :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
