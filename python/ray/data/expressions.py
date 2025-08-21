@@ -266,7 +266,7 @@ class UDFExpr(Expr):
         >>> import pyarrow.compute as pc
         >>>
         >>> @udf(return_dtype=DataType.int64())
-        >>> def add_one(x: pa.Array) -> pa.Array:
+        ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)
         >>>
         >>> # Use in expressions
@@ -360,12 +360,12 @@ def udf(fn: Optional[Callable] = None, *, return_dtype: DataType) -> Callable:
         >>>
         >>> # UDF that operates on a batch of values (PyArrow Array)
         >>> @udf(return_dtype=DataType.int64())
-        >>> def add_one(x: pa.Array) -> pa.Array:
+        ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)  # Vectorized operation on the entire Array
         >>>
         >>> # UDF that combines multiple columns (each as a PyArrow Array)
         >>> @udf(return_dtype=DataType.string())
-        >>> def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
+        ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
         >>> # Use in dataset operations
