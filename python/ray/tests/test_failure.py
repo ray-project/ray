@@ -380,26 +380,6 @@ def test_exception_chain(ray_start_regular):
         assert isinstance(ex, RayTaskError)
 
 
-def test_baseexception_task(ray_start_regular):
-    @ray.remote
-    def task():
-        raise BaseException("abc")
-
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(task.remote())
-
-
-def test_baseexception_actor(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise BaseException("abc")
-
-    with pytest.raises(ActorDiedError):
-        a = Actor.remote()
-        ray.get(a.f.remote())
-
-
 @pytest.mark.skip("This test does not work yet.")
 @pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):

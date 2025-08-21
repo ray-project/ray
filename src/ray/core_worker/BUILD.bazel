@@ -5,11 +5,15 @@ ray_cc_library(
     srcs = [
         "core_worker.cc",
         "core_worker_process.cc",
+        "core_worker_shutdown_executor.cc",
+        "shutdown_coordinator.cc",
     ],
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
         "core_worker_rpc_proxy.h",
+        "core_worker_shutdown_executor.h",
+        "shutdown_coordinator.h",
     ],
     deps = [
         ":actor_handle",
@@ -22,7 +26,6 @@ ray_cc_library(
         ":future_resolver",
         ":generator_waiter",
         ":memory_store",
-        ":normal_task_submitter",
         ":object_recovery_manager",
         ":plasma_store_provider",
         ":profile_event",
@@ -32,6 +35,7 @@ ray_cc_library(
         "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/common/cgroup:constants",
         "//src/ray/core_worker/task_execution:task_receiver",
+        "//src/ray/core_worker/task_submission:normal_task_submitter",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/ipc:raylet_ipc_client",
@@ -42,7 +46,6 @@ ray_cc_library(
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:core_worker_server",
         "//src/ray/stats:stats_lib",
-        "//src/ray/util",
         "//src/ray/util:container_util",
         "//src/ray/util:env",
         "//src/ray/util:event",
@@ -74,25 +77,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "core_worker_fiber",
-    hdrs = ["fiber.h"],
-    deps = [
-        "//src/ray/util:logging",
-        "@boost//:fiber",
-    ],
-)
-
-ray_cc_library(
-    name = "actor_submit_queue",
-    hdrs = ["transport/actor_submit_queue.h"],
-    deps = [
-        "//src/ray/common:id",
-        "//src/ray/common:task_common",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
@@ -101,6 +85,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
+        "//src/ray/util:process",
     ],
 )
 
@@ -150,12 +135,12 @@ ray_cc_library(
     deps = [
         ":actor_creator",
         ":actor_handle",
-        ":actor_task_submitter",
         ":common",
         ":core_worker_context",
         ":reference_count",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
+        "//src/ray/core_worker/task_submission:actor_task_submitter",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:core_worker_cc_proto",
@@ -169,11 +154,11 @@ ray_cc_library(
     srcs = ["reference_count.cc"],
     hdrs = ["reference_count.h"],
     deps = [
-        ":lease_policy",
         "//src/ray/common:id",
+        "//src/ray/core_worker:lease_policy",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/pubsub:publisher",
-        "//src/ray/pubsub:subscriber",
+        "//src/ray/pubsub:publisher_interface",
+        "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:grpc_server",
         "//src/ray/util:logging",
@@ -187,6 +172,7 @@ ray_cc_library(
     name = "lease_policy",
     srcs = ["lease_policy.cc"],
     hdrs = ["lease_policy.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
@@ -220,29 +206,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "out_of_order_actor_submit_queue",
-    srcs = ["transport/out_of_order_actor_submit_queue.cc"],
-    hdrs = ["transport/out_of_order_actor_submit_queue.h"],
-    deps = [
-        ":actor_submit_queue",
-        "//src/ray/common:id",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-ray_cc_library(
-    name = "sequential_actor_submit_queue",
-    srcs = ["transport/sequential_actor_submit_queue.cc"],
-    hdrs = ["transport/sequential_actor_submit_queue.h"],
-    deps = [
-        "actor_submit_queue",
-        "//src/ray/common:id",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-ray_cc_library(
     name = "memory_store",
     srcs = ["store_provider/memory_store/memory_store.cc"],
     hdrs = ["store_provider/memory_store/memory_store.h"],
@@ -253,7 +216,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
-        "//src/ray/ipc:raylet_ipc_client",
+        "//src/ray/ipc:raylet_ipc_client_interface",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -288,51 +251,13 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
+        "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-    ],
-)
-
-ray_cc_library(
-    name = "dependency_resolver",
-    srcs = ["transport/dependency_resolver.cc"],
-    hdrs = ["transport/dependency_resolver.h"],
-    deps = [
-        ":actor_creator",
-        ":memory_store",
-        ":task_manager_interface",
-        "//src/ray/common:id",
-        "//src/ray/common:task_common",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "actor_task_submitter",
-    srcs = ["transport/actor_task_submitter.cc"],
-    hdrs = ["transport/actor_task_submitter.h"],
-    deps = [
-        ":actor_creator",
-        ":actor_submit_queue",
-        ":core_worker_context",
-        ":dependency_resolver",
-        ":out_of_order_actor_submit_queue",
-        ":sequential_actor_submit_queue",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_object",
-        "//src/ray/gcs:gcs_pb_util",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/rpc:core_worker_client",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -347,6 +272,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
@@ -425,29 +351,11 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
-        "//src/ray/ipc:raylet_ipc_client",
+        "//src/ray/ipc:raylet_ipc_client_interface",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "normal_task_submitter",
-    srcs = ["transport/normal_task_submitter.cc"],
-    hdrs = ["transport/normal_task_submitter.h"],
-    deps = [
-        ":actor_manager",
-        ":core_worker_context",
-        ":dependency_resolver",
-        ":lease_policy",
-        ":memory_store",
-        ":task_manager",
-        "//src/ray/common:id",
-        "//src/ray/gcs:gcs_pb_util",
-        "//src/ray/raylet_client:raylet_client_lib",
-        "//src/ray/rpc:core_worker_client",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )

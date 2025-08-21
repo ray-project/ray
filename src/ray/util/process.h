@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "ray/util/compat.h"
+#include "ray/util/logging.h"
 
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
@@ -155,6 +156,9 @@ std::optional<std::error_code> KillProc(pid_t pid);
 //
 // Currently only supported on Linux. Returns nullopt on other platforms.
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
+
+/// Terminate the process without cleaning up the resources.
+void QuickExit();
 
 }  // namespace ray
 
