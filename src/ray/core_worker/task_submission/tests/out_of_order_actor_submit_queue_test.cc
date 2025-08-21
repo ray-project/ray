@@ -35,7 +35,7 @@ TaskSpecification BuildTaskSpec(uint64_t seq) {
 }  // namespace
 
 TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
-  OutofOrderActorSubmitQueue queue(ActorID{});
+  OutofOrderActorSubmitQueue queue;
   // insert request 0 1 2 3 4
   std::vector<TaskID> task_ids;
   for (uint64_t i = 0; i < 5; i++) {
