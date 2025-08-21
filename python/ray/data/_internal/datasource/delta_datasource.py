@@ -29,6 +29,10 @@ from typing import (
     Union,
 )
 
+# Constants for configuration and optimization
+DEFAULT_BYTES_PER_ROW = 1024  # Conservative estimate for row size in bytes
+MAX_RECOMMENDED_PARALLELISM = 100  # Cap for parallelism recommendations
+
 import ray
 from ray.data._internal.util import _check_pyarrow_version, _check_import
 from ray.data.block import Block, BlockMetadata
@@ -302,7 +306,7 @@ class DeltaDatasource(ParquetDatasource):
                 return metadata.size
             elif hasattr(metadata, "num_rows"):
                 # Estimate based on row count (rough approximation)
-                estimated_bytes_per_row = 1024  # Conservative estimate
+                estimated_bytes_per_row = DEFAULT_BYTES_PER_ROW  # Conservative estimate
                 return metadata.num_rows * estimated_bytes_per_row
             else:
                 # Fall back to parent class estimation
@@ -364,6 +368,7 @@ class DeltaDatasource(ParquetDatasource):
         """
         try:
             from deltalake import DeltaTable
+            import re
 
             dt_args = {"table_uri": self._delta_path}
             if self._storage_options:
@@ -374,19 +379,24 @@ class DeltaDatasource(ParquetDatasource):
             # Get partition information
             partition_info = []
 
+            # Get all partition columns
+            partition_columns = dt.metadata().partition_columns
+            if not partition_columns:
+                return []
+
             # Get all partition values
-            for partition_col in dt.metadata().partition_columns:
+            for partition_col in partition_columns:
                 partition_values = set()
 
                 # Extract partition values from file paths
                 for file_uri in dt.file_uris():
                     # Parse partition values from the file path
-                    # This is a simplified approach - in practice, you might want
-                    # to use the DeltaTable's partition filtering capabilities
-                    if partition_col in file_uri:
-                        # Extract the partition value from the path
-                        # This is a basic implementation
-                        pass
+                    # Look for partition column patterns like "column=value" in the path
+                    partition_pattern = rf"{re.escape(partition_col)}=([^/]+)"
+                    match = re.search(partition_pattern, file_uri)
+                    if match:
+                        partition_value = match.group(1)
+                        partition_values.add(partition_value)
 
                 partition_info.append(
                     {
@@ -512,13 +522,16 @@ class DeltaDatasource(ParquetDatasource):
             }
 
             # Analyze table characteristics for optimization hints
-            metadata = dt.metadata()
+            # Note: metadata is available but not currently used in this implementation
+            # Future enhancements could use metadata.num_rows, metadata.size, etc.
 
             # File count-based parallelism recommendation
             num_files = len(dt.file_uris())
             if num_files > 0:
                 # Recommend parallelism based on file count, but cap it
-                recommended = min(num_files, 100)  # Cap at 100 for very large tables
+                recommended = min(
+                    num_files, MAX_RECOMMENDED_PARALLELISM
+                )  # Cap at MAX_RECOMMENDED_PARALLELISM for very large tables
                 hints["recommended_parallelism"] = recommended
 
             # Memory optimization hints

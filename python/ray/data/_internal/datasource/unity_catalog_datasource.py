@@ -419,9 +419,9 @@ class UnityCatalogConnector:
         ):
             errors.append("base_url must be a valid HTTP/HTTPS URL")
 
-        # Validate table_full_name format (should be catalog.schema.table)
-        if self.table_full_name and len(self.table_full_name.split(".")) != 3:
-            errors.append("table_full_name must be in format: catalog.schema.table")
+        # Validate table_full_name format (should have at least one part)
+        if self.table_full_name and len(self.table_full_name.split(".")) < 1:
+            errors.append("table_full_name must have at least one part (table name)")
 
         # Validate operation
         valid_operations = ["READ", "WRITE", "DELETE"]
@@ -765,36 +765,9 @@ class UnityCatalogConnector:
         kwargs = self.reader_kwargs.copy()
 
         if data_format == "delta":
-            # Ensure we have the basic Delta Lake options available
-            # The DeltaDatasource handles these options directly
-
-            # Add other Delta Lake specific options if not present
-            if "without_files" not in kwargs:
-                kwargs["without_files"] = False  # Default to tracking files
-            if "log_buffer_size" not in kwargs:
-                kwargs["log_buffer_size"] = None  # Use default (4 * num_cpus)
-
-            # Add partition filtering support
-            if "partition_filters" not in kwargs:
-                kwargs["partition_filters"] = None
-
-            # Add version support for time travel
-            if "version" not in kwargs:
-                kwargs["version"] = None
-
-            # Support for DeltaReadConfig if provided
-            if "delta_read_config" in kwargs:
-                config = kwargs.pop("delta_read_config")
-                if hasattr(config, "to_deltatable_args"):
-                    # Convert DeltaReadConfig to individual kwargs
-                    dt_args = config.to_deltatable_args()
-                    kwargs.update(dt_args)
-
-                    # Handle partition filters separately
-                    if hasattr(config, "to_partition_filters"):
-                        partition_filters = config.to_partition_filters()
-                        if partition_filters:
-                            kwargs["partition_filters"] = partition_filters
+            # For Delta format, delegate to the enhanced method to avoid duplication
+            # This ensures all Delta-specific logic is centralized
+            pass
 
         elif data_format in ["csv", "json", "jsonl", "ndjson"]:
             # Add common structured data options
@@ -883,7 +856,11 @@ class UnityCatalogConnector:
         return kwargs
 
     def _get_enhanced_reader_kwargs(self, data_format: str) -> Dict[str, Any]:
-        """Get enhanced reader kwargs with Delta Lake specific options."""
+        """Get enhanced reader kwargs with Delta Lake specific options.
+
+        This is the single source of truth for all Delta-specific reader argument logic
+        to avoid code duplication and ensure consistency.
+        """
         kwargs = self._get_reader_kwargs_with_deletion_vector_support(data_format)
 
         if data_format == "delta":

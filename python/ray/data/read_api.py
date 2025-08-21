@@ -3916,18 +3916,18 @@ def read_delta(
 
         >>> import ray
         >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
-        
+
         # Time travel to specific version
         >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/", version=123) # doctest: +SKIP
-        
+
         # Use partition filters
-        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/", 
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/",
         ...                          partition_filters=[("year", "=", "2023")]) # doctest: +SKIP
-        
+
         # With storage options for cloud providers
         >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/",
         ...                          storage_options={"aws_region": "us-west-2"}) # doctest: +SKIP
-        
+
         # Unity Catalog integration
         >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/",
         ...                          unity_catalog_config={"catalog_name": "hive_metastore"}) # doctest: +SKIP
