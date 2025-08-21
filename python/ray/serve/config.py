@@ -237,12 +237,15 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    # New fields for custom autoscaling
-    agg_function: str = "mean"  # "mean", "min", "max", "sum" how to aggregate metrics within look_back_period_s
-    custom_policy: Optional[
-        AutoscalingPolicyConfig
-    ] = None  # this policy is deployment scoped
-    # List of []
+    # The method to aggregate metrics within look_back_period_s on the controller for autoscaling, defaults to "mean"
+    # May be one of "mean", "min", "max", "sum"
+    agg_function: Optional[str] = "mean"
+
+    # Deployment scoped autoscaling policy
+    custom_policy: Optional[AutoscalingPolicyConfig] = None
+
+    # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
+    # Tuple of (metric_name, promql_query)
     prometheus_custom_metrics: Optional[List[Tuple[str, Optional[str]]]] = None
 
     # Cloudpickled policy definition.

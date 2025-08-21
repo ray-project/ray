@@ -166,6 +166,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                 "autoscaling_config": {
                                     "min_replicas": 1,
                                     "initial_replicas": None,
+                                    "agg_function": "mean",
+                                    "custom_policy": None,
+                                    "prometheus_custom_metrics": None,
                                     "max_replicas": 10,
                                     "target_ongoing_requests": 2.0,
                                     "metrics_interval_s": 10.0,
