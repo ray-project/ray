@@ -211,8 +211,7 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
-  std::unique_ptr<RedisStoreClient> CreateRedisStoreClient(
-      instrumented_io_context &io_service);
+  RedisClientOptions GcsServer::GetRedisClientOptions();
 
   void TryGlobalGC();
 
