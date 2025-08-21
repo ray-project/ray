@@ -18,7 +18,7 @@ VARIANTS=(cpu cu121 cu128)
 
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/lock_files/llm/requirements_compiled_"${LOCK_TYPE}"_py311_"${VARIANT}".txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt"
+        cp ./python/lock_files/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.lock"
     done
 done
 
@@ -27,7 +27,7 @@ done
 # Copy files to artifact mount on Buildkite
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/lock_files/llm/requirements_compiled_"${LOCK_TYPE}"_py311_"${VARIANT}".txt /artifact-mount/
+        cp ./python/lock_files/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock /artifact-mount/
     done
 done
 
@@ -35,8 +35,8 @@ done
 FAILED=0
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        diff --color -u ./python/lock_files/llm/requirements_compiled_"${LOCK_TYPE}"_py311_"${VARIANT}".txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt" || {
-            echo "requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
+        diff --color -u ./python/lock_files/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock" || {
+            echo "${LOCK_TYPE}_py311_${VARIANT}.lock is not up to date. Please download it from Artifacts tab and git push the changes."
             FAILED=1
         }
     done
