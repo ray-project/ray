@@ -15,14 +15,13 @@
 #include "ray/common/ray_object.h"
 
 #include <memory>
+#include <msgpack.hpp>  // NOLINT
 #include <string>
 #include <utility>
 
-#include <msgpack.hpp>  // NOLINT
-
 namespace {
 
-static const std::string kObjectInPlasmaStr = // NOLINT
+static const std::string kObjectInPlasmaStr =  // NOLINT
     std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
 
 std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,

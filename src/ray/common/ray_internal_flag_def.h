@@ -36,4 +36,4 @@ RAY_INTERNAL_FLAG(std::string, JOB_ID, "")  // NOLINT
 RAY_INTERNAL_FLAG(std::string, RAYLET_PID, "")  // NOLINT
 
 /// Override the random node ID for testing.
-RAY_INTERNAL_FLAG(std::string, OVERRIDE_NODE_ID_FOR_TESTING, "")    // NOLINT
+RAY_INTERNAL_FLAG(std::string, OVERRIDE_NODE_ID_FOR_TESTING, "")  // NOLINT
