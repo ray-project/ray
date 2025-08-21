@@ -1494,21 +1494,12 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    # Constants for repartition configuration
-    _DEFAULT_TARGET_BYTES_PER_BLOCK = 128 * 1024 * 1024  # 128 MB
-    _MIN_SAMPLES_FOR_ACCURACY = 3
-    _MAX_SAMPLES_FOR_PERFORMANCE = 5
-    _MIN_BYTES_PER_ROW_FALLBACK = 1024  # 1KB
-    _MIN_TARGET_BYTES_WARNING = 64  # 64 bytes minimum
-    _MAX_TARGET_BYTES_WARNING = 1024 * 1024 * 1024  # 1GB
-
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
-        target_num_bytes_per_block: Optional[Union[int, str]] = None,
         *,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
@@ -1541,20 +1532,14 @@ class Dataset:
             >>> ds = ray.data.range(100).repartition(10).materialize()
             >>> ds.num_blocks()
             10
-            >>> # Repartition to target bytes per block (128 MB default)
-            >>> ds.repartition(target_num_bytes_per_block=128 * 1024 * 1024).materialize()
-            >>> # Use human-readable string format
-            >>> ds.repartition(target_num_bytes_per_block="128mb").materialize()
-            >>> # Use default 128 MB target (industry standard)
-            >>> ds.repartition().materialize()
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. Note that only one of `num_blocks`, `target_num_rows_per_block`,
-                or `target_num_bytes_per_block` must be set, but not multiple. When
+                repartition. Note that either `num_blocks` or
+                `target_num_rows_per_block` must be set, but not both. When
                 `target_num_rows_per_block` is set, it only repartitions
                 :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
                 `target_num_rows_per_block`. Note that the system will internally
@@ -1562,14 +1547,6 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
-            target_num_bytes_per_block: [Experimental] The target number of bytes per block to
-                repartition. Can be specified as an integer (bytes) or human-readable
-                string (e.g., "128mb", "10GB", "1.5tb"). Defaults to 128 MB
-                (134,217,728 bytes) to follow standards set by other data compaction
-                functions. When set, it intelligently samples actual
-                data to calculate the optimal number of rows per block for accurate sizing.
-                Only one of `num_blocks`, `target_num_rows_per_block`, or
-                `target_num_bytes_per_block` must be set.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1584,177 +1561,47 @@ class Dataset:
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
 
-        Note that you must set at most one of `num_blocks`, `target_num_rows_per_block`,
-        or `target_num_bytes_per_block`. If none are specified, the method defaults to
-        using `target_num_bytes_per_block=128 MB` (Apache Spark standard) for optimal
-        performance. Additionally note that this operation materializes the entire dataset
-        in memory when you set shuffle to True.
+        Note that you must set either `num_blocks` or `target_num_rows_per_block`
+        but not both.
+        Additionally note that this operation materializes the entire dataset in memory
+        when you set shuffle to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        # Enhanced argument validation with comprehensive checks
-
-        # 1. Validate target parameter types and values
-        if num_blocks is not None:
-            if not isinstance(num_blocks, int):
-                raise TypeError(
-                    f"`num_blocks` must be an integer, got {type(num_blocks).__name__}"
-                )
-            if num_blocks <= 0:
-                raise ValueError(f"`num_blocks` must be positive, got {num_blocks}")
-
-        if target_num_rows_per_block is not None:
-            if not isinstance(target_num_rows_per_block, int):
-                raise TypeError(
-                    f"`target_num_rows_per_block` must be an integer, got {type(target_num_rows_per_block).__name__}"
-                )
-            if target_num_rows_per_block <= 0:
-                raise ValueError(
-                    f"`target_num_rows_per_block` must be positive, got {target_num_rows_per_block}"
-                )
-
-        if target_num_bytes_per_block is not None:
-            # Parse string representations like "128mb", "10gb", etc.
-            if isinstance(target_num_bytes_per_block, str):
-                target_num_bytes_per_block = self._parse_size_string(
-                    target_num_bytes_per_block
-                )
-            elif not isinstance(target_num_bytes_per_block, int):
-                raise TypeError(
-                    f"`target_num_bytes_per_block` must be an integer or string, got {type(target_num_bytes_per_block).__name__}"
-                )
-
-            if target_num_bytes_per_block <= 0:
-                raise ValueError(
-                    f"`target_num_bytes_per_block` must be positive, got {target_num_bytes_per_block}"
-                )
-                # Warn if target is very small (less than 1KB)
-        if target_num_bytes_per_block < self._MIN_BYTES_PER_ROW_FALLBACK:
-            warnings.warn(
-                f"`target_num_bytes_per_block` is very small ({target_num_bytes_per_block} bytes). "
-                "Consider using a larger value (e.g., 1MB = 1048576 bytes) for better performance."
-            )
-        # Warn if target is very large (more than 1GB)
-        elif target_num_bytes_per_block > self._MAX_TARGET_BYTES_WARNING:
-            warnings.warn(
-                f"`target_num_bytes_per_block` is very large ({target_num_bytes_per_block} bytes). "
-                "Large blocks may cause memory issues and slower processing."
-            )
-
-        # 2. Set default target parameter if none specified (Apache Spark style)
-        target_params = [
-            num_blocks,
-            target_num_rows_per_block,
-            target_num_bytes_per_block,
-        ]
-        target_params_set = [p for p in target_params if p is not None]
-
-        if len(target_params_set) == 0:
-            # Default to 128 MB target bytes per block (Apache Spark standard)
-            target_num_bytes_per_block = self._DEFAULT_TARGET_BYTES_PER_BLOCK
-            logger.info(
-                f"Using default target of {target_num_bytes_per_block // (1024 * 1024)} MB per block (Apache Spark standard)"
-            )
-        elif len(target_params_set) > 1:
-            param_names = []
-            if num_blocks is not None:
-                param_names.append("`num_blocks`")
-            if target_num_rows_per_block is not None:
-                param_names.append("`target_num_rows_per_block`")
-            if target_num_bytes_per_block is not None:
-                param_names.append("`target_num_bytes_per_block`")
-
-            raise ValueError(
-                f"Only one target parameter can be set, but multiple were provided: {', '.join(param_names)}. "
-                "Choose one of:\n"
-                "  - `num_blocks`: for exact number of output blocks\n"
-                "  - `target_num_rows_per_block`: for target rows per block\n"
-                "  - `target_num_bytes_per_block`: for target bytes per block\n"
-                "  - No parameters: uses default 128 MB target (Apache Spark standard)"
-            )
-
-        # 3. Validate shuffle parameter
-        if not isinstance(shuffle, bool):
-            raise TypeError(
-                f"`shuffle` must be a boolean, got {type(shuffle).__name__}"
-            )
-
-        # 4. Validate keys parameter
-        if keys is not None:
-            if not isinstance(keys, list):
-                raise TypeError(
-                    f"`keys` must be a list of strings, got {type(keys).__name__}"
-                )
-            if not all(isinstance(key, str) for key in keys):
-                raise TypeError("All elements in `keys` must be strings")
-            if not keys:  # Empty list
-                raise ValueError(
-                    "`keys` cannot be an empty list. Provide column names or set to None."
-                )
-
-        # 5. Validate sort parameter
-        if not isinstance(sort, bool):
-            raise TypeError(f"`sort` must be a boolean, got {type(sort).__name__}")
-
-        # 6. Handle parameter compatibility warnings and validation
         if target_num_rows_per_block is not None:
             if keys is not None:
                 warnings.warn(
-                    "`keys` is ignored when `target_num_rows_per_block` is set. "
-                    "Streaming repartition does not support key-based partitioning."
+                    "`keys` is ignored when `target_num_rows_per_block` is set."
                 )
             if sort is not False:
                 warnings.warn(
-                    "`sort` is ignored when `target_num_rows_per_block` is set. "
-                    "Streaming repartition does not support sorting."
+                    "`sort` is ignored when `target_num_rows_per_block` is set."
                 )
             if shuffle:
                 warnings.warn(
-                    "`shuffle` is ignored when `target_num_rows_per_block` is set. "
-                    "Streaming repartition does not support shuffling."
+                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
 
-        if target_num_bytes_per_block is not None:
-            if keys is not None:
-                warnings.warn(
-                    "`keys` is ignored when `target_num_bytes_per_block` is set. "
-                    "Streaming repartition does not support key-based partitioning."
-                )
-            if sort is not False:
-                warnings.warn(
-                    "`sort` is ignored when `target_num_bytes_per_block` is set. "
-                    "Streaming repartition does not support sorting."
-                )
-            if shuffle:
-                warnings.warn(
-                    "`shuffle` is ignored when `target_num_bytes_per_block` is set. "
-                    "Streaming repartition does not support shuffling."
-                )
-
-        # 7. Final validation for incompatible combinations
-        if (
-            target_num_rows_per_block is not None
-            or target_num_bytes_per_block is not None
-        ) and shuffle:
+        if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
-                "`shuffle` must be False when using streaming repartition "
-                "(`target_num_rows_per_block` or `target_num_bytes_per_block`). "
-                "Streaming repartition optimizes for minimal data movement and does not support shuffling."
+                "Either `num_blocks` or `target_num_rows_per_block` must be set"
+            )
+
+        if (num_blocks is not None) and (target_num_rows_per_block is not None):
+            raise ValueError(
+                "Only one of `num_blocks` or `target_num_rows_per_block` must be set, "
+                "but not both."
+            )
+
+        if target_num_rows_per_block is not None and shuffle:
+            raise ValueError(
+                "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
 
         plan = self._plan.copy()
         if target_num_rows_per_block is not None:
-            op = StreamingRepartition(
-                self._logical_plan.dag,
-                target_num_rows_per_block=target_num_rows_per_block,
-            )
-        elif target_num_bytes_per_block is not None:
-            # Calculate target rows per block based on actual data characteristics
-            target_num_rows_per_block = self._calculate_target_rows_per_block_inline(
-                target_num_bytes_per_block
-            )
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
@@ -1770,152 +1617,6 @@ class Dataset:
 
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
-
-    def _calculate_target_rows_per_block_inline(
-        self, target_num_bytes_per_block: int
-    ) -> int:
-        """Calculate target rows per block based on actual data characteristics.
-
-        This method samples a small subset of blocks to estimate bytes per row,
-        ensuring optimal performance while maintaining accuracy.
-        """
-        # Handle extremely small targets
-        if target_num_bytes_per_block < self._MIN_TARGET_BYTES_WARNING:
-            warnings.warn(
-                f"Target {target_num_bytes_per_block} bytes is extremely small. "
-                "Consider using at least 1KB for reasonable performance."
-            )
-            target_num_bytes_per_block = self._MIN_BYTES_PER_ROW_FALLBACK
-
-        # Conservative fallback estimate (1KB per row)
-        fallback_rows_per_block = max(
-            1, target_num_bytes_per_block // self._MIN_BYTES_PER_ROW_FALLBACK
-        )
-
-        try:
-            # Get block metadata directly from the plan execution
-            # This is more efficient than iterating through ref bundles
-            metadata = self._plan.execute().metadata
-
-            if not metadata:
-                return fallback_rows_per_block
-
-            # Sample up to 5 blocks for performance (reduced from 10)
-            # This provides good accuracy while minimizing computation overhead
-            max_samples = min(self._MAX_SAMPLES_FOR_PERFORMANCE, len(metadata))
-            total_bytes = 0
-            total_rows = 0
-            valid_samples = 0
-
-            # Sample blocks with valid metadata
-            for i in range(max_samples):
-                block_meta = metadata[i]
-                if (
-                    block_meta.size_bytes is not None
-                    and block_meta.num_rows is not None
-                    and block_meta.num_rows > 0
-                ):
-
-                    total_bytes += block_meta.size_bytes
-                    total_rows += block_meta.num_rows
-                    valid_samples += 1
-
-                    # Early termination if we have enough samples
-                    if (
-                        valid_samples >= self._MIN_SAMPLES_FOR_ACCURACY
-                    ):  # Minimum 3 samples for accuracy
-                        break
-
-            if valid_samples > 0 and total_rows > 0:
-                # Calculate actual bytes per row from sampled data
-                actual_bytes_per_row = total_bytes / total_rows
-
-                # Check if individual rows are larger than target block size
-                if actual_bytes_per_row > target_num_bytes_per_block:
-                    suggested_size = int(actual_bytes_per_row * 1.5 // (1024 * 1024))
-                    warnings.warn(
-                        f"Individual rows ({actual_bytes_per_row:.0f} bytes on average) are larger than "
-                        f"target_num_bytes_per_block ({target_num_bytes_per_block} bytes). "
-                        f"Ray Data cannot split individual rows, so blocks will exceed the target size. "
-                        f"Consider using target_num_bytes_per_block='{suggested_size}MB' or larger, "
-                        f"or reduce row size through data preprocessing."
-                    )
-                    # Return 1 row per block since we can't split rows
-                    return 1
-
-                target_num_rows = max(
-                    1, int(target_num_bytes_per_block / actual_bytes_per_row)
-                )
-                return target_num_rows
-
-            return fallback_rows_per_block
-
-        except Exception:
-            # If anything goes wrong, fall back to conservative estimate
-            return fallback_rows_per_block
-
-    def _parse_size_string(self, size_str: str) -> int:
-        """Parse human-readable size strings into bytes.
-
-        Supports industry standard size representations:
-        - B, KB, MB, GB, TB (binary, 1024-based)
-        - b, kb, mb, gb, tb (binary, 1024-based)
-
-        Examples:
-            "128mb" -> 134217728 bytes
-            "10GB" -> 10737418240 bytes
-            "1tb" -> 1099511627776 bytes
-        """
-        import re
-
-        # Input validation and sanitization
-        if not isinstance(size_str, str):
-            raise TypeError(f"Expected string, got {type(size_str).__name__}")
-
-        if not size_str:
-            raise ValueError("Size string cannot be empty")
-
-        # Convert to lowercase and remove whitespace
-        size_str = size_str.lower().strip()
-
-        # Pattern to match: number + optional whitespace + unit
-        # Supports: 128mb, 10 GB, 1.5tb, etc.
-        pattern = r"^(\d+(?:\.\d+)?)\s*([kmgt]?b)$"
-        match = re.match(pattern, size_str)
-
-        if not match:
-            raise ValueError(
-                f"Invalid size format: '{size_str}'. "
-                "Expected format: number + unit (e.g., '128mb', '10GB', '1.5tb'). "
-                "Supported units: B, KB, MB, GB, TB (case-insensitive)."
-            )
-
-        number = float(match.group(1))
-        unit = match.group(2)
-
-        # Convert to bytes based on unit
-        multipliers = {
-            "b": 1,
-            "kb": 1024,
-            "mb": 1024 * 1024,
-            "gb": 1024 * 1024 * 1024,
-            "tb": 1024 * 1024 * 1024 * 1024,
-        }
-
-        if unit not in multipliers:
-            raise ValueError(
-                f"Unsupported unit: '{unit}'. "
-                "Supported units: B, KB, MB, GB, TB (case-insensitive)."
-            )
-
-        bytes_value = int(number * multipliers[unit])
-
-        if bytes_value <= 0:
-            raise ValueError(
-                f"Size must be positive, got {bytes_value} bytes from '{size_str}'"
-            )
-
-        return bytes_value
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -6264,32 +5965,6 @@ class Dataset:
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
-    @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
-        """Show the logical plan and physical plan of the dataset.
-
-        Examples:
-
-        .. testcode::
-
-            import ray
-            from ray.data import Dataset
-            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            ds = ds.map(lambda x: x + 1)
-            ds.explain()
-
-        .. testoutput::
-
-            -------- Logical Plan --------
-            Map(<lambda>)
-            +- ReadRange
-            -------- Physical Plan --------
-            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
-            +- InputDataBuffer[Input]
-            <BLANKLINE>
-        """
-        print(self._plan.explain())
-
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
 
@@ -6713,6 +6388,7 @@ class Dataset:
             pass
 
 
+@PublicAPI
 class MaterializedDataset(Dataset, Generic[T]):
     """A Dataset materialized in Ray memory, e.g., via `.materialize()`.
 
