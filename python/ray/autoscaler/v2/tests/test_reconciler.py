@@ -713,7 +713,7 @@ class TestReconciler:
             TestReconciler._add_instances(instance_storage, [instance])
             next_id += 1
 
-        num_desired_upscale = max(1, math.ceil(upscaling_speed * (num_running)))
+        num_desired_upscale = max(1, math.ceil(upscaling_speed * (max(num_running, 1))))
         expected_launch_num = min(
             num_desired_upscale,
             max(0, max_concurrent_launches - num_requested),  # global limit

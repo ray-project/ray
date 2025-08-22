@@ -14,58 +14,107 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public static final int NO_RESTART = 0;
   public static final int INFINITE_RESTART = -1;
 
-  public final String name;
-  public ActorLifetime lifetime;
-  public final int maxRestarts;
-  public final int maxTaskRetries;
-  public final List<String> jvmOptions;
-  public final int maxConcurrency;
-  public final PlacementGroup group;
-  public final int bundleIndex;
-  public final List<ConcurrencyGroup> concurrencyGroups;
-  public final String serializedRuntimeEnv;
-  public final String namespace;
-  public final int maxPendingCalls;
-  public final boolean isAsync;
-  public final boolean executeOutOfOrder;
+  private final String name;
+  private final ActorLifetime lifetime;
+  private final int maxRestarts;
+  private final int maxTaskRetries;
+  private final List<String> jvmOptions;
+  private final int maxConcurrency;
+  private final PlacementGroup group;
+  private final int bundleIndex;
+  private final List<ConcurrencyGroup> concurrencyGroups;
+  private final String serializedRuntimeEnv;
+  private final String namespace;
+  private final int maxPendingCalls;
+  private final boolean isAsync;
+  private final boolean allowOutOfOrderExecution;
 
-  private ActorCreationOptions(
-      String name,
-      ActorLifetime lifetime,
-      Map<String, Double> resources,
-      int maxRestarts,
-      int maxTaskRetries,
-      List<String> jvmOptions,
-      int maxConcurrency,
-      PlacementGroup group,
-      int bundleIndex,
-      List<ConcurrencyGroup> concurrencyGroups,
-      String serializedRuntimeEnv,
-      String namespace,
-      int maxPendingCalls,
-      boolean isAsync) {
-    super(resources);
-    this.name = name;
-    this.lifetime = lifetime;
-    this.maxRestarts = maxRestarts;
-    this.maxTaskRetries = maxTaskRetries;
-    this.jvmOptions = jvmOptions;
-    this.maxConcurrency = maxConcurrency;
-    this.group = group;
-    this.bundleIndex = bundleIndex;
-    this.concurrencyGroups = concurrencyGroups;
-    this.serializedRuntimeEnv = serializedRuntimeEnv;
-    this.namespace = namespace;
-    this.maxPendingCalls = maxPendingCalls;
-    this.isAsync = isAsync;
-    this.executeOutOfOrder = isAsync;
+  private ActorCreationOptions(Builder builder) {
+    super(builder.resources);
+    this.name = builder.name;
+    this.lifetime = builder.lifetime;
+    this.maxRestarts = builder.maxRestarts;
+    this.maxTaskRetries = builder.maxTaskRetries;
+    this.jvmOptions =
+        builder.jvmOptions != null
+            ? java.util.Collections.unmodifiableList(builder.jvmOptions)
+            : null;
+    this.maxConcurrency = builder.maxConcurrency;
+    this.group = builder.group;
+    this.bundleIndex = builder.bundleIndex;
+    this.concurrencyGroups =
+        builder.concurrencyGroups != null
+            ? java.util.Collections.unmodifiableList(builder.concurrencyGroups)
+            : null;
+    this.serializedRuntimeEnv =
+        builder.runtimeEnv != null ? builder.runtimeEnv.serializeToRuntimeEnvInfo() : "";
+    this.namespace = builder.namespace;
+    this.maxPendingCalls = builder.maxPendingCalls;
+    this.isAsync = builder.isAsync;
+    this.allowOutOfOrderExecution = builder.isAsync;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public ActorLifetime getLifetime() {
+    return lifetime;
+  }
+
+  public int getMaxRestarts() {
+    return maxRestarts;
+  }
+
+  public int getMaxTaskRetries() {
+    return maxTaskRetries;
+  }
+
+  public List<String> getJvmOptions() {
+    return jvmOptions;
+  }
+
+  public int getMaxConcurrency() {
+    return maxConcurrency;
+  }
+
+  public PlacementGroup getGroup() {
+    return group;
+  }
+
+  public int getBundleIndex() {
+    return bundleIndex;
+  }
+
+  public List<ConcurrencyGroup> getConcurrencyGroups() {
+    return concurrencyGroups;
+  }
+
+  public String getSerializedRuntimeEnv() {
+    return serializedRuntimeEnv;
+  }
+
+  public String getNamespace() {
+    return namespace;
+  }
+
+  public int getMaxPendingCalls() {
+    return maxPendingCalls;
+  }
+
+  public boolean isAsync() {
+    return isAsync;
+  }
+
+  public boolean allowsOutOfOrderExecution() {
+    return allowOutOfOrderExecution;
   }
 
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
     private String name;
     private ActorLifetime lifetime = null;
-    private Map<String, Double> resources = new HashMap<>();
+    private final Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private int maxTaskRetries = 0;
     private List<String> jvmOptions = new ArrayList<>();
@@ -223,24 +272,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public ActorCreationOptions build() {
-      return new ActorCreationOptions(
-          name,
-          lifetime,
-          resources,
-          maxRestarts,
-          maxTaskRetries,
-          jvmOptions,
-          maxConcurrency,
-          group,
-          bundleIndex,
-          concurrencyGroups,
-          runtimeEnv != null ? runtimeEnv.serializeToRuntimeEnvInfo() : "",
-          namespace,
-          maxPendingCalls,
-          isAsync);
-    }
-
     /** Set the concurrency groups for this actor. */
     public Builder setConcurrencyGroups(List<ConcurrencyGroup> concurrencyGroups) {
       this.concurrencyGroups = concurrencyGroups;
@@ -255,6 +286,10 @@ public class ActorCreationOptions extends BaseTaskOptions {
     public Builder setNamespace(String namespace) {
       this.namespace = namespace;
       return this;
+    }
+
+    public ActorCreationOptions build() {
+      return new ActorCreationOptions(this);
     }
   }
 }

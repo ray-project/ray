@@ -71,7 +71,6 @@ from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_iters=3)
 parser.set_defaults(
-    enable_new_api_stack=True,
     # Test by default with more than one Env per EnvRunner.
     num_envs_per_env_runner=2,
 )
@@ -94,6 +93,8 @@ if __name__ == "__main__":
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
         # Make sure every environment gets a fixed seed.
         .debugging(seed=args.seed)
+        # Log gradients and check them in the test.
+        .reporting(log_gradients=True)
     )
 
     # Add a simple multi-agent setup.

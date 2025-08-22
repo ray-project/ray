@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -39,16 +40,15 @@ class CoreWorkerClientPool {
       : core_worker_client_factory_(std::move(client_factory)){};
 
   /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
-  /// core worker and node manager.
+  /// core worker.
   static std::function<void()> GetDefaultUnavailableTimeoutCallback(
       gcs::GcsClient *gcs_client,
       rpc::CoreWorkerClientPool *worker_client_pool,
-      std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
-          raylet_client_factory,
+      rpc::RayletClientPool *raylet_client_pool,
       const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
-  /// if it does not. The returned pointer is borrowed, and expected to be used
+  /// if it does not. The returned pointer is expected to be used
   /// briefly.
   std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
@@ -60,14 +60,11 @@ class CoreWorkerClientPool {
   /// Removes connections to all workers on a node.
   void Disconnect(ray::NodeID node_id);
 
-  /// For testing.
-  size_t Size() {
-    absl::MutexLock lock(&mu_);
-    RAY_CHECK_EQ(client_list_.size(), worker_client_map_.size());
-    return client_list_.size();
-  }
-
  private:
+  friend void AssertID(WorkerID worker_id,
+                       CoreWorkerClientPool &client_pool,
+                       bool contains);
+
   /// Try to remove some idle clients to free memory.
   /// It doesn't go through the entire list and remove all idle clients.
   /// Instead, it tries to remove idle clients from the end of the list
@@ -93,13 +90,13 @@ class CoreWorkerClientPool {
     CoreWorkerClientEntry(WorkerID worker_id,
                           NodeID node_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
-        : worker_id(std::move(worker_id)),
-          node_id(std::move(node_id)),
-          core_worker_client(std::move(core_worker_client)) {}
+        : worker_id_(std::move(worker_id)),
+          node_id_(std::move(node_id)),
+          core_worker_client_(std::move(core_worker_client)) {}
 
-    WorkerID worker_id;
-    NodeID node_id;
-    std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
+    WorkerID worker_id_;
+    NodeID node_id_;
+    std::shared_ptr<CoreWorkerClientInterface> core_worker_client_;
   };
 
   /// A list of open connections from the most recent accessed to the least recent

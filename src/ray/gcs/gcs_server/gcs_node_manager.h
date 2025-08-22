@@ -28,14 +28,15 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -55,7 +56,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   GcsNodeManager(GcsPublisher *gcs_publisher,
                  gcs::GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
-                 rpc::NodeManagerClientPool *raylet_client_pool,
+                 rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id);
 
   /// Handle register rpc request come from raylet.
@@ -95,7 +96,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_table_updated_callback The status callback function after
   /// faled node info is updated to gcs node table.
   void OnNodeFailure(const NodeID &node_id,
-                     const StatusCallback &node_table_updated_callback);
+                     const std::function<void()> &node_table_updated_callback);
 
   /// Add an alive node.
   ///
@@ -171,6 +172,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
+  /// Update node state from a resource view sync message if the node is alive.
+  ///
+  /// \param node_id The ID of the node to update.
+  /// \param resource_view_sync_message The sync message containing the new state.
+  void UpdateAliveNode(const NodeID &node_id,
+                       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
@@ -185,7 +193,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \return The inferred death info of the node.
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
-  void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+  void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const;
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {
@@ -262,7 +270,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   gcs::GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
   /// Raylet client pool.
-  rpc::NodeManagerClientPool *raylet_client_pool_ = nullptr;
+  rpc::RayletClientPool *raylet_client_pool_;
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
 
@@ -275,14 +283,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
-  /// A map of NodeId <-> ip:port of raylet
-  using NodeIDAddrBiMap =
-      boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_multiset_of<std::string>>;
-  NodeIDAddrBiMap node_map_;
-
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
+
+  /// Ray metrics
+  ray::stats::Count ray_metric_node_failures_total_{
+      /*name=*/"node_failure_total",
+      /*description=*/"Number of node failures that have happened in the cluster.",
+      /*unit=*/""};
 
   friend GcsAutoscalerStateManagerTest;
   friend GcsStateTest;

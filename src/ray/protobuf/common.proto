@@ -124,7 +124,7 @@ message SchedulingStrategy {
 
 // Address of a worker or node manager.
 message Address {
-  bytes raylet_id = 1;
+  bytes node_id = 1;
   string ip_address = 2;
   int32 port = 3;
   // Optional unique id for the worker.
@@ -615,10 +615,6 @@ message TaskInfoEntry {
   map<string, string> label_selector = 28;
 }
 
-message LabelSelector {
-  map<string, string> label_selector_dict = 1;
-}
-
 message TaskAttempt {
   // The task id of the task attempt.
   bytes task_id = 1;
@@ -711,6 +707,8 @@ enum TensorTransport {
   NCCL = 1;
   // Use GLOO for tensor transport.
   GLOO = 2;
+  // Use NIXL for tensor transport.
+  NIXL = 3;
 }
 
 // Argument in the task.
@@ -782,7 +780,7 @@ message ActorCreationTaskSpec {
   // The concurrency groups of this actor.
   repeated ConcurrencyGroup concurrency_groups = 13;
   // Whether to enable out of order execution.
-  bool execute_out_of_order = 14;
+  bool allow_out_of_order_execution = 14;
   // The max number of pending actor calls.
   int32 max_pending_calls = 15;
 }
@@ -1029,6 +1027,33 @@ enum PlacementStrategy {
   // The group is not allowed to deploy more than one bundle on a node.
   STRICT_SPREAD = 3;
 }
+
+// The type of operator to use for the label constraint.
+enum LabelSelectorOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0;
+  // This is to support equality or in semantics.
+  LABEL_OPERATOR_IN = 1;
+  // This is to support not equal or not in semantics.
+  LABEL_OPERATOR_NOT_IN = 2;
+}
+
+// A node label constraint with a key, one or a list of values and an operator.
+message LabelSelectorConstraint {
+  // The key of the label
+  string label_key = 1;
+  // The operator to use for the label constraint.
+  LabelSelectorOperator operator = 2;
+  // The values to check against.
+  repeated string label_values = 3;
+}
+
+// A list of node label constraints to specify the label requirements in a
+// resource request.
+message LabelSelector {
+  // The list of node label constraints with AND semantics.
+  repeated LabelSelectorConstraint label_constraints = 1;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 // Info about a named actor.

@@ -17,11 +17,13 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
@@ -76,20 +78,24 @@ typedef int SchedulingClass;
 struct SchedulingClassDescriptor {
  public:
   explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
-                                     rpc::SchedulingStrategy scheduling_strategy)
+                                     rpc::SchedulingStrategy sched_strategy)
       : resource_set(std::move(rs)),
+        label_selector(std::move(ls)),
         function_descriptor(std::move(fd)),
         depth(d),
-        scheduling_strategy(std::move(scheduling_strategy)) {}
+        scheduling_strategy(std::move(sched_strategy)) {}
   ResourceSet resource_set;
+  LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
+           label_selector == other.label_selector &&
            function_descriptor == other.function_descriptor &&
            scheduling_strategy == other.scheduling_strategy;
   }
@@ -105,7 +111,21 @@ struct SchedulingClassDescriptor {
     for (const auto &pair : resource_set.GetResourceMap()) {
       buffer << pair.first << " : " << pair.second << ", ";
     }
+    buffer << "}";
+
+    buffer << "label_selector={";
+    for (const auto &constraint : label_selector.GetConstraints()) {
+      buffer << constraint.GetLabelKey() << " "
+             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
+                                                                                  : "!in")
+             << " (";
+      for (const auto &val : constraint.GetLabelValues()) {
+        buffer << val << ", ";
+      }
+      buffer << "), ";
+    }
     buffer << "}}";
+
     return buffer.str();
   }
 
@@ -119,23 +139,33 @@ struct SchedulingClassDescriptor {
     return buffer.str();
   }
 };
+
+template <typename H>
+H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
+  return H::combine(std::move(h),
+                    sched_cls.resource_set,
+                    sched_cls.function_descriptor->Hash(),
+                    sched_cls.depth,
+                    sched_cls.scheduling_strategy,
+                    sched_cls.label_selector);
+}
 }  // namespace ray
 
 namespace std {
 template <>
 struct hash<ray::rpc::LabelOperator> {
   size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
-    size_t hash = std::hash<size_t>()(label_operator.label_operator_case());
+    size_t hash_value = std::hash<size_t>()(label_operator.label_operator_case());
     if (label_operator.has_label_in()) {
       for (const auto &value : label_operator.label_in().values()) {
-        hash ^= std::hash<std::string>()(value);
+        hash_value ^= std::hash<std::string>()(value);
       }
     } else if (label_operator.has_label_not_in()) {
       for (const auto &value : label_operator.label_not_in().values()) {
-        hash ^= std::hash<std::string>()(value);
+        hash_value ^= std::hash<std::string>()(value);
       }
     }
-    return hash;
+    return hash_value;
   }
 };
 
@@ -201,17 +231,6 @@ struct hash<ray::rpc::SchedulingStrategy> {
     return hash_val;
   }
 };
-
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash_val ^= sched_cls.function_descriptor->Hash();
-    hash_val ^= sched_cls.depth;
-    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
-    return hash_val;
-  }
-};
 }  // namespace std
 
 namespace ray {
@@ -220,25 +239,25 @@ namespace ray {
 /// a executing thread pool.
 struct ConcurrencyGroup {
   // Name of this group.
-  std::string name;
+  std::string name_;
   // Max concurrency of this group.
-  uint32_t max_concurrency;
+  uint32_t max_concurrency_;
   // Function descriptors of the actor methods in this group.
-  std::vector<ray::FunctionDescriptor> function_descriptors;
+  std::vector<ray::FunctionDescriptor> function_descriptors_;
 
   ConcurrencyGroup() = default;
 
   ConcurrencyGroup(const std::string &name,
                    uint32_t max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
-      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+      : name_(name), max_concurrency_(max_concurrency), function_descriptors_(fds) {}
 
-  std::string GetName() const { return name; }
+  std::string GetName() const { return name_; }
 
-  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+  uint32_t GetMaxConcurrency() const { return max_concurrency_; }
 
   std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
-    return function_descriptors;
+    return function_descriptors_;
   }
 };
 
@@ -533,7 +552,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const std::string &ConcurrencyGroupName() const;
 
-  bool ExecuteOutOfOrder() const;
+  bool AllowOutOfOrderExecution() const;
 
   bool IsSpreadSchedulingStrategy() const;
 

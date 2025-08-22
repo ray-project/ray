@@ -16,6 +16,7 @@ COPTS_WITHOUT_LOG = select({
         "-Wconversion-null",
         "-Wno-misleading-indentation",
         "-Wimplicit-fallthrough",
+        "-Wshadow",
     ],
 }) + select({
     "//:clang-cl": [
@@ -68,6 +69,18 @@ def define_java_module(
         define_test_lib = False,
         test_deps = [],
         **kwargs):
+    """
+    Defines a ray Java module with a pom file.
+
+    Args:
+        name: The base name of the module.
+        additional_srcs: Additional source files to include in the module.
+        exclude_srcs: Source files to exclude from the module.
+        additional_resources: Additional resources to include in the module.
+        define_test_lib: Whether to define a test library for the module.
+        test_deps: Dependencies for the test library; only used if define_test_lib is True.
+        **kwargs: Additional arguments to pass to the java_library rule.
+    """
     lib_name = "io_ray_ray_" + name
     pom_file_targets = [lib_name]
     native.java_library(
@@ -96,63 +109,6 @@ def define_java_module(
         },
     )
 
-def copy_to_workspace(name, srcs, dstdir = ""):
-    if dstdir.startswith("/") or dstdir.startswith("\\"):
-        fail("Subdirectory must be a relative path: " + dstdir)
-    src_locations = " ".join(["$(locations %s)" % (src,) for src in srcs])
-    native.genrule(
-        name = name,
-        srcs = srcs,
-        outs = [name + ".out"],
-        cmd = r"""
-            mkdir -p -- {dstdir}
-            echo "name={name}" > $@
-            echo "dstdir={dstdir}" >> $@
-            echo "----" >> $@
-            for f in {locations}; do
-                rm -f -- {dstdir}$${{f##*/}}
-                cp -f -- "$$f" {dstdir}
-                if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
-            done
-        """.format(
-            name = name,
-            locations = src_locations,
-            dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
-        ),
-        local = 1,
-        tags = ["no-cache"],
-    )
-
-def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
-    copy_file(
-        name = name + "_darwin",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/darwin/" + name,
-    )
-
-    copy_file(
-        name = name + "_linux",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/linux/" + name,
-    )
-
-    copy_file(
-        name = name + "_windows",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/windows/" + name,
-    )
-
-    native.filegroup(
-        name = name,
-        srcs = select({
-            "@platforms//os:osx": [name + "_darwin"],
-            "@platforms//os:windows": [name + "_windows"],
-            "//conditions:default": [name + "_linux"],
-        }),
-        visibility = ["//visibility:public"],
-    )
-
 def native_java_library(module_name, name, native_library_name):
     """Copy native library file to different path based on operating systems"""
     copy_file(
@@ -177,12 +133,12 @@ def native_java_library(module_name, name, native_library_name):
         visibility = ["//visibility:public"],
     )
 
-def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
+def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility = ["//visibility:public"], **kwargs):
     cc_library(
         name = name,
         strip_include_prefix = strip_include_prefix,
         copts = COPTS + copts,
-        visibility = ["//visibility:public"],
+        visibility = visibility,
         **kwargs
     )
 

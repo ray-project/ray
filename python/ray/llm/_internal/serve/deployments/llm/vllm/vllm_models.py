@@ -1,9 +1,11 @@
+import copy
 import dataclasses
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from pydantic import ConfigDict, Field, ValidationError, field_validator
+from pydantic import ConfigDict, Field
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
@@ -11,15 +13,10 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
-    RAYLLM_GUIDED_DECODING_BACKEND,
 )
-from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
-    GenerationRequest,
     GPUType,
     LLMConfig,
-    SamplingParams,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import (
@@ -31,19 +28,13 @@ from ray.util.placement_group import (
 
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
-
 vllm = try_import("vllm")
-
-if TYPE_CHECKING:
-    from vllm.lora.request import LoRARequest
-
 logger = get_logger(__name__)
 
 
 class VLLMEngineConfig(BaseModelExtended):
     model_config = ConfigDict(
         use_enum_values=True,
-        extra="forbid",
     )
 
     model_id: str = Field(
@@ -77,10 +68,6 @@ class VLLMEngineConfig(BaseModelExtended):
     def trust_remote_code(self) -> bool:
         return self.engine_kwargs.get("trust_remote_code", False)
 
-    @property
-    def sampling_params_model(self):
-        return VLLMSamplingParams
-
     def get_initialization_kwargs(self) -> dict:
         """
         Get kwargs that will be actually passed to the LLMInitializer
@@ -106,14 +93,26 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"]:
-            logger.warning(
-                "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
+        # TODO(lk-chen): Remove the logic once we require vllm>=0.10.1
+        # vLLM 0.10.1 replaces `disable_log_requests` with
+        # `enable_log_requests`. Here we are trying to be compatible with both.
+        if hasattr(AsyncEngineArgs, "enable_log_requests"):
+            if "disable_log_requests" in engine_kwargs:
+                logger.warning(
+                    "disable_log_requests is set in engine_kwargs, but vLLM "
+                    "does not support it. Converting to enable_log_requests."
+                )
+                engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
+                    "disable_log_requests"
+                )
+            else:
+                engine_kwargs["enable_log_requests"] = False
+        elif "disable_log_requests" not in engine_kwargs:
+            logger.info(
+                "Disabling request logging by default. To enable, set to False"
+                " in engine_kwargs."
             )
-        engine_kwargs["disable_log_stats"] = False
-
-        if "guided_decoding_backend" not in engine_kwargs:
-            engine_kwargs["guided_decoding_backend"] = RAYLLM_GUIDED_DECODING_BACKEND
+            engine_kwargs["disable_log_requests"] = True
 
         return engine_kwargs
 
@@ -145,17 +144,20 @@ class VLLMEngineConfig(BaseModelExtended):
         frontend_kwargs = {}
 
         # Get field names from dataclasses
+        frontend_field_names = {
+            field.name for field in dataclasses.fields(FrontendArgs)
+        }
         async_engine_field_names = {
             field.name for field in dataclasses.fields(AsyncEngineArgs)
         }
 
         for key, value in all_engine_kwargs.items():
-            if key in async_engine_field_names:
+            if key in frontend_field_names:
+                frontend_kwargs[key] = value
+            elif key in async_engine_field_names:
                 engine_kwargs[key] = value
             else:
-                # Assume anything that is not an engine argument is a frontend
-                # argument.
-                frontend_kwargs[key] = value
+                raise ValueError(f"Unknown engine argument: {key}")
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
@@ -193,13 +195,14 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
+
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
         else:
             bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_devices)]
+        bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
 
@@ -237,6 +240,7 @@ class VLLMEngineConfig(BaseModelExtended):
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
         """
+        dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         pg = get_current_placement_group()
         if pg:
             logger.debug(
@@ -251,98 +255,13 @@ class VLLMEngineConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
+            name = "" if dp_rank is None else f"dp_{dp_rank}"
+
             pg = placement_group(
-                self.placement_bundles, strategy=self.placement_strategy
+                bundles=self.placement_bundles,
+                strategy=self.placement_strategy,
+                name=name,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
-
-
-class VLLMSamplingParams(SamplingParams):
-    """Sampling parameters specific to vLLM engine.
-
-    Args:
-        top_k: The number of highest probability vocabulary tokens to keep for top-k-filtering.
-        seed: Seed for deterministic sampling with temperature>0.
-        repetition_penalty: Float that penalizes new tokens based on whether they
-            appear in the prompt and the generated text so far. Values > 1 encourage
-            the model to use new tokens, while values < 1 encourage the model to repeat
-            tokens.
-    """
-
-    _ignored_fields = {"best_of", "n", "logit_bias"}
-
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-    seed: Optional[int] = None
-    kv_transfer_params: Optional[Dict[str, Any]] = None
-
-    @field_validator("n", mode="before")
-    @classmethod
-    def validate_n(cls, values):
-        if values != 1:
-            raise ValidationError("n>1 is not supported yet in rayllm.")
-        return values
-
-    @classmethod
-    def _get_model_validate_kwargs(cls, prompt: Prompt) -> Dict[str, Any]:
-        """
-        Extend the base class's `_get_model_validate_kwargs` to include vllm-specific parameters.
-        """
-        generate_kwargs = super()._get_model_validate_kwargs(prompt)
-        if (
-            prompt.parameters is not None
-            and KV_TRANSFER_PARAMS_KEY in prompt.parameters
-        ):
-            generate_kwargs[KV_TRANSFER_PARAMS_KEY] = prompt.parameters[
-                KV_TRANSFER_PARAMS_KEY
-            ]
-        return generate_kwargs
-
-
-class VLLMGenerationRequest(GenerationRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    # Intentionally override the base class's `sampling_params` field.
-    sampling_params: Optional[
-        Union[
-            VLLMSamplingParams,
-            List[VLLMSamplingParams],
-        ]
-    ] = None
-    multi_modal_data: Optional[Dict[str, Any]] = None
-    disk_multiplex_config: Optional[DiskMultiplexConfig] = None
-
-    @property
-    def lora_request(self) -> "LoRARequest":
-        disk_vllm_config = self.disk_multiplex_config
-        if not disk_vllm_config:
-            return None
-        else:
-            return vllm.lora.request.LoRARequest(
-                lora_name=disk_vllm_config.model_id,
-                lora_int_id=disk_vllm_config.lora_assigned_int_id,
-                lora_local_path=disk_vllm_config.local_path,
-                long_lora_max_len=disk_vllm_config.max_total_tokens,
-            )
-
-
-class VLLMEmbeddingRequest(GenerationRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    encoding_format: Optional[Literal["float", "base64"]] = "float"
-    dimensions: Optional[int] = None
-    disk_multiplex_config: Optional[DiskMultiplexConfig] = None
-
-    @property
-    def lora_request(self) -> "LoRARequest":
-        disk_vllm_config = self.disk_multiplex_config
-        if not disk_vllm_config:
-            return None
-        else:
-            return vllm.lora.request.LoRARequest(
-                lora_name=disk_vllm_config.model_id,
-                lora_int_id=disk_vllm_config.lora_assigned_int_id,
-                lora_local_path=disk_vllm_config.local_path,
-                long_lora_max_len=disk_vllm_config.max_total_tokens,
-            )

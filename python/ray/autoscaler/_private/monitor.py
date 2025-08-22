@@ -14,10 +14,14 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.utils
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
+from ray._common.network_utils import parse_address, build_address
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (
@@ -146,21 +150,17 @@ class Monitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
         _initialize_internal_kv(self.gcs_client)
+
         if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = parse_address(self.gcs_address)[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
@@ -664,18 +664,18 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
+        default=LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+        f"{LOGGING_ROTATE_BYTES} bytes.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        default=LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+        f"{LOGGING_ROTATE_BACKUP_COUNT}.",
     )
     parser.add_argument(
         "--monitor-ip",

@@ -22,6 +22,7 @@
 
 #include "../config_internal.h"
 #include "ray/util/logging.h"
+#include "ray/util/path_utils.h"
 
 // using namespace ray;
 
@@ -114,7 +115,7 @@ TEST(RayApiTest, LogTest) {
   const std::string log_dir = std::filesystem::current_path().string() + "/tmp/";
   ray::RayLog::StartRayLog(app_name,
                            ray::RayLogLevel::DEBUG,
-                           ray::RayLog::GetLogFilepathFromDirectory(log_dir, app_name));
+                           ray::GetLogFilepathFromDirectory(log_dir, app_name));
   std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
   RAYLOG(DEBUG) << str_arr[0];
   RAYLOG(INFO) << str_arr[1];

@@ -17,7 +17,7 @@ from ray._common.pydantic_compat import (
 )
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -59,7 +59,7 @@ class RequestRouterConfig(BaseModel):
 
             # Use custom router class
             request_router_config = RequestRouterConfig(
-                request_router_class="ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
+                request_router_class="ray.serve.llm.request_router.PrefixCacheAffinityRouter",
                 request_router_kwargs={"imbalanced_threshold": 20}
             )
             deployment_config = DeploymentConfig(
@@ -159,6 +159,18 @@ class RequestRouterConfig(BaseModel):
         return cloudpickle.loads(self._serialized_request_router_cls)
 
 
+DEFAULT_METRICS_INTERVAL_S = 10.0
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingPolicy(BaseModel):
+    name: Union[str, Callable] = Field(
+        default=DEFAULT_AUTOSCALING_POLICY_NAME,
+        description="Name of the policy function or the import path of the policy. "
+        "Will be the concatenation of the policy module and the policy name if user passed a callable.",
+    )
+
+
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
@@ -171,10 +183,14 @@ class AutoscalingConfig(BaseModel):
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
 
-    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
 
     metrics_interval_s: PositiveFloat = Field(
-        default=10.0, description="How often to scrape for metrics."
+        default=DEFAULT_METRICS_INTERVAL_S,
+        description="[DEPRECATED] How often to scrape for metrics. "
+        "Will be replaced by the environment variables "
+        "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
+        "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
     )
     look_back_period_s: PositiveFloat = Field(
         default=30.0, description="Time window to average over for metrics."
@@ -215,8 +231,12 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
-    # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
+    # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
+    _policy: AutoscalingPolicy = Field(default_factory=AutoscalingPolicy)
+
+    # This is to make `_policy` a normal field until its GA ready.
+    class Config:
+        underscore_attrs_are_private = True
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -242,6 +262,18 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
+    @validator("metrics_interval_s")
+    def metrics_interval_s_deprecation_warning(cls, v: PositiveFloat) -> PositiveFloat:
+        if v != DEFAULT_METRICS_INTERVAL_S:
+            warnings.warn(
+                "The `metrics_interval_s` field in AutoscalingConfig is deprecated and "
+                "will be replaced by the environment variables "
+                "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
+                "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
+                DeprecationWarning,
+            )
+        return v
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.serialize_policy()
@@ -254,18 +286,21 @@ class AutoscalingConfig(BaseModel):
         """
         values = self.dict()
         policy = values.get("_policy")
-        if isinstance(policy, Callable):
-            policy = f"{policy.__module__}.{policy.__name__}"
 
-        if not policy:
-            policy = DEFAULT_AUTOSCALING_POLICY
+        policy_name = None
+        if isinstance(policy, dict):
+            policy_name = policy.get("name")
 
-        policy_path = policy
-        policy = import_attr(policy)
+        if isinstance(policy_name, Callable):
+            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
 
-        if not values.get("_serialized_policy_def"):
-            self._serialized_policy_def = cloudpickle.dumps(policy)
-        self._policy = policy_path
+        if not policy_name:
+            policy_name = DEFAULT_AUTOSCALING_POLICY_NAME
+
+        if not self._serialized_policy_def:
+            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
+
+        self._policy = AutoscalingPolicy(name=policy_name)
 
     @classmethod
     def default(cls):

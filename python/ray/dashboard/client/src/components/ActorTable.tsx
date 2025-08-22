@@ -163,6 +163,14 @@ const ActorTable = ({
     { label: "" },
     { label: "ID" },
     {
+      label: "Worker ID",
+      helpInfo: (
+        <Typography>
+          The ID of the worker process that hosts this actor.
+        </Typography>
+      ),
+    },
+    {
       label: "Class",
       helpInfo: (
         <Typography>
@@ -246,9 +254,9 @@ const ActorTable = ({
           Hardware CPU usage of this Actor (from Worker Process).
           <br />
           <br />
-          Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+          Node's CPU usage is calculated against all CPU cores. Worker Process's
           CPU usage is calculated against 1 CPU core. As a result, the sum of
-          CPU usage from all Worker Processes is not equal to the Node’s CPU
+          CPU usage from all Worker Processes is not equal to the Node's CPU
           usage.
         </Typography>
       ),
@@ -270,10 +278,9 @@ const ActorTable = ({
           <br />
           1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
           and try again. <br />
-          2. Non NVIDIA GPUs are being used. Non NVIDIA GPUs' utilizations are
-          not currently supported.
+          2. Non Nvidia or AMD GPUs are being used.
           <br />
-          3. pynvml module raises an exception.
+          3. pynvml or pyamdsmi module raises an exception.
         </Typography>
       ),
     },
@@ -378,10 +385,10 @@ const ActorTable = ({
           data-testid="nodeIdFilter"
           style={{ margin: 8, width: 150 }}
           options={Array.from(
-            new Set(Object.values(actors).map((e) => e.address?.rayletId)),
+            new Set(Object.values(actors).map((e) => e.address?.nodeId)),
           )}
           onInputChange={(_: any, value: string) => {
-            changeFilter("address.rayletId", value.trim());
+            changeFilter("address.nodeId", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Node ID" />
@@ -411,6 +418,21 @@ const ActorTable = ({
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("name", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Worker ID"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("workerId", value.trim());
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -592,6 +614,24 @@ const ActorTable = ({
                       </Box>
                     </Tooltip>
                   </TableCell>
+                  <TableCell align="center">
+                    {actors[actorId]?.workerId ? (
+                      <Tooltip title={actors[actorId].workerId} arrow>
+                        <Box
+                          sx={{
+                            maxWidth: "120px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {actors[actorId].workerId}
+                        </Box>
+                      </Tooltip>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
                   <TableCell align="center">
@@ -644,14 +684,14 @@ const ActorTable = ({
                     {address?.ipAddress ? address?.ipAddress : "-"}
                   </TableCell>
                   <TableCell align="center">
-                    {address?.rayletId ? (
-                      <Tooltip title={address?.rayletId} arrow>
+                    {address?.nodeId ? (
+                      <Tooltip title={address?.nodeId} arrow>
                         <Box sx={rowStyles.idCol}>
                           <Link
                             component={RouterLink}
-                            to={generateNodeLink(address.rayletId)}
+                            to={generateNodeLink(address.nodeId)}
                           >
-                            {address?.rayletId}
+                            {address?.nodeId}
                           </Link>
                         </Box>
                       </Tooltip>

@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
@@ -114,7 +116,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
-  /// \return Void.
   void StartOrUpdateWaitRequest(
       const WorkerID &worker_id,
       const std::vector<rpc::ObjectReference> &required_objects);
@@ -125,7 +126,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker whose `ray.wait` request we should
   /// cancel.
-  /// \return Void.
   void CancelWaitRequest(const WorkerID &worker_id);
 
   /// Start or update a worker's `ray.get` request. This will attempt to make
@@ -137,7 +137,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
-  /// \return Void.
   void StartOrUpdateGetRequest(const WorkerID &worker_id,
                                const std::vector<rpc::ObjectReference> &required_objects);
 
@@ -147,7 +146,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker whose `ray.get` request we should
   /// cancel.
-  /// \return Void.
   void CancelGetRequest(const WorkerID &worker_id);
 
   /// Request dependencies for a queued task. This will attempt to make any
@@ -158,7 +156,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param task_id The task that requires the objects.
   /// \param required_objects The objects required by the task.
-  /// \return Void.
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects,
                                const TaskMetricsKey &task_key);
@@ -170,7 +167,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param task_id The task that requires the objects.
   /// \param required_objects The objects required by the task.
-  /// \return Void.
   void RemoveTaskDependencies(const TaskID &task_id);
 
   /// Handle an object becoming locally available.
@@ -234,47 +230,47 @@ class DependencyManager : public TaskDependencyManagerInterface {
     TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
                      CounterMap<std::pair<std::string, bool>> &counter_map,
                      const TaskMetricsKey &task_key)
-        : dependencies(std::move(deps)),
-          num_missing_dependencies(dependencies.size()),
-          waiting_task_counter_map(counter_map),
-          task_key(task_key) {
-      if (num_missing_dependencies > 0) {
-        waiting_task_counter_map.Increment(task_key);
+        : dependencies_(std::move(deps)),
+          num_missing_dependencies_(dependencies_.size()),
+          waiting_task_counter_map_(counter_map),
+          task_key_(task_key) {
+      if (num_missing_dependencies_ > 0) {
+        waiting_task_counter_map_.Increment(task_key_);
       }
     }
     /// The objects that the task depends on. These are the arguments to the
     /// task. These must all be simultaneously local before the task is ready
     /// to execute. Objects are removed from this set once
     /// UnsubscribeGetDependencies is called.
-    absl::flat_hash_set<ObjectID> dependencies;
+    absl::flat_hash_set<ObjectID> dependencies_;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
-    size_t num_missing_dependencies;
+    size_t num_missing_dependencies_;
     /// Used to identify the pull request for the dependencies to the object
     /// manager.
-    uint64_t pull_request_id = 0;
+    uint64_t pull_request_id_ = 0;
     /// Reference to the counter map for metrics tracking.
-    CounterMap<std::pair<std::string, bool>> &waiting_task_counter_map;
+    CounterMap<std::pair<std::string, bool>> &waiting_task_counter_map_;
     /// The task name / is_retry tuple used for metrics tracking.
-    const TaskMetricsKey task_key;
+    const TaskMetricsKey task_key_;
 
     void IncrementMissingDependencies() {
-      if (num_missing_dependencies == 0) {
-        waiting_task_counter_map.Increment(task_key);
+      if (num_missing_dependencies_ == 0) {
+        waiting_task_counter_map_.Increment(task_key_);
       }
-      num_missing_dependencies++;
+      num_missing_dependencies_++;
     }
 
     void DecrementMissingDependencies() {
-      num_missing_dependencies--;
-      if (num_missing_dependencies == 0) {
-        waiting_task_counter_map.Decrement(task_key);
+      num_missing_dependencies_--;
+      if (num_missing_dependencies_ == 0) {
+        waiting_task_counter_map_.Decrement(task_key_);
       }
     }
 
     ~TaskDependencies() {
-      if (num_missing_dependencies > 0) {
-        waiting_task_counter_map.Decrement(task_key);
+      if (num_missing_dependencies_ > 0) {
+        waiting_task_counter_map_.Decrement(task_key_);
       }
     }
   };

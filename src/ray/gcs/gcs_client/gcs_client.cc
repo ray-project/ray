@@ -26,6 +26,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace gcs {
@@ -36,8 +37,6 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
  public:
   explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
       : rpc_client_(rpc_client) {}
-
-  ~GcsSubscriberClient() final = default;
 
   void PubsubLongPolling(
       const rpc::PubsubLongPollingRequest &request,
@@ -161,8 +160,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
   publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
 
-  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
-                 << options_.gcs_port_;
+  RAY_LOG(DEBUG) << "GcsClient connected "
+                 << BuildAddress(options_.gcs_address_, options_.gcs_port_);
 
   if (options_.should_fetch_cluster_id_) {
     RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));

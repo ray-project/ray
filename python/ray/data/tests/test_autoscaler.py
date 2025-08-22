@@ -8,14 +8,16 @@ import pytest
 
 import ray
 from ray.data import ExecutionResources
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
+from ray.data._internal.actor_autoscaler import (
     ActorPoolScalingRequest,
-    DefaultAutoscaler,
+    DefaultActorAutoscaler,
 )
+from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import (
     AutoscalingConfig,
@@ -26,10 +28,12 @@ def test_actor_pool_scaling():
     """Test `_actor_pool_should_scale_up` and `_actor_pool_should_scale_down`
     in `DefaultAutoscaler`"""
 
-    autoscaler = DefaultAutoscaler(
+    resource_manager = MagicMock(
+        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+    )
+    autoscaler = DefaultActorAutoscaler(
         topology=MagicMock(),
-        resource_manager=MagicMock(),
-        execution_id="execution_id",
+        resource_manager=resource_manager,
         config=AutoscalingConfig(
             actor_pool_util_upscaling_threshold=1.0,
             actor_pool_util_downscaling_threshold=0.5,
@@ -47,6 +51,7 @@ def test_actor_pool_scaling():
         num_pending_actors=MagicMock(return_value=0),
         num_free_task_slots=MagicMock(return_value=5),
         num_tasks_in_flight=MagicMock(return_value=15),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
         _max_actor_concurrency=1,
         get_pool_util=MagicMock(
             # NOTE: Unittest mocking library doesn't support proxying to actual
@@ -75,14 +80,16 @@ def test_actor_pool_scaling():
         yield
         setattr(mock, attr, original)
 
-    def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str]):
+    def assert_autoscaling_action(
+        *, delta: int, expected_reason: Optional[str], force: bool = False
+    ):
         nonlocal actor_pool, op, op_state
 
         assert autoscaler._derive_target_scaling_config(
             actor_pool=actor_pool,
             op=op,
             op_state=op_state,
-        ) == ActorPoolScalingRequest(delta=delta, reason=expected_reason)
+        ) == ActorPoolScalingRequest(delta=delta, force=force, reason=expected_reason)
 
     # Should scale up since the util above the threshold.
     assert actor_pool.get_pool_util() == 1.5
@@ -136,6 +143,7 @@ def test_actor_pool_scaling():
             assert_autoscaling_action(
                 delta=-1,
                 expected_reason="consumed all inputs",
+                force=True,
             )
 
     # Should scale down only once all inputs have been already dispatched AND
@@ -145,6 +153,7 @@ def test_actor_pool_scaling():
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,
+                    force=True,
                     expected_reason="consumed all inputs",
                 )
 
@@ -190,6 +199,13 @@ def test_actor_pool_scaling():
             expected_reason="pool exceeding max size",
         )
 
+    # Should no-op because the op has no budget.
+    with patch(resource_manager, "get_budget", ExecutionResources.zero()):
+        assert_autoscaling_action(
+            delta=0,
+            expected_reason="exceeded resource limits",
+        )
+
 
 def test_cluster_scaling():
     """Test `_try_scale_up_cluster` in `DefaultAutoscaler`"""
@@ -224,15 +240,14 @@ def test_cluster_scaling():
         op2: op_state2,
     }
 
-    autoscaler = DefaultAutoscaler(
+    autoscaler = DefaultClusterAutoscaler(
         topology=topology,
         resource_manager=MagicMock(),
         execution_id="execution_id",
-        config=AutoscalingConfig(),
     )
 
     autoscaler._send_resource_request = MagicMock()
-    autoscaler._try_scale_up_cluster()
+    autoscaler.try_trigger_scaling()
 
     autoscaler._send_resource_request.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 2}, {"CPU": 2}]

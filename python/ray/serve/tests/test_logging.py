@@ -6,6 +6,7 @@ import re
 import string
 import sys
 import time
+import uuid
 from contextlib import redirect_stderr
 from pathlib import Path
 from typing import List, Tuple
@@ -423,6 +424,44 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
             log_format=log_format,
             context_info=context_info,
         )
+
+
+def test_http_access_log_in_proxy_logs_file(serve_instance):
+    name = "deployment_name"
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        @fastapi_app.get("/")
+        def get_root(self):
+            return "Hello World!"
+
+    serve.run(Handler.bind(), logging_config={"encoding": "TEXT"})
+
+    # Get log file information
+    nodes = state_api.list_nodes()
+    serve_log_dir = get_serve_logs_dir()
+    node_ip_address = nodes[0].node_ip
+    proxy_log_file_name = get_component_file_name(
+        "proxy", node_ip_address, component_type=None, suffix=".log"
+    )
+    proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
+
+    request_id = str(uuid.uuid4())
+    response = httpx.get("http://localhost:8000", headers={"X-Request-ID": request_id})
+    assert response.status_code == 200
+
+    def verify_request_id_in_logs(proxy_log_path, request_id):
+        with open(proxy_log_path, "r") as f:
+            for line in f:
+                if request_id in line:
+                    return True
+        return False
+
+    wait_for_condition(
+        verify_request_id_in_logs, proxy_log_path=proxy_log_path, request_id=request_id
+    )
 
 
 def test_handle_access_log(serve_instance):
@@ -1133,39 +1172,44 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     httpx.get(url, timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
-    from_serve_logger_check = False
-    from_print_check = False
-    from_error_check = False
-    direct_from_stdout = False
-    direct_from_stderr = False
-    multiline_log = False
-    for log_file in os.listdir(logs_dir):
-        if log_file.startswith("replica_default_disable_stdout"):
-            with open(logs_dir / log_file) as f:
-                for line in f:
-                    structured_log = json.loads(line)
-                    message = structured_log["message"]
-                    exc_text = structured_log.get("exc_text", "")
-                    if "from_serve_logger" in message:
-                        from_serve_logger_check = True
-                    elif "from_print" in message:
-                        from_print_check = True
+    def _all_expected_logs_exist():
+        from_serve_logger_check = False
+        from_print_check = False
+        from_error_check = False
+        direct_from_stdout = False
+        direct_from_stderr = False
+        multiline_log = False
 
-                    # Error was logged from replica directly.
-                    elif "from_error" in exc_text:
-                        from_error_check = True
-                    elif "direct_from_stdout" in message:
-                        direct_from_stdout = True
-                    elif "direct_from_stderr" in message:
-                        direct_from_stderr = True
-                    elif "this\nis\nmultiline\nlog\n" in message:
-                        multiline_log = True
-    assert from_serve_logger_check
-    assert from_print_check
-    assert from_error_check
-    assert direct_from_stdout
-    assert direct_from_stderr
-    assert multiline_log
+        for log_file in os.listdir(logs_dir):
+            if log_file.startswith("replica_default_disable_stdout"):
+                with open(logs_dir / log_file) as f:
+                    for line in f:
+                        structured_log = json.loads(line)
+                        message = structured_log["message"]
+                        exc_text = structured_log.get("exc_text", "")
+
+                        if "from_serve_logger" in message:
+                            from_serve_logger_check = True
+                        elif "from_print" in message:
+                            from_print_check = True
+                        elif "from_error" in exc_text:
+                            from_error_check = True
+                        elif "direct_from_stdout" in message:
+                            direct_from_stdout = True
+                        elif "direct_from_stderr" in message:
+                            direct_from_stderr = True
+                        elif "this\nis\nmultiline\nlog\n" in message:
+                            multiline_log = True
+
+        assert from_serve_logger_check
+        assert from_print_check
+        assert from_error_check
+        assert direct_from_stdout
+        assert direct_from_stderr
+        assert multiline_log
+        return True
+
+    wait_for_condition(_all_expected_logs_exist)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to look for temp dir.")

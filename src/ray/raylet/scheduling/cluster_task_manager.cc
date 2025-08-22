@@ -23,6 +23,7 @@
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace raylet {
@@ -76,8 +77,8 @@ namespace {
 void ReplyCancelled(const internal::Work &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
-  auto reply = work.reply;
-  auto callback = work.callback;
+  auto reply = work.reply_;
+  auto callback = work.callback_;
   reply->set_canceled(true);
   reply->set_failure_type(failure_type);
   reply->set_scheduling_failure_message(scheduling_failure_message);
@@ -95,7 +96,7 @@ bool ClusterTaskManager::CancelTasks(
       tasks_to_schedule_, [&](const std::shared_ptr<internal::Work> &work) {
         if (predicate(work)) {
           RAY_LOG(DEBUG) << "Canceling task "
-                         << work->task.GetTaskSpecification().TaskId()
+                         << work->task_.GetTaskSpecification().TaskId()
                          << " from schedule queue.";
           ReplyCancelled(*work, failure_type, scheduling_failure_message);
           tasks_cancelled = true;
@@ -109,7 +110,7 @@ bool ClusterTaskManager::CancelTasks(
       infeasible_tasks_, [&](const std::shared_ptr<internal::Work> &work) {
         if (predicate(work)) {
           RAY_LOG(DEBUG) << "Canceling task "
-                         << work->task.GetTaskSpecification().TaskId()
+                         << work->task_.GetTaskSpecification().TaskId()
                          << " from infeasible queue.";
           ReplyCancelled(*work, failure_type, scheduling_failure_message);
           tasks_cancelled = true;
@@ -158,7 +159,7 @@ bool ClusterTaskManager::IsWorkWithResourceShape(
     const std::shared_ptr<internal::Work> &work,
     const std::vector<ResourceSet> &target_resource_shapes) {
   SchedulingClass scheduling_class =
-      work->task.GetTaskSpecification().GetSchedulingClass();
+      work->task_.GetTaskSpecification().GetSchedulingClass();
   ResourceSet resource_set =
       TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).resource_set;
   for (const auto &target_resource_shape : target_resource_shapes) {
@@ -176,8 +177,8 @@ bool ClusterTaskManager::CancelAllTasksOwnedBy(
   // Only tasks and regular actors are canceled because their lifetime is
   // the same as the owner.
   auto predicate = [node_id](const std::shared_ptr<internal::Work> &work) {
-    return !work->task.GetTaskSpecification().IsDetachedActor() &&
-           work->task.GetTaskSpecification().CallerNodeId() == node_id;
+    return !work->task_.GetTaskSpecification().IsDetachedActor() &&
+           work->task_.GetTaskSpecification().CallerNodeId() == node_id;
   };
 
   return CancelTasks(predicate, failure_type, scheduling_failure_message);
@@ -190,8 +191,8 @@ bool ClusterTaskManager::CancelAllTasksOwnedBy(
   // Only tasks and regular actors are canceled because their lifetime is
   // the same as the owner.
   auto predicate = [worker_id](const std::shared_ptr<internal::Work> &work) {
-    return !work->task.GetTaskSpecification().IsDetachedActor() &&
-           work->task.GetTaskSpecification().CallerWorkerId() == worker_id;
+    return !work->task_.GetTaskSpecification().IsDetachedActor() &&
+           work->task_.GetTaskSpecification().CallerWorkerId() == worker_id;
   };
 
   return CancelTasks(predicate, failure_type, scheduling_failure_message);
@@ -212,7 +213,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       // there are not enough available resources blocks other
       // tasks from being scheduled.
       const std::shared_ptr<internal::Work> &work = *work_it;
-      RayTask task = work->task;
+      RayTask task = work->task_;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
       auto scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
@@ -268,13 +269,12 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       // Only announce the first item as infeasible.
       auto &cur_work_queue = shapes_it->second;
       const auto &work = cur_work_queue[0];
-      const RayTask task = work->task;
+      const RayTask task = work->task_;
       if (announce_infeasible_task_) {
         announce_infeasible_task_(task);
       }
 
-      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it++);
@@ -306,7 +306,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     // We only need to check the first item because every task has the same shape.
     // If the first entry is infeasible, that means everything else is the same.
     const auto work = work_queue[0];
-    RayTask task = work->task;
+    RayTask task = work->task_;
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
     bool is_infeasible;
@@ -328,7 +328,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_[shapes_it->first] = std::move(shapes_it->second);
       infeasible_tasks_.erase(shapes_it++);
     }
   }
@@ -339,7 +339,7 @@ bool ClusterTaskManager::CancelTask(
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   auto predicate = [task_id](const std::shared_ptr<internal::Work> &work) {
-    return work->task.GetTaskSpecification().TaskId() == task_id;
+    return work->task_.GetTaskSpecification().TaskId() == task_id;
   };
 
   return CancelTasks(predicate, failure_type, scheduling_failure_message);
@@ -373,7 +373,7 @@ const RayTask *ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
       const auto &work = *work_it;
-      const auto &task = work_it->task;
+      const auto &task = work_it->task_;
 
       // If the work is not in the waiting state, it will be scheduled soon or won't be
       // scheduled. Consider as non-pending.
@@ -426,17 +426,17 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
     return;
   }
 
-  auto send_reply_callback = work->callback;
+  auto send_reply_callback = work->callback_;
 
-  if (work->grant_or_reject) {
-    work->reply->set_rejected(true);
+  if (work->grant_or_reject_) {
+    work->reply_->set_rejected(true);
     send_reply_callback();
     return;
   }
 
   internal_stats_.TaskSpilled();
 
-  const auto &task = work->task;
+  const auto &task = work->task_;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
@@ -451,11 +451,11 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   RAY_CHECK(node_info_ptr)
       << "Spilling back to a node manager, but no GCS info found for node "
       << spillback_to;
-  auto reply = work->reply;
+  auto reply = work->reply_;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();
 }

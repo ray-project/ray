@@ -96,6 +96,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       const auto &resources = scheduling_class_descriptor.resource_set.GetResourceMap();
+      const auto &label_selectors = scheduling_class_descriptor.label_selector;
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
@@ -109,6 +110,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
+
+      // Add label selectors
+      *by_shape_entry->add_label_selectors() = label_selectors.ToProto();
 
       if (is_infeasible) {
         by_shape_entry->set_num_infeasible_requests_queued(count);
@@ -135,7 +139,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         auto cnt = pair.second.size();
         // We should only report dispatching tasks that do not have resources allocated.
         for (const auto &task : pair.second) {
-          if (task->allocated_instances) {
+          if (task->allocated_instances_) {
             cnt--;
           }
         }

@@ -25,6 +25,7 @@ from ray.util.annotations import PublicAPI, RayDeprecationWarning
 from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
+    import ray.tune.progress_reporter
     from ray.tune.callback import Callback
     from ray.tune.execution.placement_groups import PlacementGroupFactory
     from ray.tune.experimental.output import AirVerbosity
@@ -575,9 +576,7 @@ class RunConfig:
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
-    progress_reporter: Optional[
-        "ray.tune.progress_reporter.ProgressReporter"  # noqa: F821
-    ] = None
+    progress_reporter: Optional["ray.tune.progress_reporter.ProgressReporter"] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated

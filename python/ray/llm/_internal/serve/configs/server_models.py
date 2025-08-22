@@ -1,5 +1,4 @@
 import os
-import time
 from enum import Enum
 from typing import (
     Any,
@@ -7,9 +6,6 @@ from typing import (
     List,
     Optional,
     Sequence,
-    Set,
-    Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -17,7 +13,6 @@ from typing import (
 import pydantic
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
     PositiveInt,
     PrivateAttr,
@@ -34,19 +29,14 @@ from ray.llm._internal.common.utils.cloud_utils import (
 )
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
-    MAX_NUM_STOPPING_SEQUENCES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
-    ErrorResponse,
-    ResponseFormatType,
-)
-from ray.llm._internal.serve.configs.prompt_formats import (
-    Prompt,
+from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
+    SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
@@ -86,16 +76,6 @@ class LLMEngine(str, Enum):
     vLLM = "vLLM"
 
 
-class JSONModeOptions(BaseModelExtended):
-    num_processes: int = Field(
-        default=8,
-        description="The number of background processes for each replica.",
-    )
-    recreate_failed_actors: bool = Field(
-        default=True, description="Whether to restart failed JSON mode actors."
-    )
-
-
 class LoraConfig(BaseModelExtended):
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
@@ -131,6 +111,7 @@ class LoraConfig(BaseModelExtended):
 
 
 class ModelLoadingConfig(BaseModelExtended):
+
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
@@ -157,22 +138,17 @@ EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 
 
 class LLMConfig(BaseModelExtended):
-    # model_config is a Pydantic setting. This setting merges with
-    # model_configs in parent classes.
-    model_config = ConfigDict(
-        extra="forbid",
-    )
 
     runtime_env: Optional[Dict[str, Any]] = Field(
-        None,
+        default=None,
         description=(
             "The runtime_env to use for the model deployment replica "
             "and the engine workers."
         ),
     )
 
-    model_loading_config: ModelLoadingConfig = Field(
-        description="The settings for how to download and expose the model."
+    model_loading_config: Union[Dict[str, Any], ModelLoadingConfig] = Field(
+        description="The settings for how to download and expose the model. Validated against ModelLoadingConfig."
     )
 
     llm_engine: str = Field(
@@ -202,8 +178,9 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[LoraConfig] = Field(
-        default=None, description="Settings for LoRA adapter."
+    lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
+        default=None,
+        description="Settings for LoRA adapter. Validated against LoraConfig.",
     )
 
     deployment_config: Dict[str, Any] = Field(
@@ -215,7 +192,7 @@ class LLMConfig(BaseModelExtended):
             `autoscaling_config`, `max_queued_requests`, `user_config`,
             `health_check_period_s`, `health_check_timeout_s`,
             `graceful_shutdown_wait_loop_s`, `graceful_shutdown_timeout_s`,
-            `logging_config`.
+            `logging_config`, `request_router_config`.
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
@@ -234,7 +211,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        False,
+        default=False,
         description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
     )
 
@@ -248,8 +225,16 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        try:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            self._supports_vision = hasattr(hf_config, "vision_config")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                f"Original error: {repr(e)}"
+            ) from e
 
     def _set_model_architecture(
         self,
@@ -261,9 +246,23 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures") and hf_config.architectures:
-                self._model_architecture = hf_config.architectures[0]
+            try:
+                hf_config = transformers.PretrainedConfig.from_pretrained(
+                    model_id_or_path
+                )
+                if (
+                    hf_config
+                    and hasattr(hf_config, "architectures")
+                    and hf_config.architectures
+                ):
+                    self._model_architecture = hf_config.architectures[0]
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                    f"Original error: {repr(e)}"
+                ) from e
 
         if model_architecture:
             self._model_architecture = model_architecture
@@ -335,6 +334,47 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
+    @field_validator("model_loading_config")
+    def validate_model_loading_config(
+        cls, value: Union[Dict[str, Any], ModelLoadingConfig]
+    ) -> ModelLoadingConfig:
+        """Validates the model loading config dictionary."""
+        if isinstance(value, ModelLoadingConfig):
+            return value
+
+        try:
+            model_loading_config = ModelLoadingConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid model_loading_config: {value}") from e
+
+        return model_loading_config
+
+    @field_validator("lora_config")
+    def validate_lora_config(
+        cls, value: Optional[Union[Dict[str, Any], LoraConfig]]
+    ) -> Optional[LoraConfig]:
+        """Validates the lora config dictionary."""
+        if value is None or isinstance(value, LoraConfig):
+            return value
+
+        try:
+            lora_config = LoraConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid lora_config: {value}") from e
+
+        return lora_config
+
+    @model_validator(mode="after")
+    def _check_log_stats_with_metrics(self):
+        # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
+        if self.log_engine_metrics and self.engine_kwargs.get("disable_log_stats"):
+            raise ValueError(
+                "disable_log_stats cannot be set to True when log_engine_metrics is enabled. "
+                "Engine metrics require log stats to be enabled."
+            )
+
+        return self
+
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:
@@ -372,6 +412,50 @@ class LLMConfig(BaseModelExtended):
 
         return self._engine_config
 
+    def update_engine_kwargs(self, **kwargs: Any) -> None:
+        """Update the engine_kwargs and the engine_config engine_kwargs.
+
+        This is typically called during engine starts, when certain engine_kwargs
+        (e.g., data_parallel_rank) become available.
+        """
+        self.engine_kwargs.update(kwargs)
+        # engine_config may be created before engine starts, this makes sure
+        # the engine_config is updated with the latest engine_kwargs.
+        if self._engine_config:
+            self._engine_config.engine_kwargs.update(kwargs)
+
+    def _merge_replica_actor_and_child_actor_bundles(
+        self,
+        child_actor_bundles: List[Dict[str, float]],
+        replica_actor_bundle: Dict[str, float],
+    ) -> List[Dict[str, float]]:
+        """Sum up the bundles from replica actor bundles with the first bundle from child actor bundles.
+
+        This is because the replica actor will use the first bundle in the list, and we want to collocate the replica actor with the child actor.
+        So we need to group them together.
+
+        So for example:
+        child_actor_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1, "CPU": 1}]
+        replica_actor_bundle = {"GPU": 0, "CPU": 1, "memory": 100}
+        return [{"GPU": 1, "CPU": 2, "memory": 100}, {"GPU": 1, "CPU": 1}]
+        """
+
+        if not child_actor_bundles:
+            return [replica_actor_bundle]
+
+        if not replica_actor_bundle:
+            return child_actor_bundles
+
+        first_bundle = child_actor_bundles[0]
+        bundle_key_set = set(first_bundle.keys()) | set(replica_actor_bundle.keys())
+
+        for key in bundle_key_set:
+            first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(
+                key, 0
+            )
+
+        return [first_bundle] + child_actor_bundles[1:]
+
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config
         engine_config = self.get_engine_config()
@@ -397,15 +481,17 @@ class LLMConfig(BaseModelExtended):
             )
 
         try:
-            bundles = engine_config.placement_bundles
+            child_actor_bundles = engine_config.placement_bundles
         except ValueError:
             # May happen if all bundles are empty.
-            bundles = []
+            child_actor_bundles = []
 
-        bundles = [replica_actor_resources] + bundles
+        pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
+            child_actor_bundles, replica_actor_resources
+        )
         deployment_config.update(
             {
-                "placement_group_bundles": bundles,
+                "placement_group_bundles": pg_bundles,
                 "placement_group_strategy": engine_config.placement_strategy,
             }
         )
@@ -448,7 +534,7 @@ class LLMConfig(BaseModelExtended):
             The dictionary to use in .options() when creating the deployment.
         """
 
-        deployment_config = self._set_deployment_placement_options()
+        deployment_options = self._set_deployment_placement_options()
 
         default_runtime_env = ray.get_runtime_context().runtime_env
         if ENABLE_WORKER_PROCESS_SETUP_HOOK:
@@ -456,22 +542,69 @@ class LLMConfig(BaseModelExtended):
                 "worker_process_setup_hook"
             ] = "ray.llm._internal.serve._worker_process_setup_hook"
 
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
         ray_actor_options["runtime_env"] = {
             **default_runtime_env,
             # Existing runtime_env should take precedence over the default.
             **ray_actor_options.get("runtime_env", {}),
             **(self.runtime_env if self.runtime_env else {}),
         }
-        deployment_config["ray_actor_options"] = ray_actor_options
+        deployment_options["ray_actor_options"] = ray_actor_options
 
         # Set the name of the deployment config to map to the model ID.
-        if "name" not in deployment_config:
-            deployment_config["name"] = self._get_deployment_name()
+        if "name" not in deployment_options:
+            deployment_options["name"] = self._get_deployment_name()
         if name_prefix:
-            deployment_config["name"] = name_prefix + deployment_config["name"]
+            deployment_options["name"] = name_prefix + deployment_options["name"]
 
-        return deployment_config
+        # Configure DP deployment options.
+        # TODO(rui): move the following to DPServer, e.g.,
+        # deployment_options = DPServer.get_deployment_options(llm_config)
+        dp_size = self.engine_kwargs.get("data_parallel_size", None)
+        if dp_size is not None:
+            if "num_replicas" in deployment_options:
+                raise ValueError(
+                    "num_replicas should not be specified for DP deployment, "
+                    "use engine_kwargs.data_parallel_size instead."
+                )
+            if "autoscaling_config" in deployment_options:
+                raise ValueError(
+                    "autoscaling_config is not supported for DP deployment, "
+                    "use engine_kwargs.data_parallel_size to set a fixed number "
+                    "of replicas instead."
+                )
+            deployment_options["num_replicas"] = dp_size
+            deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
+            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
+                logger.warning(
+                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
+                    "is not supported. Using STRICT_PACK instead."
+                )
+                deployment_options["placement_group_strategy"] = "STRICT_PACK"
+
+        return deployment_options
+
+    def setup_engine_backend(self):
+        self._setup_kv_connector_backend()
+
+    def _setup_kv_connector_backend(self):
+        """Private method to setup kv connector depending on the local deployment state"""
+        # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
+        kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
+        if not kv_transfer_config:
+            return
+
+        kv_connector = kv_transfer_config.get("kv_connector")
+        if not kv_connector:
+            raise ValueError("Connector type is not specified.")
+
+        kv_connector_backend_class = SUPPORTED_KV_CONNECTOR_BACKENDS.get(kv_connector)
+        if not kv_connector_backend_class:
+            raise ValueError(f"Unsupported connector type: {kv_connector}")
+
+        # 2. Setup the backend
+        kv_connector_backend = kv_connector_backend_class(self)
+        kv_connector_backend.setup()
 
 
 def _is_yaml_file(filename: str) -> bool:
@@ -549,7 +682,7 @@ def parse_args(
     return models
 
 
-class LLMServingArgs(BaseModel):
+class LLMServingArgs(BaseModelExtended):
     llm_configs: List[Union[str, LLMConfig]] = Field(
         description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
     )
@@ -572,56 +705,6 @@ class LLMServingArgs(BaseModel):
         return LLMServingArgs(llm_configs=llm_configs)
 
 
-TModel = TypeVar("TModel", bound="Model")
-
-
-class ModelData(BaseModel):
-    model_config = ConfigDict(protected_namespaces=tuple())
-
-    id: str
-    object: str
-    owned_by: str
-    permission: List[str]
-    rayllm_metadata: Dict[str, Any]
-
-    @property
-    def model_type(self) -> str:
-        return self.rayllm_metadata["engine_config"]["model_type"]
-
-
-class Model(BaseModel):
-    data: List[ModelData]
-    object: str = "list"
-
-    @classmethod
-    def list(cls) -> TModel:
-        pass
-
-
-class FinishReason(str, Enum):
-    LENGTH = "length"
-    STOP = "stop"
-    ERROR = "error"
-    CANCELLED = "cancelled"
-
-    def __str__(self) -> str:
-        return self.value
-
-    @classmethod
-    def from_vllm_finish_reason(
-        cls, finish_reason: Optional[str]
-    ) -> Optional["FinishReason"]:
-        if finish_reason is None:
-            return None
-        if finish_reason == "stop":
-            return cls.STOP
-        if finish_reason == "length":
-            return cls.LENGTH
-        if finish_reason == "abort":
-            return cls.CANCELLED
-        return cls.STOP
-
-
 class DiskMultiplexConfig(BaseModelExtended):
     model_id: str
     max_total_tokens: Optional[int]
@@ -629,337 +712,3 @@ class DiskMultiplexConfig(BaseModelExtended):
 
     # this is a per process id assigned to the model
     lora_assigned_int_id: int
-
-
-class ComputedPropertyMixin:
-    """
-    Include properties in the dict and json representations of the model.
-    """
-
-    # Replace with pydantic.computed_field once it's available
-    @classmethod
-    def get_properties(cls):
-        return [prop for prop in dir(cls) if isinstance(getattr(cls, prop), property)]
-
-    def model_dump(self, *args, **kwargs):
-        self.__dict__.update(
-            {prop: getattr(self, prop) for prop in self.get_properties()}
-        )
-        return super().model_dump(*args, **kwargs)  # type: ignore
-
-    def model_dump_json(
-        self,
-        *args,
-        **kwargs,
-    ) -> str:
-        self.__dict__.update(
-            {prop: getattr(self, prop) for prop in self.get_properties()}
-        )
-
-        return super().model_dump_json(*args, **kwargs)  # type: ignore
-
-
-class LogProb(BaseModel):
-    logprob: float
-    token: str
-    bytes: List[int]
-
-
-class LogProbs(BaseModel):
-    token: str
-    logprob: float
-    bytes: List[int]
-    top_logprobs: List[LogProb]
-
-    @classmethod
-    def create(cls, logprobs: List[LogProb], top_logprobs: Optional[int] = None):
-        assert len(logprobs) > 0, "logprobs must be a non-empty list"
-        token = logprobs[0].token
-        logprob = logprobs[0].logprob
-        bytes = logprobs[0].bytes
-        all_logprobs = logprobs if top_logprobs else []
-        ret = cls(token=token, logprob=logprob, bytes=bytes, top_logprobs=all_logprobs)
-        return ret
-
-
-class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
-    """The response from a query to a RayLLM Model.
-
-    Args:
-        generated_text: The generated text.
-        logprobs: Log probabilities of each token and possibly some of the unchosen tokens.
-        num_input_tokens: The number of input tokens.
-        num_generated_tokens: The number of generated tokens.
-        num_input_tokens_batch: The number of input tokens in the batch.
-        num_generated_tokens_batch: The number of generated tokens in the batch.
-        preprocessing_time: The time spent preprocessing the request.
-        generation_time: The time spent generating the response.
-        timestamp: The timestamp of the response.
-        finish_reason: The reason the generation finished.
-        error: The error, if any.
-        metadata: The metadata for internal usage.
-    """
-
-    generated_text: Optional[str] = None
-    logprobs: Optional[List[LogProbs]] = None
-    num_input_tokens: Optional[int] = None
-    num_input_tokens_batch: Optional[int] = None
-    num_generated_tokens: Optional[int] = None
-    num_generated_tokens_batch: Optional[int] = None
-    preprocessing_time: Optional[float] = None
-    generation_time: Optional[float] = None
-    timestamp: Optional[float] = Field(default_factory=time.time)
-    finish_reason: Optional[str] = None
-    error: Optional[ErrorResponse] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def text_or_error_or_finish_reason(cls, values):
-        if (
-            values.get("generated_text") is None
-            and values.get("error") is None
-            and values.get("finish_reason") is None
-        ):
-            raise ValueError(
-                "'generated_text', 'error', or 'finish_reason' must be set."
-            )
-        return values
-
-    @classmethod
-    def merge_stream(cls, *responses: "LLMRawResponse") -> "LLMRawResponse":
-        """
-        Merge a stream of responses into a single response.
-
-        The generated text is concatenated. Fields are maxed, except for
-        num_generated_tokens and generation_time, which are summed.
-        """
-        if len(responses) == 1:
-            return responses[0]
-
-        generated_text = (
-            None
-            if responses[0].generated_text is None
-            else "".join([response.generated_text or "" for response in responses])
-        )
-        num_input_tokens = [
-            response.num_input_tokens
-            for response in responses
-            if response.num_input_tokens is not None
-        ]
-        max_num_input_tokens = max(num_input_tokens) if num_input_tokens else None
-        num_input_tokens_batch = [
-            response.num_input_tokens_batch
-            for response in responses
-            if response.num_input_tokens_batch is not None
-        ]
-        max_num_input_tokens_batch = (
-            max(num_input_tokens_batch) if num_input_tokens_batch else None
-        )
-        num_generated_tokens = [
-            response.num_generated_tokens
-            for response in responses
-            if response.num_generated_tokens is not None
-        ]
-        total_generated_tokens = (
-            sum(num_generated_tokens) if num_generated_tokens else None
-        )
-        num_generated_tokens_batch = [
-            response.num_generated_tokens_batch
-            for response in responses
-            if response.num_generated_tokens_batch is not None
-        ]
-        total_generated_tokens_batch = (
-            sum(num_generated_tokens_batch) if num_generated_tokens_batch else None
-        )
-        preprocessing_time = [
-            response.preprocessing_time
-            for response in responses
-            if response.preprocessing_time is not None
-        ]
-        max_preprocessing_time = max(preprocessing_time) if preprocessing_time else None
-        generation_time = [
-            response.generation_time
-            for response in responses
-            if response.generation_time is not None
-        ]
-        total_generation_time = sum(generation_time) if generation_time else None
-        error = next(
-            (response.error for response in reversed(responses) if response.error), None
-        )
-        logprobs = []
-        for response in responses:
-            if response.logprobs:
-                logprobs.extend(response.logprobs)
-
-        return cls(
-            generated_text=generated_text,
-            logprobs=logprobs,
-            num_input_tokens=max_num_input_tokens,
-            num_input_tokens_batch=max_num_input_tokens_batch,
-            num_generated_tokens=total_generated_tokens,
-            num_generated_tokens_batch=total_generated_tokens_batch,
-            preprocessing_time=max_preprocessing_time,
-            generation_time=total_generation_time,
-            timestamp=responses[-1].timestamp,
-            finish_reason=responses[-1].finish_reason,
-            error=error,
-            metadata=responses[-1].metadata,
-        )
-
-    @property
-    def total_time(self) -> Optional[float]:
-        if self.generation_time is None and self.preprocessing_time is None:
-            return None
-        return (self.preprocessing_time or 0) + (self.generation_time or 0)
-
-    @property
-    def num_total_tokens(self) -> Optional[float]:
-        try:
-            return (self.num_input_tokens or 0) + (self.num_generated_tokens or 0)
-        except Exception:
-            return None
-
-    @property
-    def num_total_tokens_batch(self) -> Optional[float]:
-        try:
-            return (self.num_input_tokens_batch or 0) + (
-                self.num_generated_tokens_batch or 0
-            )
-        except Exception:
-            return None
-
-    def unpack(self) -> Tuple["LLMRawResponse", ...]:
-        return (self,)
-
-
-class BatchedLLMRawResponse(LLMRawResponse):
-    # Same as LLMRawResponse, but persists the individual responses
-    # that were batched together to produce this response.
-
-    _individual_responses: Optional[List[LLMRawResponse]] = PrivateAttr(None)
-
-    @classmethod
-    def merge_stream(cls, *responses: LLMRawResponse) -> LLMRawResponse:
-        if len(responses) == 1:
-            return responses[0]
-        obj = super().merge_stream(*responses)
-        obj._individual_responses = list(responses)  # type: ignore
-        return obj
-
-    def unpack(self) -> Tuple[LLMRawResponse]:
-        return tuple(self._individual_responses or [])
-
-
-def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
-    """
-    Merge overwrite into base. Modify base inplace.
-    """
-
-    for key in overwrite:
-        if (
-            key in base
-            and isinstance(base[key], dict)
-            and isinstance(overwrite[key], dict)
-        ):
-            merge_dicts(base[key], overwrite[key])
-        else:
-            base[key] = overwrite[key]
-    return base
-
-
-class SamplingParams(BaseModelExtended):
-    """Parameters for controlling text generation sampling.
-
-    Args:
-        max_tokens: The maximum number of tokens to generate. Defaults to inf.
-        temperature: What sampling temperature to use.
-        top_p: An alternative to sampling with temperature, called nucleus sampling.
-        n: How many completions to generate for each prompt.
-        logprobs: Include the log probabilities on the `logprobs` most likely
-            tokens, as well the chosen tokens.
-        top_logprobs: The number of logprobs to return. Defaults to 1. `logprobs`
-            must be set to `True` in order to use top_logprobs.
-        stop: Up to 4 sequences where the API will stop generating further tokens.
-            The returned text will not contain the stop sequence.
-        stop_tokens: Tokens to stop on (applied before detokenization).
-        presence_penalty: Number between -2.0 and 2.0.
-            Positive values penalize new tokens based on whether they appear in
-            the text so far, increasing the model's likelihood to talk about
-            new topics.
-        frequency_penalty: Number between -2.0 and 2.0. Positive values penalize
-            new tokens based on their existing frequency in the text so far,
-            decreasing the model's likelihood to repeat the same line verbatim.
-        best_of: Generates `best_of` completions server-side and returns the "best".
-        logit_bias: Modify the likelihood of specified tokens appearing in
-            the completion.
-        response_format: Format to return the final response in. Can be for ex:
-            response_format={"type": "json", "schema": "{...}"}
-    """
-
-    _ignored_fields: Set[str] = set()
-
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    n: int = 1
-    logprobs: Optional[bool] = None
-    top_logprobs: Optional[int] = None
-    logit_bias: Optional[Dict[str, float]] = None
-    stop: Optional[List[str]] = None
-    stop_tokens: Optional[List[int]] = None
-    ignore_eos: Optional[bool] = None
-    presence_penalty: Optional[float] = None
-    frequency_penalty: Optional[float] = None
-    best_of: int = 1
-    response_format: Optional[ResponseFormatType] = None
-
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
-        if kwargs.get("exclude", None) is None:
-            kwargs["exclude"] = self._ignored_fields
-        return super().model_dump(**kwargs)
-
-    @field_validator("stop", mode="before")
-    @classmethod
-    def validate_stopping_sequences(cls, values):
-        if not values:
-            return values
-
-        unique_val = sorted(set(values))
-
-        if len(unique_val) > MAX_NUM_STOPPING_SEQUENCES:
-            TooManyStoppingSequences(
-                len(unique_val), MAX_NUM_STOPPING_SEQUENCES
-            ).raise_exception()
-
-        return list(unique_val)
-
-    @field_validator("stop_tokens", mode="before")
-    @classmethod
-    def validate_stop_tokens(cls, values):
-        if not values:
-            return values
-        return sorted(set(values))
-
-    @classmethod
-    def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
-        generate_kwargs = prompt.parameters or {}
-        if not isinstance(generate_kwargs, dict):
-            generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
-
-        return generate_kwargs
-
-    @classmethod
-    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
-        # Extract parameters object from prompt
-        generate_kwargs = cls._get_model_validate_kwargs(prompt)
-        return cls.model_validate(generate_kwargs)
-
-
-class GenerationRequest(BaseModelExtended):
-    prompt: Union[str, List[int], List[str]]
-    prompt_token_ids: Optional[List[int]] = None
-    request_id: Union[str, List[str]]
-    sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
-    stream: bool = False
-    metadata: Optional[Dict[str, Any]] = None

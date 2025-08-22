@@ -99,6 +99,10 @@ python/ray/util/spark/
 @ python spark_on_ray
 ;
 
+python/ray/runtime_env/
+@ python runtime_env_container
+;
+
 python/
 @ ml tune train data
 # Python changes might impact cross language stack in Java.
@@ -146,12 +150,9 @@ ci/docker/doctest.build.wanda.yaml
 
 release/ray_release/
 release/requirements_buildkite.*
-@ tools
-;
-
 release/*.md
 release/*.yaml
-# Do not run on config changes
+@ tools
 ;
 
 release/
@@ -171,6 +172,7 @@ ci/lint/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml
+ci/raydepsets/
 bazel/tests/
 @ tools
 ;
