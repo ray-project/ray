@@ -6,6 +6,9 @@ from typing import List, Optional
 import click
 import runfiles
 from networkx import DiGraph, topological_sort
+import tempfile
+import difflib
+import shutil
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -42,19 +45,19 @@ def cli():
     help="The name of the dependency set to load. If not specified, all dependency sets will be loaded.",
 )
 @click.option(
-    "--build-arg-set",
-    default=None,
-    help="The name of the build arg set to use. If not specified, a depset matching the name with no build arg set will be loaded.",
+    "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
 @click.option(
-    "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
+    "--verify",
+    is_flag=True,
+    help="Verify the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
 )
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
-    build_arg_set: Optional[str],
     uv_cache_dir: Optional[str],
+    verify: bool = False,
 ):
     """
     Build dependency sets from a config file.
@@ -66,10 +69,56 @@ def build(
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
     )
+    if verify:
+        copy_lock_files_to_temp_dir(manager)
     if name:
         manager.execute_single(_get_depset(manager.config.depsets, name))
     else:
         manager.execute()
+    if verify:
+        diff_lock_files(manager)
+
+
+def execute_and_verify(manager: "DependencySetManager", name):
+    manager.execute()
+    copy_lock_files_to_temp_dir(manager)
+    if name:
+        manager.execute_single(_get_depset(manager.config.depsets, name))
+    else:
+        manager.execute()
+    diff_lock_files(manager)
+
+
+def copy_lock_files_to_temp_dir(manager: "DependencySetManager"):
+    """Test the dependency set manager."""
+    manager.execute_single(_get_depset(manager.config.depsets, "ray"))
+    # TODO: verify the compiled dependencies are valid
+    # create temp directory
+    manager.temp_dir = tempfile.mkdtemp()
+    # copy existing lock files to temp directory
+    for depset in manager.config.depsets:
+        shutil.copy(depset.output, manager.temp_dir / depset.output)
+
+
+def diff_lock_files(manager: "DependencySetManager"):
+    """Diff the lock files."""
+    for depset in manager.config.depsets:
+        new_lock_file_path = Path(manager.temp_dir) / depset.output
+        if not new_lock_file_path.exists():
+            raise RuntimeError(f"Lock file {new_lock_file_path} does not exist")
+        with open(new_lock_file_path, "r") as f:
+            lock_file_contents = f.read()
+        with open(depset.output, "r") as f:
+            old_lock_file_contents = f.read()
+        diff = difflib.unified_diff(old_lock_file_contents, lock_file_contents)
+        click.echo(diff)
+    # if they are different, print the diff
+    # if they are the same, print "all good"
+    # cleanup temp directory
+    for depset in manager.config.depsets:
+        new_lock_file_path = manager.temp_dir / depset.output
+        if not new_lock_file_path.exists():
+            raise RuntimeError(f"Lock file {new_lock_file_path} does not exist")
 
 
 class DependencySetManager:
