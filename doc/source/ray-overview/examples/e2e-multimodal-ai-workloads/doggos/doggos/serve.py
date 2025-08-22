@@ -18,7 +18,7 @@ from ray import serve
     num_replicas="1",
     ray_actor_options={
         "num_gpus": 1,
-        "accelerator_type": "L4",
+        "accelerator_type": "T4",
     },
 )
 class ClassPredictor:
