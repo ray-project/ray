@@ -2224,12 +2224,14 @@ def test_parquet_write_parallel_overwrite(
 
 
 def test_read_parquet_with_none_partitioning_and_columns(tmp_path):
+    # Test for https://github.com/ray-project/ray/pull/55820.
     table = pa.table({"column": [42]})
     path = os.path.join(tmp_path, "file.parquet")
     pq.write_table(table, path)
 
     ds = ray.data.read_parquet(path, partitioning=None, columns=["column"])
-    ds.take_all()
+
+    assert ds.take_all() == [{"column": 42}]
 
 
 if __name__ == "__main__":
