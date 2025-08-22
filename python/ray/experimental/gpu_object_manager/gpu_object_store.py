@@ -11,6 +11,9 @@ from ray.util.collective.types import (
     TensorTransportMetadata,
 )
 
+from ray.experimental.collective import get_tensor_transport_manager
+from ray.experimental.collective.util import device_match_transport
+
 try:
     import torch
 except ImportError:
@@ -81,25 +84,22 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
-    from ray.experimental.collective import get_tensor_transport_manager
-    from ray.experimental.collective.util import device_match_transport
-
     backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
     device = tensor_transport_meta.tensor_device
     tensor_meta = tensor_transport_meta.tensor_meta
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    if tensor_meta and not device_match_transport(device, backend):
+        raise ValueError(
+            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
+        )
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         tensors.append(tensor)
 
-    if tensors and not device_match_transport(device, backend):
-        raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
-        )
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.recv_multiple_tensors(
         tensors,
