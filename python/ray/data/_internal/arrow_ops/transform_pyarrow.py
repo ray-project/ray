@@ -181,6 +181,7 @@ def unify_schemas(
 
     schemas = set(schema for schema in schemas)
     if len(schemas) == 1:
+        # Early exit because unifying can be expensive
         return schemas.pop()
     schemas_to_unify = []
     schema_field_overrides = {}
