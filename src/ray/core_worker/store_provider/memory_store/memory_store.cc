@@ -183,8 +183,10 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
+    // RAY_LOG(ERROR) << "Making a new RayObject with allocator";
     object_entry = object_allocator_(object, object_id);
   } else {
+    // RAY_LOG(ERROR) << "Making a new RayObject";
     object_entry = std::make_shared<RayObject>(object.GetData(),
                                                object.GetMetadata(),
                                                object.GetNestedRefs(),

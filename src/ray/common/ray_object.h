@@ -41,21 +41,21 @@ class RayObject {
   /// \param[in] copy_data Whether this class should hold a copy of data.
   RayObject(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
-            const std::vector<rpc::ObjectReference> &nested_refs,
+            std::vector<rpc::ObjectReference> nested_refs,
             bool copy_data = false,
             rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
-    Init(data, metadata, nested_refs, copy_data, tensor_transport);
+    Init(data, metadata, std::move(nested_refs), copy_data, tensor_transport);
   }
 
   /// This constructor creates a ray object instance whose data will be generated
   /// by the data factory.
   RayObject(const std::shared_ptr<Buffer> &metadata,
-            const std::vector<rpc::ObjectReference> &nested_refs,
+            std::vector<rpc::ObjectReference> nested_refs,
             std::function<std::shared_ptr<ray::Buffer>()> data_factory,
             bool copy_data = false)
       : data_factory_(std::move(data_factory)),
         metadata_(metadata),
-        nested_refs_(nested_refs),
+        nested_refs_(std::move(nested_refs)),
         has_data_copy_(copy_data),
         creation_time_nanos_(absl::GetCurrentTimeNanos()) {
     if (has_data_copy_) {
@@ -81,6 +81,17 @@ class RayObject {
   /// \param[in] error_type Error type.
   /// \param[in] ray_error_info The error information that this object body contains.
   RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info = nullptr);
+
+  RayObject(std::string underlying_string,
+            const std::shared_ptr<Buffer> &metadata,
+            std::vector<rpc::ObjectReference> nested_refs)
+      : underlying_string_(std::move(underlying_string)),
+        metadata_(metadata),
+        nested_refs_(std::move(nested_refs)) {}
+
+  bool HasString() const { return underlying_string_.has_value(); }
+
+  std::string &GetString() { return *underlying_string_; }
 
   /// Return the data of the ray object.
   std::shared_ptr<Buffer> GetData() const {
@@ -132,12 +143,12 @@ class RayObject {
  private:
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
-            const std::vector<rpc::ObjectReference> &nested_refs,
+            std::vector<rpc::ObjectReference> nested_refs,
             bool copy_data = false,
             rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     data_ = data;
     metadata_ = metadata;
-    nested_refs_ = nested_refs;
+    nested_refs_ = std::move(nested_refs);
     has_data_copy_ = copy_data;
     tensor_transport_ = tensor_transport;
     creation_time_nanos_ = absl::GetCurrentTimeNanos();
@@ -161,6 +172,8 @@ class RayObject {
   }
 
   std::shared_ptr<Buffer> data_;
+  std::optional<std::string> underlying_string_;
+
   /// The data factory is used to allocate data from the language frontend.
   /// Note that, if this is provided, `data_` should be null.
   std::function<const std::shared_ptr<Buffer>()> data_factory_ = nullptr;

@@ -1045,7 +1045,8 @@ class CoreWorker {
                               const std::vector<ObjectID> &contained_object_id,
                               const rpc::Address &caller_address,
                               int64_t *task_output_inlined_bytes,
-                              std::shared_ptr<RayObject> *return_object);
+                              std::shared_ptr<RayObject> *return_object,
+                              bool is_raw_object = false);
 
   /// Seal a return object for an executing task. The caller should already have
   /// written into the data buffer.

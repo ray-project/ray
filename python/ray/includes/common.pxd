@@ -295,7 +295,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
         CRayObject(const shared_ptr[CBuffer] &data,
                    const shared_ptr[CBuffer] &metadata,
-                   const c_vector[CObjectReference] &nested_refs)
+                   c_vector[CObjectReference] nested_refs)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const
@@ -303,6 +303,8 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
         CTensorTransport GetTensorTransport() const
+        c_bool HasString() const
+        c_string &GetString()
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::core::RayFunction":
