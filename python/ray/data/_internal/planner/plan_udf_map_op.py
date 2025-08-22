@@ -5,7 +5,17 @@ import logging
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import numpy as np
 import pandas as pd
@@ -33,6 +43,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
+    Download,
     Filter,
     FlatMap,
     MapBatches,
@@ -213,7 +224,14 @@ def plan_filter_op(
             zero_copy_batch=True,
         )
     else:
-        filter_fn, init_fn = _get_udf(op)
+        udf_is_callable_class = isinstance(op._filter_expr, CallableClass)
+        filter_fn, init_fn = _get_udf(
+            op._filter_expr,
+            op._filter_expr_args,
+            op._filter_expr_kwargs,
+            op._filter_expr_constructor_args if udf_is_callable_class else None,
+            op._filter_expr_constructor_kwargs if udf_is_callable_class else None,
+        )
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
@@ -244,7 +262,14 @@ def plan_udf_map_op(
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
-    fn, init_fn = _get_udf(op)
+    udf_is_callable_class = isinstance(op._fn, CallableClass)
+    fn, init_fn = _get_udf(
+        op._fn,
+        op._fn_args,
+        op._fn_kwargs,
+        op._fn_constructor_args if udf_is_callable_class else None,
+        op._fn_constructor_kwargs if udf_is_callable_class else None,
+    )
 
     if isinstance(op, MapBatches):
         transform_fn = _generate_transform_fn_for_map_batches(fn)
@@ -280,17 +305,182 @@ def plan_udf_map_op(
     )
 
 
-def _get_udf(op: AbstractUDFMap):
+def plan_download_op(
+    op: Download,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+    compute = get_compute(op._compute)
+    uri_column_name = op.uri_column_name
+
+    fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name,), {})
+    partition_transform_fn = _generate_transform_fn_for_map_batches(fn)
+    partition_transform_fns = [
+        # Convert input blocks to batches.
+        BlocksToBatchesMapTransformFn(
+            batch_size=None,  # TODO: Should we use op._batch_size here?
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+        ),
+        # Apply the PartitionActor function.
+        BatchMapTransformFn(partition_transform_fn),
+    ]
+    partition_map_transformer = MapTransformer(partition_transform_fns, init_fn)
+    partition_map_operator = MapOperator.create(
+        partition_map_transformer,
+        input_physical_dag,
+        data_context,
+        name="DownloadURIPartitioner",
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+    fn, init_fn = _get_udf(download_images_threaded, (uri_column_name,), {}, (), {})
+    download_transform_fn = _generate_transform_fn_for_map_batches(fn)
+    transform_fns = [
+        # Apply the download function.
+        BatchMapTransformFn(download_transform_fn),
+        # Convert output batches to blocks.
+        BuildOutputBlocksMapTransformFn.for_batches(),
+    ]
+    download_map_transformer = MapTransformer(transform_fns, init_fn)
+    download_map_operator = MapOperator.create(
+        download_map_transformer,
+        partition_map_operator,
+        data_context,
+        name="DownloadURIDownloader",
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+    return download_map_operator
+
+
+def download_images_threaded(batch, uri_column_name, max_workers=16):
+    """Optimized version that uses make_async_gen for concurrent downloads."""
+    from pyarrow import fs as pafs
+
+    from ray.data._internal.util import make_async_gen
+
+    def download_uris(uri_iterator):
+        """Function that takes an iterator of URIs and yields downloaded bytes for each."""
+        # TODO: We need to update this to use pafs.from_uri here.
+        fs = pafs.S3FileSystem(region="us-west-2")
+        for uri in uri_iterator:
+            try:
+                with fs.open_input_file(uri) as f:
+                    yield f.read()
+            except Exception as e:
+                print(f"Error downloading {uri}: {e}")
+                yield None
+
+    # Extract URIs from PyArrow table
+    uris = batch.column(uri_column_name).to_pylist()
+
+    # Use make_async_gen to download URIs concurrently
+    # This preserves the order of results to match the input URIs
+    images = list(
+        make_async_gen(
+            base_iterator=iter(uris),
+            fn=download_uris,
+            preserve_ordering=True,
+            num_workers=max_workers,
+        )
+    )
+
+    # Add the new column to the PyArrow table
+    return batch.add_column(len(batch.column_names), "image_bytes", pa.array(images))
+
+
+class PartitionActor:
+    INIT_SAMPLE_BATCH_SIZE = 25
+
+    def __init__(self, uri_column_name: str):
+        self._uri_column_name = uri_column_name
+        self._batch_size_estimate = None
+
+    def _sample_sizes(self, uri_list, max_workers=16):
+        """Fetch file sizes in parallel using ThreadPoolExecutor."""
+        from threading import ThreadPoolExecutor, as_completed
+
+        from pyarrow import fs as pafs
+
+        def get_file_size(uri):
+            # TODO: We need to update this to use pafs.from_uri here.
+            fs = pafs.S3FileSystem(region="us-west-2")
+            try:
+                return fs.get_file_info(uri).size
+            except Exception as e:
+                print(f"Error getting size for {uri}: {e}")
+                return None
+
+        file_sizes = []
+
+        # Use ThreadPoolExecutor for concurrent size fetching
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all size fetch tasks
+            futures = [executor.submit(get_file_size, uri) for uri in uri_list]
+
+            # Collect results as they complete (order doesn't matter)
+            for future in as_completed(futures):
+                try:
+                    size = future.result()
+                    if size is not None:
+                        file_sizes.append(size)
+                except Exception as e:
+                    print(f"Error in thread: {e}")
+
+        return file_sizes
+
+    def _arrow_batcher(self, table, n):
+        """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
+        num_rows = table.num_rows
+        for i in range(0, num_rows, n):
+            end_idx = min(i + n, num_rows)
+            # Use PyArrow's zero-copy slice operation
+            batch_table = table.slice(i, end_idx - i)
+            print(f"Yielding batch with len(batch): {batch_table.num_rows}")
+            yield batch_table
+
+    def __call__(self, batch):
+        import math
+
+        if self._batch_size_estimate is None:
+            # Extract URIs from PyArrow table for sampling
+            uris = batch.column(self._uri_column_name).to_pylist()
+            sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
+            file_sizes = self._sample_sizes(sample_uris)
+            file_size_estimate = sum(file_sizes) / len(file_sizes)
+            ctx = ray.data.context.DatasetContext.get_current()
+            max_bytes = ctx.target_max_block_size
+            self._batch_size_estimate = math.floor(max_bytes / file_size_estimate)
+            print(f"Batch size estimate: {self._batch_size_estimate}")
+
+        print(f"len(batch): {batch.num_rows}")
+        yield from self._arrow_batcher(batch, self._batch_size_estimate)
+
+
+def _get_udf(
+    op_fn: Callable,
+    op_fn_args: Tuple[Any, ...],
+    op_fn_kwargs: Dict[str, Any],
+    op_fn_constructor_args: Optional[Tuple[Any, ...]],
+    op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
     # be serializable.
-    udf = op._fn
-    fn_args = op._fn_args or ()
-    fn_kwargs = op._fn_kwargs or {}
+    udf = op_fn
+    fn_args = op_fn_args or ()
+    fn_kwargs = op_fn_kwargs or {}
 
     if isinstance(udf, CallableClass):
-        fn_constructor_args = op._fn_constructor_args or ()
-        fn_constructor_kwargs = op._fn_constructor_kwargs or {}
+        fn_constructor_args = op_fn_constructor_args or ()
+        fn_constructor_kwargs = op_fn_constructor_kwargs or {}
 
         is_async_udf = _is_async_udf(udf.__call__)
 

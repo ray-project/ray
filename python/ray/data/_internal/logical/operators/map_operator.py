@@ -360,3 +360,22 @@ class StreamingRepartition(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
+
+
+class Download(AbstractMap):
+    """Logical operator for download operation."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        uri_column_name: str,
+    ):
+        super().__init__("Download", input_op)
+        self._uri_column_name = uri_column_name
+
+    def can_modify_num_rows(self) -> bool:
+        return False
+
+    @property
+    def uri_column_name(self) -> str:
+        return self._uri_column_name
