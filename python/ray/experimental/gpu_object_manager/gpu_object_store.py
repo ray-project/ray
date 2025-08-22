@@ -58,9 +58,6 @@ def __ray_send__(
 
     backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
-    from ray.experimental.collective import get_tensor_transport_manager
-    from ray.experimental.collective.util import device_match_transport
-
     tensor_transport_manager = get_tensor_transport_manager(backend)
     if tensors and not device_match_transport(
         tensor_transport_meta.tensor_device, backend
