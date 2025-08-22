@@ -351,8 +351,6 @@ class CoreWorker {
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
-  void SetActorTitle(const std::string &title);
-
   /// Sets the actor's repr name.
   ///
   /// This is set explicitly rather than included as part of actor creation task spec
@@ -1835,9 +1833,6 @@ class CoreWorker {
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
-
-  /// Actor title that consists of class name, args, kwargs for actor construction.
-  std::string actor_title_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);

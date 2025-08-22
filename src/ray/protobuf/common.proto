@@ -958,8 +958,6 @@ message CoreWorkerStats {
   int32 task_queue_length = 15;
   // Number of executed tasks.
   int32 num_executed_tasks = 16;
-  // Actor constructor.
-  string actor_title = 17;
   // Local reference table.
   repeated ObjectRefInfo object_refs = 18;
   // Job ID.
