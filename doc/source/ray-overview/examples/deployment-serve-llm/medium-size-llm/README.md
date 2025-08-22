@@ -36,6 +36,7 @@ llm_config = LLMConfig(
         max_model_len=32768,
         ### If your model is not gated, you can skip `hf_token`
         # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
+        # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
         hf_token=os.environ.get("HF_TOKEN"),
         # Split weights among 8 GPUs in the node
         tensor_parallel_size=8
@@ -54,7 +55,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`
 
 > Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
@@ -160,12 +161,12 @@ applications:
 - import_path: serve_llama_3_1_70b:app
 ```
 
-Deploy your Service
+Deploy your Service, make sure you set your HuggingFace Token first, `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`
 
 
 ```bash
 %%bash
-anyscale service deploy -f service.yaml
+anyscale service deploy -f service.yaml --env HF_TOKEN=$HF_TOKEN
 ```
 
 **Custom Dockerfile**

@@ -58,7 +58,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`
 
 > Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
@@ -202,6 +202,8 @@ Deploy your Service
 %%bash
 anyscale service deploy -f service.yaml
 ```
+
+> If your model is gated, make sure to pass your HuggingFace Token to the Service with `--env HF_TOKEN=$HF_TOKEN`
 
 **Custom Dockerfile**
 
