@@ -301,8 +301,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
 
 void CoreWorkerShutdownExecutor::QuickExit() {
   RAY_LOG(WARNING) << "Quick exit - terminating process immediately";
-  RAY_LOG(WARNING) << "Quick exit - calling std::quick_exit(1)";
-  std::quick_exit(1);
+  ray::QuickExit();
   RAY_LOG(WARNING) << "Quick exit - this line should never be reached";
 }
 }  // namespace core
