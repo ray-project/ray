@@ -267,6 +267,7 @@ ray_cc_library(
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:gcs_server",
+        "//src/ray/rpc:metrics_agent_client",
         "//src/ray/rpc:node_manager_client",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
