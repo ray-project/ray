@@ -1,8 +1,10 @@
+import ray
 import sys
 import pytest
 from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
+import ray.scripts.scripts as scripts
 
 
 @contextmanager
@@ -25,6 +27,15 @@ def _setup_mock_network_utils(curr_ip, head_ip):
                 ]
             }
             yield
+
+
+@pytest.fixture
+def cleanup_ray():
+    """Shutdown all ray instances"""
+    yield
+    runner = CliRunner()
+    runner.invoke(scripts.stop, ["--force"])
+    ray.shutdown()
 
 
 def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
