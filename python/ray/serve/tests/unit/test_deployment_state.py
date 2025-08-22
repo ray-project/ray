@@ -58,6 +58,7 @@ from ray.util.placement_group import validate_placement_group
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
+replica_rank_context = {}
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
 
@@ -99,6 +100,7 @@ class MockReplicaActorWrapper:
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path = None
+        self._rank = replica_rank_context.get(replica_id.unique_id, None)
 
     @property
     def is_cross_language(self) -> bool:
@@ -217,8 +219,10 @@ class MockReplicaActorWrapper:
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
-    def start(self, deployment_info: DeploymentInfo):
+    def start(self, deployment_info: DeploymentInfo, rank: int):
         self.started = True
+        self._rank = rank
+        replica_rank_context[self._replica_id.unique_id] = rank
 
         def _on_scheduled_stub(*args, **kwargs):
             pass
@@ -235,10 +239,20 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
         )
 
-    def reconfigure(self, version: DeploymentVersion):
+    @property
+    def rank(self) -> Optional[int]:
+        return self._rank
+
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: int = None,
+    ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
         self.version = version
+        self._rank = rank
+        replica_rank_context[self._replica_id.unique_id] = rank
         return updating
 
     def recover(self):
@@ -247,6 +261,7 @@ class MockReplicaActorWrapper:
 
         self.recovering = True
         self.started = False
+        self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
@@ -379,6 +394,7 @@ def mock_deployment_state_manager(
         )
 
         dead_replicas_context.clear()
+        replica_rank_context.clear()
 
 
 @pytest.fixture
@@ -2649,7 +2665,7 @@ class TestActorReplicaWrapper:
         )
         max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
-        replica_scheduling_request = actor_replica.start(d_info)
+        replica_scheduling_request = actor_replica.start(d_info, rank=0)
         assert (
             "max_concurrency" in replica_scheduling_request.actor_options
             and replica_scheduling_request.actor_options["max_concurrency"]
@@ -4882,6 +4898,338 @@ def test_docs_path_not_updated_for_different_version(mock_deployment_state_manag
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v3)])
     assert ds.docs_path is None
+
+
+class TestDeploymentRankManagerIntegrationE2E:
+    """End-to-end integration tests for rank functionality through deployment state manager."""
+
+    def _set_replicas_ready(
+        self, ds: DeploymentState, replica_states: List[ReplicaState]
+    ):
+        """Helper to set replicas in given states to ready."""
+        for replica in ds._replicas.get(replica_states):
+            replica._actor.set_ready()
+
+    def _set_replicas_done_stopping(self, ds: DeploymentState):
+        """Helper to set stopping replicas as done stopping."""
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+
+    def test_scaling_up_and_down_scenario(self, mock_deployment_state_manager):
+        """Test a realistic scaling scenario through deployment state manager."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Start with 3 replicas
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Create initial replicas
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+        # Set replicas ready
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Check initial ranks are 0, 1, 2
+        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks = sorted(ranks_mapping.values())
+        assert ranks == [0, 1, 2], f"Expected ranks [0, 1, 2], got {ranks}"
+
+        # Scale down to 2 replicas - this should trigger rank reassignment
+        info_2, _ = deployment_info(num_replicas=2, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+
+        # One replica should be stopping
+        check_counts(
+            ds,
+            total=3,
+            by_state=[(ReplicaState.RUNNING, 2, v1), (ReplicaState.STOPPING, 1, v1)],
+        )
+
+        # Complete the scale down
+        self._set_replicas_done_stopping(ds)
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Trigger rank consistency check with one more update
+        dsm.update()
+
+        # After scaling down and reaching healthy status, ranks should be contiguous [0, 1]
+        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks = sorted(ranks_mapping.values())
+        assert ranks == [0, 1], f"Expected ranks [0, 1] after scale down, got {ranks}"
+
+        # Scale back up to 3 replicas - new replica should reuse available rank
+        info_3, _ = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_3)
+        dsm.update()
+
+        # Should have one new starting replica
+        check_counts(
+            ds,
+            total=3,
+            by_state=[(ReplicaState.RUNNING, 2, v1), (ReplicaState.STARTING, 1, v1)],
+        )
+
+        # Set new replica ready
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Trigger rank consistency check with one more update
+        dsm.update()
+
+        # Final ranks should be contiguous [0, 1, 2]
+        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks = sorted(ranks_mapping.values())
+        assert ranks == [0, 1, 2], f"Expected final ranks [0, 1, 2], got {ranks}"
+
+    def test_controller_recovery_with_scattered_ranks(
+        self, mock_deployment_state_manager
+    ):
+        """Test controller recovery with existing replica ranks through deployment state manager."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy with 3 replicas
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Create replicas and get them running
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Get the actual replica objects (not just IDs)
+        replicas = ds._replicas.get([ReplicaState.RUNNING])
+        replica_ids = [replica.replica_id for replica in replicas]
+
+        # Simulate controller crashed! Create a new deployment state manager
+        # with the existing replica IDs to trigger recovery
+        new_dsm: DeploymentStateManager = create_dsm(
+            [replica_id.to_full_id_str() for replica_id in replica_ids]
+        )
+
+        # New deployment state should be created and replicas should be RECOVERING
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v1)])
+
+        # Complete recovery - set replicas ready
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+        new_dsm.update()
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+        assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # At this point ranks should be scattered but all values [0, 1, 2] should be present
+        ranks_mapping = new_ds.get_replica_ranks_mapping()
+        ranks = sorted(ranks_mapping.values())
+        assert ranks == [0, 1, 2], "Should have recovered scattered ranks"
+
+        # Trigger rank consistency check with one more update - this should reorder if needed
+        new_dsm.update()
+
+        # After rank consistency check, ranks should still be [0, 1, 2]
+        final_ranks_mapping = new_ds.get_replica_ranks_mapping()
+        final_ranks = sorted(final_ranks_mapping.values())
+        assert final_ranks == [
+            0,
+            1,
+            2,
+        ], f"Expected contiguous ranks [0, 1, 2] after consistency check, got {final_ranks}"
+
+        # Clean up
+        replica_rank_context.clear()
+
+    def test_complex_reassignment_scenario(self, mock_deployment_state_manager):
+        """Test complex reassignment with many gaps through deployment state manager."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy with 4 replicas
+        info_1, v1 = deployment_info(num_replicas=4, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Create replicas and get them running
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.STARTING, 4, v1)])
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v1)])
+
+        # Get the actual replica objects
+        replicas = ds._replicas.get([ReplicaState.RUNNING])
+        replica_ids = [replica.replica_id for replica in replicas]
+
+        # Simulate very scattered ranks in global context: 0, 3, 7, 10
+        global replica_rank_context
+        replica_rank_context.clear()
+        replica_rank_context[replica_ids[0].unique_id] = 0
+        replica_rank_context[replica_ids[1].unique_id] = 3
+        replica_rank_context[replica_ids[2].unique_id] = 7
+        replica_rank_context[replica_ids[3].unique_id] = 10
+
+        # Simulate controller crashed! Create a new deployment state manager
+        # with the existing replica IDs to trigger recovery
+        new_dsm: DeploymentStateManager = create_dsm(
+            [replica_id.to_full_id_str() for replica_id in replica_ids]
+        )
+
+        # New deployment state should be created and replicas should be RECOVERING
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=4, by_state=[(ReplicaState.RECOVERING, 4, v1)])
+
+        # Complete recovery - set replicas ready
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+        new_dsm.update()
+        check_counts(new_ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v1)])
+        assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Trigger rank consistency check with one more update
+        new_dsm.update()
+
+        # After reassignment, ranks should be contiguous [0, 1, 2, 3]
+        ranks_mapping = new_ds.get_replica_ranks_mapping()
+        ranks = sorted(ranks_mapping.values())
+        assert ranks == [
+            0,
+            1,
+            2,
+            3,
+        ], f"Expected reassigned ranks [0, 1, 2, 3], got {ranks}"
+
+    def test_rank_consistency_during_version_rollout(
+        self, mock_deployment_state_manager
+    ):
+        """Test that rank consistency is maintained during version rollouts."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Start with 3 replicas of version 1
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Create and ready initial replicas
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Verify initial ranks are contiguous
+        ranks_mapping = ds.get_replica_ranks_mapping()
+        initial_ranks = sorted(ranks_mapping.values())
+        assert initial_ranks == [0, 1, 2]
+
+        # Deploy version 2 - this should trigger rolling update
+        info_2, v2 = deployment_info(num_replicas=3, version="2")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+
+        # Complete the rolling update step by step
+        while True:
+            # Set any new starting replicas ready
+            starting_replicas = ds._replicas.get([ReplicaState.STARTING])
+            if starting_replicas:
+                self._set_replicas_ready(ds, [ReplicaState.STARTING])
+
+            # Complete any stopping replicas
+            stopping_replicas = ds._replicas.get([ReplicaState.STOPPING])
+            if stopping_replicas:
+                self._set_replicas_done_stopping(ds)
+
+            dsm.update()
+
+            # Check if rolling update is complete
+            running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+            if len(running_replicas) == 3 and all(
+                r.version == v2 for r in running_replicas
+            ):
+                break
+
+        # After rolling update is complete, deployment should be healthy
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Trigger rank consistency check with one more update
+        dsm.update()
+
+        # After rolling update, verify ranks are still contiguous
+        final_ranks_mapping = ds.get_replica_ranks_mapping()
+        final_ranks = sorted(final_ranks_mapping.values())
+        assert final_ranks == [
+            0,
+            1,
+            2,
+        ], f"Expected contiguous ranks [0, 1, 2] after rollout, got {final_ranks}"
+
+    def test_rank_assignment_with_replica_failures(self, mock_deployment_state_manager):
+        """Test rank handling when replicas fail during startup."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy with 3 replicas
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Create initial replicas
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+        # Make first two replicas ready, but let the third fail
+        starting_replicas = ds._replicas.get([ReplicaState.STARTING])
+        starting_replicas[0]._actor.set_ready()
+        starting_replicas[1]._actor.set_ready()
+        starting_replicas[2]._actor.set_done_stopping()
+
+        dsm.update()
+
+        running_count = ds._replicas.count(states=[ReplicaState.RUNNING])
+        starting_count = ds._replicas.count(states=[ReplicaState.STARTING])
+        assert running_count == 2, "Should have 2 running replicas"
+        assert starting_count == 1, "Should have 1 starting replica"
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+
+        dsm.update()
+
+        # Final verification - should have 3 running replicas (ignore failed/stopping replicas)
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        assert (
+            len(running_replicas) == 3
+        ), f"Expected 3 running replicas, got {len(running_replicas)}"
+
+        # Verify that ranks are properly assigned and unique for running replicas
+        ranks_mapping = ds.get_replica_ranks_mapping()
+
+        # Filter ranks to only include those for running replicas
+        running_replica_ids = [
+            replica.replica_id.unique_id for replica in running_replicas
+        ]
+        running_replica_ranks = [
+            ranks_mapping[replica_id]
+            for replica_id in running_replica_ids
+            if replica_id in ranks_mapping
+        ]
+
+        # The ranks should be assigned to all running replicas
+        assert set(running_replica_ranks) == {
+            0,
+            1,
+            2,
+        }, f"Expected ranks [0, 1, 2], got {ranks_mapping.values()}"
 
 
 if __name__ == "__main__":
