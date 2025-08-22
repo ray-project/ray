@@ -93,31 +93,28 @@ def test_aws_accelerators():
 
 def test_get_accelerator_type():
     """Test accessing accelerator types in different ways."""
-    # Test access TYPES constants
-    assert isinstance(accelerators.TYPES, str)
-    assert "NVIDIA_A100" in accelerators.TYPES
-    assert "NVIDIA_H100" in accelerators.TYPES
-    assert "AMD_INSTINCT_MI300A" in accelerators.TYPES
+    from ray.util.accelerators.types import all_types, vendor_types
 
-    # import the types instance and test its methods
-    from ray.util.accelerators.types import types
+    target_accelerator = "NVIDIA_A100"
+    target_vendor = "NVIDIA"
 
-    assert isinstance(types.nvidia_types, str)
-    assert "NVIDIA_A100" in types.nvidia_types
-    assert "NVIDIA_H100" in types.nvidia_types
+    all_types_result = all_types()
+    assert isinstance(all_types_result, str), "all_types() should return a string"
+    assert (
+        target_accelerator in all_types_result
+    ), f"all_types() should contain {target_accelerator}"
 
-    assert isinstance(types.amd_types, str)
-    assert "AMD_INSTINCT_MI300A" in types.amd_types
+    vendor_result = vendor_types(target_vendor)
+    assert isinstance(vendor_result, str), "vendor_types() should return a string"
+    assert (
+        target_accelerator in vendor_result
+    ), f"vendor_types('{target_vendor}') should contain {target_accelerator}"
 
-    assert isinstance(types.intel_types, str)
-    assert isinstance(types.google_types, str)
-    assert isinstance(types.huawei_types, str)
-    assert isinstance(types.aws_types, str)
-
-    assert callable(types.print_all)
-
-    assert isinstance(types.all_constants, str)
-    assert len(types.all_constants) > 0
+    other_vendor = "AMD"
+    other_vendor_result = vendor_types(other_vendor)
+    assert (
+        target_accelerator not in other_vendor_result
+    ), f"vendor_types('{other_vendor}') should not contain {target_accelerator}"
 
 
 if __name__ == "__main__":
