@@ -610,7 +610,7 @@ void GcsServer::InitKVManager() {
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(
-      std::make_unique<StoreClientInternalKV>(store_client),
+      std::make_unique<StoreClientInternalKV>(std::move(store_client)),
       config_.raylet_config_list,
       io_context);
 
