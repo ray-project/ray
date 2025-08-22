@@ -1,4 +1,4 @@
-#client.py
+# client.py
 from urllib.parse import urljoin
 from openai import OpenAI
 
@@ -10,7 +10,7 @@ client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 response = client.chat.completions.create(
     model="my-deepseek-r1",
     messages=[{"role": "user", "content": "Tell me a joke"}],
-    stream=True
+    stream=True,
 )
 
 for chunk in response:
