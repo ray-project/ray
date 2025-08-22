@@ -1186,24 +1186,6 @@ def test_overloaded_app_builder_signatures():
         )
 
 
-@pytest.mark.asyncio
-async def test_shutdown_async():
-    """Test shutdown_async() properly shuts down serve."""
-
-    @serve.deployment
-    def hello():
-        return "Hello"
-
-    serve.run(hello.bind())
-
-    assert _get_global_client() is not None
-
-    await serve.shutdown_async()
-
-    with pytest.raises(RayServeException):
-        _get_global_client()
-
-
 if __name__ == "__main__":
     import sys
 

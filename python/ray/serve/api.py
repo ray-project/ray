@@ -138,7 +138,7 @@ def shutdown():
     _set_global_client(None)
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 async def shutdown_async():
     """Completely shut down Serve on the cluster asynchronously.
 
