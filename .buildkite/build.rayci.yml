@@ -42,6 +42,25 @@ steps:
       - manylinux
       - forge
 
+  - label: ":tapioca: build placeholderwheel {{matrix}} (x86_64)"
+    key: build_placeholder_wheels
+    tags:
+      - release_wheels
+      - linux_wheels
+      - oss
+    instance_type: large
+    commands:
+      - ./ci/build/build-linux-placeholder-wheel.sh {{matrix}}
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    depends_on:
+      - manylinux
+      - forge
+
   - label: ":tapioca: build: jar"
     key: java_wheels
     tags:
