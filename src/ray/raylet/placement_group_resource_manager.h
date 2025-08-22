@@ -24,7 +24,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/util/util.h"
 
 namespace ray {
 

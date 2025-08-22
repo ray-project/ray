@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 if TYPE_CHECKING:
     import torch
 
-    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObject
-
 import google.protobuf.message
 
 import ray._private.utils
@@ -163,6 +161,17 @@ class SerializationContext:
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
+
+            # Check if this is a GPU ObjectRef being serialized inside a collection
+            if (
+                self.is_in_band_serialization()
+                and worker.gpu_object_manager.is_managed_object(obj.hex())
+            ):
+                raise ValueError(
+                    "Passing GPU ObjectRefs inside data structures is not yet supported. "
+                    "Pass GPU ObjectRefs directly as task arguments instead. For example, use `foo.remote(ref)` instead of `foo.remote([ref])`."
+                )
+
             self.add_contained_object_ref(
                 obj,
                 allow_out_of_band_serialization=(
@@ -506,7 +515,7 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        gpu_objects: Dict[str, "GPUObject"],
+        gpu_objects: Dict[str, List["torch.Tensor"]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
@@ -524,11 +533,7 @@ class SerializationContext:
                 if object_ref is not None:
                     object_id = object_ref.hex()
                     if object_id in gpu_objects:
-                        gpu_object = gpu_objects[object_id]
-                        object_tensors = gpu_object.data
-                        gpu_object.num_readers -= 1
-                        if gpu_object.num_readers == 0:
-                            gpu_objects.pop(object_id)
+                        object_tensors = gpu_objects[object_id]
                 obj = self._deserialize_object(
                     data,
                     metadata,

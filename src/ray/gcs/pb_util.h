@@ -23,6 +23,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -64,11 +65,10 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 }
 
 /// Helper function to produce error table data.
-std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
-    const std::string &error_type,
-    const std::string &error_msg,
-    absl::Time timestamp,
-    const JobID &job_id = JobID::Nil());
+rpc::ErrorTableData CreateErrorTableData(const std::string &error_type,
+                                         const std::string &error_msg,
+                                         absl::Time timestamp,
+                                         const JobID &job_id = JobID::Nil());
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
