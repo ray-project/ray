@@ -282,7 +282,7 @@ class _StatsActor:
         )
         self.iter_time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
-            description="Seconds from starting iteration until first batch is ready. This includes the dataset pipeline warmup time.",
+            description="Seconds from starting iteration until the first batch is ready. This includes the dataset pipeline warmup time.",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -1700,7 +1700,7 @@ class IterStatsSummary:
                 )
             if self.time_to_first_batch.get():
                 out += (
-                    "    * Total time user thread is blocked waiting for first batch: "
+                    "    * Seconds from starting iteration until the first batch is ready: "
                     "{}\n".format(fmt(self.time_to_first_batch.get()))
                 )
             if self.user_time.get():
