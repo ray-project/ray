@@ -171,7 +171,6 @@ class SchedulingNode:
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
 
-    # IPPR status and capacity, queried from the cloud provider.
     ippr_status: Optional[IPPRStatus] = None
     ippr_spec: Optional[IPPRGroupSpec] = None
 

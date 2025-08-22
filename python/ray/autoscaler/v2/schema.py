@@ -223,6 +223,27 @@ class ClusterStatus:
 
 
 IPPRSpecsSchema = {
+    # JSON schema for IPPR (In-Place Pod Resize) specs provided via the
+    # Kubernetes annotation `ray.io/ippr` on a RayCluster CR.
+    #
+    # Structure:
+    # {
+    #   "groups": {
+    #     "<groupName>": {
+    #       "max-cpu":     string|number,  # K8s quantity (e.g. "2", "1500m")
+    #       "max-memory":  string|integer, # K8s quantity (e.g. "8Gi", 2147483648)
+    #       "resize-timeout": integer      # Seconds to wait for a pod resize to
+    #                                       # complete before considering it timed out
+    #     },
+    #     ...
+    #   }
+    # }
+    #
+    # Notes:
+    # - The set of valid <groupName> keys corresponds to the RayCluster
+    #   `workerGroupSpecs[].groupName` plus the implicit "headgroup".
+    # - The minimal CPU/memory values (min_*) are derived from the pod template
+    #   requests/limits and are not part of this schema.
     "type": "object",
     "properties": {
         "groups": {
@@ -243,6 +264,22 @@ IPPRSpecsSchema = {
 
 @dataclass
 class IPPRGroupSpec:
+    """Per-group IPPR limits and baseline resources.
+
+    This mirrors a single Ray group (worker group or head group). The minimal
+    resources are derived from the pod template's container resources (either
+    requests or limits if present), and the maximal resources and timeout are
+    provided by the IPPR spec annotation validated by ``IPPRSpecsSchema``.
+
+    Attributes:
+        min_cpu: Baseline CPU in cores derived from the pod template (float, e.g., 1.5).
+        max_cpu: Maximum CPU in cores allowed for in-place resize for this group.
+        min_memory: Baseline memory in bytes derived from the pod template.
+        max_memory: Maximum memory in bytes allowed for in-place resize for this group.
+        resize_timeout: Timeout in seconds for a single resize operation before
+            it is considered timed out.
+    """
+
     min_cpu: float
     max_cpu: float
     min_memory: int
@@ -252,11 +289,51 @@ class IPPRGroupSpec:
 
 @dataclass
 class IPPRSpecs:
+    """Typed, validated IPPR specs across Ray groups.
+
+    Attributes:
+        groups: Mapping from Ray group name (e.g., worker group ``groupName`` or
+            ``"headgroup"``) to its ``IPPRGroupSpec``.
+    """
+
     groups: Dict[str, IPPRGroupSpec]
 
 
 @dataclass
 class IPPRStatus:
+    """Represents the current and target resources for a pod under IPPR.
+
+    This structure is the working state used by the autoscaler to decide if and
+    when to apply in-place pod resizes and when to synchronize resource changes
+    with the Raylet.
+
+    Attributes:
+        cloud_instance_id: Cloud instance identifier for the pod (K8s pod name).
+        spec: The group-level limits and baselines for this pod.
+        current_cpu: Current CPU allocation in cores from the pod status.
+        current_memory: Current memory allocation in bytes from the pod status.
+        desired_cpu: Target CPU allocation in cores.
+        desired_memory: Target memory allocation in bytes.
+        resized_at: Unix timestamp (seconds) when a resize request was issued to
+            Kubernetes, or None if not pending/needed.
+        resized_status: Lower-cased status from pod conditions for IPPR, e.g.
+            "inprogress", "deferred", "infeasible", "error"; None indicates no
+            active resize and is treated as finished.
+        resized_message: Message from the pod condition describing the resize
+            state or failure, if any.
+        suggested_cpu: A suggested CPU target (in cores) adjusted based on node
+            capacity when a resize was deferred/infeasible.
+        suggested_memory: A suggested memory target (in bytes) adjusted based on
+            node capacity when a resize was deferred/infeasible.
+        adjusted_max_cpu: Temporary cap for CPU (cores) derived from suggestions
+            or recent capacity observations. Overrides ``spec.max_cpu`` when set.
+        adjusted_max_memory: Temporary cap for memory (bytes) derived from
+            suggestions or recent capacity observations. Overrides
+            ``spec.max_memory`` when set.
+        raylet_id: Raylet node id (hex) running in this pod, used to sync Ray's
+            internal resource view when K8s successfully changed pod resources.
+    """
+
     cloud_instance_id: str
     spec: IPPRGroupSpec
     current_cpu: float
@@ -278,6 +355,17 @@ class IPPRStatus:
         desired_cpu: Optional[float],
         desired_memory: Optional[int],
     ) -> None:
+        """Update the desired resources and reset resize tracking state.
+
+        Sets the new desired CPU/memory if provided, associates the Raylet id,
+        and marks the resize state as "new" so the scheduler can identify the IPPR
+        action before the next iteration.
+
+        Args:
+            raylet_id: Raylet node id (hex) for the pod.
+            desired_cpu: Optional new desired CPU in cores.
+            desired_memory: Optional new desired memory in bytes.
+        """
         if desired_cpu is not None:
             self.desired_cpu = desired_cpu
         if desired_memory is not None:
@@ -288,6 +376,11 @@ class IPPRStatus:
         self.resized_message = None
 
     def is_ready_to_resize(self) -> bool:
+        """Whether this pod should be sent an IPPR request now.
+
+        Returns True if there is a Raylet id, the status is marked as "new",
+        and the desired resources differ from the current resources.
+        """
         return (
             self.raylet_id
             and self.resized_status == "new"
@@ -298,12 +391,34 @@ class IPPRStatus:
         )
 
     def is_in_progress(self) -> bool:
+        """Whether a resize is on going or about to be issued.
+
+        True if a resize was already issued to K8s (``resized_at`` set), or if
+        the status is newly queued for resize (``is_ready_to_resize``).
+        """
         return self.resized_at is not None or self.is_ready_to_resize()
 
     def is_finished(self) -> bool:
+        """Whether there is no active resize in progress.
+
+        We treat ``resized_status is None`` as finished. After K8s completes a
+        resize and the Raylet has been synchronized, the provider clears
+        ``resized_at`` and leaves ``resized_status`` as None.
+        """
         return self.resized_status is None
 
     def need_sync_with_raylet(self) -> bool:
+        """Whether the Raylet's internal resources need to be updated.
+
+        Returns True when all of the following hold:
+        - We know the ``raylet_id`` for this pod.
+        - A resize was previously issued to Kubernetes (``resized_at`` set).
+        - Kubernetes has finished applying the resize (``resized_status`` is None).
+        - The pod's current resources equal the desired resources.
+
+        In this case, the provider will call Raylet's gRPC to update its local
+        resource instances and then clear ``resized_at`` on the pod annotation.
+        """
         return (
             self.raylet_id is not None
             and self.resized_at is not None
@@ -313,23 +428,44 @@ class IPPRStatus:
         )
 
     def max_cpu(self) -> float:
+        """Effective maximum CPU cores allowed for this pod.
+
+        Uses ``adjusted_max_cpu`` when present (suggested by capacity checks),
+        otherwise falls back to ``spec.max_cpu``.
+        """
         return self.adjusted_max_cpu or self.spec.max_cpu
 
     def max_memory(self) -> int:
+        """Effective maximum memory bytes allowed for this pod.
+
+        Uses ``adjusted_max_memory`` when present (suggested by capacity checks),
+        otherwise falls back to ``spec.max_memory``.
+        """
         return self.adjusted_max_memory or self.spec.max_memory
 
     def can_resize_up(self) -> bool:
+        """Whether the pod can still be scaled up within allowed limits.
+
+        Only returns True when no resize is in progress and the current
+        CPU/memory are below the effective max limits.
+        """
         return self.is_finished() and (
             self.current_cpu < self.max_cpu() or self.current_memory < self.max_memory()
         )
 
     def is_timeout(self) -> bool:
+        """Whether an in-flight resize has exceeded the group's timeout.
+
+        Returns True when a resize was issued and now current time exceeds
+        ``resized_at + spec.resize_timeout``.
+        """
         return (
             self.resized_at is not None
             and self.resized_at + self.spec.resize_timeout < time.time()
         )
 
     def is_failed(self) -> bool:
+        """Whether the last resize attempt reported an error from Kubernetes."""
         return self.resized_status == "error"
 
 
