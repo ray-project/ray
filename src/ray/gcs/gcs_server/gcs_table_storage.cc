@@ -27,24 +27,13 @@
 namespace ray {
 namespace gcs {
 
-namespace {
-// Transforms the callback that, regardless of the underlying return T value, we always
-// return OK.
-template <typename T>
-Postable<void(T)> JustOk(Postable<void(Status)> callback) {
-  return std::move(callback).TransformArg([](T) { return Status::OK(); });
-}
-}  // namespace
-
 template <typename Key, typename Data>
 void GcsTable<Key, Data>::Put(const Key &key,
                               const Data &value,
-                              Postable<void(ray::Status)> callback) {
-  store_client_->AsyncPut(table_name_,
-                          key.Binary(),
-                          value.SerializeAsString(),
-                          /*overwrite*/ true,
-                          JustOk<bool>(std::move(callback)));
+                              Postable<void()> callback) {
+  store_client_->AsyncPut(
+      table_name_, key.Binary(), value.SerializeAsString(),
+      /*overwrite=*/true, std::move(callback));
 }
 
 template <typename Key, typename Data>
@@ -84,36 +73,33 @@ void GcsTable<Key, Data>::GetAll(
 }
 
 template <typename Key, typename Data>
-void GcsTable<Key, Data>::Delete(const Key &key, Postable<void(ray::Status)> callback) {
-  store_client_->AsyncDelete(
-      table_name_, key.Binary(), JustOk<bool>(std::move(callback)));
+void GcsTable<Key, Data>::Delete(const Key &key, Postable<void()> callback) {
+  store_client_->AsyncDelete(table_name_, key.Binary(), std::move(callback));
 }
 
 template <typename Key, typename Data>
 void GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
-                                      Postable<void(ray::Status)> callback) {
+                                      Postable<void()> callback) {
   std::vector<std::string> keys_to_delete;
   keys_to_delete.reserve(keys.size());
   for (auto &key : keys) {
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
-  this->store_client_->AsyncBatchDelete(
-      this->table_name_, keys_to_delete, JustOk<int64_t>(std::move(callback)));
+  this->store_client_->AsyncBatchDelete(this->table_name_, keys_to_delete,
+                                        std::move(callback));
 }
 
 template <typename Key, typename Data>
 void GcsTableWithJobId<Key, Data>::Put(const Key &key,
                                        const Data &value,
-                                       Postable<void(ray::Status)> callback) {
+                                       Postable<void()> callback) {
   {
-    absl::MutexLock lock(&mutex_);
-    index_[GetJobIdFromKey(key)].insert(key);
+    absl::MutexLock lock(&this->mutex_);
+    this->index_[GetJobIdFromKey(key)].insert(key);
   }
-  this->store_client_->AsyncPut(this->table_name_,
-                                key.Binary(),
+  this->store_client_->AsyncPut(this->table_name_, key.Binary(),
                                 value.SerializeAsString(),
-                                /*overwrite*/ true,
-                                JustOk<bool>(std::move(callback)));
+                                /*overwrite=*/true, std::move(callback));
 }
 
 template <typename Key, typename Data>
@@ -121,15 +107,14 @@ void GcsTableWithJobId<Key, Data>::GetByJobId(
     const JobID &job_id, Postable<void(absl::flat_hash_map<Key, Data>)> callback) {
   std::vector<std::string> keys;
   {
-    absl::MutexLock lock(&mutex_);
-    auto &key_set = index_[job_id];
+    absl::MutexLock lock(&this->mutex_);
+    auto &key_set = this->index_[job_id];
     for (auto &key : key_set) {
       keys.push_back(key.Binary());
     }
   }
   this->store_client_->AsyncMultiGet(
-      this->table_name_,
-      keys,
+      this->table_name_, keys,
       std::move(callback).TransformArg(
           [](absl::flat_hash_map<std::string, std::string> result) {
             absl::flat_hash_map<Key, Data> values;
@@ -144,11 +129,11 @@ void GcsTableWithJobId<Key, Data>::GetByJobId(
 
 template <typename Key, typename Data>
 void GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
-                                                 Postable<void(ray::Status)> callback) {
+                                                 Postable<void()> callback) {
   std::vector<Key> keys;
   {
-    absl::MutexLock lock(&mutex_);
-    auto &key_set = index_[job_id];
+    absl::MutexLock lock(&this->mutex_);
+    auto &key_set = this->index_[job_id];
     for (auto &key : key_set) {
       keys.push_back(key);
     }
@@ -157,30 +142,25 @@ void GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
 }
 
 template <typename Key, typename Data>
-void GcsTableWithJobId<Key, Data>::Delete(const Key &key,
-                                          Postable<void(ray::Status)> callback) {
+void GcsTableWithJobId<Key, Data>::Delete(const Key &key, Postable<void()> callback) {
   BatchDelete({key}, std::move(callback));
 }
 
 template <typename Key, typename Data>
 void GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
-                                               Postable<void(ray::Status)> callback) {
+                                               Postable<void()> callback) {
   std::vector<std::string> keys_to_delete;
   keys_to_delete.reserve(keys.size());
   for (auto &key : keys) {
     keys_to_delete.push_back(key.Binary());
   }
   this->store_client_->AsyncBatchDelete(
-      this->table_name_,
-      keys_to_delete,
-      std::move(callback).TransformArg([this, callback, keys](int64_t) {
-        {
-          absl::MutexLock lock(&mutex_);
-          for (auto &key : keys) {
-            index_[GetJobIdFromKey(key)].erase(key);
-          }
+      this->table_name_, keys_to_delete,
+      std::move(callback).TransformArg([this, keys](int64_t /*num_deleted*/) {
+        absl::MutexLock lock(&this->mutex_);
+        for (auto &key : keys) {
+          this->index_[GetJobIdFromKey(key)].erase(key);
         }
-        return Status::OK();
       }));
 }
 

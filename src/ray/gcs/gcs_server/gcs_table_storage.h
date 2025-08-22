@@ -19,10 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -46,38 +43,30 @@ class GcsTable {
   /// \param key The key that will be written to the table.
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
-  /// \return Status
-  virtual void Put(const Key &key,
-                   const Data &value,
-                   Postable<void(ray::Status)> callback);
+  virtual void Put(const Key &key, const Data &value, Postable<void()> callback);
 
   /// Get data from the table asynchronously.
   ///
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
-  /// \return Status
   void Get(const Key &key, Postable<void(Status, std::optional<Data>)> callback);
 
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
-  /// \return Status
   void GetAll(Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete data from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
-  virtual void Delete(const Key &key, Postable<void(ray::Status)> callback);
+  virtual void Delete(const Key &key, Postable<void()> callback);
 
   /// Delete a batch of data from the table asynchronously.
   ///
   /// \param keys The batch key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
-  virtual void BatchDelete(const std::vector<Key> &keys,
-                           Postable<void(ray::Status)> callback);
+  virtual void BatchDelete(const std::vector<Key> &keys, Postable<void()> callback);
 
  protected:
   std::string table_name_;
@@ -100,45 +89,20 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
       : GcsTable<Key, Data>(std::move(store_client)) {}
 
   /// Write data to the table asynchronously.
-  ///
-  /// \param key The key that will be written to the table. The job id can be obtained
-  /// from the key.
-  /// \param value The value of the key that will be written to the table.
-  /// \param callback Callback that will be called after write finishes, whether it
-  /// succeeds or not. \return Status for issuing the asynchronous write operation.
-  void Put(const Key &key,
-           const Data &value,
-           Postable<void(ray::Status)> callback) override;
+  void Put(const Key &key, const Data &value, Postable<void()> callback) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
-  ///
-  /// \param job_id The key to lookup from the table.
-  /// \param callback Callback that will be called after read finishes.
-  /// \return Status
   void GetByJobId(const JobID &job_id,
                   Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete all the data of the specified job id from the table asynchronously.
-  ///
-  /// \param job_id The key that will be deleted from the table.
-  /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
-  void DeleteByJobId(const JobID &job_id, Postable<void(ray::Status)> callback);
+  void DeleteByJobId(const JobID &job_id, Postable<void()> callback);
 
   /// Delete data and index from the table asynchronously.
-  ///
-  /// \param key The key that will be deleted from the table.
-  /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
-  void Delete(const Key &key, Postable<void(ray::Status)> callback) override;
+  void Delete(const Key &key, Postable<void()> callback) override;
 
   /// Delete a batch of data and index from the table asynchronously.
-  ///
-  /// \param keys The batch key that will be deleted from the table.
-  /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
-  void BatchDelete(const std::vector<Key> &keys,
-                   Postable<void(ray::Status)> callback) override;
+  void BatchDelete(const std::vector<Key> &keys, Postable<void()> callback) override;
 
   /// Rebuild the index during startup.
   void AsyncRebuildIndexAndGetAll(
@@ -206,6 +170,9 @@ class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
   }
 };
 
+/// \class GcsTableStorage
+/// This class is not meant to be used directly. All gcs table storage classes should
+/// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
   explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
@@ -263,6 +230,19 @@ class GcsTableStorage {
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
+};
+
+class RedisGcsTableStorage : public GcsTableStorage {
+ public:
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
+};
+
+class InMemoryGcsTableStorage : public GcsTableStorage {
+ public:
+  explicit InMemoryGcsTableStorage()
+      : GcsTableStorage(std::make_shared<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>())) {}
 };
 
 }  // namespace gcs
