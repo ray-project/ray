@@ -142,8 +142,6 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
       << kClusterSeparator << ".";
 }
 
-RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
-
 void RedisStoreClient::AsyncPut(const std::string &table_name,
                                 const std::string &key,
                                 std::string data,

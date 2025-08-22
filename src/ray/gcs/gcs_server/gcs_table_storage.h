@@ -19,7 +19,10 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/protobuf/common.pb.h"
+#include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
