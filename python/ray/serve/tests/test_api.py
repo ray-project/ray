@@ -29,7 +29,6 @@ from ray.serve._private.request_router.request_router import (
 )
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.config import RequestRouterConfig
-from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
