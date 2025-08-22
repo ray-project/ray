@@ -338,8 +338,8 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/gcs_server:gcs_resource_manager",
-        "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/raylet/scheduling:cluster_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
