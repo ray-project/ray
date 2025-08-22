@@ -31,9 +31,11 @@ template <typename Key, typename Data>
 void GcsTable<Key, Data>::Put(const Key &key,
                               const Data &value,
                               Postable<void()> callback) {
-  store_client_->AsyncPut(
-      table_name_, key.Binary(), value.SerializeAsString(),
-      /*overwrite=*/true, std::move(callback));
+  store_client_->AsyncPut(table_name_,
+                          key.Binary(),
+                          value.SerializeAsString(),
+                          /*overwrite=*/true,
+                          std::move(callback));
 }
 
 template <typename Key, typename Data>
@@ -85,8 +87,8 @@ void GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
   for (auto &key : keys) {
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
-  this->store_client_->AsyncBatchDelete(this->table_name_, keys_to_delete,
-                                        std::move(callback));
+  this->store_client_->AsyncBatchDelete(
+      this->table_name_, keys_to_delete, std::move(callback));
 }
 
 template <typename Key, typename Data>
@@ -97,9 +99,11 @@ void GcsTableWithJobId<Key, Data>::Put(const Key &key,
     absl::MutexLock lock(&this->mutex_);
     this->index_[GetJobIdFromKey(key)].insert(key);
   }
-  this->store_client_->AsyncPut(this->table_name_, key.Binary(),
+  this->store_client_->AsyncPut(this->table_name_,
+                                key.Binary(),
                                 value.SerializeAsString(),
-                                /*overwrite=*/true, std::move(callback));
+                                /*overwrite=*/true,
+                                std::move(callback));
 }
 
 template <typename Key, typename Data>
@@ -114,7 +118,8 @@ void GcsTableWithJobId<Key, Data>::GetByJobId(
     }
   }
   this->store_client_->AsyncMultiGet(
-      this->table_name_, keys,
+      this->table_name_,
+      keys,
       std::move(callback).TransformArg(
           [](absl::flat_hash_map<std::string, std::string> result) {
             absl::flat_hash_map<Key, Data> values;
@@ -155,7 +160,8 @@ void GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
     keys_to_delete.push_back(key.Binary());
   }
   this->store_client_->AsyncBatchDelete(
-      this->table_name_, keys_to_delete,
+      this->table_name_,
+      keys_to_delete,
       std::move(callback).TransformArg([this, keys](int64_t /*num_deleted*/) {
         absl::MutexLock lock(&this->mutex_);
         for (auto &key : keys) {
