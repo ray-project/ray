@@ -105,16 +105,16 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "node_manager_test",
+    name = "gcs_node_manager_test",
     size = "small",
     srcs = [
-        "node_manager_test.cc",
+        "gcs_node_manager_test.cc",
     ],
     tags = ["team:core"],
     deps = [
         "//:ray_fakes",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:node_manager",
+        "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -398,7 +398,7 @@ ray_cc_test(
 ray_cc_test(
     name = "node_manager_export_event_test",
     size = "small",
-    srcs = ["export_api/node_manager_export_event_test.cc"],
+    srcs = ["export_api/gcs_node_manager_export_event_test.cc"],
     tags = [
         "no_windows",
         "team:core",
@@ -406,7 +406,7 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:node_manager",
+        "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:string_utils",

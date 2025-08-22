@@ -26,7 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/node_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet_client/raylet_client.h"

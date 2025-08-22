@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/node_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 
 #include <limits>
 #include <memory>

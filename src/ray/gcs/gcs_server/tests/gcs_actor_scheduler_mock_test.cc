@@ -18,7 +18,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_server/node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
