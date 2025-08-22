@@ -776,7 +776,7 @@ int main(int argc, char *argv[]) {
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
           id, node_info->node_manager_address(), node_info->node_manager_port());
-      return raylet_client_pool->GetOrConnectByAddress(std::move(addr));
+      return raylet_client_pool->GetOrConnectByAddress(addr);
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();
