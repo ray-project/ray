@@ -749,7 +749,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             input_files=None,
             exec_stats=stats.build(),
         )
-        schema = unify_schemas_with_validation(schemas)
+        schema = unify_schemas_with_validation(schemas, sample_size=1)
         meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
         yield meta_with_schema
 

@@ -179,7 +179,7 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
         blocks.extend(ref_bundle.block_refs)
         metadata.extend(ref_bundle.metadata)
         schemas.append(ref_bundle.schema)
-    unified_schema = unify_schemas_with_validation(schemas)
+    unified_schema = unify_schemas_with_validation(schemas, sample_size=None)
     return BlockList(
         blocks, metadata, owned_by_consumer=owns_blocks, schema=unified_schema
     )

@@ -49,7 +49,7 @@ class InputData(LogicalOperator, SourceOperator):
             return None
 
     def infer_schema(self):
-        return unify_ref_bundles_schema(self.input_data)
+        return unify_ref_bundles_schema(self.input_data, sample_size=None)
 
     def is_lineage_serializable(self) -> bool:
         # This operator isn't serializable because it contains ObjectRefs.

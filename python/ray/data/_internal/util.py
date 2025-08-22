@@ -33,6 +33,7 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.data.block import _is_empty_schema
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil
@@ -727,6 +728,7 @@ def get_table_block_metadata_schema(
 
 def unify_block_metadata_schema(
     block_metadata_with_schemas: List["BlockMetadataWithSchema"],
+    sample_size: Optional[int],
 ) -> Optional["Schema"]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
@@ -748,11 +750,16 @@ def unify_block_metadata_schema(
     for m in block_metadata_with_schemas:
         if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
             schemas_to_unify.append(m.schema)
-    return unify_schemas_with_validation(schemas_to_unify)
+            if sample_size is not None and len(schemas_to_unify) >= sample_size:
+                break
+    if len(schemas_to_unify) == 1:
+        return schemas_to_unify[0]
+    return unify_schemas_with_validation(schemas_to_unify, sample_size=None)
 
 
 def unify_schemas_with_validation(
     schemas_to_unify: Iterable["Schema"],
+    sample_size: Optional[int],
 ) -> Optional["Schema"]:
     if schemas_to_unify:
         from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
@@ -764,7 +771,13 @@ def unify_schemas_with_validation(
             pa = None
         # If the result contains PyArrow schemas, unify them
         if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
-            return unify_schemas(schemas_to_unify, promote_types=True)
+            non_empty_schemas_to_unify = []
+            for schema in schemas_to_unify:
+                if not _is_empty_schema(schema):
+                    non_empty_schemas_to_unify.append(schema)
+                    if len(non_empty_schemas_to_unify) >= sample_size:
+                        break
+            return unify_schemas(non_empty_schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
         return schemas_to_unify[0]
@@ -772,15 +785,24 @@ def unify_schemas_with_validation(
 
 
 def unify_ref_bundles_schema(
-    ref_bundles: List["RefBundle"],
+    ref_bundles: List["RefBundle"], sample_size: Optional[int]
 ) -> Optional["Schema"]:
+    """Combines the ref_bundle schemas into 1 schema.
+
+    'sample_size' is the number of non-empty bundles to sample schemas from.
+    This is useful because unifying schemas is expensive.
+    """
     schemas_to_unify = []
     for bundle in ref_bundles:
         if bundle.schema is not None and (
             bundle.num_rows() is None or bundle.num_rows() > 0
         ):
             schemas_to_unify.append(bundle.schema)
-    return unify_schemas_with_validation(schemas_to_unify)
+            if sample_size is not None and len(schemas_to_unify) >= sample_size:
+                break
+    if len(schemas_to_unify) == 1:
+        return schemas_to_unify[0]
+    return unify_schemas_with_validation(schemas_to_unify, sample_size=None)
 
 
 def find_partition_index(

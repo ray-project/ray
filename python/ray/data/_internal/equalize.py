@@ -41,7 +41,7 @@ def _equalize(
 
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
-    schema = unify_ref_bundles_schema(per_split_bundles)
+    schema = unify_ref_bundles_schema(per_split_bundles, sample_size=1)
     leftover_bundle = RefBundle(leftovers, owns_blocks=owned_by_consumer, schema=schema)
     leftover_splits = _split_leftovers(leftover_bundle, per_split_needed_rows)
 

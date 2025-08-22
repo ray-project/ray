@@ -36,7 +36,7 @@ def generate_sort_fn(
             blocks.extend(ref_bundle.block_refs)
         if len(blocks) == 0:
             return (blocks, {})
-        sort_key.validate_schema(unify_ref_bundles_schema(refs))
+        sort_key.validate_schema(unify_ref_bundles_schema(refs, sample_size=None))
 
         num_mappers = len(blocks)
         # Use same number of output partitions.

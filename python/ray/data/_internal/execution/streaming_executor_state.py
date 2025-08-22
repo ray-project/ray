@@ -794,7 +794,10 @@ def dedupe_schemas_with_validation(
             f"new schema: {bundle.schema}. This may lead to unexpected behavior."
         )
     if allow_divergent:
-        old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
+        # allow_divergent is default false, so this will not run most of the times.
+        old_schema = unify_schemas_with_validation(
+            [old_schema, bundle.schema], sample_size=None
+        )
 
     return (
         RefBundle(

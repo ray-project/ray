@@ -52,7 +52,7 @@ def generate_aggregate_fn(
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
-        unified_schema = unify_ref_bundles_schema(refs)
+        unified_schema = unify_ref_bundles_schema(refs, sample_size=None)
         for agg_fn in aggs:
             agg_fn._validate(unified_schema)
 

@@ -518,7 +518,7 @@ class ExecutionPlan:
                 output_bundles = self._logical_plan.dag.output_data()
                 schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
-                schema = unify_ref_bundles_schema(output_bundles)
+                schema = unify_ref_bundles_schema(output_bundles, sample_size=None)
                 bundle = RefBundle(
                     [
                         (block, metadata)

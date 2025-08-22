@@ -669,7 +669,7 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    schema = unify_ref_bundles_schema(bundles)
+    schema = unify_ref_bundles_schema(bundles, sample_size=1)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 
