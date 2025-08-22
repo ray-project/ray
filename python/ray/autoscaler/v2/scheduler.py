@@ -72,7 +72,9 @@ class SchedulingRequest:
     # The current instances.
     current_instances: List[AutoscalerInstance] = field(default_factory=list)
 
+    # IPPR (In-Place Pod Resize) typed specs (limits/timeouts).
     ippr_specs: Optional[IPPRSpecs] = None
+    # Latest per-pod IPPR statuses keyed by cloud_instance_id (pod name).
     ippr_statuses: Optional[Dict[str, IPPRStatus]] = field(default_factory=dict)
 
 
@@ -80,6 +82,7 @@ class SchedulingRequest:
 class SchedulingReply:
     # Instances to launch.
     to_launch: List[LaunchRequest] = field(default_factory=list)
+    # IPPR resize actions to perform on existing pods.
     to_ippr: List[IPPRStatus] = field(default_factory=list)
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
@@ -171,7 +174,9 @@ class SchedulingNode:
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
 
+    # IPPR state for this node's pod. None if IPPR doesn't apply.
     ippr_status: Optional[IPPRStatus] = None
+    # IPPR group spec (min/max resources and timeout) for this node type.
     ippr_spec: Optional[IPPRGroupSpec] = None
 
     # Node's labels, including static or dynamic labels.
@@ -793,6 +798,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                         req.ippr_statuses
                         and instance.cloud_instance_id in req.ippr_statuses
                     ):
+                        # Attach current IPPR state and its IPPR spec for
+                        # later resizing.
                         node.ippr_status = req.ippr_statuses[instance.cloud_instance_id]
                         node.ippr_spec = req.ippr_specs.groups[node.node_type]
 
@@ -1493,6 +1500,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                     node.ippr_status.suggested_cpu is not None
                     or node.ippr_status.suggested_memory is not None
                 ):
+                    # If provider suggested adjusted sizes (from Deferred/Infeasible),
+                    # make those the desired values for the next resize.
                     node.ippr_status.update(
                         raylet_id=node.ray_node_id,
                         desired_cpu=node.ippr_status.suggested_cpu,
@@ -1509,9 +1518,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                         desired_cpu=node.ippr_status.current_cpu,
                         desired_memory=node.ippr_status.current_memory,
                     )
-                elif (  # Make the existing nodes aware of finished and ongoing IPPR statuses
+                elif (  # Reflect finished / ongoing IPPR in node capacity
                     node.ippr_status.is_finished() or node.ippr_status.is_in_progress()
                 ):
+                    # While a resize is ongoing or just completed, use desired values
+                    # as the node's capacity so binpacking can consider the change.
                     node.update_total_resources(
                         {
                             "CPU": node.ippr_status.desired_cpu,
@@ -1537,7 +1548,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # If there's any existing nodes left, we will add to the target nodes
         target_nodes.extend(existing_nodes)
 
-        # Try scheduling resource requests with IPPR
+        # Try scheduling resource requests with IPPR after filling up existing nodes with their current capacity.
         existing_nodes = target_nodes
         target_nodes = []
         ippr_candidates = []
@@ -1549,6 +1560,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 target_nodes.append(node)
 
         for node in ippr_candidates:
+            # Expose per-node maximums so binpacking can evaluate placing more work
+            # by upsizing in-place rather than launching new nodes.
             node.update_total_resources(
                 {
                     "CPU": node.ippr_status.max_cpu(),
@@ -1568,6 +1581,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # No ippr nodes can schedule any more requests.
                 break
 
+            # Commit an IPPR action on the selected node to its max effective caps.
             best_node.ippr_status.update(
                 raylet_id=best_node.ray_node_id,
                 desired_cpu=best_node.ippr_status.max_cpu(),
