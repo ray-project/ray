@@ -11,6 +11,7 @@ import ray
 import ray.cluster_utils
 from ray._private.internal_api import global_gc
 from ray._common.test_utils import wait_for_condition
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,83 @@ def test_global_gc_actors(shutdown_only):
             del cycle
     finally:
         gc.enable()
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.parametrize("support_fork", [True, False])
+def test_long_local_gc(shutdown_only, support_fork):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "support_fork": support_fork,
+            "local_gc_interval_s": 1,
+            "local_gc_min_interval_s": 0,
+            "global_gc_min_interval_s": 0,
+        },
+    )
+
+    def busy_wait(seconds: float) -> None:
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < seconds:
+            _ = 7 * 13 + 29
+
+    @ray.remote(num_cpus=1)
+    class GarbageMaker:
+        def __init__(self):
+            gc.disable()
+
+        def produce(self, batch_size: int, busy_wait_seconds: float) -> int:
+            class HeavyFinalizer:
+                def __del__(self):
+                    busy_wait(busy_wait_seconds)
+
+            junk_objects = []
+            for _ in range(batch_size):
+                object_a, object_b = HeavyFinalizer(), HeavyFinalizer()
+                object_a.peer = object_b
+                object_b.peer = object_a
+                junk_objects.append((object_a, object_b))
+
+            junk_objects = None
+            print(
+                f"[produce] produced {batch_size} objects with busy_wait={busy_wait_seconds}s"
+            )
+            return 1
+
+        def ping(self) -> int:
+            return 1
+
+    actor = GarbageMaker.remote()
+    busy_wait_seconds = 1.0
+    batch_size = 100
+    ray.get(actor.produce.remote(batch_size, busy_wait_seconds))
+
+    observation_seconds = 10
+    deadline = time.time() + observation_seconds
+    success_count = 0
+    timeout_count = 0
+
+    while time.time() < deadline:
+        try:
+            ray.get(actor.ping.remote(), timeout=1)
+            success_count += 1
+            print("[ping] success")
+        except ray.exceptions.GetTimeoutError:
+            timeout_count += 1
+            print("[ping] timeout")
+        time.sleep(1)
+
+    ray.shutdown()
+
+    print(f"[summary] success_count={success_count}, timeout_count={timeout_count}")
+    if not support_fork:
+        assert (
+            timeout_count == 0
+        ), "Some ping() calls timed out, indicating that local GC blocked the worker."
+    else:
+        assert (
+            timeout_count > 0
+        ), "All ping() calls succeeded, indicating that local GC did not block the worker as expected."
 
 
 if __name__ == "__main__":

@@ -233,6 +233,7 @@ from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray._common.network_utils import build_address, parse_address
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
+from ray._private.gc_collect_manager import trigger_gc, init_gc_collect_manager, stop_gc_collect_manager_if_needed
 
 cimport cpython
 
@@ -2489,14 +2490,21 @@ cdef CRayStatus check_signals() nogil:
 
 
 cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
-    with gil:
-        start = time.perf_counter()
-        num_freed = gc.collect()
-        end = time.perf_counter()
-        if num_freed > 0:
-            logger.debug(
-                "gc.collect() freed {} refs in {} seconds".format(
-                    num_freed, end - start))
+     with gil:
+        if RayConfig.instance().start_python_gc_manager_thread():
+            start = time.perf_counter()
+            trigger_gc()
+            end = time.perf_counter()
+            logger.debug("GC triggered in {} seconds".format(
+                triggered_by_global_gc, end - start))
+        else:
+            start = time.perf_counter()
+            num_freed = gc.collect()
+            end = time.perf_counter()
+            if num_freed > 0:
+                logger.debug(
+                    "gc.collect() freed {} refs in {} seconds".format(
+                        num_freed, end - start))
 
 
 cdef c_vector[c_string] spill_objects_handler(
@@ -3046,6 +3054,11 @@ cdef class CoreWorker:
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
         self.event_loop_executor = None
+
+        if RayConfig.instance().start_python_gc_manager_thread():
+            init_gc_collect_manager(ray_constants.RAY_GC_MIN_COLLECT_INTERVAL)
+        else:
+            stop_gc_collect_manager_if_needed()
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been

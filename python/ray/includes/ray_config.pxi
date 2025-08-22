@@ -156,3 +156,7 @@ cdef class Config:
     @staticmethod
     def maximum_gcs_destroyed_actor_cached_count():
         return RayConfig.instance().maximum_gcs_destroyed_actor_cached_count()
+
+    @staticmethod
+    def start_python_gc_manager_thread():
+        return RayConfig.instance().start_python_gc_manager_thread()
