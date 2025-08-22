@@ -1488,10 +1488,21 @@ void NodeManager::HandleAsyncGetObjectsRequest(
   const auto refs =
       FlatbufferToObjectReference(*request->object_ids(), *request->owner_addresses());
 
+  uint64_t request_id = request->request_id();
   // Asynchronously pull all requested objects to the local node.
   AsyncGetOrWait(client,
                  refs,
-                 /*is_get_request=*/true);
+                 /*is_get_request=*/true,
+                 /*get_request_id=*/&request_id);
+  // return new_request_id.
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<protocol::AsyncGetObjectsReply> reply =
+      protocol::CreateAsyncGetObjectsReply(fbb, /*new_get_request_id=*/request_id);
+  fbb.Finish(reply);
+  (void)client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsReply),
+      fbb.GetSize(),
+      fbb.GetBufferPointer());
 }
 
 void NodeManager::ProcessWaitRequestMessage(

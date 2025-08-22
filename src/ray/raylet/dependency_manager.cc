@@ -116,8 +116,9 @@ void DependencyManager::StartOrUpdateGetRequest(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects,
     uint64_t *request_id) {
-  RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id;
-  auto &get_request = get_requests_[worker_id][*request_id];
+  RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id
+                 << ", request id: " << *request_id;
+  auto get_request = get_requests_[worker_id][*request_id];
   bool modified = false;
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
@@ -149,7 +150,7 @@ void DependencyManager::StartOrUpdateGetRequest(
     // new_request_id and *request_id should not be equal. We leave a RAY_CHECK here to
     // prevent subsequent modifications from making them equal.
     RAY_CHECK(*request_id != new_request_id);
-    get_requests_[worker_id][new_request_id] = get_request;
+    get_requests_[worker_id][new_request_id] = std::move(get_request);
     get_requests_[worker_id].erase(*request_id);
 
     *request_id = new_request_id;

@@ -291,53 +291,6 @@ def test_threaded_actor_integration_test_stress(
         ), "Resource deadlock warning shouldn't be printed, but it did."
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        test_utils.generate_system_config_map(
-            # 6MB, It is just large enough to accommodate one chunk, which
-            # is also intended to ensure that the push object process is sufficiently slow.
-            object_manager_max_bytes_in_flight=6
-            * 1024**2,
-        )
-    ],
-    indirect=True,
-)
-def test_ray_actor_get_in_multiple_threads(ray_start_cluster_head):
-    """
-    Used for testing the execution of ray.get in a multi-threading environment.
-    """
-    cluster = ray_start_cluster_head
-
-    # It needs to be large enough to ensure that this get operation
-    # takes a sufficiently long time. and make sure this object in head.
-    large_object_ref = ray.put(b"0" * 2 * 1024**3)
-
-    worker = cluster.add_node(resources={"worker": 1}, num_cpus=1)
-
-    @ray.remote(resources={"worker": 0.1})
-    class Actor:
-        def run(self, refs):
-            ref_largs = refs[0]
-            # put into worker plasma. Ensure that each get returns immediately.
-            # Before this fix, this get would repeatedly clear the pull progress.
-            ref_small = ray.put("1")
-
-            def get_small():
-                while True:
-                    ray.get(ref_small)
-                    import time
-
-                    time.sleep(0.1)
-
-            t = threading.Thread(target=get_small, daemon=True)
-            t.start()
-            ray.get(ref_largs)
-
-    actor = Actor.remote()
-    ray.get(actor.run.remote([large_object_ref]), timeout=30)
-
-
 if __name__ == "__main__":
 
     # Test suite is timing out. Disable on windows for now.
