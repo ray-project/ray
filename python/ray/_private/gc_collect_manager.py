@@ -1,8 +1,8 @@
 import gc
+import logging
 import threading
 import time
 from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,6 @@ class GCManagerThread(threading.Thread):
     def __init__(self, min_interval: int = 5):
         super().__init__(name="GCManagerThread", daemon=True)
         self._running = True
-        self.gc_in_progress = False
         self._last_gc_time = float("-inf")  # ensures first GC runs immediately
         self._min_gc_interval = min_interval
 

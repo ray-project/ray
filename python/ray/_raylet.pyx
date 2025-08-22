@@ -2495,8 +2495,7 @@ cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
             start = time.perf_counter()
             trigger_gc()
             end = time.perf_counter()
-            logger.debug("GC triggered in {} seconds".format(
-                triggered_by_global_gc, end - start))
+            logger.debug("GC event triggered in {} seconds".format(end - start))
         else:
             start = time.perf_counter()
             num_freed = gc.collect()
