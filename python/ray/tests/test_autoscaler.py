@@ -3517,7 +3517,7 @@ class AutoscalingTest(unittest.TestCase):
                 _internal_kv_initialized=Mock(return_value=False),
             ):
                 monitor = Monitor(
-                    address="localhost:12345",
+                    address=f"{ray.util.get_node_ip_address()}:12345",
                     autoscaling_config="",
                     log_dir=self.tmpdir,
                 )
