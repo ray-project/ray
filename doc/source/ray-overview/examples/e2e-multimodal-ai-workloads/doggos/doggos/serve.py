@@ -15,9 +15,9 @@ from ray import serve
 
 
 @serve.deployment(
-    num_replicas="1", 
+    num_replicas="1",
     ray_actor_options={
-        "num_gpus": 1, 
+        "num_gpus": 1,
         "accelerator_type": "L4",
     },
 )
@@ -36,17 +36,21 @@ class ClassPredictor:
 
     def get_probabilities(self, url):
         image = Image.fromarray(np.uint8(url_to_array(url=url))).convert("RGB")
-        inputs = self.processor(images=[image], return_tensors="pt", padding=True).to(self.device)
+        inputs = self.processor(images=[image], return_tensors="pt", padding=True).to(
+            self.device
+        )
         with torch.inference_mode():
             embedding = self.model.get_image_features(**inputs).cpu().numpy()
         outputs = self.predictor.predict_probabilities(
-            collate_fn({"embedding": embedding}))
+            collate_fn({"embedding": embedding})
+        )
         return {"probabilities": outputs["probabilities"][0]}
+
 
 # Define app
 api = FastAPI(
-    title="doggos", 
-    description="classify your dog", 
+    title="doggos",
+    description="classify your dog",
     version="0.1",
 )
 
@@ -56,7 +60,7 @@ api = FastAPI(
 class Doggos:
     def __init__(self, classifier):
         self.classifier = classifier
-        
+
     @api.post("/predict/")
     async def predict(self, request: Request):
         data = await request.json()
@@ -71,8 +75,8 @@ mlflow.set_tracking_uri(f"file:{model_registry}")
 
 # Get best_run's artifact_dir.
 sorted_runs = mlflow.search_runs(
-    experiment_names=[experiment_name], 
-    order_by=["metrics.val_loss ASC"])
+    experiment_names=[experiment_name], order_by=["metrics.val_loss ASC"]
+)
 best_run = sorted_runs.iloc[0]
 artifacts_dir = urlparse(best_run.artifact_uri).path
 
@@ -81,7 +85,7 @@ app = Doggos.bind(
     classifier=ClassPredictor.bind(
         model_id="openai/clip-vit-base-patch32",
         artifacts_dir=artifacts_dir,
-        device="cuda"
+        device="cuda",
     )
 )
 

@@ -14,7 +14,7 @@ notebooks/03-Online-Serving
 </div>
 
 💻 Run this entire tutorial on [Anyscale](https://www.anyscale.com/) for free:
-**https://console.anyscale.com/template-preview/image-search-and-classification** or access the repo [here](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads).
+**https://console.anyscale.com/template-preview/image-search-and-classification** or access the repository [here](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads).
 
 This tutorial focuses on the fundamental challenges of multimodal AI workloads at scale:
 
@@ -49,9 +49,9 @@ Learn more about Anyscale Workspaces in the [official documentation](https://doc
 
 ### Additional dependencies
 
-You can choose to manage the additional dependencies via `uv` or `pip`. 
+You can choose to manage the additional dependencies through `uv` or `pip`. 
 
-#### UV
+#### uv
 
 ```bash
 # UV setup instructions

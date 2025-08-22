@@ -100,7 +100,7 @@ if __name__ == "__main__":
     embeddings_ds = ds.map_batches(
         EmbedImages,
         fn_constructor_kwargs={
-            "model_id": "openai/clip-vit-base-patch32", 
+            "model_id": "openai/clip-vit-base-patch32",
             "device": "cuda",
         },  # class kwargs
         fn_kwargs={},
