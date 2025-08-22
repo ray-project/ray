@@ -2,7 +2,7 @@ import copy
 from typing import Dict, List
 
 import ray.train
-from ray.data import DataIterator, NodeIdStr
+from ray.data import DataIterator, Dataset, NodeIdStr
 from ray.data.context import DataContext
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
@@ -19,7 +19,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 class RayDatasetShardProvider:
     def __init__(
         self,
-        datasets: Dict[str, GenDataset],
+        datasets: Dict[str, Dataset],
         data_config: ray.train.DataConfig,
         world_size: int,
         worker_node_ids: List[NodeIdStr],
@@ -90,8 +90,9 @@ class DatasetsSetupCallback(WorkerGroupCallback):
             total_train_resources.get("CPU", 0), total_train_resources.get("GPU", 0)
         )
 
+        datasets = {k: v() if callable(v) else v for k, v in self._datasets.items()}
         dataset_manager = RayDatasetShardProvider(
-            datasets=self._datasets,
+            datasets=datasets,
             data_config=self._data_config,
             world_size=world_size,
             worker_node_ids=worker_node_ids,
