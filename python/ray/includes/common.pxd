@@ -661,9 +661,6 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus PollLogs(
             c_string* key_id, int64_t timeout_ms, CLogBatch* data)
 
-        CRayStatus PollActor(
-            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
-
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:

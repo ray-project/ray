@@ -705,6 +705,8 @@ enum TensorTransport {
   NCCL = 1;
   // Use GLOO for tensor transport.
   GLOO = 2;
+  // Use NIXL for tensor transport.
+  NIXL = 3;
 }
 
 // Argument in the task.

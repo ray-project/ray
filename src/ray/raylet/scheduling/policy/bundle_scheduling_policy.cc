@@ -142,7 +142,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -219,7 +219,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -280,7 +280,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -312,8 +312,8 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
                                                         nullptr);
-  if (!options.bundle_strict_pack_soft_target_node_id.IsNil()) {
-    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id)) {
+  if (!options.bundle_strict_pack_soft_target_node_id_.IsNil()) {
+    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id_)) {
       best_node = GetBestNode(
           aggregated_resource_request,
           absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
@@ -349,7 +349,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   RAY_CHECK(!resource_request_list.empty());
 
   // Filter candidate nodes.
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();

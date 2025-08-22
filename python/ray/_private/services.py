@@ -1792,7 +1792,7 @@ def start_raylet(
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
+        f"--grpc-port={metrics_agent_port}",
         f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",

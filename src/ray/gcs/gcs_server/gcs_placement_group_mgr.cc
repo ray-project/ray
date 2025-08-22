@@ -266,11 +266,12 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
          // The backend storage is supposed to be reliable, so the status must be ok.
          RAY_CHECK_OK(status);
          if (registered_placement_groups_.contains(placement_group_id)) {
-           auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
-           auto callbacks = std::move(iter->second);
-           placement_group_to_register_callbacks_.erase(iter);
-           for (const auto &callback : callbacks) {
-             callback(status);
+           auto register_callback_iter =
+               placement_group_to_register_callbacks_.find(placement_group_id);
+           auto callbacks = std::move(register_callback_iter->second);
+           placement_group_to_register_callbacks_.erase(register_callback_iter);
+           for (const auto &register_callback : callbacks) {
+             register_callback(status);
            }
            SchedulePendingPlacementGroups();
          } else {
@@ -438,14 +439,14 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
           /*placement_group=*/placement_group,
           /*failure_callback=*/
-          [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
+          [this, backoff](std::shared_ptr<GcsPlacementGroup> failure_placement_group,
                           bool is_feasible) {
             OnPlacementGroupCreationFailed(
-                std::move(placement_group), backoff, is_feasible);
+                std::move(failure_placement_group), backoff, is_feasible);
           },
           /*success_callback=*/
-          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-            OnPlacementGroupCreationSuccess(placement_group);
+          [this](std::shared_ptr<GcsPlacementGroup> success_placement_group) {
+            OnPlacementGroupCreationSuccess(success_placement_group);
           }});
       is_new_placement_group_scheduled = true;
     }
@@ -546,8 +547,9 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   auto pending_it = std::find_if(
       infeasible_placement_groups_.begin(),
       infeasible_placement_groups_.end(),
-      [placement_group_id](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
-        return placement_group->GetPlacementGroupID() == placement_group_id;
+      [placement_group_id](
+          const std::shared_ptr<GcsPlacementGroup> &this_placement_group) {
+        return this_placement_group->GetPlacementGroupID() == placement_group_id;
       });
   if (pending_it != infeasible_placement_groups_.end()) {
     // The placement group is infeasible now, remove it from the queue.
@@ -1016,13 +1018,14 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
       prepared_pgs.emplace_back(SchedulePgRequest{
           placement_group,
           /*failure_callback=*/
-          [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_feasible) {
+          [this](std::shared_ptr<GcsPlacementGroup> failure_placement_group,
+                 bool is_feasible) {
             OnPlacementGroupCreationFailed(
-                std::move(placement_group), CreateDefaultBackoff(), is_feasible);
+                std::move(failure_placement_group), CreateDefaultBackoff(), is_feasible);
           },
           /*success_callback=*/
-          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-            OnPlacementGroupCreationSuccess(placement_group);
+          [this](std::shared_ptr<GcsPlacementGroup> success_placement_group) {
+            OnPlacementGroupCreationSuccess(success_placement_group);
           },
       });
     }
