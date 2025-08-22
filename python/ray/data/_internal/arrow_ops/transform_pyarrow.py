@@ -179,6 +179,9 @@ def unify_schemas(
         ArrowVariableShapedTensorType,
     )
 
+    schemas = set(schema for schema in schemas)
+    if len(schemas) == 1:
+        return schemas.pop()
     schemas_to_unify = []
     schema_field_overrides = {}
 
