@@ -305,9 +305,6 @@ Lowering `max_model_len` reduces the memory needed for KV cache.
 **Use Quantized Models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
 
-**Use Pipeline Parallelism**  
-If a single node is not enough to handle your workload, consider distributing the model's layers across multiple nodes with `pipeline_parallel_size > 1`.
-
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
