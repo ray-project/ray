@@ -33,6 +33,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -51,7 +52,8 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/time.h"
 
 namespace {
 
@@ -343,7 +345,7 @@ void NodeManager::RegisterGcs() {
         [this] {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
-          RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
+          RAY_LOG(INFO) << PrependToEachLine(debug_msg.str(), "[state-dump] ");
           ReportWorkerOOMKillStats();
         },
         event_stats_print_interval_ms,
@@ -515,7 +517,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   // so that pg bundle can be returned.
   local_task_manager_.CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->task_.GetTaskSpecification().PlacementGroupBundleId();
         return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
                (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
@@ -602,10 +605,10 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
-                   << ", fail immediately: " << !it->second.should_retry;
-    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
-    reply->set_fail_task_immediately(!it->second.should_retry);
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_)
+                   << ", fail immediately: " << !it->second.should_retry_;
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info_);
+    reply->set_fail_task_immediately(!it->second.should_retry_);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
@@ -1110,14 +1113,14 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
         fbb.GetSize(),
         fbb.GetBufferPointer(),
-        [this, client](const ray::Status &status) {
-          if (!status.ok()) {
+        [this, client](const ray::Status &write_msg_status) {
+          if (!write_msg_status.ok()) {
             DisconnectClient(client,
                              /*graceful=*/false,
                              rpc::WorkerExitType::SYSTEM_ERROR,
                              "Worker is failed because the raylet couldn't reply the "
                              "registration request: " +
-                                 status.ToString());
+                                 write_msg_status.ToString());
           }
         });
   };
@@ -1231,13 +1234,13 @@ void NodeManager::SendPortAnnouncementResponse(
       static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          DisconnectClient(
-              client,
-              /*graceful=*/false,
-              rpc::WorkerExitType::SYSTEM_ERROR,
-              "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
+      [this, client](const ray::Status &write_msg_status) {
+        if (!write_msg_status.ok()) {
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           "Failed to send AnnounceWorkerPortReply to client: " +
+                               write_msg_status.ToString());
         }
       });
 }
@@ -1790,7 +1793,8 @@ void NodeManager::HandleCancelResourceReserve(
   // In the case of placement group removal, we should cancel all the lease requests.
   local_task_manager_.CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->task_.GetTaskSpecification().PlacementGroupBundleId();
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
@@ -1825,6 +1829,103 @@ void NodeManager::HandleCancelResourceReserve(
 
   RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));
   cluster_task_manager_.ScheduleAndDispatchTasks();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleResizeLocalResourceInstances(
+    rpc::ResizeLocalResourceInstancesRequest request,
+    rpc::ResizeLocalResourceInstancesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &target_resource_map = request.resources();
+
+  // Check if any resource is a unit instance resource
+  // Unit instance resources (e.g., GPU) cannot be resized with this API
+  for (const auto &[resource_name, target_value] : target_resource_map) {
+    if (ResourceID(resource_name).IsUnitInstanceResource()) {
+      std::string error_msg = absl::StrFormat(
+          "Cannot resize unit instance resource '%s'. Unit instance resources "
+          "(e.g., GPU) cannot be resized dynamically.",
+          resource_name);
+      send_reply_callback(Status::InvalidArgument(error_msg), nullptr, nullptr);
+      return;
+    }
+  }
+
+  // Get current local resources and convert to resource maps
+  const auto &current_resources =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
+  const auto &current_total_map =
+      current_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
+  const auto &current_available_map = current_resources.GetAvailableResourceInstances()
+                                          .ToNodeResourceSet()
+                                          .GetResourceMap();
+
+  // Calculate delta resource map (target - current) and clamp to avoid
+  // making available resources negative
+  absl::flat_hash_map<std::string, double> delta_resource_map;
+  for (const auto &[resource_name, target_value] : target_resource_map) {
+    double current_total = 0.0;
+    double current_available = 0.0;
+
+    if (auto total_it = current_total_map.find(resource_name);
+        total_it != current_total_map.end()) {
+      current_total = total_it->second;
+    }
+
+    if (auto available_it = current_available_map.find(resource_name);
+        available_it != current_available_map.end()) {
+      current_available = available_it->second;
+    }
+
+    double delta_value = target_value - current_total;
+
+    // Clamp so current_available never goes below 0.
+    // For example, if delta_value is -4 but the current_available is 2,
+    // then clamp delta_value to -2.
+    if (delta_value < -current_available) {
+      delta_value = -current_available;
+    }
+
+    if (delta_value != 0.0) {
+      delta_resource_map[resource_name] = delta_value;
+    }
+  }
+
+  // Convert the delta resource map to NodeResourceInstanceSet and apply
+  if (!delta_resource_map.empty()) {
+    NodeResourceSet delta_resources(delta_resource_map);
+    NodeResourceInstanceSet delta_instances(delta_resources);
+
+    // Apply deltas for each resource
+    for (const auto &resource_id : delta_resources.ExplicitResourceIds()) {
+      const auto &instances = delta_instances.Get(resource_id);
+      cluster_resource_scheduler_.GetLocalResourceManager().AddLocalResourceInstances(
+          resource_id, instances);
+    }
+  }
+
+  // Get updated resource state and populate reply
+  const auto &updated_resources =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
+  const auto &updated_total_map =
+      updated_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
+  const auto &updated_available_map = updated_resources.GetAvailableResourceInstances()
+                                          .ToNodeResourceSet()
+                                          .GetResourceMap();
+
+  if (!delta_resource_map.empty()) {
+    // Log the updated resources
+    RAY_LOG(INFO) << "Successfully resized local resources. Current total resources: "
+                  << debug_string(updated_total_map);
+    RAY_LOG(INFO) << "Available resources: " << debug_string(updated_available_map);
+    // Trigger scheduling to account for the new resources
+    cluster_task_manager_.ScheduleAndDispatchTasks();
+  }
+
+  // Populate the reply with the current resource state
+  auto *total_resources = reply->mutable_total_resources();
+  total_resources->insert(updated_total_map.begin(), updated_total_map.end());
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2558,8 +2659,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          rpc::GetNodeStatsReply &&local_reply) {
-        replies->push_back(std::move(local_reply));
+          rpc::GetNodeStatsReply &&get_node_status_local_reply) {
+        replies->push_back(std::move(get_node_status_local_reply));
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));
@@ -2910,7 +3011,7 @@ void NodeManager::GCTaskFailureReason() {
   for (const auto &entry : task_failure_reasons_) {
     auto duration = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - entry.second.creation_time)
+            std::chrono::steady_clock::now() - entry.second.creation_time_)
             .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO).WithField(entry.first)

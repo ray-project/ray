@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/string_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {

@@ -88,8 +88,8 @@ class PublisherTest : public ::testing::Test {
     return pub_message;
   }
 
-  bool HasSubscriber(const std::vector<SubscriberID> &subscribers,
-                     const SubscriberID &subscriber) {
+  bool HasSubscriber(const std::vector<UniqueID> &subscribers,
+                     const UniqueID &subscriber) {
     return std::find(subscribers.begin(), subscribers.end(), subscriber) !=
            subscribers.end();
   }
@@ -131,7 +131,7 @@ class PublisherTest : public ::testing::Test {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
   const uint64_t subscriber_timeout_ms_ = 30000;
   double current_time_;
-  const SubscriberID subscriber_id_ = SubscriberID::FromRandom();
+  const UniqueID subscriber_id_ = UniqueID::FromRandom();
   rpc::PubsubLongPollingRequest request_;
   std::vector<std::unique_ptr<SubscriberState>> subscribers_;
   int64_t sequence_id_ = 0;
@@ -283,7 +283,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto oid = ObjectID::FromRandom();
   auto &subscribers = subscribers_map_[oid];
-  std::vector<SubscriberID> subscriber_ids;
+  std::vector<UniqueID> subscriber_ids;
 
   // Add entries.
   for (int i = 0; i < 6; i++) {

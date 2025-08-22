@@ -24,9 +24,9 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
@@ -155,6 +155,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
