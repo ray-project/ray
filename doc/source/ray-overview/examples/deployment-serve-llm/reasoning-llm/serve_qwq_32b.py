@@ -1,5 +1,4 @@
 # serve_qwq_32b.py
-from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 

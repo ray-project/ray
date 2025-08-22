@@ -15,7 +15,6 @@ Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serv
 
 ```python
 #serve_llama_3_1_8b.py
-from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
@@ -146,22 +145,6 @@ For production deployment, we recommend using Anyscale services to deploy the Ra
 
 ### Launch
 
-You can use any image from the Anyscale registry, or build your own Dockerfile on top of an Anyscale base image. Create a new `Dockerfile` and start with this minimal setup:
-```Dockerfile
-FROM anyscale/ray:2.48.0-slim-py312-cu128
-
-# C compiler for Triton’s runtime build step (vLLM V1 engine)
-# https://github.com/vllm-project/vllm/issues/2997
-RUN sudo apt-get update && \
-    sudo apt-get install -y --no-install-recommends build-essential
-
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-RUN uv pip install --system vllm==0.9.2
-# Avoid https://github.com/vllm-project/vllm-ascend/issues/2046 with transformers >= 4.54.0
-RUN uv pip install --system transformers==4.53.3
-```
-
 Write your Anyscale Service configuration, in a new `service.yaml` file, write:  
 ```yaml
 #service.yaml
@@ -182,6 +165,35 @@ Deploy your Service
 ```bash
 %%bash
 anyscale service deploy -f service.yaml
+```
+
+**Custom Dockerfile**
+
+You can use any image from the Anyscale registry, or build your own Dockerfile on top of an Anyscale base image. Create a new `Dockerfile` and start with this minimal setup:
+```Dockerfile
+FROM anyscale/ray:2.48.0-slim-py312-cu128
+
+# C compiler for Triton’s runtime build step (vLLM V1 engine)
+# https://github.com/vllm-project/vllm/issues/2997
+RUN sudo apt-get update && \
+    sudo apt-get install -y --no-install-recommends build-essential
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+RUN uv pip install --system vllm==0.9.2
+# Avoid https://github.com/vllm-project/vllm-ascend/issues/2046 with transformers >= 4.54.0
+RUN uv pip install --system transformers==4.53.3
+```
+
+In your Anyscale Service config, replace `image_uri` with `containerfile`:
+```yaml
+#service.yaml
+...
+## Replace
+#image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+## With
+containerfile: ./Dockerfile # path to your dockerfile
+...
 ```
 
 

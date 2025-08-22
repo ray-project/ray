@@ -1,5 +1,4 @@
 # serve_qwen_VL.py
-from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 

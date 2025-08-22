@@ -17,7 +17,6 @@ Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serv
 
 ```python
 #serve_llama_3_1_70b.py
-from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
@@ -147,6 +146,30 @@ For production deployment, use Anyscale services to deploy the Ray Serve app to 
 
 ### Launch
 
+Write your Anyscale Service configuration, in a new `service.yaml` file, write:  
+```yaml
+#service.yaml
+name: deploy-llama-3-70b
+image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+compute_config:
+  auto_select_worker_config: true 
+working_dir: .
+cloud:
+applications:
+# Point to your app in your Python module
+- import_path: serve_llama_3_1_70b:app
+```
+
+Deploy your Service
+
+
+```bash
+%%bash
+anyscale service deploy -f service.yaml
+```
+
+**Custom Dockerfile**
+
 You can use any image from the Anyscale registry, or build your own Dockerfile on top of an Anyscale base image. Create a new `Dockerfile` and start with this minimal setup:
 ```Dockerfile
 FROM anyscale/ray:2.48.0-slim-py312-cu128
@@ -163,26 +186,15 @@ RUN uv pip install --system vllm==0.9.2
 RUN uv pip install --system transformers==4.53.3
 ```
 
-Write your Anyscale Service configuration, in a new `service.yaml` file, write:  
+In your Anyscale Service config, replace `image_uri` with `containerfile`:
 ```yaml
 #service.yaml
-name: deploy-llama-3-70b
-containerfile: ./Dockerfile
-compute_config:
-  auto_select_worker_config: true 
-working_dir: .
-cloud:
-applications:
-# Point to your app in your Python module
-- import_path: serve_llama_3_1_70b:app
-```
-
-Deploy your Service
-
-
-```bash
-%%bash
-anyscale service deploy -f service.yaml
+...
+## Replace
+#image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+## With
+containerfile: ./Dockerfile # path to your dockerfile
+...
 ```
 
 

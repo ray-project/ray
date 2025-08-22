@@ -112,7 +112,6 @@ We set `tensor_parallel_size= 8` to distribute the model's weights among 8 GPUs 
 
 ```python
 #serve_qwen_3_32b.py
-from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
