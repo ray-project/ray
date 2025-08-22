@@ -2,7 +2,7 @@ import warnings
 
 import ray.util.accelerators.accelerators as _accelerators
 from ray.util.accelerators import tpu
-from ray.util.accelerators.types import all_types, AcceleratorTypes
+from ray.util.accelerators.types import AcceleratorTypes
 
 # Get all GPU constant names
 _GPU_CONSTANTS = [
