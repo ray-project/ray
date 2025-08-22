@@ -3,8 +3,8 @@ build_arg_sets:
     PYTHON_VERSION: "3.9"
   py310:
     PYTHON_VERSION: "3.10"
-  # py311:
-  #   PYTHON_VERSION: "3.11"
+  py311:
+    PYTHON_VERSION: "3.11"
   py312:
     PYTHON_VERSION: "3.12"
 
@@ -23,5 +23,5 @@ depsets:
     build_arg_sets:
       - py39
       - py310
-      # - py311
+      - py311
       - py312
