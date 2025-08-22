@@ -1494,6 +1494,19 @@ class CoreWorker {
       std::string *application_error);
 
   /// Put an object in the local plasma store.
+  ///
+  /// Return status semantics:
+  /// - Status::OK(): The object was created (or already existed) and bookkeeping was
+  ///   updated. Note: an internal ObjectExists from the plasma provider is treated
+  ///   as OK and does not surface here.
+  /// - Status::ObjectStoreFull(): The local plasma store is out of memory (or out of
+  ///   disk when spilling). The error message contains context and a short memory
+  ///   report.
+  /// - Status::IOError(): IPC/connection failures while talking to the plasma store
+  ///   (e.g., broken pipe/connection reset during shutdown, store not reachable).
+  ///
+  /// Call sites that run during shutdown may choose to tolerate IOError specifically,
+  /// but should treat all other statuses as real failures.
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,
                                bool pin_object);
