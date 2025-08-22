@@ -124,6 +124,7 @@ def test_shutdown(ray_shutdown):
 
     wait_for_condition(check_dead)
 
+
 @pytest.mark.asyncio
 async def test_shutdown_async(ray_shutdown):
     ray.init(num_cpus=8)
