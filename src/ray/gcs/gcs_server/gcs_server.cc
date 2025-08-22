@@ -23,12 +23,21 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+#include "ray/gcs/gcs_server/gcs_task_manager.h"
+#include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/gcs_runtime_env_handler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -232,6 +241,13 @@ void GcsServer::GetOrGenerateClusterId(
          }
        },
        io_context});
+}
+
+void GcsServer::UpdateGcsResourceManagerInTest(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+  RAY_CHECK(gcs_resource_manager_ != nullptr);
+  gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {

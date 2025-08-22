@@ -22,17 +22,8 @@
 #include "ray/common/asio/postable.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_server/gcs_function_manager.h"
-#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/gcs_task_manager.h"
-#include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
-#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -71,14 +62,22 @@ struct GcsServerConfig {
   std::string session_name;
 };
 
-class GcsNodeManager;
 class GcsActorManager;
-class GcsJobManager;
-class GcsWorkerManager;
-class GcsPlacementGroupScheduler;
-class GcsPlacementGroupManager;
-class GcsTaskManager;
 class GcsAutoscalerStateManager;
+class GCSFunctionManager;
+class GcsHealthCheckManager;
+class GcsInitData;
+class GcsInternalKVManager;
+class GcsJobManager;
+class GcsNodeManager;
+class GcsPlacementGroupManager;
+class GcsPlacementGroupScheduler;
+class GcsResourceManager;
+class GcsTableStorage;
+class GcsTaskManager;
+class GcsWorkerManager;
+class InternalPubSubHandler;
+class UsageStatsClient;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -126,10 +125,7 @@ class GcsServer {
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
-      const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
-    RAY_CHECK(gcs_resource_manager_ != nullptr);
-    gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
-  }
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
  protected:
   void DoStart(const GcsInitData &gcs_init_data);
@@ -238,7 +234,7 @@ class GcsServer {
   /// Local task manager.
   NoopLocalTaskManager local_task_manager_;
   /// The gcs table storage.
-  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<GcsTableStorage> gcs_table_storage_;
   /// The cluster task manager.
   std::unique_ptr<ClusterTaskManager> cluster_task_manager_;
   /// [gcs_resource_manager_] depends on [cluster_task_manager_].
