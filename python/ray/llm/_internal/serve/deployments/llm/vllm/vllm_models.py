@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import os
 from typing import Any, Dict, List, Optional
@@ -34,7 +35,6 @@ logger = get_logger(__name__)
 class VLLMEngineConfig(BaseModelExtended):
     model_config = ConfigDict(
         use_enum_values=True,
-        extra="forbid",
     )
 
     model_id: str = Field(
@@ -93,9 +93,24 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if "disable_log_requests" not in engine_kwargs:
+        # TODO(lk-chen): Remove the logic once we require vllm>=0.10.1
+        # vLLM 0.10.1 replaces `disable_log_requests` with
+        # `enable_log_requests`. Here we are trying to be compatible with both.
+        if hasattr(AsyncEngineArgs, "enable_log_requests"):
+            if "disable_log_requests" in engine_kwargs:
+                logger.warning(
+                    "disable_log_requests is set in engine_kwargs, but vLLM "
+                    "does not support it. Converting to enable_log_requests."
+                )
+                engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
+                    "disable_log_requests"
+                )
+            else:
+                engine_kwargs["enable_log_requests"] = False
+        elif "disable_log_requests" not in engine_kwargs:
             logger.info(
-                "Disabling request logging by default. To enable, set to False in engine_kwargs."
+                "Disabling request logging by default. To enable, set to False"
+                " in engine_kwargs."
             )
             engine_kwargs["disable_log_requests"] = True
 
@@ -180,13 +195,14 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
+
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
         else:
             bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_devices)]
+        bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
 
@@ -224,6 +240,7 @@ class VLLMEngineConfig(BaseModelExtended):
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
         """
+        dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         pg = get_current_placement_group()
         if pg:
             logger.debug(
@@ -238,8 +255,12 @@ class VLLMEngineConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
+            name = "" if dp_rank is None else f"dp_{dp_rank}"
+
             pg = placement_group(
-                self.placement_bundles, strategy=self.placement_strategy
+                bundles=self.placement_bundles,
+                strategy=self.placement_strategy,
+                name=name,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")

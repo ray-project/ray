@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/string_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -93,10 +94,9 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data_ptr = gcs::CreateErrorTableData(
+        auto error_data = CreateErrorTableData(
             error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        RAY_CHECK_OK(
-            gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
+        gcs_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
