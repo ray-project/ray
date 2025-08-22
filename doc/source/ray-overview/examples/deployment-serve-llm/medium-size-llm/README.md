@@ -46,7 +46,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, we recommend switching to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -84,7 +84,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ### Sending Requests
 
-Your endpoint will be available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
 
 Example Curl
 
@@ -203,7 +203,7 @@ containerfile: ./Dockerfile # path to your dockerfile
 
 ### Sending Requests 
 
-Both the endpoint and authentication token will be shown in the output of the `anyscale service deploy` command:
+Both the endpoint and authentication token are shown in the output of the `anyscale service deploy` command:
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
@@ -264,7 +264,7 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
 > *Example*:  
-> Running llama-3.1-70B On an A100-40G:
+> Running llama-3.1-70&nbsp;B On an A100-40G:
 > * `max_model_len = 32,768` → concurrency ≈ 13
 > * `max_model_len = 16,384` → concurrency ≈ 26
 
@@ -272,7 +272,7 @@ Lowering `max_model_len` reduces the memory needed for KV cache.
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
 
 **Use Pipeline Parallelism**  
-If a single node is not enough to handle your workload, consider distributing the model's layers across multiple nodes with `pipeline_parallel_size > 1`.
+If a single node isn't enough to handle your workload, consider distributing the model's layers across multiple nodes with `pipeline_parallel_size > 1`.
 
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.

@@ -13,7 +13,7 @@ Reasoning models are designed to simulate step-by-step, structured thought proce
 | **Model Type**          | **Core Behavior**                    | **Use Case Examples**                                    | **Limitation**                                        |
 | ----------------------- | ------------------------------------ | -------------------------------------------------------- | ----------------------------------------------------- |
 | **Reasoning Model**     | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used                |
-| **Non-Reasoning Model** | Direct answer generation             | Casual queries, short instructions, single-step answers  | May struggle with complex reasoning or explainability |
+| **Non-Reasoning Model** | Direct answer generation             | Casual queries, short instructions, single-step answers  | May struggle with complex reasoning or interpretability |
 
 Many reasoning-capable models structure their outputs with special markers such as `<think>` tags, or expose reasoning traces inside dedicated fields like `reasoning_content` in the OpenAI API response. Always check the model's documentation to see how thinking is structured and controlled.
 
@@ -82,7 +82,7 @@ Make sure to set your Hugging Face token in the config file to access gated mode
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
-We set `tensor_parallel_size= 8` to distribute the model's weights among 8 GPUs in the node. 
+Set `tensor_parallel_size= 8` to distribute the model's weights among 8 GPUs in the node. 
 
 
 ```python
@@ -113,7 +113,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, we recommend switching to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -151,7 +151,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ### Sending Request
 
-Your endpoint will be available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
 
 Example Curl
 
@@ -210,7 +210,7 @@ serve shutdown -y
 
 ### Production Deployment with Anyscale Service
 
-For production, we recommend using Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html) for an example with a medium-size model like the *QwQ-32B* we are using here.
+For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html) for an example with a medium-size model like the *QwQ-32&nbsp;B* used here.
 
 ---
 

@@ -2,13 +2,13 @@
 
 A large-size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.
 
-This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685B parameters) using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html).
+This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html).
 
 ---
 
 ## Challenges of Large-Scale Deployment
 
-Deploying a 670B-parameter model like DeepSeek-R1 presents significant technical challenges. At this scale, the model cannot fit on a single GPU or even a single node. It must be distributed across multiple GPUs and nodes using *tensor parallelism* (splitting tensors within each layer) and *pipeline parallelism* (spreading layers across devices).  
+Deploying a 685&nbsp;B-parameter model like DeepSeek-R1 presents significant technical challenges. At this scale, the model can't fit on a single GPU or even a single node. It must be distributed across multiple GPUs and nodes using *tensor parallelism* (splitting tensors within each layer) and *pipeline parallelism* (spreading layers across devices).  
 
 Deploying a model of this scale normally requires manually launching and coordinating multiple nodes, unless you use a managed platform like [Anyscale](https://www.anyscale.com/), which automates cluster scaling and node orchestration. See [Production Deployment with Anyscale Service](#production-deployment-with-anyscale-service) for more details.
 
@@ -49,7 +49,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, we recommend switching to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -89,7 +89,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ### Sending Requests
 
-Your endpoint will be available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
 
 Example Curl
 
@@ -146,17 +146,15 @@ serve shutdown -y
 
 ## Production Deployment with Anyscale Service
 
-For production, we recommend using Anyscale Services to deploy Ray Serve apps on dedicated clusters without code changes. Anyscale provides scalability, fault tolerance, and load balancing, while also automating multi-node setup and autoscaling for large models like DeepSeek-R1.
+For production, it's recommended to use Anyscale Services to deploy Ray Serve apps on dedicated clusters without code changes. Anyscale provides scalability, fault tolerance, and load balancing, while also automating multi-node setup and autoscaling for large models like DeepSeek-R1.
 
-**Beware**: this is an expensive deployment. At the time of writing, the deployment cost is around $110 USD per hour in the `us-west-2` AWS region using on-demand instances. Because this node has a high amount of inter-node traffic, and cross-zone traffic is expensive (around $0.02 per GB), we recommend *disabling cross-zone autoscaling*. This demo is pre-configured with cross-zone autoscaling disabled for your convenience.
+**Beware**: this is an expensive deployment. At the time of writing, the deployment cost is around $110 USD per hour in the `us-west-2` AWS region using on-demand instances. Because this node has a high amount of inter-node traffic, and cross-zone traffic is expensive (around $0.02 per GB), it's recommended to *disable cross-zone autoscaling*. This demo is pre-configured with cross-zone autoscaling disabled for your convenience.
 
 ### Prerequisites
 
-The following template runs only on H100 GPUs in your self-hosted Anyscale cloud, as H100s are not available in Anyscale’s public cloud. In this example, we use two nodes of type *8xH100-80GB:208CPU-1830GB*.
+The following template runs only on H100 GPUs in your self-hosted Anyscale cloud, as H100s aren't available in Anyscale’s public cloud. This example uses two nodes of type *8xH100-80&nbsp;GB:208CPU-1830&nbsp;GB* on an AWS cloud.
 
 To provision nodes with 1000 GB of disk capacity, see [Changing the default disk size for GCP clusters](https://docs.anyscale.com/configuration/compute/gcp/#changing-the-default-disk-size) for Google Cloud Platform (GCP) or [Changing the default disk size for AWS clusters](https://docs.anyscale.com/configuration/compute/aws/#changing-the-default-disk-size) for Amazon Web Services (AWS). 
-
-> This template demonstrates the AWS case but we'll show the GCP case under comments
 
 ---
 
@@ -239,7 +237,7 @@ containerfile: ./Dockerfile # path to your dockerfile
 
 ### Sending Requests 
 
-Both the endpoint and authentication token will be shown in the output of the `anyscale service deploy` command:
+Both the endpoint and authentication token are shown in the output of the `anyscale service deploy` command:
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
@@ -300,7 +298,7 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
 > *Example*:  
-> Running DeepSeek-R1 on 2 nodes with 8xH100-80GB GPUs each:
+> Running DeepSeek-R1 on 2 nodes with 8xH100-80&nbsp;GB GPUs each:
 > * `max_model_len = 32,768` → concurrency ≈ 13
 > * `max_model_len = 16,384` → concurrency ≈ 26
 

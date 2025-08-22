@@ -33,6 +33,7 @@ autoscales
 bool
 breakpoint
 BTS
+bursty
 chatbot
 CLI
 configs
@@ -45,8 +46,10 @@ deserialize
 deserializes
 dev
 dev to prod
+[d|D]isable[d]
 disable
 DLinear
+Dockerfile
 DPO
 EKS
 ETDataset
@@ -77,6 +80,9 @@ NER
 Nsight
 NumPy
 NVIDIA
+NVLink
+OFF
+off
 OOM
 open-source
 PACK
@@ -88,6 +94,7 @@ productionize
 Pythonic
 QPS
 Qwen
+Quantizing
 retrigger
 RISECamp
 RLHF
@@ -106,6 +113,7 @@ teardown
 uncaptured
 URI(s)?
 UUID
+USD
 uv
 verl
 VM(s)?

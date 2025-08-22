@@ -42,7 +42,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, we recommend switching to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -81,7 +81,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ### Sending Requests
 
-Your endpoint will be available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
 
 Example Curl
 
@@ -140,7 +140,7 @@ serve shutdown -y
 
 ## Production Deployment with Anyscale Service
 
-For production deployment, we recommend using Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
+For production deployment, it's recommended to use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
 
 ---
 
@@ -202,7 +202,7 @@ containerfile: ./Dockerfile # path to your dockerfile
 
 ### Sending Requests 
 
-Both the endpoint and authentication token will be shown in the output of the `anyscale service deploy` command:
+Both the endpoint and authentication token are shown in the output of the `anyscale service deploy` command:
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
@@ -263,7 +263,7 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
 > *Example*:  
-> Running *llama-3.1-8B* On an A10G or L4 GPU:
+> Running *llama-3.1-8&nbsp;B* On an A10G or L4 GPU:
 > * `max_model_len = 8192` → concurrency ≈ 3.5
 > * `max_model_len = 4096` → concurrency ≈ 7
 
