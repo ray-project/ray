@@ -246,6 +246,16 @@ class SchedulingNode:
         return self.sched_requests[resource_request_source]
 
     def update_total_resources(self, new_total_resources: Dict[str, float]) -> None:
+        """Update the node's total capacity and adjust available resources.
+
+        Applies per-resource deltas between the provided new totals and the
+        current totals, and adds those deltas to the available resources for
+        all scheduling sources.
+
+        Args:
+            new_total_resources: Mapping from resource name (e.g., "CPU",
+                "memory") to the new total capacity to expose for scheduling.
+        """
         for resource_name, new_total in new_total_resources.items():
             delta = new_total - self.total_resources.get(resource_name, 0.0)
             self.total_resources[resource_name] = max(0.0, new_total)
@@ -905,9 +915,20 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
 
         def get_ippr_specs(self) -> Optional[IPPRSpecs]:
+            """Return typed IPPR specs if present on the scheduling request."""
             return self._ippr_specs
 
         def get_ippr_requests(self) -> List[IPPRStatus]:
+            """Return IPPR actions to perform this iteration.
+
+            Collects all nodes with an ``IPPRStatus`` that are ready to resize,
+            i.e. have a raylet id, have a newly queued status, and a desired
+            different from current resources.
+
+            Returns:
+                A list of ``IPPRStatus`` to send to the cloud provider for
+                in-place pod resize.
+            """
             return [
                 node.ippr_status
                 for node in self._nodes

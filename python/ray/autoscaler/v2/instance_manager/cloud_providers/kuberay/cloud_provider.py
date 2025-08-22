@@ -191,12 +191,28 @@ class KubeRayProvider(ICloudInstanceProvider):
         return errors
 
     def get_ippr_specs(self) -> IPPRSpecs:
+        """Return the cached, validated IPPR specs for the cluster.
+
+        The IPPR specs are refreshed during the provider's periodic sync with the
+        API server by reading the RayCluster annotation and validating it against
+        the IPPR schema.
+        """
         return self._ippr_provider.get_ippr_specs()
 
     def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        """Return the latest per-pod IPPR statuses keyed by pod name.
+
+        These statuses are refreshed from the current pod list during the provider's
+        periodic sync with the API server.
+        """
         return self._ippr_provider.get_ippr_statuses()
 
     def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
+        """Execute IPPR resize requests via the underlying IPPR provider.
+
+        Args:
+            resizes: The list of per-pod IPPR actions produced by the scheduler.
+        """
         self._ippr_provider.do_ippr_requests(resizes)
 
     ############################
