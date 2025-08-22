@@ -105,7 +105,7 @@ class Read(AbstractMap, SourceOperator):
 
         schema = None
         if schemas:
-            schema = unify_schemas_with_validation(schemas, sample_size=None)
+            schema = unify_schemas_with_validation(schemas, sample_size=1)
         return BlockMetadataWithSchema(metadata=meta, schema=schema)
 
     def can_modify_num_rows(self) -> bool:

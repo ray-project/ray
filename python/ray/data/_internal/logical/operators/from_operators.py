@@ -28,7 +28,7 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
             len(input_metadata),
         )
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        self._schema = unify_block_metadata_schema(input_metadata, sample_size=None)
+        self._schema = unify_block_metadata_schema(input_metadata, sample_size=1)
         self._input_data = [
             RefBundle(
                 [(input_blocks[i], input_metadata[i])],
