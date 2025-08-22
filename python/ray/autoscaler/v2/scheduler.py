@@ -1523,7 +1523,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ):
                     # If provider suggested adjusted sizes (from Deferred/Infeasible),
                     # make those the desired values for the next resize.
-                    node.ippr_status.update(
+                    node.ippr_status.queue_resize_request(
                         raylet_id=node.ray_node_id,
                         desired_cpu=node.ippr_status.suggested_max_cpu,
                         desired_memory=node.ippr_status.suggested_max_memory,
@@ -1534,7 +1534,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     logger.info(
                         f"Revert failed or stuck IPPR for {node.ippr_status.cloud_instance_id} with status {node.ippr_status}"
                     )
-                    node.ippr_status.update(
+                    node.ippr_status.queue_resize_request(
                         raylet_id=node.ray_node_id,
                         desired_cpu=node.ippr_status.current_cpu,
                         desired_memory=node.ippr_status.current_memory,
@@ -1604,7 +1604,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 break
 
             # Commit an IPPR action on the selected node to its max effective caps.
-            best_node.ippr_status.update(
+            best_node.ippr_status.queue_resize_request(
                 raylet_id=best_node.ray_node_id,
                 desired_cpu=best_node.ippr_status.max_cpu(),
                 desired_memory=best_node.ippr_status.max_memory(),
@@ -1631,9 +1631,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 group = ippr_specs.groups[node.node_type]
                 node.update_total_resources(
                     {
-                        "CPU": float(max(group.max_cpu, node.total_resources["CPU"])),
+                        "CPU": float(
+                            max(group.max_cpu, node.total_resources.get("CPU", 0))
+                        ),
                         "memory": float(
-                            max(group.max_memory, node.total_resources["memory"])
+                            max(group.max_memory, node.total_resources.get("memory", 0))
                         ),
                     }
                 )

@@ -217,7 +217,7 @@ class KubeRayIPPRProvider:
             ippr_group_spec = self._ippr_specs.groups.get(
                 labels[KUBERAY_LABEL_KEY_TYPE]
             )
-            ippr_status, container_resource = _set_ippr_status_for_pod(
+            ippr_status, container_resource = _get_ippr_status_from_pod(
                 ippr_group_spec, pod
             )
             if ippr_status:
@@ -276,7 +276,7 @@ class KubeRayIPPRProvider:
         return self._ippr_statuses
 
     def _patch_ippr_resize(self, resize: IPPRStatus) -> None:
-        patch = self._get_ippr_patch(resize)
+        patch = self._make_ippr_patch(resize)
         self._k8s_api_client.patch(
             "pods/{}/resize".format(resize.cloud_instance_id), patch
         )
@@ -306,7 +306,7 @@ class KubeRayIPPRProvider:
             content_type="application/strategic-merge-patch+json",
         )
 
-    def _get_ippr_patch(self, resize: IPPRStatus) -> List[Dict[str, Any]]:
+    def _make_ippr_patch(self, resize: IPPRStatus) -> List[Dict[str, Any]]:
         patch = []
         path_prefix = "/spec/containers/0/resources"
         container_resource = self._container_resources[resize.cloud_instance_id]
@@ -403,7 +403,7 @@ def _resize_raylet_resources(
     return raylet_client.ResizeLocalResourceInstances(request)
 
 
-def _set_ippr_status_for_pod(
+def _get_ippr_status_from_pod(
     ippr_group_spec: Optional[IPPRGroupSpec],
     pod: Dict[str, Any],
 ) -> tuple[Optional[IPPRStatus], Optional[Dict[str, Any]]]:
@@ -514,7 +514,7 @@ def _set_ippr_status_for_pod(
                 #     - Mem requests set to 12 − 6 = 6Gi    (upsize from 2Gi)
                 used = int(match.group(3) or "0")
                 capacity = int(match.group(4))
-                remaining = capacity - used
+                max_request = capacity - used
                 if match.group(1) == "cpu":
                     diff = float(
                         parse_quantity(
@@ -522,7 +522,7 @@ def _set_ippr_status_for_pod(
                             or pod_status_requests.get("cpu")
                         )
                     ) - float(parse_quantity(pod_status_requests.get("cpu")))
-                    ippr_status.suggested_max_cpu = (remaining / 1000) + diff
+                    ippr_status.suggested_max_cpu = (max_request / 1000) + diff
                     ippr_status.suggested_max_memory = (
                         ippr_status.last_suggested_max_memory
                     )
@@ -533,7 +533,7 @@ def _set_ippr_status_for_pod(
                             or pod_status_requests.get("memory")
                         )
                     ) - int(parse_quantity(pod_status_requests.get("memory")))
-                    ippr_status.suggested_max_memory = remaining + diff
+                    ippr_status.suggested_max_memory = max_request + diff
                     ippr_status.suggested_max_cpu = ippr_status.last_suggested_max_cpu
             break
         elif (

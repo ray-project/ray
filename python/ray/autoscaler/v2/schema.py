@@ -350,15 +350,15 @@ class IPPRStatus:
     last_suggested_max_memory: Optional[int] = None
     raylet_id: Optional[str] = None
 
-    def update(
+    def queue_resize_request(
         self,
         raylet_id: str,
-        desired_cpu: Optional[float],
-        desired_memory: Optional[int],
+        desired_cpu: float,
+        desired_memory: int,
     ) -> None:
-        """Update the desired resources and reset resize tracking state.
+        """Queue the new desired resources and reset resize tracking state.
 
-        Sets the new desired CPU/memory if provided, associates the Raylet id,
+        Queues the new desired CPU/memory if provided, associates the Raylet id,
         and marks the resize state as "new" so the scheduler can identify the IPPR
         action before the next iteration.
 
@@ -367,11 +367,12 @@ class IPPRStatus:
             desired_cpu: Optional new desired CPU in cores.
             desired_memory: Optional new desired memory in bytes.
         """
-        if desired_cpu is not None:
-            self.desired_cpu = desired_cpu
-        if desired_memory is not None:
-            self.desired_memory = desired_memory
+        if desired_cpu == self.desired_cpu and desired_memory == self.desired_memory:
+            return
+
         self.raylet_id = raylet_id
+        self.desired_cpu = desired_cpu
+        self.desired_memory = desired_memory
         self.resized_at = None
         self.resized_status = "new"
         self.resized_message = None
@@ -379,17 +380,9 @@ class IPPRStatus:
     def has_resize_request_to_send(self) -> bool:
         """Whether this pod should be sent an IPPR request now.
 
-        Returns True if there is a Raylet id, the status is marked as "new",
-        and the desired resources differ from the current resources.
+        Returns True if there is a Raylet id, the status is marked as "new".
         """
-        return (
-            self.raylet_id
-            and self.resized_status == "new"
-            and (
-                self.desired_cpu != self.current_cpu
-                or self.desired_memory != self.current_memory
-            )
-        )
+        return self.raylet_id and self.resized_status == "new"
 
     def is_in_progress(self) -> bool:
         """Whether a resize is on going or about to be issued.
