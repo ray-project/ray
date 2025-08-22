@@ -6,14 +6,12 @@ ray_cc_library(
         "core_worker.cc",
         "core_worker_process.cc",
         "core_worker_shutdown_executor.cc",
-        "shutdown_coordinator.cc",
     ],
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",
-        "shutdown_coordinator.h",
     ],
     deps = [
         ":actor_handle",
@@ -30,6 +28,7 @@ ray_cc_library(
         ":plasma_store_provider",
         ":profile_event",
         ":reference_count",
+        ":shutdown_coordinator",
         ":task_event_buffer",
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
@@ -60,6 +59,21 @@ ray_cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "shutdown_coordinator",
+    srcs = [
+        "shutdown_coordinator.cc",
+    ],
+    hdrs = [
+        "shutdown_coordinator.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:buffer",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 
