@@ -15,7 +15,7 @@
 #pragma once
 
 #include "gmock/gmock.h"
-#include "ray/gcs/gcs_server/node_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 
 namespace ray {
 namespace gcs {
