@@ -3130,16 +3130,20 @@ void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  absl::Time start_time = absl::Now();
+  static double total_time = 0;
   auto generator_id = ObjectID::FromBinary(request.generator_id());
   auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
   task_manager_->HandleReportGeneratorItemReturns(
-      request,
+      std::move(request),
       /*execution_signal_callback=*/
       [reply,
        worker_id = std::move(worker_id),
        generator_id = std::move(generator_id),
        send_reply_callback = std::move(send_reply_callback)](
           const Status &status, int64_t total_num_object_consumed) {
+        absl::Time callback_start_time = absl::Now();
+        static double callback_total_time = 0;
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
                           "executor to resume tasks. "
                        << generator_id << ". Worker ID: " << worker_id
@@ -3150,7 +3154,23 @@ void CoreWorker::HandleReportGeneratorItemReturns(
 
         reply->set_total_num_object_consumed(total_num_object_consumed);
         send_reply_callback(status, nullptr, nullptr);
+        absl::Time callback_end_time = absl::Now();
+        RAY_LOG(INFO) << "CoreWorker Callback HandleReportGeneratorItemReturns time: "
+                      << absl::ToDoubleMilliseconds(callback_end_time -
+                                                    callback_start_time)
+                      << "ms";
+        callback_total_time +=
+            absl::ToDoubleMilliseconds(callback_end_time - callback_start_time);
+        RAY_LOG(INFO)
+            << "CoreWorker Callback Total HandleReportGeneratorItemReturns time: "
+            << callback_total_time << "ms";
       });
+  absl::Time end_time = absl::Now();
+  RAY_LOG(INFO) << "CoreWorker HandleReportGeneratorItemReturns time: "
+                << absl::ToDoubleMilliseconds(end_time - start_time) << "ms";
+  total_time += absl::ToDoubleMilliseconds(end_time - start_time);
+  RAY_LOG(INFO) << "CoreWorker Total HandleReportGeneratorItemReturns time: "
+                << total_time << "ms";
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
@@ -3402,6 +3422,8 @@ void CoreWorker::HandleRayletNotifyGCSRestart(
 void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  static double total_time = 0;
+  absl::Time start_time = absl::Now();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.owner_worker_id()),
                            send_reply_callback)) {
     RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by a previous worker "
@@ -3435,6 +3457,11 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                             PopulateObjectStatus(object_id, obj, reply);
                             send_reply_callback(Status::OK(), nullptr, nullptr);
                           });
+  absl::Time end_time = absl::Now();
+  RAY_LOG(INFO) << "CoreWorker HandleGetObjectStatus time: "
+                << absl::ToDoubleMilliseconds(end_time - start_time) << "ms";
+  total_time += absl::ToDoubleMilliseconds(end_time - start_time);
+  RAY_LOG(INFO) << "CoreWorker Total HandleGetObjectStatus time: " << total_time << "ms";
 }
 
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
@@ -3447,6 +3474,8 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
   // in_plasma indicator on the message, and the caller will
   // have to facilitate a Plasma object transfer to get the
   // object value.
+  static double total_time = 0;
+  absl::Time start_time = absl::Now();
   auto *object = reply->mutable_object();
   if (obj->HasData()) {
     const auto &data = obj->GetData();
@@ -3468,6 +3497,11 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
     }
     reply->set_object_size(locality_data.value().object_size);
   }
+  absl::Time end_time = absl::Now();
+  RAY_LOG(INFO) << "CoreWorker PopulateObjectStatus time: "
+                << absl::ToDoubleMilliseconds(end_time - start_time) << "ms";
+  total_time += absl::ToDoubleMilliseconds(end_time - start_time);
+  RAY_LOG(INFO) << "CoreWorker Total PopulateObjectStatus time: " << total_time << "ms";
 }
 
 void CoreWorker::HandleWaitForActorRefDeleted(

@@ -296,7 +296,7 @@ class TaskManager : public TaskManagerInterface {
   ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
-      const rpc::ReportGeneratorItemReturnsRequest &request,
+      rpc::ReportGeneratorItemReturnsRequest request,
       const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
@@ -613,7 +613,7 @@ class TaskManager : public TaskManagerInterface {
   /// return object. On success, sets direct_return_out to true if the object's value
   /// was returned directly by value (not stored in plasma).
   StatusOr<bool> HandleTaskReturn(const ObjectID &object_id,
-                                  const rpc::ReturnObject &return_object,
+                                  rpc::ReturnObject return_object,
                                   const NodeID &worker_node_id,
                                   bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 

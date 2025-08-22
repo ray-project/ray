@@ -178,18 +178,26 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
   return ptr;
 }
 
-void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+void CoreWorkerMemoryStore::Put(const RayObject &object,
+                                const ObjectID &object_id,
+                                std::optional<rpc::ReturnObject> return_object) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
+  RAY_LOG(INFO).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
+  if (return_object.has_value()) {
+    RAY_LOG(INFO) << "NOT COPYING DATA";
+  } else {
+    RAY_LOG(INFO) << "COPYING DATA";
+  }
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
   } else {
     object_entry = std::make_shared<RayObject>(object.GetData(),
                                                object.GetMetadata(),
                                                object.GetNestedRefs(),
-                                               true,
-                                               object.GetTensorTransport());
+                                               return_object.has_value() ? false : true,
+                                               object.GetTensorTransport(),
+                                               std::move(return_object));
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in

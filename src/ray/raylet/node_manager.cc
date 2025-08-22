@@ -719,9 +719,12 @@ void NodeManager::WarnResourceDeadlock() {
 
   // Check if any progress is being made on this raylet.
   if (worker_pool_.IsWorkerAvailableForScheduling()) {
+    RAY_LOG(INFO) << "Progress is being made in a task, don't warn.";
     // Progress is being made in a task, don't warn.
     resource_deadlock_warned_ = 0;
     return;
+  } else {
+    RAY_LOG(INFO) << "No progress is being made in a task, warn.";
   }
 
   auto exemplar = cluster_task_manager_.AnyPendingTasksForResourceAcquisition(

@@ -67,7 +67,9 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  void Put(const RayObject &object, const ObjectID &object_id);
+  void Put(const RayObject &object,
+           const ObjectID &object_id,
+           std::optional<rpc::ReturnObject> return_object = std::nullopt);
 
   /// Get a list of objects from the object store.
   ///

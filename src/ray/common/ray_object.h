@@ -43,8 +43,24 @@ class RayObject {
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
             bool copy_data = false,
-            rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
-    Init(data, metadata, nested_refs, copy_data, tensor_transport);
+            rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE,
+            std::optional<rpc::ReturnObject> return_object = std::nullopt) {
+    RAY_LOG(INFO) << "RayObject constructor";
+    Init(data,
+         metadata,
+         nested_refs,
+         copy_data,
+         tensor_transport,
+         std::move(return_object));
+  }
+
+  RayObject(const RayObject &other) {
+    RAY_CHECK(false) << "RayObject copy constructor is not allowed";
+  }
+
+  RayObject &operator=(const RayObject &other) {
+    RAY_CHECK(false) << "RayObject copy assignment is not allowed";
+    return *this;
   }
 
   /// This constructor creates a ray object instance whose data will be generated
@@ -134,18 +150,26 @@ class RayObject {
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
             bool copy_data = false,
-            rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
+            rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE,
+            std::optional<rpc::ReturnObject> return_object = std::nullopt) {
+    RAY_LOG(INFO) << "Init RayObject";
     data_ = data;
     metadata_ = metadata;
     nested_refs_ = nested_refs;
     has_data_copy_ = copy_data;
     tensor_transport_ = tensor_transport;
     creation_time_nanos_ = absl::GetCurrentTimeNanos();
-
+    if (return_object.has_value()) {
+      RAY_LOG(INFO) << "Return object has value";
+      return_object_ = std::move(return_object.value());
+      return;
+    }
     if (has_data_copy_) {
+      RAY_LOG(INFO) << "Copying data";
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
       if (data_ && !data_->OwnsData()) {
+        RAY_LOG(INFO) << "Data does not own data";
         data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(),
                                                     data_->Size(),
                                                     /*copy_data=*/true);
@@ -174,6 +198,8 @@ class RayObject {
   int64_t creation_time_nanos_;
   /// The tensor transport to use for transferring this object.
   rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
+  /// The return object to use for transferring this object.
+  std::optional<rpc::ReturnObject> return_object_ = std::nullopt;
 };
 
 }  // namespace ray

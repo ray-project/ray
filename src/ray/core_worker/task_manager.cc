@@ -534,17 +534,18 @@ size_t TaskManager::NumPendingTasks() const {
 }
 
 StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
-                                             const rpc::ReturnObject &return_object,
+                                             rpc::ReturnObject return_object,
                                              const NodeID &worker_node_id,
                                              bool store_in_plasma) {
   bool direct_return = false;
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
-  RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
-                 << return_object.size();
+  RAY_LOG(INFO) << "Task return object " << object_id << " has size "
+                << return_object.size();
   const auto nested_refs =
       VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
 
   if (return_object.in_plasma()) {
+    RAY_LOG(INFO) << "IN PLASMA";
     // NOTE(swang): We need to add the location of the object before marking
     // it as local in the in-memory store so that the data locality policy
     // will choose the right raylet for any queued dependent tasks.
@@ -552,6 +553,7 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // Mark it as in plasma with a dummy object.
     in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   } else {
+    RAY_LOG(INFO) << "NOT IN PLASMA";
     // NOTE(swang): If a direct object was promoted to plasma, then we do not
     // record the node ID that it was pinned at, which means that we will not
     // be able to reconstruct it if the plasma object copy is lost. However,
@@ -589,8 +591,16 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
         return s;
       }
     } else {
-      in_memory_store_.Put(object, object_id);
+      static double total_time = 0;
+      RAY_LOG(INFO) << "Put object into memory store";
+      absl::Time start_time = absl::Now();
+      in_memory_store_.Put(object, object_id, std::move(return_object));
       direct_return = true;
+      absl::Time end_time = absl::Now();
+      total_time += absl::ToDoubleMilliseconds(end_time - start_time);
+      RAY_LOG(INFO) << "Put object into memory store time: "
+                    << absl::ToDoubleMilliseconds(end_time - start_time) << "ms";
+      RAY_LOG(INFO) << "Total time: " << total_time << "ms";
     }
   }
 
@@ -763,8 +773,9 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 }
 
 bool TaskManager::HandleReportGeneratorItemReturns(
-    const rpc::ReportGeneratorItemReturnsRequest &request,
+    rpc::ReportGeneratorItemReturnsRequest request,
     const ExecutionSignalCallback &execution_signal_callback) {
+  absl::Time start_time = absl::Now();
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -804,8 +815,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // TODO(sang): Support the regular return values as well.
+  RAY_LOG(INFO) << "HandleReportGeneratorItemReturns";
   size_t num_objects_written = 0;
-  for (const auto &return_object : request.dynamic_return_objects()) {
+  for (auto &return_object : *request.mutable_dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
@@ -823,7 +835,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     StatusOr<bool> put_res =
         HandleTaskReturn(object_id,
-                         return_object,
+                         std::move(return_object),
                          NodeID::FromBinary(request.worker_addr().node_id()),
                          /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
     if (!put_res.ok()) {
@@ -861,6 +873,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     // No need to backpressure.
     execution_signal_callback(Status::OK(), total_consumed);
   }
+  absl::Time end_time = absl::Now();
+  static double total_time = 0;
+  total_time += absl::ToDoubleMilliseconds(end_time - start_time);
+  RAY_LOG(INFO) << "HandleReportGeneratorItemReturns time: " << total_time << "ms";
   return num_objects_written != 0;
 }
 
@@ -895,7 +911,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
-  RAY_LOG(DEBUG) << "Completing task " << task_id;
+  RAY_LOG(INFO) << "Completing task " << task_id;
 
   bool first_execution = false;
   const auto store_in_plasma_ids =
