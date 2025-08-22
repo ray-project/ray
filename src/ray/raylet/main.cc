@@ -38,9 +38,11 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
+#include "ray/util/time.h"
 #include "scheduling/cluster_task_manager.h"
 
 using json = nlohmann::json;
@@ -283,6 +285,8 @@ int main(int argc, char *argv[]) {
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
   std::unique_ptr<ray::raylet::DependencyManager> dependency_manager;
+  /// The client to export metrics to the metrics agent.
+  std::unique_ptr<ray::rpc::MetricsAgentClientImpl> metrics_agent_client;
   /// Map of workers leased out to clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
@@ -825,6 +829,12 @@ int main(int argc, char *argv[]) {
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name}};
     ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+    metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+        "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);
+    metrics_agent_client->WaitForServerReady(
+        [metrics_agent_port](const ray::Status &server_status) {
+          ray::stats::InitOpenTelemetryExporter(metrics_agent_port, server_status);
+        });
 
     // Initialize event framework. This should be done after the node manager is
     // initialized.
@@ -852,7 +862,7 @@ int main(int argc, char *argv[]) {
         drain_request->reason() ==
             ray::rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION &&
         drain_request->deadline_timestamp_ms() != 0 &&
-        drain_request->deadline_timestamp_ms() < current_sys_time_ms()) {
+        drain_request->deadline_timestamp_ms() < ray::current_sys_time_ms()) {
       node_death_info.set_reason(ray::rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
       node_death_info.set_reason_message(drain_request->reason_message());
     } else {
