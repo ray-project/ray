@@ -18,7 +18,6 @@ from ray.data.datasource.file_based_datasource import (
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
-    BlockBasedFileDatasink,
     RowBasedFileDatasink,
 )
 from ray.data.datasource.file_meta_provider import (

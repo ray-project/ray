@@ -2133,8 +2133,8 @@ def read_mcap(
         Read all MCAP files in a directory.
 
         >>> import ray
-        >>> ds = ray.data.read_mcap("s3://bucket/mcap-data/")
-        >>> ds.schema()
+        >>> ds = ray.data.read_mcap("s3://bucket/mcap-data/") # doctest: +SKIP
+        >>> ds.schema() # doctest: +SKIP
 
         Read with filtering for specific channels and time range.
 
@@ -2144,17 +2144,17 @@ def read_mcap(
         ...     time_range=(1000000000, 5000000000),  # 1-5 seconds in nanoseconds
         ...     message_types={"Image", "PointCloud"}
         ... )
-        >>> ds = ray.data.read_mcap(
-        ...     "s3://bucket/mcap-data/",
-        ...     filter_config=filter_config
-        ... )
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/mcap-data/", # doctest: +SKIP
+        ...     filter_config=filter_config # doctest: +SKIP
+        ... ) # doctest: +SKIP
 
         Read multiple local files with include_paths.
 
-        >>> ray.data.read_mcap(
-        ...     ["local:///path/to/file1.mcap", "local:///path/to/file2.mcap"],
-        ...     include_paths=True
-        ... )
+        >>> ray.data.read_mcap( # doctest: +SKIP
+        ...     ["local:///path/to/file1.mcap", "local:///path/to/file2.mcap"], # doctest: +SKIP
+        ...     include_paths=True # doctest: +SKIP
+        ... ) # doctest: +SKIP
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.

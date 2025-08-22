@@ -9,23 +9,25 @@ These tests cover the MCAP datasource implementation including:
 - Integration with Ray Data
 """
 
+import importlib.util
 import os
 import tempfile
-from typing import Dict, List, Any
-from unittest.mock import Mock, patch, MagicMock
+from typing import TYPE_CHECKING
+from unittest.mock import Mock, patch
 
 import pytest
 import pyarrow as pa
 
 # Try to import mcap, skip tests if not available
-import importlib.util
-
 MCAP_AVAILABLE = importlib.util.find_spec("mcap") is not None
 
-import ray
-from ray.data import Dataset
-from ray.data.datasource import MCAPDatasource, MCAPFilterConfig, ExternalIndexConfig
-from ray.data import read_mcap
+if TYPE_CHECKING or MCAP_AVAILABLE:
+    from ray.data import Dataset, read_mcap
+    from ray.data.datasource import (
+        ExternalIndexConfig,
+        MCAPDatasource,
+        MCAPFilterConfig,
+    )
 
 
 # Skip all tests if mcap is not available
