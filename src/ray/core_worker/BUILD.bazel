@@ -72,8 +72,8 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        ":common",
         "//src/ray/common:buffer",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 
