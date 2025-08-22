@@ -5,6 +5,33 @@ import ray.util.accelerators.accelerators as _accelerators
 
 @PublicAPI(stability="alpha")
 class AcceleratorTypes:
+    """Unified access point for all accelerator types supported by Ray, categorized by vendor.
+
+    .. note::
+        Accelerator types are dynamically collected from the `ray.util.accelerators.accelerators`
+        module.
+
+    Example:
+        .. code-block:: python
+
+            ############# Access via constant (TYPES) ###############
+            import ray
+            # Print all accelerator types as a raw string
+            print(ray.util.accelerators.TYPES)
+
+            ############# Access via AcceleratorTypes instance ###############
+            from ray.util.accelerators.types import accelerators_types
+            # Print all accelerator types categorized by vendor
+            accelerators_types.print_all()
+
+            # Print accelerator types for a specific vendor
+            print("NVIDIA accelerators:\n", accelerators_types.nvidia_types)
+            print("AMD accelerators:\n", accelerators_types.amd_types)
+
+    Args:
+        No explicit arguments required. The class dynamically initializes accelerator types
+        by scanning the `ray.util.accelerators.accelerators` module on instantiation.
+    """
     def __init__(self):
         self._all_constants = {
             name: getattr(_accelerators, name)
@@ -24,7 +51,6 @@ class AcceleratorTypes:
             )
             setattr(self, f"{vendor_lower}_types", "\n".join(type_list))
 
-    @PublicAPI(stability="alpha")
     def print_all(self):
         """Print all accelerator types categorized by vendor"""
         vendor_map = {
