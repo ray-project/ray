@@ -104,6 +104,10 @@ class _LLMServerBase(ABC):
         """
         ...
 
+    @abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
         return None
@@ -393,6 +397,19 @@ class LLMServer(_LLMServerBase):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
+            raise e
+
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
@@ -428,4 +445,4 @@ class LLMDeployment(LLMServer):
     # to give developers an ability to test the implementation outside the Ray Serve.
     # But in practice we should always test the LLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.
-    ...
+    pass

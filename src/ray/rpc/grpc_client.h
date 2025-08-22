@@ -27,6 +27,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
 #include "ray/rpc/rpc_chaos.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace rpc {
@@ -82,12 +83,11 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     ssl_opts.pem_private_key = private_key;
     ssl_opts.pem_cert_chain = server_cert_chain;
     auto ssl_creds = grpc::SslCredentials(ssl_opts);
-    channel = grpc::CreateCustomChannel(
-        address + ":" + std::to_string(port), ssl_creds, *arguments);
+    channel =
+        grpc::CreateCustomChannel(BuildAddress(address, port), ssl_creds, *arguments);
   } else {
-    channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                        grpc::InsecureChannelCredentials(),
-                                        *arguments);
+    channel = grpc::CreateCustomChannel(
+        BuildAddress(address, port), grpc::InsecureChannelCredentials(), *arguments);
   }
   return channel;
 }

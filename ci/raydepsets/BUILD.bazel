@@ -14,7 +14,7 @@ py_library(
     srcs = [
         "cli.py",
     ],
-    data = ["@uv_x86_64//:file"],
+    data = ["//:uv_file"],
     deps = [
         ":workspace",
         ci_require("bazel-runfiles"),
@@ -33,14 +33,14 @@ py_binary(
 
 py_test(
     name = "test_cli",
-    srcs = ["test_cli.py"],
+    srcs = ["tests/test_cli.py"],
     data = [
-        "test_data/requirement_constraints_test.txt",
-        "test_data/requirements_compiled_test.txt",
-        "test_data/requirements_compiled_test_expand.txt",
-        "test_data/requirements_compiled_test_update.txt",
-        "test_data/requirements_test.txt",
-        "test_data/test.depsets.yaml",
+        "tests/test_data/requirement_constraints_test.txt",
+        "tests/test_data/requirements_compiled_test.txt",
+        "tests/test_data/requirements_compiled_test_expand.txt",
+        "tests/test_data/requirements_compiled_test_update.txt",
+        "tests/test_data/requirements_test.txt",
+        "tests/test_data/test.depsets.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
@@ -50,5 +50,32 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":raydepsets_lib",
+        ":utils",
+    ],
+)
+
+py_library(
+    name = "utils",
+    testonly = True,
+    srcs = ["tests/utils.py"],
+    deps = [
+        ci_require("bazel-runfiles"),
+    ],
+)
+
+py_test(
+    name = "test_workspace",
+    srcs = ["tests/test_workspace.py"],
+    data = [
+        "tests/test_data/test.depsets.yaml",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":utils",
+        ":workspace",
     ],
 )

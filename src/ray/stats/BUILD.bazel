@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "stats_metric",
@@ -14,8 +14,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/common:ray_config",
-        "//src/ray/telemetry:open_telemetry_metric_recorder",
-        "//src/ray/util",
+        "//src/ray/observability:open_telemetry_metric_recorder",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -50,38 +49,8 @@ ray_cc_library(
     deps = [
         ":stats_metric",
         "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/util:network_util",
         "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
-    ],
-)
-
-ray_cc_test(
-    name = "stats_test",
-    size = "small",
-    srcs = ["stats_test.cc"],
-    tags = [
-        "no_tsan",
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "metric_exporter_grpc_test",
-    size = "small",
-    srcs = [
-        "metric_exporter_grpc_test.cc",
-    ],
-    tags = [
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )

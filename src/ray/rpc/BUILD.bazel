@@ -31,6 +31,7 @@ ray_cc_library(
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/util:network_util",
     ],
 )
 
@@ -50,6 +51,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "metrics_agent_client",
+    srcs = ["metrics_agent_client.cc"],
     hdrs = ["metrics_agent_client.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -57,6 +59,7 @@ ray_cc_library(
         "//src/ray/protobuf:reporter_cc_grpc",
         "//src/ray/protobuf:reporter_cc_proto",
         "//src/ray/util:logging",
+        "//src/ray/util:network_util",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -112,6 +115,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/util:network_util",
         "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
@@ -130,7 +134,6 @@ ray_cc_library(
         # TODO(eoakes): these are needed due to a circular dependency:
         # raylet_client_pool.cc -> raylet_client.h -> node_manager_client.h
         "//src/ray/raylet_client:raylet_client.h",
-        "//src/ray/raylet_client:raylet_connection.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -139,6 +142,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/util:network_util",
     ] + [
         # TODO(eoakes): these three come from raylet_client.h, remove after breaking the circular dependency.
         "//src/ray/ipc:client_connection",
@@ -173,6 +177,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/util:network_util",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -247,6 +252,7 @@ ray_cc_library(
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/util:logging",
+        "//src/ray/util:network_util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",
     ],
