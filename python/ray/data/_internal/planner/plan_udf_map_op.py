@@ -16,6 +16,7 @@ from typing import (
     Tuple,
     TypeVar,
 )
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
@@ -315,6 +316,11 @@ def plan_download_op(
     compute = get_compute(op._compute)
     uri_column_name = op.uri_column_name
 
+    # PartitionActor is a callable class, so we need ActorPoolStrategy
+    from ray.data._internal.compute import ActorPoolStrategy
+
+    partition_compute = ActorPoolStrategy(size=1)  # Use single actor for partitioning
+
     fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name,), {})
     partition_transform_fn = _generate_transform_fn_for_map_batches(fn)
     partition_transform_fns = [
@@ -333,12 +339,12 @@ def plan_download_op(
         input_physical_dag,
         data_context,
         name="DownloadURIPartitioner",
-        compute_strategy=compute,
+        compute_strategy=partition_compute,  # Use actor-based compute for callable class
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
 
-    fn, init_fn = _get_udf(download_images_threaded, (uri_column_name,), {}, (), {})
+    fn, init_fn = _get_udf(download_images_threaded, (uri_column_name,), {}, None, None)
     download_transform_fn = _generate_transform_fn_for_map_batches(fn)
     transform_fns = [
         # Apply the download function.
@@ -360,26 +366,34 @@ def plan_download_op(
     return download_map_operator
 
 
+def uri_to_path(uri: str) -> str:
+    parsed = urlparse(uri)
+    return parsed.netloc + parsed.path
+
+
 def download_images_threaded(batch, uri_column_name, max_workers=16):
     """Optimized version that uses make_async_gen for concurrent downloads."""
-    from pyarrow import fs as pafs
+    from pyarrow.fs import FileSystem as pafs
 
     from ray.data._internal.util import make_async_gen
 
+    # Extract URIs from PyArrow table
+    uris = batch.column(uri_column_name).to_pylist()
+
+    if len(uris) == 0:
+        return batch
+
+    fs, _ = pafs.from_uri(uris[0])  # from_uri returns (filesystem, path)
+
     def download_uris(uri_iterator):
         """Function that takes an iterator of URIs and yields downloaded bytes for each."""
-        # TODO: We need to update this to use pafs.from_uri here.
-        fs = pafs.S3FileSystem(region="us-west-2")
         for uri in uri_iterator:
             try:
-                with fs.open_input_file(uri) as f:
+                with fs.open_input_file(uri_to_path(uri)) as f:
                     yield f.read()
             except Exception as e:
                 print(f"Error downloading {uri}: {e}")
                 yield None
-
-    # Extract URIs from PyArrow table
-    uris = batch.column(uri_column_name).to_pylist()
 
     # Use make_async_gen to download URIs concurrently
     # This preserves the order of results to match the input URIs
@@ -405,15 +419,13 @@ class PartitionActor:
 
     def _sample_sizes(self, uri_list, max_workers=16):
         """Fetch file sizes in parallel using ThreadPoolExecutor."""
-        from threading import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        from pyarrow import fs as pafs
+        from pyarrow.fs import FileSystem as pafs
 
-        def get_file_size(uri):
-            # TODO: We need to update this to use pafs.from_uri here.
-            fs = pafs.S3FileSystem(region="us-west-2")
+        def get_file_size(uri, fs):
             try:
-                return fs.get_file_info(uri).size
+                return fs.get_file_info(uri_to_path(uri)).size
             except Exception as e:
                 print(f"Error getting size for {uri}: {e}")
                 return None
@@ -421,9 +433,10 @@ class PartitionActor:
         file_sizes = []
 
         # Use ThreadPoolExecutor for concurrent size fetching
+        fs, _ = pafs.from_uri(uri_list[0])
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all size fetch tasks
-            futures = [executor.submit(get_file_size, uri) for uri in uri_list]
+            futures = [executor.submit(get_file_size, uri, fs) for uri in uri_list]
 
             # Collect results as they complete (order doesn't matter)
             for future in as_completed(futures):

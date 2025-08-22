@@ -217,8 +217,11 @@ class Planner:
                 break
 
             curr_physical_op.set_logical_operators(logical_op)
-            queue.extend(physical_op.input_dependencies)
+            # Add this operator to the op_map so optimizer can find it
+            op_map[curr_physical_op] = logical_op
+            queue.extend(curr_physical_op.input_dependencies)
 
+        # Also add the final operator (in case the loop didn't catch it)
         op_map[physical_op] = logical_op
         return physical_op, op_map
 
