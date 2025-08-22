@@ -253,11 +253,13 @@ class KubeRayIPPRProvider:
                         raise RuntimeError(
                             f"Raylet address not found for pod {resize.cloud_instance_id}"
                         )
-                    _resize_raylet_resources(
+                    updated = _resize_raylet_resources(
                         raylet_addr,
                         resize.desired_cpu,
                         resize.desired_memory,
                     )
+                    resize.desired_cpu = float(updated.total_resources["CPU"])
+                    resize.desired_memory = int(updated.total_resources["memory"])
                 except Exception as e:
                     logger.error(
                         f"Skip failed downsizing on pod {resize.cloud_instance_id}: {e}"
@@ -292,8 +294,10 @@ class KubeRayIPPRProvider:
                             {
                                 "raylet-id": resize.raylet_id,
                                 "resized-at": resized_at,
-                                "adjusted-max-cpu": resize.adjusted_max_cpu,
-                                "adjusted-max-memory": resize.adjusted_max_memory,
+                                "last-suggested-max-cpu": resize.suggested_max_cpu
+                                or resize.last_suggested_max_cpu,
+                                "last-suggested-max-memory": resize.suggested_max_memory
+                                or resize.last_suggested_max_memory,
                             }
                         )
                     }
@@ -386,7 +390,9 @@ def _get_raylet_address(gcs_client: GcsClient, raylet_id: str) -> Optional[str]:
     return raylet_addr
 
 
-def _resize_raylet_resources(raylet_addr: str, cpu: float, memory: float):
+def _resize_raylet_resources(
+    raylet_addr: str, cpu: float, memory: float
+) -> node_manager_pb2.ResizeLocalResourceInstancesReply:
     # Update Raylet's local view so scheduling decisions are consistent with
     # the pod's resources when K8s accepts the resize.
     channel = ray._private.utils.init_grpc_channel(raylet_addr, asynchronous=False)
@@ -462,8 +468,12 @@ def _set_ippr_status_for_pod(
         pod_ippr_status = json.loads(pod_ippr_status_json)
         ippr_status.raylet_id = pod_ippr_status.get("raylet-id")
         ippr_status.resized_at = pod_ippr_status.get("resized-at")
-        ippr_status.adjusted_max_cpu = pod_ippr_status.get("adjusted-max-cpu")
-        ippr_status.adjusted_max_memory = pod_ippr_status.get("adjusted-max-memory")
+        ippr_status.last_suggested_max_cpu = pod_ippr_status.get(
+            "last-suggested-max-cpu"
+        )
+        ippr_status.last_suggested_max_memory = pod_ippr_status.get(
+            "last-suggested-max-memory"
+        )
 
     for condition in pod.get("status", {}).get("conditions", []):
         if condition["type"] == "PodResizePending" and condition["status"] == "True":
@@ -497,8 +507,8 @@ def _set_ippr_status_for_pod(
                 #   Targets while preserving gaps:
                 #     - Next CPU requests = 3 cores; Next Mem requests = 6Gi
                 #   Suggestions used in patch (requests = suggested − gap):
-                #     - suggested_cpu    = remaining_cpu + cpu_gap = 3 + 3  = 6 cores
-                #     - suggested_memory = remaining_mem + mem_gap = 6Gi + 6Gi = 12Gi
+                #     - suggested_max_cpu    = remaining_cpu + cpu_gap = 3 + 3  = 6 cores
+                #     - suggested_max_memory = remaining_mem + mem_gap = 6Gi + 6Gi = 12Gi
                 #   Patch outcome:
                 #     - CPU requests set to 6 − 3  = 3 cores (upsize from 1)
                 #     - Mem requests set to 12 − 6 = 6Gi    (upsize from 2Gi)
@@ -512,9 +522,10 @@ def _set_ippr_status_for_pod(
                             or pod_status_requests.get("cpu")
                         )
                     ) - float(parse_quantity(pod_status_requests.get("cpu")))
-                    ippr_status.suggested_cpu = (remaining / 1000) + diff
-                    ippr_status.adjusted_max_cpu = ippr_status.suggested_cpu
-                    ippr_status.suggested_memory = ippr_status.adjusted_max_memory
+                    ippr_status.suggested_max_cpu = (remaining / 1000) + diff
+                    ippr_status.suggested_max_memory = (
+                        ippr_status.last_suggested_max_memory
+                    )
                 else:
                     diff = int(
                         parse_quantity(
@@ -522,9 +533,8 @@ def _set_ippr_status_for_pod(
                             or pod_status_requests.get("memory")
                         )
                     ) - int(parse_quantity(pod_status_requests.get("memory")))
-                    ippr_status.suggested_memory = remaining + diff
-                    ippr_status.adjusted_max_memory = ippr_status.suggested_memory
-                    ippr_status.suggested_cpu = ippr_status.adjusted_max_cpu
+                    ippr_status.suggested_max_memory = remaining + diff
+                    ippr_status.suggested_max_cpu = ippr_status.last_suggested_max_cpu
             break
         elif (
             condition["type"] == "PodResizeInProgress" and condition["status"] == "True"

@@ -61,6 +61,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         Args:
             cluster_name: The name of the RayCluster resource.
             provider_config: The namespace of the RayCluster.
+            gcs_client: The client to the GCS server.
             k8s_api_client: The client to the Kubernetes API server.
                 This could be used to mock the Kubernetes API server for testing.
         """

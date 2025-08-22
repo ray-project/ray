@@ -321,15 +321,16 @@ class IPPRStatus:
             active resize and is treated as finished.
         resized_message: Message from the pod condition describing the resize
             state or failure, if any.
-        suggested_cpu: A suggested CPU target (in cores) adjusted based on node
-            capacity when a resize was deferred/infeasible.
-        suggested_memory: A suggested memory target (in bytes) adjusted based on
-            node capacity when a resize was deferred/infeasible.
-        adjusted_max_cpu: Temporary cap for CPU (cores) derived from suggestions
-            or recent capacity observations. Overrides ``spec.max_cpu`` when set.
-        adjusted_max_memory: Temporary cap for memory (bytes) derived from
-            suggestions or recent capacity observations. Overrides
-            ``spec.max_memory`` when set.
+        suggested_max_cpu: Current-iteration suggested CPU cap (cores), computed from
+            node remaining capacity plus existing gap when resize is deferred/infeasible.
+            None if no suggestion this iteration.
+        suggested_max_memory: Current-iteration suggested memory cap (bytes), computed
+            from node remaining capacity plus existing gap when resize is deferred/infeasible.
+            None if no suggestion this iteration.
+        last_suggested_max_cpu: Persisted CPU cap (cores) from the most recent prior
+            suggestion (stored/loaded via pod annotation).
+        last_suggested_max_memory: Persisted memory cap (bytes) from the most recent
+            prior suggestion (stored/loaded via pod annotation).
         raylet_id: Raylet node id (hex) running in this pod, used to sync Ray's
             internal resource view when K8s successfully changed pod resources.
     """
@@ -343,10 +344,10 @@ class IPPRStatus:
     resized_at: Optional[int] = None
     resized_status: Optional[str] = None
     resized_message: Optional[str] = None
-    suggested_cpu: Optional[float] = None
-    suggested_memory: Optional[int] = None
-    adjusted_max_cpu: Optional[float] = None
-    adjusted_max_memory: Optional[int] = None
+    suggested_max_cpu: Optional[float] = None
+    suggested_max_memory: Optional[int] = None
+    last_suggested_max_cpu: Optional[float] = None
+    last_suggested_max_memory: Optional[int] = None
     raylet_id: Optional[str] = None
 
     def update(
@@ -375,7 +376,7 @@ class IPPRStatus:
         self.resized_status = "new"
         self.resized_message = None
 
-    def is_ready_to_resize(self) -> bool:
+    def has_resize_request_to_send(self) -> bool:
         """Whether this pod should be sent an IPPR request now.
 
         Returns True if there is a Raylet id, the status is marked as "new",
@@ -394,11 +395,11 @@ class IPPRStatus:
         """Whether a resize is on going or about to be issued.
 
         True if a resize was already issued to K8s (``resized_at`` set), or if
-        the status is newly queued for resize (``is_ready_to_resize``).
+        the status is newly queued for resize (``has_resize_request_to_send``).
         """
-        return self.resized_at is not None or self.is_ready_to_resize()
+        return self.resized_at is not None or self.has_resize_request_to_send()
 
-    def is_finished(self) -> bool:
+    def is_pod_resized_finished(self) -> bool:
         """Whether there is no active resize in progress.
 
         We treat ``resized_status is None`` as finished. After K8s completes a
@@ -430,18 +431,28 @@ class IPPRStatus:
     def max_cpu(self) -> float:
         """Effective maximum CPU cores allowed for this pod.
 
-        Uses ``adjusted_max_cpu`` when present (suggested by capacity checks),
-        otherwise falls back to ``spec.max_cpu``.
+        Preference order:
+        1) ``suggested_max_cpu`` (current iteration)
+        2) ``last_suggested_max_cpu`` (persisted from prior iteration)
+        3) ``spec.max_cpu`` (static limit)
         """
-        return self.adjusted_max_cpu or self.spec.max_cpu
+        return (
+            self.suggested_max_cpu or self.last_suggested_max_cpu or self.spec.max_cpu
+        )
 
     def max_memory(self) -> int:
         """Effective maximum memory bytes allowed for this pod.
 
-        Uses ``adjusted_max_memory`` when present (suggested by capacity checks),
-        otherwise falls back to ``spec.max_memory``.
+        Preference order:
+        1) ``suggested_max_memory`` (current iteration)
+        2) ``last_suggested_max_memory`` (persisted from prior iteration)
+        3) ``spec.max_memory`` (static limit)
         """
-        return self.adjusted_max_memory or self.spec.max_memory
+        return (
+            self.suggested_max_memory
+            or self.last_suggested_max_memory
+            or self.spec.max_memory
+        )
 
     def can_resize_up(self) -> bool:
         """Whether the pod can still be scaled up within allowed limits.
@@ -449,7 +460,7 @@ class IPPRStatus:
         Only returns True when no resize is in progress and the current
         CPU/memory are below the effective max limits.
         """
-        return self.is_finished() and (
+        return self.is_pod_resized_finished() and (
             self.current_cpu < self.max_cpu() or self.current_memory < self.max_memory()
         )
 

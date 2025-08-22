@@ -327,6 +327,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         Args:
             path: The part of the resource path that starts with the resource type.
             payload: The JSON patch payload.
+            content_type: The content type of the request.
 
         Returns:
             The JSON response of the PATCH request.

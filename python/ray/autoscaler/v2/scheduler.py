@@ -933,7 +933,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node.ippr_status
                 for node in self._nodes
                 if node.ippr_status is not None
-                and node.ippr_status.is_ready_to_resize()
+                and node.ippr_status.has_resize_request_to_send()
             ]
 
         def get_launch_requests(self) -> List[LaunchRequest]:
@@ -1518,15 +1518,15 @@ class ResourceDemandScheduler(IResourceScheduler):
         for node in existing_nodes:
             if node.ippr_status is not None:
                 if (
-                    node.ippr_status.suggested_cpu is not None
-                    or node.ippr_status.suggested_memory is not None
+                    node.ippr_status.suggested_max_cpu is not None
+                    or node.ippr_status.suggested_max_memory is not None
                 ):
                     # If provider suggested adjusted sizes (from Deferred/Infeasible),
                     # make those the desired values for the next resize.
                     node.ippr_status.update(
                         raylet_id=node.ray_node_id,
-                        desired_cpu=node.ippr_status.suggested_cpu,
-                        desired_memory=node.ippr_status.suggested_memory,
+                        desired_cpu=node.ippr_status.suggested_max_cpu,
+                        desired_memory=node.ippr_status.suggested_max_memory,
                     )
                 if (  # Revert failed or stuck IPPR
                     node.ippr_status.is_failed() or node.ippr_status.is_timeout()
@@ -1540,7 +1540,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                         desired_memory=node.ippr_status.current_memory,
                     )
                 elif (  # Reflect finished / ongoing IPPR in node capacity
-                    node.ippr_status.is_finished() or node.ippr_status.is_in_progress()
+                    node.ippr_status.is_pod_resized_finished()
+                    or node.ippr_status.is_in_progress()
                 ):
                     # While a resize is ongoing or just completed, use desired values
                     # as the node's capacity so binpacking can consider the change.
