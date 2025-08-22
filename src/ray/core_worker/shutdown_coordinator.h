@@ -21,8 +21,7 @@
 #include <string>
 #include <string_view>
 
-// Bring in WorkerType alias and common types
-#include "ray/core_worker/common.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 class LocalMemoryBuffer;
@@ -137,7 +136,7 @@ class ShutdownCoordinator {
   /// \param executor Shutdown executor implementation
   /// \param worker_type Type of worker for shutdown behavior customization
   explicit ShutdownCoordinator(std::unique_ptr<ShutdownExecutorInterface> executor,
-                               WorkerType worker_type = WorkerType::WORKER);
+                               rpc::WorkerType worker_type = rpc::WorkerType::WORKER);
 
   ~ShutdownCoordinator() = default;
 
@@ -278,7 +277,7 @@ class ShutdownCoordinator {
 
   // Executor and configuration
   std::unique_ptr<ShutdownExecutorInterface> executor_;
-  WorkerType worker_type_;
+  rpc::WorkerType worker_type_;
 
   // Mutex-guarded shutdown state
   mutable std::mutex mu_;
