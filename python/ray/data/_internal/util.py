@@ -775,7 +775,7 @@ def unify_schemas_with_validation(
             for schema in schemas_to_unify:
                 if not _is_empty_schema(schema):
                     non_empty_schemas_to_unify.append(schema)
-                    if len(non_empty_schemas_to_unify) >= sample_size:
+                    if sample_size is not None and len(non_empty_schemas_to_unify) >= sample_size:
                         break
             return unify_schemas(non_empty_schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
