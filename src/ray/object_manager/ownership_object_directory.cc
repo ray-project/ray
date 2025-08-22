@@ -345,39 +345,39 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
                                                   const Status &status) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
+      const auto obj_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
       if (!status.ok()) {
-        RAY_LOG(INFO).WithField(object_id)
+        RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location: " << status.ToString();
-        mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+        mark_as_failed_(obj_id, rpc::ErrorType::OWNER_DIED);
       } else {
         // Owner is still alive but published a failure because the ref was
         // deleted.
-        RAY_LOG(INFO).WithField(object_id)
+        RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location for object, already released by distributed "
                "reference counting protocol";
-        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+        mark_as_failed_(obj_id, rpc::ErrorType::OBJECT_DELETED);
       }
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
       // distributed reference counting protocol.
       ObjectLocationSubscriptionCallback(location_info,
-                                         object_id,
+                                         obj_id,
                                          /*location_lookup_failed*/ true);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_locations_message()->Swap(request.get());
 
-    RAY_CHECK(object_location_subscriber_->Subscribe(
+    object_location_subscriber_->Subscribe(
         std::move(sub_message),
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
         owner_address,
         object_id.Binary(),
         /*subscribe_done_callback=*/nullptr,
         /*Success callback=*/msg_published_callback,
-        /*Failure callback=*/failure_callback));
+        /*Failure callback=*/failure_callback);
 
     auto location_state = LocationListenerState();
     location_state.owner_address = owner_address;
@@ -472,34 +472,34 @@ void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
 }
 
 void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
-  stats::ObjectDirectoryLocationSubscriptions.Record(listeners_.size());
+  ray_metric_object_directory_location_subscriptions_.Record(listeners_.size());
 
   // Record number of object location updates per second.
   metrics_num_object_location_updates_per_second_ =
       static_cast<double>(metrics_num_object_location_updates_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryLocationUpdates.Record(
+  ray_metric_object_directory_location_updates_.Record(
       metrics_num_object_location_updates_per_second_);
   metrics_num_object_location_updates_ = 0;
   // Record number of object location lookups per second.
   metrics_num_object_location_lookups_per_second_ =
       static_cast<double>(metrics_num_object_location_lookups_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryLocationLookups.Record(
+  ray_metric_object_directory_location_lookups_.Record(
       metrics_num_object_location_lookups_per_second_);
   metrics_num_object_location_lookups_ = 0;
   // Record number of object locations added per second.
   metrics_num_object_locations_added_per_second_ =
       static_cast<double>(metrics_num_object_locations_added_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryAddedLocations.Record(
+  ray_metric_object_directory_location_added_.Record(
       metrics_num_object_locations_added_per_second_);
   metrics_num_object_locations_added_ = 0;
   // Record number of object locations removed per second.
   metrics_num_object_locations_removed_per_second_ =
       static_cast<double>(metrics_num_object_locations_removed_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryRemovedLocations.Record(
+  ray_metric_object_directory_location_removed_.Record(
       metrics_num_object_locations_removed_per_second_);
   metrics_num_object_locations_removed_ = 0;
 }

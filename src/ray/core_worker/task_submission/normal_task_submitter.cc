@@ -205,7 +205,8 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
   for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
-    auto raylet_client = GetOrConnectRayletClient(&pending_lease_request.second);
+    auto raylet_client =
+        raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.second);
     auto &task_id = pending_lease_request.first;
     RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
     raylet_client->CancelWorkerLease(
@@ -226,29 +227,6 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
           }
         });
   }
-}
-
-std::shared_ptr<RayletClientInterface> NormalTaskSubmitter::GetOrConnectRayletClient(
-    const rpc::Address *raylet_address) {
-  std::shared_ptr<RayletClientInterface> raylet_client;
-  RAY_CHECK(raylet_address != nullptr);
-  if (NodeID::FromBinary(raylet_address->node_id()) != local_node_id_) {
-    // A remote raylet was specified. Connect to the raylet if needed.
-    NodeID node_id = NodeID::FromBinary(raylet_address->node_id());
-    auto it = remote_raylet_clients_.find(node_id);
-    if (it == remote_raylet_clients_.end()) {
-      RAY_LOG(INFO) << "Connecting to raylet " << node_id;
-      it = remote_raylet_clients_
-               .emplace(node_id,
-                        raylet_client_pool_->GetOrConnectByAddress(*raylet_address))
-               .first;
-    }
-    raylet_client = it->second;
-  } else {
-    raylet_client = local_raylet_client_;
-  }
-
-  return raylet_client;
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklog() {
@@ -279,8 +257,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
     backlog_report.set_backlog_size(backlog.second.second);
     backlog_reports.emplace_back(backlog_report);
   }
-  local_raylet_client_->ReportWorkerBacklog(
-      WorkerID::FromBinary(rpc_address_.worker_id()), backlog_reports);
+  local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
@@ -341,7 +318,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     raylet_address = &best_node_address;
   }
 
-  auto raylet_client = GetOrConnectRayletClient(raylet_address);
+  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
   const TaskID task_id = resource_spec.TaskId();
   const std::string task_name = resource_spec.GetName();
   RAY_LOG(DEBUG) << "Requesting lease from raylet "
@@ -365,9 +342,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         {
           absl::MutexLock lock(&mu_);
 
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          auto raylet_client = GetOrConnectRayletClient(&raylet_address);
-          scheduling_key_entry.pending_lease_requests.erase(task_id);
+          auto &sched_entry = scheduling_key_entries_[scheduling_key];
+          auto raylet_lease_client =
+              raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+          sched_entry.pending_lease_requests.erase(task_id);
 
           if (status.ok()) {
             if (reply.canceled()) {
@@ -410,9 +388,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                                  ", task_name=",
                                  task_name));
 
-                tasks_to_fail = std::move(scheduling_key_entry.task_queue);
-                scheduling_key_entry.task_queue.clear();
-                if (scheduling_key_entry.CanDelete()) {
+                tasks_to_fail = std::move(sched_entry.task_queue);
+                sched_entry.task_queue.clear();
+                if (sched_entry.CanDelete()) {
                   scheduling_key_entries_.erase(scheduling_key);
                 }
               } else {
@@ -435,11 +413,11 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                              << WorkerID::FromBinary(reply.worker_address().worker_id());
 
               AddWorkerLeaseClient(reply.worker_address(),
-                                   std::move(raylet_client),
+                                   std::move(raylet_lease_client),
                                    reply.resource_mapping(),
                                    scheduling_key,
                                    task_id);
-              RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+              RAY_CHECK(sched_entry.active_workers.size() >= 1);
               OnWorkerIdle(reply.worker_address(),
                            scheduling_key,
                            /*was_error=*/false,
@@ -457,7 +435,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
               RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
             }
-          } else if (raylet_client != local_raylet_client_) {
+          } else if (NodeID::FromBinary(raylet_address.node_id()) != local_node_id_) {
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
@@ -495,9 +473,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                  << "because the raylet is "
                     "unavailable (crashed).";
               error_info.set_error_message(ss.str());
-              tasks_to_fail = std::move(scheduling_key_entry.task_queue);
-              scheduling_key_entry.task_queue.clear();
-              if (scheduling_key_entry.CanDelete()) {
+              tasks_to_fail = std::move(sched_entry.task_queue);
+              sched_entry.task_queue.clear();
+              if (sched_entry.CanDelete()) {
                 scheduling_key_entries_.erase(scheduling_key);
               }
             } else {
@@ -597,7 +575,7 @@ void NormalTaskSubmitter::PushNormalTask(
                                                 addr,
                                                 get_task_failure_cause_reply_status,
                                                 get_task_failure_cause_reply);
-                  absl::MutexLock lock(&mu_);
+                  absl::MutexLock task_submission_state_lock(&mu_);
                   if (!will_retry) {
                     // Task submission and task cancellation are the only two other code
                     // paths that clean up the cancelled_tasks_ map. If the task is not
