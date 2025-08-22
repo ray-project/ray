@@ -20,6 +20,8 @@ amd_product_dict = {
     "0x74a2": "AMD-Instinct-MI308X-OAM",
     "0x74a9": "AMD-Instinct-MI300X-HF",
     "0x74a5": "AMD-Instinct-MI325X-OAM",
+    "0x75a0": "AMD-Instinct-MI350X-OAM",
+    "0x75a3": "AMD-Instinct-MI355X-OAM",
     "0x6798": "AMD-Radeon-R9-200-HD-7900",
     "0x6799": "AMD-Radeon-HD-7900",
     "0x679A": "AMD-Radeon-HD-7900",
