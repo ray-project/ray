@@ -279,6 +279,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::PinObjectIDsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ResizeLocalResourceInstances` request.
+  void HandleResizeLocalResourceInstances(
+      rpc::ResizeLocalResourceInstancesRequest request,
+      rpc::ResizeLocalResourceInstancesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 

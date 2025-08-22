@@ -41,6 +41,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
@@ -55,6 +56,7 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
+  uint16_t metrics_agent_port = 0;
   std::string redis_username;
   std::string redis_password;
   std::string redis_address;
@@ -294,6 +296,8 @@ class GcsServer {
   int task_pending_schedule_detected_ = 0;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
+  /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
 };
 
 }  // namespace gcs
