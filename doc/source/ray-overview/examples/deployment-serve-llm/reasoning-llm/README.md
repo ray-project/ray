@@ -1,20 +1,8 @@
 # Deploying a Reasoning LLM
 
+A reasoning LLM is built to handle tasks that require deeper analysis or step-by-step thought. It can generate intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.
+
 This tutorial walks you through deploying a reasoning LLM using Ray Serve LLM.  
-
----
-
-## Prerequisites
-
-* Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
-
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
-
-**Dependencies:**  
-```bash
-pip install "ray[serve,llm]"
-```
 
 ---
 
@@ -132,11 +120,23 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ## Local End-to-End Deployment
 
-Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwq_32b.py`.  
+**Prerequisites**
+
+* Access to GPU compute.
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+
+> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+
+**Dependencies:**  
+```bash
+pip install "ray[serve,llm]"
+```
 
 ---
 
 ### Launch
+
+Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwq_32b.py`.  
 
 In a terminal, run:  
 

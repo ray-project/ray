@@ -1,20 +1,8 @@
 # Deploying a vision-capable LLM
 
+A vision-capable LLM can interpret images as well as text, enabling tasks like answering questions about charts, analyzing photos, or combining visuals with instructions. It extends LLMs beyond language to support multimodal reasoning and richer applications.  
+
 This tutorial walks you through deploying a vision-capable LLM using Ray Serve LLM.  
-
----
-
-## Prerequisites
-
-* Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
-
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
-
-**Dependencies:**  
-```bash
-pip install "ray[serve,llm]"
-```
 
 ---
 
@@ -58,11 +46,23 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ## Local End-to-End Deployment
 
-Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwen_VL.py`.  
+**Prerequisites**
+
+* Access to GPU compute.
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+
+> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+
+**Dependencies:**  
+```bash
+pip install "ray[serve,llm]"
+```
 
 ---
 
 ### Launch
+
+Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwen_VL.py`.  
 
 In a terminal, run:   
 

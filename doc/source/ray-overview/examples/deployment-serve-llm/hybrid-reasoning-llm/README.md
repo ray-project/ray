@@ -1,20 +1,8 @@
 # Deploying a Hybrid Reasoning LLM
 
+A hybrid reasoning model provides flexibility by allowing reasoning to be enabled or disabled as needed. This makes it possible to use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
+
 This tutorial walks you through deploying a Hybrid Reasoning LLM using Ray Serve LLM.  
-
----
-
-## Prerequisites
-
-* Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
-
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
-
-**Dependencies:**  
-```bash
-pip install "ray[serve,llm]"
-```
 
 ---
 
@@ -156,11 +144,23 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ## Local End-to-End Deployment
 
-Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwen_3_32b.py`.  
+**Prerequisites**
+
+* Access to GPU compute.
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+
+> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+
+**Dependencies:**  
+```bash
+pip install "ray[serve,llm]"
+```
 
 ---
 
 ### Launch
+
+Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwen_3_32b.py`.  
 
 In a terminal, run:  
 

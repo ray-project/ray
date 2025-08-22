@@ -1,22 +1,8 @@
 # Deploying a medium-size LLM
 
-This tutorial walks you through deploying a medium-size LLM using Ray Serve LLM.  
+A medium-size LLM typically runs on a single node with 4—8 GPUs and offers a balance between performance and efficiency. It provides stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes it a solid choice for production workloads that need good quality at lower cost, or for scaling applications where large models would be too slow or expensive.
 
-A medium-size model typically runs on a single node with 4—8 GPUs. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html), and for larger models, see [Deploying a large-size LLM](https://github.com/anyscale/templates/tree/main/templates/ray_serve_llm/end-to-end-examples/gargantuan_model).
-
----
-
-## Prerequisites
-
-* Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
-
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
-
-**Dependencies:**  
-```bash
-pip install "ray[serve,llm]"
-```
+This tutorial walks you through deploying a medium-size LLM using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html), and for larger models, see [Deploying a large-size LLM](https://github.com/anyscale/templates/tree/main/templates/ray_serve_llm/end-to-end-examples/gargantuan_model).
 
 ---
 
@@ -66,11 +52,23 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ## Local End-to-End Deployment
 
-Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_llama_3_1_70b.py`.  
+**Prerequisites**
+
+* Access to GPU compute.
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+
+> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+
+**Dependencies:**  
+```bash
+pip install "ray[serve,llm]"
+```
 
 ---
 
 ### Launch
+
+Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_llama_3_1_70b.py`.  
 
 In a terminal, run:  
 
