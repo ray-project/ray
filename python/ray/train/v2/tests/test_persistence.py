@@ -14,6 +14,7 @@ import pytest
 
 import ray
 import ray.train
+import ray.train.collective
 from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 from ray.train import (
@@ -24,11 +25,7 @@ from ray.train import (
     ScalingConfig,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
-from ray.train.v2._internal.execution.context import (
-    get_train_context as get_internal_train_context,
-)
 from ray.train.v2._internal.execution.storage import _download_from_fs_path
-from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -215,17 +212,7 @@ def train_fn(config):
         # which will cause the test assertions to fail.
         # This should be fixed by forcing a queue flush on all workers before
         # executing the failure decisions.
-        sync_actor = get_internal_train_context().get_synchronization_actor()
-        train_context = get_train_fn_utils().get_context()
-
-        ray.get(
-            sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=train_context.get_world_rank(),
-                world_size=train_context.get_world_size(),
-                data="barrier",
-                caller_method_name="caller_method_name",
-            )
-        )
+        ray.train.collective.barrier()
 
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
