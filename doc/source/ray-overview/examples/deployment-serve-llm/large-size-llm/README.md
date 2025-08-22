@@ -232,7 +232,6 @@ containerfile: ./Dockerfile # path to your dockerfile
 ...
 ```
 
-
 ---
 
 ### Sending Requests 
@@ -242,6 +241,15 @@ Both the endpoint and authentication token are shown in the output of the `anysc
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
 You can also retrieve both from the service page in the Anyscale Console. Just click the **Query** button at the top. See [Sending Requests](#sending-requests) for example requests, but make sure to put the correct endpoint and authentication token.  
+
+---
+
+### Serve LLM Dashboard
+
+See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+1. In the Anyscale console, go to your **Service** or **Workspace**
+2. Navigate to the **Metrics** tab
+3. Expand **View in Grafana** and click **Serve LLM Dashboard**
 
 ---
 
