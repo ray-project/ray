@@ -29,8 +29,8 @@
 
 namespace ray {
 namespace rpc {
-  class RayletClientPool;
-} // namespace rpc
+class RayletClientPool;
+}  // namespace rpc
 
 namespace gcs {
 
