@@ -2,7 +2,7 @@ import copy
 from typing import Dict, List
 
 import ray.train
-from ray.data import DataIterator, Dataset, NodeIdStr
+from ray.data import DataIterator
 from ray.data.context import DataContext
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
@@ -17,31 +17,21 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 
 
 class RayDatasetShardProvider:
-    def __init__(
-        self,
-        datasets: Dict[str, Dataset],
-        data_config: ray.train.DataConfig,
-        world_size: int,
-        worker_node_ids: List[NodeIdStr],
-    ):
-        # Maps (world_rank, dataset_name) to a DataIterator.
-        self._dataset_iterators: List[Dict[str, DataIterator]] = data_config.configure(
-            datasets=datasets,
-            world_size=world_size,
-            worker_handles=None,
-            worker_node_ids=worker_node_ids,
-        )
+    """A shard provider that Train workers use to access a DataIterator for a dataset."""
+
+    def __init__(self, ds_iterators: Dict[str, DataIterator]):
+        # Maps dataset_name to a DataIterator.
+        self._dataset_iterators = ds_iterators
 
     def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
-        ds_shards_for_rank = self._dataset_iterators[dataset_info.world_rank]
-        if dataset_info.dataset_name not in ds_shards_for_rank:
+        if dataset_info.dataset_name not in self._dataset_iterators:
             raise KeyError(
                 f"Dataset shard for '{dataset_info.dataset_name}' not found. "
                 "Please ensure that the dataset is passed through the Trainer `datasets` "
                 "argument."
             )
 
-        return ds_shards_for_rank[dataset_info.dataset_name]
+        return self._dataset_iterators[dataset_info.dataset_name]
 
 
 class DatasetsSetupCallback(WorkerGroupCallback):
@@ -91,13 +81,19 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         )
 
         datasets = {k: v() if callable(v) else v for k, v in self._datasets.items()}
-        dataset_manager = RayDatasetShardProvider(
+        ds_iterators_per_rank = self._data_config.configure(
             datasets=datasets,
-            data_config=self._data_config,
             world_size=world_size,
+            worker_handles=None,
             worker_node_ids=worker_node_ids,
         )
-        return {"dataset_shard_provider": [dataset_manager] * len(workers)}
+        assert len(ds_iterators_per_rank) == world_size
+
+        shard_providers_per_rank = [
+            RayDatasetShardProvider(ds_iterators=ds_iterators_per_rank[rank])
+            for rank in range(world_size)
+        ]
+        return {"dataset_shard_provider": shard_providers_per_rank}
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         # Propagate DataContext

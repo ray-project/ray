@@ -36,6 +36,8 @@ def test_e2e_single_dataset(ray_start_4_cpus, restore_data_context):  # noqa: F8
         data_context = DataContext.get_current()
         assert data_context.get_config("foo") == "bar"
 
+        ray.train.get_dataset_shard("val")
+
         try:
             ray.train.get_dataset_shard("val")
             assert False, "Should raise an error if the dataset is not found"
@@ -95,10 +97,10 @@ def test_dataset_setup_callback(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train", world_rank=0)
+        DatasetShardMetadata(dataset_name="train")
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid", world_rank=0)
+        DatasetShardMetadata(dataset_name="valid")
     )
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)

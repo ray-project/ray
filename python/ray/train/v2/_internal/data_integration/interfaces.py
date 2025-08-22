@@ -13,7 +13,6 @@ class DatasetShardMetadata:
     """Metadata about a dataset shard used for lookup and configuration."""
 
     dataset_name: str
-    world_rank: int
 
 
 class DatasetShardProvider(Protocol):
@@ -21,7 +20,7 @@ class DatasetShardProvider(Protocol):
         """Get the dataset shard for the given dataset info.
         Args:
             dataset_info: The metadata of the shard to retrieve,
-                including the dataset name and worker rank.
+                including the dataset name.
         Returns:
             The :class:`~ray.data.DataIterator` shard for the given dataset info.
         Raises:
