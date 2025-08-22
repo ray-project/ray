@@ -132,6 +132,17 @@ message CancelResourceReserveRequest {
 
 message CancelResourceReserveReply {}
 
+message ResizeLocalResourceInstancesRequest {
+  // Map of resource names to their desired total quantities
+  // For example: {"CPU": 4, "memory": 1000000}
+  map<string, double> resources = 1;
+}
+
+message ResizeLocalResourceInstancesReply {
+  // Current total resources after the resize operation
+  map<string, double> total_resources = 1;
+}
+
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
@@ -226,18 +237,16 @@ message ObjectStoreStats {
   int64 object_store_bytes_fallback = 10;
   // The number of local objects total.
   int64 num_local_objects = 11;
-  // The number of plasma object bytes that are consumed by core workers.
-  int64 consumed_bytes = 12;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory.
-  bool object_pulls_queued = 13;
+  bool object_pulls_queued = 12;
   // The number of primary copies of objects in the local node.
-  int64 num_object_store_primary_copies = 14;
+  int64 num_object_store_primary_copies = 13;
   // The total number of objects that have been allocated to plasma.
-  int64 cumulative_created_objects = 15;
+  int64 cumulative_created_objects = 14;
   // The total number of bytes that have been allocated to plasma objects.
-  int64 cumulative_created_bytes = 16;
+  int64 cumulative_created_bytes = 15;
 }
 
 message GetNodeStatsReply {
@@ -451,6 +460,16 @@ service NodeManagerService {
   // Failure: Has retry behavior, could be improved to just use retriable grpc client.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
+  // Adjust the total number of local resource instances on the raylet to match the
+  // specified values.
+  // Success: Returns the updated total resources for the node. If downsizing would make
+  // available resources negative, the raylet clamps the reduction so that available
+  // becomes zero.
+  // Failure: Returns INVALID_ARGUMENT if the request attempts to resize a unit instance
+  // resource (e.g., GPU), as these cannot be resized by this API. In the cases of
+  // network errors, the caller should retry the request.
+  rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
+      returns (ResizeLocalResourceInstancesReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   // Failure: TODO: This needs to handle network failure

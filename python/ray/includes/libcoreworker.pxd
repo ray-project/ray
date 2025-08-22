@@ -76,7 +76,7 @@ cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/fiber.h" nogil:
+cdef extern from "ray/core_worker/task_execution/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::core::FiberEvent":
         CFiberEvent()
         void Wait()
@@ -116,6 +116,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int MaxPendingCalls() const
         int MaxTaskRetries() const
         c_bool EnableTaskEvents() const
+        c_bool AllowOutOfOrderExecution() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()
@@ -278,7 +279,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id)
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
-        CRayStatus ExperimentalRegisterMutableObjectWriter(
+        void ExperimentalRegisterMutableObjectWriter(
                 const CObjectID &writer_object_id,
                 const c_vector[CNodeID] &remote_reader_node_ids)
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
@@ -342,10 +343,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
-        int64_t GetNumTasksSubmitted() const
-
-        int64_t GetNumLeasesRequested() const
-
         int64_t GetLocalMemoryStoreBytesUsed() const
 
         void RecordTaskLogStart(
@@ -382,7 +379,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool interactive
         c_string node_ip_address
         int node_manager_port
-        c_string raylet_ip_address
         c_string driver_name
         (CRayStatus(
             const CAddress &caller_address,
@@ -426,6 +422,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
         (c_bool(const CTaskID &c_task_id) nogil) cancel_async_actor_task
+        (void() noexcept nogil) actor_shutdown_callback
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers

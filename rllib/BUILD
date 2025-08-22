@@ -90,6 +90,7 @@ doctest(
             "algorithms/r2d2/r2d2.py",
             "algorithms/sac/rnnsac.py",
             "algorithms/simple_q/simple_q.py",
+            "core/distribution/torch/torch_distribution.py",
             "core/models/base.py",
             "core/models/specs/specs_base.py",
             "core/models/specs/specs_dict.py",
@@ -104,9 +105,7 @@ doctest(
             "models/catalog.py",
             "models/preprocessors.py",
             "models/repeated_values.py",
-            "models/tf/tf_distributions.py",
             "models/torch/model.py",
-            "models/torch/torch_distributions.py",
             "policy/rnn_sequencing.py",
             "utils/actor_manager.py",
             "utils/filter.py",
@@ -839,6 +838,30 @@ py_test(
     ],
 )
 
+# DreamerV3
+# takes too long (up to 20-30min to learn -200 on 1 GPU)
+# # Pendulum
+# py_test(
+#    name = "learning_tests_pendulum_dreamerv3_gpu",
+#    size = "large",
+#    srcs = ["tuned_examples/dreamerv3/pendulum_dreamerv3.py"],
+#    args = [
+#        "--as-test",
+#        "--num-gpus-per-learner=1",
+#        "--num-learners=1",
+#    ],
+#    main = "tuned_examples/marwil/cartpole_marwil.py",
+#    tags = [
+#        "exclusive",
+#        "gpu",
+#        "learning_tests",
+#        "learning_tests_continuous",
+#        "learning_tests_pytorch_use_all_core",
+#        "team:rllib",
+#        "torch_only",
+#    ],
+# )
+
 # IMPALA
 # CartPole
 py_test(
@@ -1071,6 +1094,57 @@ py_test(
 #    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
 #    args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1"]
 # )
+
+# IQL
+# Pendulum-v1 (enormous)
+py_test(
+    name = "learning_tests_pendulum_iql",
+    size = "large",
+    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=32",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    main = "tuned_examples/iql/pendulum_iql.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_continuous",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+# GPU training.
+py_test(
+    name = "learning_tests_pendulum_iql_gpu",
+    size = "large",
+    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=32",
+        "--num-gpus-per-learner=1",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    main = "tuned_examples/iql/pendulum_iql.py",
+    tags = [
+        "exclusive",
+        "gpu",
+        "learning_tests",
+        "learning_tests_continuous",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
 
 # MARWIL
 # CartPole
@@ -2042,12 +2116,15 @@ py_test(
 )
 
 # DreamerV3
-# py_test(
-#    name = "test_dreamerv3",
-#    tags = ["team:rllib", "algorithms_dir"],
-#    size = "large",
-#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
-# )
+py_test(
+    name = "test_dreamerv3",
+    size = "large",
+    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
 
 # IMPALA
 py_test(
@@ -2470,16 +2547,6 @@ py_test(
 #    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
 #    args = ["TestRLModuleGPU"],
 # )
-
-py_test(
-    name = "test_tf_rl_module",
-    size = "medium",
-    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"],
-    tags = [
-        "core",
-        "team:rllib",
-    ],
-)
 
 py_test(
     name = "test_multi_rl_module",
@@ -3957,6 +4024,26 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/curriculum/pong_curriculum_learning",
+    size = "large",
+    srcs = ["examples/curriculum/pong_curriculum_learning.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=10",
+        "--num-cpus=11",
+        "--num-envs-per-env-runner=5",
+        "--stop-iters=20",
+        "--stop-reward=-21.0",
+    ],
+    main = "examples/curriculum/pong_curriculum_learning.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: debugging/
 # ....................................
 py_test(
@@ -4096,6 +4183,7 @@ py_test(
     args = [
         "--as-test",
         "--port=12346",
+        "--use-dummy-client",
     ],
     main = "examples/envs/env_connecting_to_rllib_w_tcp_client.py",
     tags = [
@@ -4694,7 +4782,7 @@ py_test(
 
 py_test(
     name = "examples/metrics/custom_metrics_in_algorithm_training_step",
-    size = "small",
+    size = "medium",
     srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
     main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
     tags = [
@@ -4918,6 +5006,21 @@ py_test(
         "--stop-iter=10",
     ],
     main = "examples/multi_agent/rock_paper_scissors_learned_vs_learned.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/multi_agent/shared_encoder_cartpole",
+    size = "medium",
+    srcs = ["examples/multi_agent/shared_encoder_cartpole.py"],
+    args = [
+        "--stop-iter=10",
+    ],
+    main = "examples/multi_agent/shared_encoder_cartpole.py",
     tags = [
         "examples",
         "exclusive",

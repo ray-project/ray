@@ -57,7 +57,6 @@ class TaskManagerInterface {
   /// \param[in] reply Proto response to a direct actor or task call.
   /// \param[in] worker_addr Address of the worker that executed the task.
   /// \param[in] is_application_error Whether this is an Exception return.
-  /// \return Void.
   virtual void CompletePendingTask(const TaskID &task_id,
                                    const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr,
@@ -151,7 +150,18 @@ class TaskManagerInterface {
   /// \param[in] task_id The task that is now scheduled.
   virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
 
-  /// Set the task state to be canceled. Set the number of retries to zero.
+  /// Sets the task state to no-retry. This is used when Ray overrides the user-specified
+  /// retry count for a task (e.g., a task belonging to a dead actor).
+  /// Unlike `MarkTaskCanceled`, this does not mark the task as canceled—`ray.get()` will
+  /// raise the specific error that caused the retry override (e.g., ACTOR_ERROR).
+  ///
+  /// \param[in] task_id to set no retry.
+  virtual void MarkTaskNoRetry(const TaskID &task_id) = 0;
+
+  /// Marks the task as canceled and sets its retry count to zero. This function
+  /// should only be used for task cancellation. Unlike `MarkTaskNoRetry`, a
+  /// canceled task is not retriable and `ray.get()` will raise a
+  /// `TASK_CANCELLED` error.
   ///
   /// \param[in] task_id to cancel.
   virtual void MarkTaskCanceled(const TaskID &task_id) = 0;

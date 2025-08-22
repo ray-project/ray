@@ -34,13 +34,14 @@
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 
@@ -51,23 +52,24 @@ using WorkerCommandMap =
 
 enum PopWorkerStatus {
   // OK.
+  // A registered worker will be returned with callback.
   OK = 0,
   // Job config is not found.
+  // A nullptr worker will be returned with callback.
   JobConfigMissing = 1,
   // Worker process startup rate is limited.
+  // A nullptr worker will be returned with callback.
   TooManyStartingWorkerProcesses = 2,
   // Worker process has been started, but the worker did not register at the raylet within
   // the timeout.
+  // A nullptr worker will be returned with callback.
   WorkerPendingRegistration = 3,
   // Any fails of runtime env creation.
+  // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
   // The task's job has finished.
+  // A nullptr worker will be returned with callback.
   JobFinished = 5,
-  // The worker process failed to launch because the OS returned an `E2BIG`
-  // (Argument list too long) error. This typically occurs when a `runtime_env`
-  // is so large that its serialized context exceeds the kernel's command-line
-  // argument size limit.
-  ArgumentListTooLong = 6,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
@@ -84,18 +86,18 @@ using PopWorkerCallback =
                        const std::string &runtime_env_setup_error_message)>;
 
 struct PopWorkerRequest {
-  const rpc::Language language;
-  const rpc::WorkerType worker_type;
-  const JobID job_id;                    // can be Nil
-  const ActorID root_detached_actor_id;  // can be Nil
-  const std::optional<bool> is_gpu;
-  const std::optional<bool> is_actor_worker;
-  const rpc::RuntimeEnvInfo runtime_env_info;
-  const int runtime_env_hash;
-  const std::vector<std::string> dynamic_options;
-  std::optional<absl::Duration> worker_startup_keep_alive_duration;
+  const rpc::Language language_;
+  const rpc::WorkerType worker_type_;
+  const JobID job_id_;                    // can be Nil
+  const ActorID root_detached_actor_id_;  // can be Nil
+  const std::optional<bool> is_gpu_;
+  const std::optional<bool> is_actor_worker_;
+  const rpc::RuntimeEnvInfo runtime_env_info_;
+  const int runtime_env_hash_;
+  const std::vector<std::string> dynamic_options_;
+  std::optional<absl::Duration> worker_startup_keep_alive_duration_;
 
-  PopWorkerCallback callback;
+  PopWorkerCallback callback_;
 
   PopWorkerRequest(rpc::Language lang,
                    rpc::WorkerType worker_type,
@@ -108,18 +110,17 @@ struct PopWorkerRequest {
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
-      : language(lang),
-        worker_type(worker_type),
-        job_id(job),
-        root_detached_actor_id(root_actor_id),
-        is_gpu(gpu),
-        is_actor_worker(actor_worker),
-        runtime_env_info(std::move(runtime_env_info)),
-        // this-> is needed to disambiguate the member variable from the ctor arg.
-        runtime_env_hash(runtime_env_hash),
-        dynamic_options(std::move(options)),
-        worker_startup_keep_alive_duration(worker_startup_keep_alive_duration),
-        callback(std::move(callback)) {}
+      : language_(lang),
+        worker_type_(worker_type),
+        job_id_(job),
+        root_detached_actor_id_(root_actor_id),
+        is_gpu_(gpu),
+        is_actor_worker_(actor_worker),
+        runtime_env_info_(std::move(runtime_env_info)),
+        runtime_env_hash_(runtime_env_hash),
+        dynamic_options_(std::move(options)),
+        worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
+        callback_(std::move(callback)) {}
 };
 
 /// \class IOWorkerPoolInterface
@@ -167,7 +168,6 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
-  /// \return Void.
   virtual void PopWorker(const TaskSpecification &task_spec,
                          const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
@@ -342,13 +342,12 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param job_id ID of the started job.
   /// \param job_config The config of the started job.
-  /// \return Void
+
   void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override;
 
   /// Handles the event that a job is finished.
   ///
   /// \param job_id ID of the finished job.
-  /// \return Void.
   void HandleJobFinished(const JobID &job_id) override;
 
   /// \brief Get the job config by job id.
@@ -380,7 +379,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
-  /// \return void
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Register a new driver.
@@ -596,8 +594,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// the environment variables of the parent process.
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env,
-                               std::error_code &ec);
+                               const ProcessEnvironment &env);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -605,8 +602,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// Make this synchronized function for unit test.
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
-                                 PopWorkerStatus status,
-                                 const std::string &runtime_env_setup_error_message);
+                                 PopWorkerStatus status);
 
   /// Look up worker's dynamic options by startup token.
   /// TODO(scv119): replace dynamic options by runtime_env.
@@ -773,11 +769,9 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  virtual void PopWorkerCallbackAsync(
-      PopWorkerCallback callback,
-      std::shared_ptr<WorkerInterface> worker,
-      PopWorkerStatus status,
-      const std::string &runtime_env_setup_error_message = "");
+  virtual void PopWorkerCallbackAsync(PopWorkerCallback callback,
+                                      std::shared_ptr<WorkerInterface> worker,
+                                      PopWorkerStatus status);
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.
@@ -877,7 +871,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
-  int ray_debugger_external;
+  int ray_debugger_external_;
 
   /// If the first job has already been registered.
   bool first_job_registered_ = false;
@@ -921,6 +915,34 @@ class WorkerPool : public WorkerPoolInterface {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup after it is created.
   bool enable_resource_isolation_ = false;
+
+  /// Ray metrics
+  ray::stats::Sum ray_metric_num_workers_started_{
+      /*name=*/"internal_num_processes_started",
+      /*description=*/"The total number of worker processes the worker pool has created.",
+      /*unit=*/"processes"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_job_mismatch_{
+      /*name=*/"internal_num_processes_skipped_job_mismatch",
+      /*description=*/"The total number of cached workers skipped due to job mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_{
+      /*name=*/"internal_num_processes_skipped_runtime_environment_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to runtime environment mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_{
+      /*name=*/"internal_num_processes_skipped_dynamic_options_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to dynamic options mismatch.",
+      /*unit=*/"workers"};
+
+  ray::stats::Sum ray_metric_num_workers_started_from_cache_{
+      /*name=*/"internal_num_processes_started_from_cache",
+      /*description=*/"The total number of workers started from a cached worker process.",
+      /*unit=*/"workers"};
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

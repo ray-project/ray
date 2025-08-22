@@ -336,6 +336,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     Columns.STATE_OUT not in sa_episode.extra_model_outputs
                 ):
                     state = sa_module.get_initial_state()
+                    state = convert_to_numpy(state)
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(

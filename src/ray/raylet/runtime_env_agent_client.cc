@@ -29,6 +29,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace beast = boost::beast;  // from <boost/beast.hpp>
@@ -230,9 +232,10 @@ class SessionPool {
   void enqueue(std::shared_ptr<Session> session) {
     if (running_sessions_.size() < max_concurrency_) {
       running_sessions_.insert(session);
-      session->run(/*finished_callback=*/[this](std::shared_ptr<Session> session) {
-        this->remove_session_from_running(session);
-      });
+      session->run(
+          /*finished_callback=*/[this](std::shared_ptr<Session> session_to_remove) {
+            this->remove_session_from_running(session_to_remove);
+          });
     } else {
       pending_sessions_.emplace(std::move(session));
     }

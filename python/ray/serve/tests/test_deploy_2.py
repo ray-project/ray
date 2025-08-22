@@ -112,8 +112,14 @@ def test_http_proxy_request_cancellation(serve_instance):
             return ret_val
 
     serve.run(A.bind())
-
     url = get_application_url("HTTP")
+    # Windows usually resolves "localhost" to the IPv6 loopback ::1 first, but the
+    # Serve proxy is listening only on IPv4.  The initial TCP connect then hangs,
+    # breaking the short‑timeout logic in this test.  Using the literal IPv4 address
+    # 127.0.0.1 skips the IPv6 attempt and makes the test deterministic on Windows.
+    if sys.platform == "win32":
+        url = url.replace("localhost", "127.0.0.1")
+
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
         first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
@@ -260,13 +266,20 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
 
     url = get_application_url("HTTP", app_name="app1")
     assert httpx.get(f"{url}").text == "hello alice"
-    proxy_url = "http://localhost:8000/-/routes"
-    routes = httpx.get(proxy_url).json()
+    url_without_route_prefix = get_application_url(
+        "HTTP", app_name="app1", exclude_route_prefix=True
+    )
+    routes_url = f"{url_without_route_prefix}/-/routes"
+    routes = httpx.get(routes_url).json()
     assert routes["/app1"] == "app1"
 
     url = get_application_url("HTTP", app_name="app2")
     assert httpx.get(f"{url}").text == "hello bob"
-    routes = httpx.get(proxy_url).json()
+    url_without_route_prefix = get_application_url(
+        "HTTP", app_name="app2", exclude_route_prefix=True
+    )
+    routes_url = f"{url_without_route_prefix}/-/routes"
+    routes = httpx.get(routes_url).json()
     assert routes["/app2"] == "app2"
 
     app1_status = serve.status().applications["app1"]

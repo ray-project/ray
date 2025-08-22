@@ -198,11 +198,11 @@ class DataOrganizer:
         }
 
     @staticmethod
-    async def _get_actor_info(actor):
+    async def _get_actor_info(actor: Optional[dict]) -> Optional[dict]:
         if actor is None:
             return None
 
-        actor = dict(actor)
+        actor = actor.copy()
         worker_id = actor["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
         actor_constructor = core_worker_stats.get(
@@ -213,7 +213,7 @@ class DataOrganizer:
 
         # TODO(fyrestone): remove this, give a link from actor
         # info to worker info in front-end.
-        node_id = actor["address"]["rayletId"]
+        node_id = actor["address"]["nodeId"]
         pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None

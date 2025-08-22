@@ -31,7 +31,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
@@ -109,7 +109,7 @@ class GcsActor {
 
     actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
-    actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
+    actor_table_data_.mutable_address()->set_node_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
@@ -525,11 +525,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A data structure representing an actor's owner.
   struct Owner {
     explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
-        : client(std::move(client)) {}
+        : client_(std::move(client)) {}
     /// A client that can be used to contact the owner.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client;
+    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
     /// The IDs of actors owned by this worker.
-    absl::flat_hash_set<ActorID> children_actor_ids;
+    absl::flat_hash_set<ActorID> children_actor_ids_;
   };
 
   /// Poll an actor's owner so that we will receive a notification when the
@@ -611,6 +611,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta.mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta.mutable_address()->CopyFrom(actor.address());
     actor_delta.set_num_restarts(actor.num_restarts());
+    actor_delta.set_num_restarts_due_to_node_preemption(
+        actor.num_restarts_due_to_node_preemption());
     actor_delta.set_max_restarts(actor.max_restarts());
     actor_delta.set_timestamp(actor.timestamp());
     actor_delta.set_pid(actor.pid());

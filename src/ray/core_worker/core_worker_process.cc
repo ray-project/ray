@@ -34,15 +34,17 @@
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/ipc/raylet_ipc_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/container_util.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
+#include "ray/util/network_util.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/process.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace core {
@@ -170,7 +172,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
 
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_shared<gcs::GcsClient>(options.gcs_options));
+      std::make_unique<gcs::GcsClient>(options.gcs_options),
+      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                       *client_call_manager),
+      options.session_name);
 
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
@@ -205,26 +210,26 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     job_config.ParseFromString(options.serialized_job_config);
     worker_context->MaybeInitializeJobInfo(worker_context->GetCurrentJobID(), job_config);
   }
-  auto raylet_conn = std::make_unique<raylet::RayletConnection>(
+
+  auto raylet_ipc_client = std::make_shared<ray::ipc::RayletIpcClient>(
       io_service_, options.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
-  NodeID local_raylet_id;
+  NodeID local_node_id;
   int assigned_port = 0;
-  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
-                                                       worker_context->GetWorkerID(),
-                                                       options.worker_type,
-                                                       worker_context->GetCurrentJobID(),
-                                                       options.runtime_env_hash,
-                                                       options.language,
-                                                       options.node_ip_address,
-                                                       options.serialized_job_config,
-                                                       options.startup_token,
-                                                       &local_raylet_id,
-                                                       &assigned_port);
-  if (!raylet_client_status.ok()) {
+  Status status = raylet_ipc_client->RegisterClient(worker_context->GetWorkerID(),
+                                                    options.worker_type,
+                                                    worker_context->GetCurrentJobID(),
+                                                    options.runtime_env_hash,
+                                                    options.language,
+                                                    options.node_ip_address,
+                                                    options.serialized_job_config,
+                                                    options.startup_token,
+                                                    &local_node_id,
+                                                    &assigned_port);
+  if (!status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
-        << "Failed to register worker to Raylet: " << raylet_client_status;
+        << "Failed to register worker to Raylet: " << status;
     QuickExit();
   }
   RAY_CHECK_GE(assigned_port, 0);
@@ -236,16 +241,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
-  auto local_raylet_client =
-      std::make_shared<raylet::RayletClient>(std::move(raylet_conn),
-                                             options.raylet_ip_address,
-                                             options.node_manager_port,
-                                             *client_call_manager,
-                                             worker_context->GetWorkerID());
-  auto core_worker_server =
-      std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
-                                        assigned_port,
-                                        options.node_ip_address == "127.0.0.1");
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      local_node_id, options.node_ip_address, options.node_manager_port);
+  auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
+      std::move(raylet_address),
+      *client_call_manager,
+      /*raylet_unavailable_timeout_callback=*/[] {});
+  auto core_worker_server = std::make_unique<rpc::GrpcServer>(
+      WorkerTypeString(options.worker_type), assigned_port, options.node_ip_address);
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -254,16 +257,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   core_worker_server->Run();
 
   // Set our own address.
-  RAY_CHECK(!local_raylet_id.IsNil());
+  RAY_CHECK(!local_node_id.IsNil());
   rpc::Address rpc_address;
   rpc_address.set_ip_address(options.node_ip_address);
-  // NOTE: the port is currently 0 as the core_worker_server is not started yet.
   rpc_address.set_port(core_worker_server->GetPort());
-  rpc_address.set_raylet_id(local_raylet_id.Binary());
+  rpc_address.set_node_id(local_node_id.Binary());
   rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
-  RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_raylet_id)
-      << "Initializing worker at address: " << rpc_address.ip_address() << ":"
-      << rpc_address.port();
+  RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_node_id)
+      << "Initializing worker at address: "
+      << BuildAddress(rpc_address.ip_address(), rpc_address.port());
 
   auto gcs_client = std::make_shared<gcs::GcsClient>(options.gcs_options,
                                                      worker_context->GetWorkerID());
@@ -275,7 +277,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
-  auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(*client_call_manager);
+  auto raylet_client_pool =
+      std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
+        auto core_worker = GetCoreWorker();
+        return std::make_shared<ray::raylet::RayletClient>(
+            addr,
+            *core_worker->client_call_manager_,
+            rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
+                core_worker->gcs_client_.get(),
+                core_worker->raylet_client_pool_.get(),
+                addr));
+      });
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
       std::make_shared<rpc::CoreWorkerClientPool>([this](const rpc::Address &addr) {
@@ -314,17 +326,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
-  auto check_node_alive_fn = [this](const NodeID &node_id) {
-    auto core_worker = GetCoreWorker();
-    auto node = core_worker->gcs_client_->Nodes().Get(node_id);
-    return node != nullptr;
-  };
-
   auto reference_counter = std::make_shared<ReferenceCounter>(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),
       /*object_info_subscriber=*/object_info_subscriber.get(),
-      check_node_alive_fn,
+      /*is_node_dead=*/
+      [this](const NodeID &node_id) {
+        return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
+      },
       RayConfig::instance().lineage_pinning_enabled());
 
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
@@ -340,29 +349,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             /*min_concurrent_lease_cap_*/ 10);
   }
 
-  // Register a callback to monitor add/removed nodes.
-  // Note we capture a shared ownership of reference_counter_ and rate_limiter
-  // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [temp_reference_counter = reference_counter,
-                         temp_rate_limiter = lease_request_rate_limiter](
-                            const NodeID &node_id, const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      RAY_LOG(INFO).WithField(node_id)
-          << "Node failure. All objects pinned on that node will be lost if object "
-             "reconstruction is not enabled.";
-      temp_reference_counter->ResetObjectsOnRemovedNode(node_id);
-    }
-    auto cluster_size_based_rate_limiter =
-        dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(temp_rate_limiter.get());
-    if (cluster_size_based_rate_limiter != nullptr) {
-      cluster_size_based_rate_limiter->OnNodeChanges(data);
-    }
-  };
-  gcs_client->Nodes().AsyncSubscribeToNodeChange(std::move(on_node_change), nullptr);
-
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
-      local_raylet_client,
+      raylet_ipc_client,
       *reference_counter,
       options.check_signals,
       /*warmup=*/
@@ -375,7 +364,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
       reference_counter.get(),
-      local_raylet_client,
+      raylet_ipc_client,
       options.check_signals,
       [this](const RayObject &obj) {
         auto core_worker = GetCoreWorker();
@@ -390,27 +379,28 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         // from the middle of user operations.
         core_worker->io_service_.post(
             [this, obj]() {
-              auto core_worker = GetCoreWorker();
-              if (core_worker->options_.unhandled_exception_handler != nullptr) {
-                core_worker->options_.unhandled_exception_handler(obj);
+              auto this_core_worker = GetCoreWorker();
+              if (this_core_worker->options_.unhandled_exception_handler != nullptr) {
+                this_core_worker->options_.unhandled_exception_handler(obj);
               }
             },
             "CoreWorker.HandleException");
       });
+
+  std::shared_ptr<experimental::MutableObjectProvider>
+      experimental_mutable_object_provider;
 
 #if defined(__APPLE__) || defined(__linux__)
   auto raylet_channel_client_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
     auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-    ray::rpc::Address addr;
-    addr.set_ip_address(node_info->node_manager_address());
-    addr.set_port(node_info->node_manager_port());
-    addr.set_raylet_id(node_id.Binary());
-    return core_worker->raylet_client_pool_->GetOrConnectByAddress(addr);
+    auto addr = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, node_info->node_manager_address(), node_info->node_manager_port());
+    return core_worker->raylet_client_pool_->GetOrConnectByAddress(std::move(addr));
   };
 
-  auto experimental_mutable_object_provider =
+  experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
           *plasma_store_provider->store_client(),
           raylet_channel_client_factory,
@@ -431,8 +421,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        RAY_CHECK_OK(
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
+        auto put_status =
+            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+        if (!put_status.ok()) {
+          RAY_LOG(WARNING).WithField(object_id)
+              << "Failed to put object in plasma store: " << put_status;
+          return put_status;
+        }
+        return Status::OK();
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
@@ -455,7 +451,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         auto addr = core_worker->actor_task_submitter_->GetActorAddress(actor_id);
         RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
         return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
-      });
+      },
+      gcs_client);
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -490,34 +487,34 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       reference_counter);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
-    std::optional<rpc::Address> addr;
     auto core_worker = GetCoreWorker();
+    std::optional<rpc::Address> address_opt;
     if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
-      rpc::Address address;
-      address.set_raylet_id(node_info->node_id());
+      auto &address = address_opt.emplace();
+      address.set_node_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
       address.set_port(node_info->node_manager_port());
-      addr = address;
     }
-    return addr;
+    return address_opt;
   };
 
-  auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
-                          ? std::unique_ptr<LeasePolicyInterface>(
-                                std::make_unique<LocalityAwareLeasePolicy>(
-                                    *reference_counter, node_addr_factory, rpc_address))
-                          : std::unique_ptr<LeasePolicyInterface>(
-                                std::make_unique<LocalLeasePolicy>(rpc_address));
+  auto lease_policy =
+      RayConfig::instance().locality_aware_leasing_enabled()
+          ? std::unique_ptr<LeasePolicyInterface>(
+                std::make_unique<LocalityAwareLeasePolicy>(
+                    *reference_counter, node_addr_factory, raylet_address))
+          : std::unique_ptr<LeasePolicyInterface>(
+                std::make_unique<LocalLeasePolicy>(raylet_address));
 
   auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
       rpc_address,
-      local_raylet_client,
+      local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
       std::move(lease_policy),
       memory_store,
       *task_manager,
-      local_raylet_id,
+      local_node_id,
       options.worker_type,
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator,
@@ -551,36 +548,65 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto actor_manager = std::make_unique<ActorManager>(
       gcs_client, *actor_task_submitter, *reference_counter);
 
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
-      object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
-                                                   const ObjectLookupCallback &callback) {
-        auto core_worker = GetCoreWorker();
-        std::vector<rpc::Address> locations;
-        const std::optional<absl::flat_hash_set<NodeID>> object_locations =
-            core_worker->reference_counter_->GetObjectLocations(object_id);
-        if (object_locations.has_value()) {
-          locations.reserve(object_locations.value().size());
-          for (const auto &node_id : object_locations.value()) {
-            std::optional<rpc::Address> addr = node_addr_factory(node_id);
-            if (addr.has_value()) {
-              locations.emplace_back(std::move(addr.value()));
-              continue;
-            }
-            // We're getting potentially stale locations directly from the reference
-            // counter, so the location might be a dead node.
-            RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-                << "Object location is dead, not using it in the recovery of object";
-          }
+  // For the recovery manager to lookup the addresses / ports of the nodes with secondary
+  // copies.
+  auto object_lookup = [this](const ObjectID &object_id,
+                              const ObjectLookupCallback &callback) {
+    auto core_worker = GetCoreWorker();
+    std::vector<rpc::Address> locations;
+    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
+        core_worker->reference_counter_->GetObjectLocations(object_id);
+    std::vector<NodeID> nodes_to_lookup;
+    if (object_locations.has_value()) {
+      locations.reserve(object_locations->size());
+      for (const auto &node_id : *object_locations) {
+        auto *node_info =
+            core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+        if (node_info == nullptr) {
+          // Unsure if the node is dead, so we need to confirm with the GCS. This should
+          // be rare, the only foreseeable reasons are:
+          // 1. We filled our cache after the GCS cleared the node info due to
+          //    maximum_gcs_dead_node_cached_count.
+          // 2. The node is alive but we haven't received the publish yet.
+          nodes_to_lookup.push_back(node_id);
+          continue;
         }
-        callback(object_id, std::move(locations));
-        return Status::OK();
-      };
+        if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
+          continue;
+        }
+        rpc::Address addr;
+        addr.set_node_id(node_info->node_id());
+        addr.set_ip_address(node_info->node_manager_address());
+        addr.set_port(node_info->node_manager_port());
+        locations.push_back(std::move(addr));
+      }
+    }
+    if (nodes_to_lookup.empty()) {
+      callback(object_id, std::move(locations));
+      return;
+    }
+    core_worker->gcs_client_->Nodes().AsyncGetAll(
+        [callback, object_id, locations = std::move(locations)](
+            const Status &, const std::vector<rpc::GcsNodeInfo> &node_infos) mutable {
+          for (const auto &node_info : node_infos) {
+            if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
+              rpc::Address addr;
+              addr.set_node_id(node_info.node_id());
+              addr.set_ip_address(node_info.node_manager_address());
+              addr.set_port(node_info.node_manager_port());
+              locations.push_back(std::move(addr));
+            }
+          }
+          callback(object_id, std::move(locations));
+        },
+        -1,
+        nodes_to_lookup);
+  };
 
   auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
       rpc_address,
       raylet_client_pool,
-      local_raylet_client,
-      object_lookup_fn,
+      std::move(object_lookup),
       *task_manager,
       *reference_counter,
       *memory_store,
@@ -611,7 +637,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(core_worker_server),
                                    std::move(rpc_address),
                                    std::move(gcs_client),
-                                   std::move(local_raylet_client),
+                                   std::move(raylet_ipc_client),
+                                   std::move(local_raylet_rpc_client),
                                    io_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
@@ -652,7 +679,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       }
       const std::string app_name = app_name_ss.str();
       const std::string log_filepath =
-          RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+          GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
       RayLog::StartRayLog(app_name,
                           RayLogLevel::INFO,
                           log_filepath,
@@ -736,6 +763,18 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // We need init stats before using it/spawning threads.
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
 
+  // Initialize event framework before starting up worker.
+  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
+    const std::vector<SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
+    RayEventInit(source_types,
+                 /*custom_fields=*/{},
+                 options_.log_dir,
+                 RayConfig::instance().event_level(),
+                 RayConfig::instance().emit_event_to_log_file());
+  }
+
   {
     // Notify that core worker is initialized.
     absl::Cleanup initialzed_scope_guard = [this] {
@@ -745,18 +784,15 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
-  }
-
-  // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    const std::vector<SourceTypeVariant> source_types = {
-        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
-    RayEventInit(source_types,
-                 absl::flat_hash_map<std::string, std::string>(),
-                 options_.log_dir,
-                 RayConfig::instance().event_level(),
-                 RayConfig::instance().emit_event_to_log_file());
+    // Initialize metrics agent client.
+    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+        "127.0.0.1",
+        options_.metrics_agent_port,
+        io_service_,
+        *write_locked.Get()->client_call_manager_);
+    metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+      stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
+    });
   }
 }
 
@@ -796,15 +832,20 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
     rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
-    raylet::RayletClient raylet_client(
-        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
+    rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+        NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
+    // TODO(joshlee): This local raylet client has a custom retry policy below since its
+    // likely the driver can start up before the raylet is ready. We want to move away
+    // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
+    raylet::RayletClient local_raylet_rpc_client(
+        raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
-                                             &raylet_client,
+                                             &local_raylet_rpc_client,
                                              &promise,
                                              &io_service](int64_t num_attempts) {
-      raylet_client.GetSystemConfig(
+      local_raylet_rpc_client.GetSystemConfig(
           [this, num_attempts, &get_once, &promise, &io_service](
               const Status &status, const rpc::GetSystemConfigReply &reply) {
             RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
@@ -908,55 +949,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
   return read_locked.Get();
 }
 
-Status CoreWorkerProcessImpl::RegisterWorkerToRaylet(
-    raylet::RayletConnection &conn,
-    const WorkerID &worker_id,
-    rpc::WorkerType worker_type,
-    const JobID &job_id,
-    int runtime_env_hash,
-    const Language &language,
-    const std::string &ip_address,
-    const std::string &serialized_job_config,
-    const StartupToken &startup_token,
-    NodeID *raylet_id,
-    int *port) {
-  flatbuffers::FlatBufferBuilder fbb;
-  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
-  auto message =
-      protocol::CreateRegisterClientRequest(fbb,
-                                            static_cast<int>(worker_type),
-                                            to_flatbuf(fbb, worker_id),
-                                            getpid(),
-                                            startup_token,
-                                            to_flatbuf(fbb, job_id),
-                                            runtime_env_hash,
-                                            language,
-                                            fbb.CreateString(ip_address),
-                                            /*port=*/0,
-                                            fbb.CreateString(serialized_job_config));
-  fbb.Finish(message);
-  // Register the process ID with the raylet.
-  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  std::vector<uint8_t> reply;
-  auto request_status =
-      conn.AtomicRequestReply(ray::protocol::MessageType::RegisterClientRequest,
-                              ray::protocol::MessageType::RegisterClientReply,
-                              &reply,
-                              &fbb);
-  if (!request_status.ok()) {
-    return Status(request_status.code(),
-                  std::string("[RayletClient] Unable to register worker with raylet. ") +
-                      request_status.message());
-  }
-  auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
-  bool success = reply_message->success();
-  if (!success) {
-    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
-  }
-
-  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
-  *port = reply_message->port();
-  return Status::OK();
-}
 }  // namespace core
+
 }  // namespace ray

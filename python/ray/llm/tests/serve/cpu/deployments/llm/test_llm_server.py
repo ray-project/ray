@@ -37,11 +37,13 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     mock_llm_config.experimental_configs = {
         "stream_batching_interval_ms": stream_batching_interval_ms,
     }
+    # Set minimal lora_config to enable multiplexing but avoid telemetry S3 calls
     mock_llm_config.lora_config = LoraConfig(
-        dynamic_lora_loading_path="s3://my/s3/path_here",
+        dynamic_lora_loading_path=None,  # No S3 path = no telemetry S3 calls
         download_timeout_s=60,
         max_download_tries=3,
     )
+
     app = serve.deployment(LLMServer).bind(
         mock_llm_config,
         engine_cls=MockVLLMEngine,
@@ -172,6 +174,29 @@ class TestLLMServer:
 
         # Check that the health check method was called
         assert server.engine.check_health_called
+
+    @pytest.mark.asyncio
+    async def test_reset_prefix_cache(self, mock_llm_config):
+        """Test reset prefix cache functionality."""
+
+        # Mock the engine's reset_prefix_cache method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.reset_prefix_cache_called = False
+
+            async def reset_prefix_cache(self):
+                self.reset_prefix_cache_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Perform the health check, no exceptions should be raised
+        await server.reset_prefix_cache()
+
+        # Check that the reset prefix cache method was called
+        assert server.engine.reset_prefix_cache_called
 
     @pytest.mark.asyncio
     async def test_llm_config_property(self, mock_llm_config):

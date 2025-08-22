@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/network_util.h"
+
 namespace ray {
 namespace rpc {
 
@@ -28,18 +30,17 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     rpc::RayletClientPool *raylet_client_pool,
     const rpc::Address &addr) {
   return [addr, gcs_client, worker_client_pool, raylet_client_pool]() {
-    const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+    const NodeID node_id = NodeID::FromBinary(addr.node_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
 
     auto check_worker_alive = [raylet_client_pool,
                                worker_client_pool,
                                worker_id,
                                node_id](const rpc::GcsNodeInfo &node_info) {
-      rpc::Address raylet_addr;
-      raylet_addr.set_ip_address(node_info.node_manager_address());
-      raylet_addr.set_port(node_info.node_manager_port());
-      raylet_addr.set_raylet_id(node_id.Binary());
-      auto raylet_client = raylet_client_pool->GetOrConnectByAddress(raylet_addr);
+      auto raylet_addr = RayletClientPool::GenerateRayletAddress(
+          node_id, node_info.node_manager_address(), node_info.node_manager_port());
+      auto raylet_client =
+          raylet_client_pool->GetOrConnectByAddress(std::move(raylet_addr));
       raylet_client->IsLocalWorkerDead(
           worker_id,
           [worker_client_pool, worker_id, node_id](const Status &status,
@@ -87,7 +88,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                 check_worker_alive(nodes[0]);
               },
               -1,
-              node_id);
+              {node_id});
         };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
@@ -121,7 +122,7 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   RemoveIdleClients();
 
   CoreWorkerClientEntry entry;
-  auto node_id = NodeID::FromBinary(addr_proto.raylet_id());
+  auto node_id = NodeID::FromBinary(addr_proto.node_id());
   auto worker_id = WorkerID::FromBinary(addr_proto.worker_id());
   auto it = worker_client_map_.find(worker_id);
   if (it != worker_client_map_.end()) {
@@ -136,16 +137,16 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   node_clients_map_[node_id][worker_id] = client_list_.begin();
 
   RAY_LOG(DEBUG) << "Connected to worker " << worker_id << " with address "
-                 << addr_proto.ip_address() << ":" << addr_proto.port();
-  return entry.core_worker_client;
+                 << BuildAddress(addr_proto.ip_address(), addr_proto.port());
+  return entry.core_worker_client_;
 }
 
 void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
-    auto worker_id = client_list_.back().worker_id;
-    auto node_id = client_list_.back().node_id;
+    auto worker_id = client_list_.back().worker_id_;
+    auto node_id = client_list_.back().node_id_;
     // The last client in the list is the least recent accessed client.
-    if (client_list_.back().core_worker_client->IsIdleAfterRPCs()) {
+    if (client_list_.back().core_worker_client_->IsIdleAfterRPCs()) {
       worker_client_map_.erase(worker_id);
       EraseFromNodeClientMap(node_id, worker_id);
       client_list_.pop_back();
@@ -168,7 +169,7 @@ void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   if (it == worker_client_map_.end()) {
     return;
   }
-  EraseFromNodeClientMap(it->second->node_id, /*worker_id=*/id);
+  EraseFromNodeClientMap(it->second->node_id_, /*worker_id=*/id);
   client_list_.erase(it->second);
   worker_client_map_.erase(it);
 }

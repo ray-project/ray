@@ -4,7 +4,7 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:ray.bzl", "COPTS")
 
@@ -60,11 +60,15 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//:ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:constants",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
-        "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:network_util",
         "//src/ray/util:process",
         "@boost//:callable_traits",
         "@boost//:dll",
@@ -199,18 +203,16 @@ pkg_zip(
     visibility = ["//visibility:private"],
 )
 
-genrule(
-    name = "ray_cpp_pkg",
-    srcs = ["ray_cpp_pkg.zip"],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        rm -rf "$$WORK_DIR/python/ray/cpp" &&
-        unzip -q $(location ray_cpp_pkg.zip) -d "$$WORK_DIR/python" &&
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
-    """,
-    local = 1,
+py_binary(
+    name = "gen_ray_cpp_pkg",
+    srcs = ["gen_ray_cpp_pkg.py"],
+    data = [
+        ":ray_cpp_pkg.zip",
+    ],
     visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )
 
 # test
@@ -254,6 +256,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api_lib",
+        "//src/ray/util:network_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
