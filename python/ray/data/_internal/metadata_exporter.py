@@ -179,9 +179,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     elif isinstance(obj, (Sequence, set)):
         # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
         taken, dropped = obj[:truncate_length], obj[truncate_length:]
-        return res + (
-          ["..."] if dropped else []
-        )
+        return taken + (["..."] if dropped else [])
     else:
         try:
             if is_dataclass(obj):
