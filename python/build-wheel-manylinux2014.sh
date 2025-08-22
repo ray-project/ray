@@ -2,25 +2,36 @@
 
 set -exuo pipefail
 
-# Host user UID/GID
-HOST_UID=${HOST_UID:-$(id -u)}
-HOST_GID=${HOST_GID:-$(id -g)}
+if [[ "$EUID" -eq 0 ]]; then
 
-if [ "$EUID" -eq 0 ]; then
+  HOME="/tmp"
 
   # Install sudo
   yum -y install sudo
 
-  # Create group and user
-  groupadd -g "$HOST_GID" builduser
-  useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
+  GROUP_NAME="builduser"
+  declare -a UID_FLAG=()
 
-  # Give sudo access
-  echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+  # --- Ensure group exists ---
+  if ! getent group "$GROUP_NAME" >/dev/null; then
+    groupadd "$GROUP_NAME"
+  fi
 
-  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@"
+  # --- Ensure user exists ---
+  if ! id -u builduser >/dev/null 2>&1; then
+    useradd -m -d "$HOME"/ -g "$GROUP_NAME" builduser
+  fi
 
-  exit 0
+  mkdir -p "$HOME"/
+  chown -R builduser:"$GROUP_NAME" "$HOME"/
+
+  echo "builduser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builduser
+  chmod 0440 /etc/sudoers.d/builduser
+
+  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@" || {
+    echo "Failed to exec as builduser." >&2
+    exit 1
+  }
 
 fi
 
