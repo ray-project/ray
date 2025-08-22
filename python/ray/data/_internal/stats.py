@@ -280,9 +280,9 @@ class _StatsActor:
             description="Seconds user thread is blocked by iter_batches()",
             tag_keys=iter_tag_keys,
         )
-        self.iter_first_batch_blocked_s = Gauge(
-            "data_iter_first_batch_blocked_seconds",
-            description="Seconds user thread is blocked waiting for first batch",
+        self.iter_time_to_first_batch_s = Gauge(
+            "data_iter_time_to_first_batch_seconds",
+            description="Seconds from starting iteration until first batch is ready. This includes the dataset pipeline warmup time.",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
