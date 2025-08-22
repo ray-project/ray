@@ -166,8 +166,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                 "autoscaling_config": {
                                     "min_replicas": 1,
                                     "initial_replicas": None,
-                                    "agg_function": "mean",
-                                    "prometheus_custom_metrics": None,
                                     "max_replicas": 10,
                                     "target_ongoing_requests": 2.0,
                                     "metrics_interval_s": 10.0,
@@ -179,6 +177,8 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
+                                    "agg_function": "mean",
+                                    "prometheus_custom_metrics": None,
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
@@ -278,4 +278,4 @@ def test_get_deployment_config(serve_instance):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-vv", "-s", __file__]))
