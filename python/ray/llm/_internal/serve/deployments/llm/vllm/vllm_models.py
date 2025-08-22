@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import os
 from typing import Any, Dict, List, Optional
@@ -201,7 +202,7 @@ class VLLMEngineConfig(BaseModelExtended):
             bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_devices)]
+        bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
 
