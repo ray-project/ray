@@ -169,7 +169,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
   } else {
     auto client = core_worker_client_pool_->GetOrConnect(addr);
 
-    while (!current_queue.empty() && !lease_entry.is_busy) {
+    if (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = std::move(current_queue.front());
       current_queue.pop_front();
 
