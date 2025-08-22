@@ -1137,6 +1137,7 @@ class ApplicationStateManager:
 
         if any_target_state_changed:
             self.save_checkpoint()
+            self._deployment_state_manager.save_checkpoint()
 
     def shutdown(self) -> None:
         self._shutting_down = True

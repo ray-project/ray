@@ -3095,8 +3095,7 @@ class DeploymentStateManager:
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
         if id in self._deployment_states:
-            self._deployment_states[id].delete()
-            return True
+            return self._deployment_states[id].delete()
 
         return False
 
