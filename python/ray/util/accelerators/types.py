@@ -1,7 +1,8 @@
 import ray.util.accelerators.accelerators as _accelerators
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 
+@DeveloperAPI(stability="alpha")
 class AcceleratorTypes:
     """Unified access point for all accelerator types supported by Ray, categorized by vendor.
 
