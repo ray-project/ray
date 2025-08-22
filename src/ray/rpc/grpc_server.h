@@ -101,7 +101,7 @@ class GrpcServer {
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
         port_(port),
-        ip_address_(ip_address),
+        ip_address_(std::move(ip_address)),
         cluster_id_(cluster_id),
         is_shutdown_(true),
         num_threads_(num_threads),
