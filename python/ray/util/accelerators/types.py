@@ -12,7 +12,7 @@ class AcceleratorTypes:
         module.
 
     Example:
-        .. code-block:: python
+        .. testcode:: python
 
             ############# Access via constant (TYPES) ###############
             import ray
@@ -32,6 +32,7 @@ class AcceleratorTypes:
         No explicit arguments required. The class dynamically initializes accelerator types
         by scanning the `ray.util.accelerators.accelerators` module on instantiation.
     """
+
     def __init__(self):
         self._all_constants = {
             name: getattr(_accelerators, name)
