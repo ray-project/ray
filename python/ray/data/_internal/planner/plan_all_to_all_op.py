@@ -12,6 +12,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.window_operator import Window
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
@@ -69,6 +70,25 @@ def _plan_hash_shuffle_aggregate(
             logical_op._num_partitions or data_context.default_hash_shuffle_parallelism
         ),
         # TODO wire in aggregator args overrides
+    )
+
+
+def _plan_window_operation(
+    data_context: DataContext,
+    logical_op: Window,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    """Plan a window operation using the specialized WindowOperator."""
+    from ray.data._internal.execution.operators.window_operator import WindowOperator
+
+    return WindowOperator(
+        input_physical_op,
+        data_context,
+        window_spec=logical_op.window_spec,
+        aggregation_fns=logical_op.aggs,
+        num_partitions=logical_op.num_partitions,
+        batch_format=logical_op.batch_format,
+        ray_remote_args=getattr(logical_op, "_ray_remote_args", None),
     )
 
 
@@ -154,6 +174,11 @@ def plan_all_to_all_op(
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
+
+    elif isinstance(op, Window):
+        # Use the specialized WindowOperator for window operations
+        return _plan_window_operation(data_context, op, input_physical_dag)
+
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 

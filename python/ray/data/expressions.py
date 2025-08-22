@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, List, Optional, Union
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -239,6 +239,83 @@ class BinaryExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class WindowExpr(Expr):
+    """Expression that represents a window function.
+
+    This expression type represents a window function that can be applied
+    to a column. Window functions compute values over a set of rows that
+    are related to the current row.
+
+    Args:
+        column: The column to apply the window function to
+        window_spec: The window specification
+        function: The window function to apply (e.g., "sum", "mean", "count")
+
+    Example:
+        >>> from ray.data.expressions import col, window
+        >>> from ray.data.window import sliding_window
+        >>> # Create a rolling sum expression
+        >>> expr = window(col("amount"), sliding_window("timestamp", "1 hour"), "sum")
+    """
+
+    column: Expr
+    window_spec: "WindowSpec"
+    function: str
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, WindowExpr)
+            and self.column.structurally_equals(other.column)
+            and self.window_spec == other.window_spec
+            and self.function == other.function
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class RollingExpr(Expr):
+    """Expression that represents a rolling window function.
+
+    This is a convenience expression for sliding windows that provides
+    a more intuitive API similar to Pandas' rolling() method.
+
+    Args:
+        column: The column to apply the rolling function to
+        window_size: The size of the rolling window
+        window_column: The column to use for windowing (defaults to row index)
+        min_periods: Minimum number of observations in window required
+        center: Whether to center the window on the current row
+        function: The function to apply ("sum", "mean", "count", "std", "min", "max")
+
+    Example:
+        >>> from ray.data.expressions import col, rolling
+        >>> # Create a 5-row rolling mean
+        >>> expr = rolling(col("price"), 5, function="mean")
+        >>> # Create a 1-hour rolling sum
+        >>> expr = rolling(col("amount"), "1 hour", window_column="timestamp", function="sum")
+    """
+
+    column: Expr
+    window_size: Union[int, str]
+    window_column: Optional[str] = None
+    min_periods: int = 1
+    center: bool = False
+    function: str = "mean"
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, RollingExpr)
+            and self.column.structurally_equals(other.column)
+            and self.window_size == other.window_size
+            and self.window_column == other.window_column
+            and self.min_periods == other.min_periods
+            and self.center == other.center
+            and self.function == other.function
+        )
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -301,6 +378,77 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@PublicAPI(stability="alpha")
+def window(column: Expr, window_spec: "WindowSpec", function: str) -> WindowExpr:
+    """
+    Create a window function expression.
+
+    This creates an expression that applies a window function to a column.
+    Window functions compute values over a set of rows that are related
+    to the current row.
+
+    Args:
+        column: The column to apply the window function to
+        window_spec: The window specification (from ray.data.window)
+        function: The window function to apply ("sum", "mean", "count", "std", "min", "max")
+
+    Returns:
+        A WindowExpr that can be used with Dataset.with_column()
+
+    Example:
+        >>> from ray.data.expressions import col, window
+        >>> from ray.data.window import sliding_window
+        >>> # Create a rolling sum expression
+        >>> expr = window(col("amount"), sliding_window("timestamp", "1 hour"), "sum")
+        >>>
+        >>> # Use with Dataset.with_column()
+        >>> ds = ds.with_column("rolling_sum", expr)
+    """
+    return WindowExpr(column, window_spec, function)
+
+
+@PublicAPI(stability="alpha")
+def rolling(
+    column: Expr,
+    window_size: Union[int, str],
+    window_column: Optional[str] = None,
+    min_periods: int = 1,
+    center: bool = False,
+    function: str = "mean",
+) -> RollingExpr:
+    """
+    Create a rolling window expression.
+
+    This is a convenience function for creating rolling window expressions
+    that provides a more intuitive API similar to Pandas' rolling() method.
+
+    Args:
+        column: The column to apply the rolling function to
+        window_size: The size of the rolling window (int for rows, str for time)
+        window_column: The column to use for windowing (defaults to row index)
+        min_periods: Minimum number of observations in window required
+        center: Whether to center the window on the current row
+        function: The function to apply ("sum", "mean", "count", "std", "min", "max")
+
+    Returns:
+        A RollingExpr that can be used with Dataset.with_column()
+
+    Example:
+        >>> from ray.data.expressions import col, rolling
+        >>> # Create a 5-row rolling mean
+        >>> expr = rolling(col("price"), 5, function="mean")
+        >>>
+        >>> # Create a 1-hour rolling sum
+        >>> expr = rolling(col("amount"), "1 hour", window_column="timestamp", function="sum")
+        >>>
+        >>> # Use with Dataset.with_column()
+        >>> ds = ds.with_column("rolling_avg", expr)
+    """
+    return RollingExpr(
+        column, window_size, window_column, min_periods, center, function
+    )
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -314,6 +462,10 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "WindowExpr",
+    "RollingExpr",
     "col",
     "lit",
+    "window",
+    "rolling",
 ]

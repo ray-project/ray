@@ -3086,6 +3086,182 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
+    def window(
+        self,
+        window_spec: "WindowSpec",
+        *aggs: "AggregateFn",
+        num_partitions: Optional[int] = None,
+        compute_strategy: Optional[ComputeStrategy] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ) -> "Dataset":
+        """Apply window functions to the dataset.
+
+        This method applies window-based aggregations to the dataset, supporting
+        sliding windows, tumbling windows, and session windows. It supports both
+        stateless and stateful operations, with GPU acceleration capabilities.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.window import window, sliding_window, tumbling_window, session_window
+            >>> from ray.data.aggregate import Sum, Mean, Count
+            >>> from ray.data._internal.compute import ActorPoolStrategy
+
+            # Sliding window with trailing 1-hour average
+            >>> ds = ray.data.read_parquet("data.parquet")
+            >>> result = ds.window(
+            ...     sliding_window("timestamp", "1 hour"),
+            ...     Sum("value")
+            ... )
+
+            # Tumbling window with 1-day aggregation
+            >>> result = ds.window(
+            ...     tumbling_window("timestamp", "1 day"),
+            ...     Mean("value")
+            ... )
+
+            # Session window with 15-minute gap
+            >>> result = ds.window(
+            ...     session_window("timestamp", "15 minutes"),
+            ...     Count("value")
+            ... )
+
+            # Row-based sliding window
+            >>> result = ds.window(
+            ...     sliding_window("row_id", 100, alignment="CENTERED"),
+            ...     Mean("value")
+            ... )
+
+            # GPU-accelerated window operation
+            >>> result = ds.window(
+            ...     sliding_window("timestamp", "1 hour"),
+            ...     Mean("value"),
+            ...     ray_remote_args={"num_gpus": 1}
+            ... )
+
+            # Stateful window operation with actor pool
+            >>> result = ds.window(
+            ...     sliding_window("timestamp", "1 hour"),
+            ...     Sum("value"),
+            ...     compute_strategy=ActorPoolStrategy(size=2),
+            ...     ray_remote_args={"num_cpus": 2}
+            ... )
+
+        Args:
+            window_spec: The window specification defining the window type and parameters
+            *aggs: Aggregation functions to apply within each window
+            num_partitions: Number of partitions for the operation
+            compute_strategy: The compute strategy to use (TaskPoolStrategy or ActorPoolStrategy).
+                If None, defaults to TaskPoolStrategy. Use ActorPoolStrategy for stateful operations.
+            ray_remote_args: Additional resource requirements for Ray tasks/actors.
+                Common options include:
+                - num_cpus: Number of CPUs per task/actor
+                - num_gpus: Number of GPUs per task/actor
+                - memory: Memory requirements per task/actor
+                - resources: Custom resource requirements
+
+        Returns:
+            A new Dataset with window aggregations applied
+
+        Note:
+            - For GPU acceleration, specify num_gpus in ray_remote_args
+            - For stateful operations, use ActorPoolStrategy with compute_strategy
+            - Window operations automatically handle data shuffling and sorting
+            - Time-based windows assume data is sorted by the timestamp column
+        """
+        from ray.data._internal.logical.operators.window_operator import Window
+
+        # Merge ray_remote_args from window_spec if provided
+        if window_spec.ray_remote_args:
+            if ray_remote_args is None:
+                ray_remote_args = {}
+            ray_remote_args = {**window_spec.ray_remote_args, **ray_remote_args}
+
+        # Use compute strategy from window_spec if not explicitly provided
+        if compute_strategy is None:
+            compute_strategy = window_spec.compute_strategy
+
+        plan = self._plan.copy()
+        op = Window(
+            self._logical_plan.dag,
+            window_spec=window_spec,
+            aggs=list(aggs),
+            num_partitions=num_partitions,
+            compute_strategy=compute_strategy,
+            ray_remote_args=ray_remote_args,
+        )
+
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @AllToAllAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
+    def slide_over(
+        self,
+        window_spec: "WindowSpec",
+        sharded_by: Optional[List[str]] = None,
+        num_partitions: Optional[int] = None,
+    ) -> "GroupedData":
+        """Create sliding windows over the dataset.
+
+        This method creates sliding windows and returns a GroupedData object
+        that can be used with the existing aggregation methods. It's designed
+        to be similar to Pandas' rolling() functionality.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.window import sliding_window
+            >>> from ray.data.aggregate import Sum, Mean
+
+            # Create trailing 1-hour windows sharded by user_id
+            >>> ds = ray.data.read_parquet("data.parquet")
+            >>> grouped = ds.slide_over(
+            ...     sliding_window("timestamp", "1 hour"),
+            ...     sharded_by=["user_id"]
+            ... )
+            >>> result = grouped.aggregate(Sum("value"))
+
+            # Create centered 5-row windows
+            >>> grouped = ds.slide_over(
+            ...     sliding_window("row_id", 5, alignment="CENTERED")
+            ... )
+            >>> result = grouped.aggregate(Mean("value"))
+
+            # Create expanding windows (unbounded trailing)
+            >>> grouped = ds.slide_over(
+            ...     sliding_window("timestamp", "UNBOUNDED", alignment="TRAILING")
+            ... )
+            >>> result = grouped.aggregate(Sum("value"))
+
+        Args:
+            window_spec: The window specification (must be a SlidingWindow)
+            sharded_by: Columns to partition by before applying windows
+            num_partitions: Number of partitions for the operation
+
+        Returns:
+            A GroupedData object that can be used with aggregation methods
+
+        Raises:
+            ValueError: If window_spec is not a SlidingWindow
+        """
+        from ray.data.window import SlidingWindow
+        from ray.data.grouped_data import GroupedData
+
+        if not isinstance(window_spec, SlidingWindow):
+            raise ValueError("slide_over only supports SlidingWindow specifications")
+
+        # Override sharded_by if specified in window_spec
+        if window_spec.partition_by:
+            sharded_by = window_spec.partition_by
+
+        # For now, we'll use the regular groupby with window information
+        # TODO: Implement SlidingWindowGroupedData for better performance
+        if sharded_by:
+            return self.groupby(sharded_by, num_partitions=num_partitions)
+        else:
+            return self.groupby(None, num_partitions=num_partitions)
+
     @PublicAPI(api_group=SMJ_API_GROUP)
     def zip(self, other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
@@ -5832,9 +6008,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

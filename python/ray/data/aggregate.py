@@ -880,6 +880,224 @@ class Unique(AggregateFnV2):
             return {x}
 
 
+@PublicAPI
+class Rank(AggregateFnV2):
+    """Defines rank aggregation for window functions.
+
+    This provides ranking functionality similar to PySpark's rank() function.
+
+    Example:
+        >>> import ray
+        >>> from ray.data.aggregate import Rank
+        >>> from ray.data.window import rank_window
+
+        ds = ray.data.read_parquet("data.parquet")
+        result = ds.window(
+            rank_window(partition_by=["user_id"], order_by=["amount"]),
+            Rank("amount")
+        )
+
+    Args:
+        on: The name of the column to rank.
+        alias_name: Optional name for the resulting column.
+    """
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"rank({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: [],
+        )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        # For ranking, we need to maintain order within partitions
+        return current_accumulator + new
+
+    def aggregate_block(self, block: Block) -> AggType:
+        # This is a placeholder - actual ranking logic is handled in WindowAggregation
+        accessor = BlockAccessor.for_block(block)
+        return accessor.to_pandas()[self._target_col_name].tolist()
+
+
+@PublicAPI
+class DenseRank(AggregateFnV2):
+    """Defines dense rank aggregation for window functions.
+
+    This provides dense ranking functionality similar to PySpark's dense_rank() function.
+
+    Example:
+        >>> import ray
+        >>> from ray.data.aggregate import DenseRank
+        >>> from ray.data.window import rank_window
+
+        ds = ray.data.read_parquet("data.parquet")
+        result = ds.window(
+            rank_window(partition_by=["user_id"], order_by=["amount"]),
+            DenseRank("amount")
+        )
+
+    Args:
+        on: The name of the column to rank.
+        alias_name: Optional name for the resulting column.
+    """
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"dense_rank({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: [],
+        )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return current_accumulator + new
+
+    def aggregate_block(self, block: Block) -> AggType:
+        accessor = BlockAccessor.for_block(block)
+        return accessor.to_pandas()[self._target_col_name].tolist()
+
+
+@PublicAPI
+class RowNumber(AggregateFnV2):
+    """Defines row number aggregation for window functions.
+
+    This provides row numbering functionality similar to PySpark's row_number() function.
+
+    Example:
+        >>> import ray
+        >>> from ray.data.aggregate import RowNumber
+        >>> from ray.data.window import rank_window
+
+        ds = ray.data.read_parquet("data.parquet")
+        result = ds.window(
+            rank_window(partition_by=["user_id"], order_by=["timestamp"]),
+            RowNumber("timestamp")
+        )
+
+    Args:
+        on: The name of the column to order by (used for row numbering).
+        alias_name: Optional name for the resulting column.
+    """
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"row_number({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: [],
+        )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return current_accumulator + new
+
+    def aggregate_block(self, block: Block) -> AggType:
+        accessor = BlockAccessor.for_block(block)
+        return accessor.to_pandas()[self._target_col_name].tolist()
+
+
+@PublicAPI
+class Lag(AggregateFnV2):
+    """Defines lag aggregation for window functions.
+
+    This provides lag functionality similar to PySpark's lag() function.
+
+    Example:
+        >>> import ray
+        >>> from ray.data.aggregate import Lag
+        >>> from ray.data.window import lag_window
+
+        ds = ray.data.read_parquet("data.parquet")
+        result = ds.window(
+            lag_window("amount", 1, partition_by=["user_id"], order_by=["timestamp"]),
+            Lag("amount")
+        )
+
+    Args:
+        on: The name of the column to lag.
+        offset: Number of rows to look back (default: 1).
+        alias_name: Optional name for the resulting column.
+    """
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        offset: int = 1,
+        alias_name: Optional[str] = None,
+    ):
+        self.offset = offset
+        super().__init__(
+            alias_name if alias_name else f"lag({str(on)}, {offset})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: [],
+        )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return current_accumulator + new
+
+    def aggregate_block(self, block: Block) -> AggType:
+        accessor = BlockAccessor.for_block(block)
+        return accessor.to_pandas()[self._target_col_name].tolist()
+
+
+@PublicAPI
+class Lead(AggregateFnV2):
+    """Defines lead aggregation for window functions.
+
+    This provides lead functionality similar to PySpark's lead() function.
+
+    Example:
+        >>> import ray
+        >>> from ray.data.aggregate import Lead
+        >>> from ray.data.window import lead_window
+
+        ds = ray.data.read_parquet("data.parquet)
+        result = ds.window(
+            lead_window("amount", 1, partition_by=["user_id"], order_by=["timestamp"]),
+            Lead("amount")
+        )
+
+    Args:
+        on: The name of the column to lead.
+        offset: Number of rows to look forward (default: 1).
+        alias_name: Optional name for the resulting column.
+    """
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        offset: int = 1,
+        alias_name: Optional[str] = None,
+    ):
+        self.offset = offset
+        super().__init__(
+            alias_name if alias_name else f"lead({str(on)}, {offset})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: [],
+        )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return current_accumulator + new
+
+    def aggregate_block(self, block: Block) -> AggType:
+        accessor = BlockAccessor.for_block(block)
+        return accessor.to_pandas()[self._target_col_name].tolist()
+
+
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
     """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 
@@ -942,7 +1160,7 @@ def _null_safe_aggregate(
 
 
 def _null_safe_finalize(
-    finalize: Callable[[AggType], AggType]
+    finalize: Callable[[AggType], AggType],
 ) -> Callable[[Optional[AggType]], AggType]:
     def _safe_finalize(acc: Optional[AggType]) -> AggType:
         # If accumulator container is not null, finalize.

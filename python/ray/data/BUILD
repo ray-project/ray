@@ -676,6 +676,20 @@ py_test(
 )
 
 py_test(
+    name = "test_windows",
+    size = "medium",
+    srcs = ["tests/test_windows.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_numpy",
     size = "medium",
     srcs = ["tests/test_numpy.py"],

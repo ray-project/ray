@@ -74,6 +74,71 @@ class GroupedData:
             logical_plan,
         )
 
+    @PublicAPI(api_group=FA_API_GROUP)
+    def window(
+        self,
+        window_spec: "WindowSpec",
+        *aggs: AggregateFn,
+    ) -> Dataset:
+        """Apply window functions within each group.
+
+        This method applies window-based aggregations within each group,
+        supporting tumbling windows and session windows.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.window import tumbling_window, session_window
+            >>> from ray.data.aggregate import Sum, Mean
+
+            # Tumbling windows within each user group
+            >>> ds = ray.data.read_parquet("data.parquet")
+            >>> result = ds.groupby("user_id").window(
+            ...     tumbling_window("timestamp", "1 hour"),
+            ...     Sum("value")
+            ... )
+
+            # Session windows within each device group
+            >>> result = ds.groupby("device_id").window(
+            ...     session_window("timestamp", "15 minutes"),
+            ...     Mean("value")
+            ... )
+
+            # Hopping windows (tumbling with step < size)
+            >>> result = ds.groupby("user_id").window(
+            ...     tumbling_window("timestamp", "1 hour", "30 minutes"),
+            ...     Sum("value")
+            ... )
+
+        Args:
+            window_spec: The window specification (TumblingWindow or SessionWindow)
+            *aggs: Aggregation functions to apply within each window
+
+        Returns:
+            A new Dataset with window aggregations applied within each group
+
+        Raises:
+            ValueError: If window_spec is not a TumblingWindow or SessionWindow
+        """
+        from ray.data.window import TumblingWindow, SessionWindow
+        from ray.data._internal.logical.operators.window_operator import Window
+
+        if not isinstance(window_spec, (TumblingWindow, SessionWindow)):
+            raise ValueError(
+                "GroupedData.window() only supports TumblingWindow and SessionWindow specifications. "
+                "Use Dataset.slide_over() for SlidingWindow."
+            )
+
+        # Create a window operator that works within groups
+        plan = self._dataset._plan.copy()
+        op = Window(
+            self._dataset._logical_plan.dag,
+            window_spec=window_spec,
+            aggs=list(aggs),
+            num_partitions=self._num_partitions,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
+
     def _aggregate_on(
         self,
         agg_cls: type,
@@ -551,7 +616,8 @@ def _apply_udf_to_groups(
     """Apply UDF to groups of rows having the same set of values of the specified
     columns (keys).
 
-    NOTE: This function is defined at module level to avoid capturing closures and make it serializable."""
+    NOTE: This function is defined at module level to avoid capturing closures and make it serializable.
+    """
     block_accessor = BlockAccessor.for_block(block)
 
     boundaries = block_accessor._get_group_boundaries_sorted(keys)

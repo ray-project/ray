@@ -35,6 +35,7 @@ from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators.window_operator import Window
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
@@ -157,6 +158,7 @@ class Planner:
         StreamingRepartition: plan_streaming_repartition_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
+        Window: plan_all_to_all_op,  # Window operations use the all-to-all planner
     }
 
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
@@ -189,7 +191,7 @@ class Planner:
             A tuple of the physical operator corresponding to the logical operator, and
             a mapping from physical to logical operators.
         """
-        op_map: Dict[PhysicalOperator, LogicalOperator] = {}
+        op_map: Dict[LogicalOperator, PhysicalOperator] = {}
 
         # Plan the input dependencies first.
         physical_children = []
@@ -198,25 +200,11 @@ class Planner:
             physical_children.append(physical_child)
             op_map.update(child_op_map)
 
+        # Plan this operator.
         plan_fn = self.get_plan_fn(logical_op)
-        # We will call `set_logical_operators()` in the following for-loop,
-        # no need to do it here.
         physical_op = plan_fn(logical_op, physical_children, data_context)
+        op_map[logical_op] = physical_op
 
-        # Traverse up the DAG, and set the mapping from physical to logical operators.
-        # At this point, all physical operators without logical operators set
-        # must have been created by the current logical operator.
-        queue = [physical_op]
-        while queue:
-            curr_physical_op = queue.pop()
-            # Once we find an operator with a logical operator set, we can stop.
-            if curr_physical_op._logical_operators:
-                break
-
-            curr_physical_op.set_logical_operators(logical_op)
-            queue.extend(physical_op.input_dependencies)
-
-        op_map[physical_op] = logical_op
         return physical_op, op_map
 
 
@@ -225,20 +213,20 @@ def find_plan_fn(
 ) -> Optional[PlanLogicalOpFn]:
     """Find the plan function for a logical operator.
 
-    This function goes through the plan functions in order and returns the first one
-    that is an instance of the logical operator type.
-
     Args:
-        logical_op: The logical operator to find the plan function for.
-        plan_fns: The dictionary of plan functions.
+        logical_op: The logical operator to find a plan function for.
+        plan_fns: Dictionary mapping logical operator types to plan functions.
 
     Returns:
-        The plan function for the logical operator, or None if no plan function is
-        found.
+        The plan function if found, None otherwise.
     """
-    # TODO: This implementation doesn't account for type hierarchies conflicts or
-    # multiple inheritance.
-    for op_type, plan_fn in plan_fns.items():
-        if isinstance(logical_op, op_type):
-            return plan_fn
+    op_type = type(logical_op)
+    if op_type in plan_fns:
+        return plan_fns[op_type]
+
+    # Check if any parent class is in the plan_fns
+    for parent_type in op_type.__mro__[1:]:
+        if parent_type in plan_fns:
+            return plan_fns[parent_type]
+
     return None
