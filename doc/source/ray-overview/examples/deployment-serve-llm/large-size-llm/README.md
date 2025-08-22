@@ -298,7 +298,7 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
 > *Example*:  
-> Running llama-3.1-70B On an A100-40G:
+> Running DeepSeek-R1 on 2 nodes with 8xH100-80GB GPUs each:
 > * `max_model_len = 32,768` → concurrency ≈ 13
 > * `max_model_len = 16,384` → concurrency ≈ 26
 
@@ -328,7 +328,7 @@ deployment_config:
 ## Troubleshooting
 
 **HuggingFace Auth Errors**  
-Some models, such as Llama-3, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
+Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
 
 **Out-Of-Memory Errors**  
 Out‑of‑memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes, and context length increase.  

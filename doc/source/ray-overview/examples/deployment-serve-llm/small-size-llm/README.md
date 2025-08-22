@@ -294,7 +294,7 @@ deployment_config:
 ## Troubleshooting
 
 **HuggingFace Auth Errors**  
-Some models, such as Llama-3, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
+Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
 
 **Out-Of-Memory Errors**  
 Out‑of‑memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes, and context length increase.  
