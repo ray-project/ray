@@ -235,7 +235,7 @@ def get_env_float_non_zero_with_warning(
     PROXY_MIN_DRAINING_PERIOD_S
     RAY_SERVE_KV_TIMEOUT_S
 
-    todo: replace this function with 'get_env_float_positive' for the '2.50.0' release.
+    TODO: replace this function with 'get_env_float_positive' for the '2.50.0' release.
     """
     removal_version = "2.50.0"
 
@@ -257,7 +257,7 @@ def get_env_float_non_zero_with_warning(
 def _name_warning(name: str) -> None:
     """Warn if a environment variable name doesn't start with `RAY_SERVE_`.
 
-    todo: replace this function for the '2.50.0' release and add `RAY_SERVE_` prefix to all env variables.
+    TODO: remove this function for the '2.50.0' release and add `RAY_SERVE_` prefix to all env variables.
     """
     change_version = "2.50.0"
     required_prefix = "RAY_SERVE_"
