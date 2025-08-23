@@ -350,6 +350,89 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         assert start_message in logs
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_job_starting_timeout(call_ray_start, tmp_path, monkeypatch):
+    """Test the timeout when starting jobs."""
+
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    # Submit a job with unsatisfied resource.
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the job timed out.
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_pending_job_timeout_during_raylet_creation(
+    call_ray_start, tmp_path, monkeypatch
+):
+    """Test the timeout for pending jobs during new raylet creation."""
+
+    RAY_JOB_START_TIMEOUT_S = 1
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, RAY_JOB_START_TIMEOUT_S)
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    # Submit a job with unsatisfied resource.
+    job_id = "test_job_1"
+    # Skip '_monitor_job' in 'submit_job', to avoid affecting the simulation of new raylet.
+    job_manager.monitored_jobs.add(job_id)
+    await job_manager.submit_job(
+        submission_id=job_id,
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+
+    # Simulate new raylet created.
+    await asyncio.sleep(RAY_JOB_START_TIMEOUT_S)
+    # Restore the monitored jobs of the job supervisor
+    job_manager.monitored_jobs.remove(job_id)
+    await job_manager._recover_running_jobs()
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the job timed out.
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+    # Check that supervisor has been removed.
+    job_supervisor = job_manager._get_actor_for_job(job_id)
+    assert job_supervisor is None
+
+
 @pytest.fixture(scope="module")
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have

@@ -69,6 +69,8 @@ class JobManager:
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
+    # Timeout duration (in seconds) for job supervisor ping requests.
+    PING_TIMEOUT_S = 1
 
     def __init__(self, gcs_client: GcsClient, logs_dir: str):
         self._gcs_client = gcs_client
@@ -163,6 +165,12 @@ class JobManager:
         while is_alive:
             try:
                 job_status = await self._job_info_client.get_status(job_id)
+
+                # If the job is already in the terminated state, exit the monitor directly
+                if job_status.is_terminal():
+                    is_alive = False
+                    continue
+
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
@@ -238,7 +246,17 @@ class JobManager:
                         is_alive = False
                         continue
 
-                await job_supervisor.ping.remote()
+                try:
+                    await asyncio.wait_for(
+                        job_supervisor.ping.remote(), timeout=self.PING_TIMEOUT_S
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Job supervisor ping timed out for job {job_id}. "
+                        f"Timeout threshold: {self.PING_TIMEOUT_S} seconds. "
+                        "This may indicate that the cluster does not have enough resources to schedule the job supervisor."
+                    )
+                    continue
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
@@ -309,6 +327,8 @@ class JobManager:
                         self.event_logger.info(event_log, submission_id=job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        if job_supervisor is None:
+            job_supervisor = self._get_actor_for_job(job_id)
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
