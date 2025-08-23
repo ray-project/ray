@@ -21,9 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/ray_config.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/util/event.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -530,7 +529,7 @@ std::string GcsNodeManager::DebugString() const {
 
 void GcsNodeManager::UpdateAliveNode(
     const NodeID &node_id,
-    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+    const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   auto maybe_node_info = GetAliveNode(node_id);
   if (maybe_node_info == absl::nullopt) {
     return;
