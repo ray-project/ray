@@ -12,28 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+
+#include <gtest/gtest.h>
+
 #include <memory>
 #include <utility>
 #include <vector>
 
-// clang-format off
-#include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
-// clang-format on
+#include "ray/gcs/tests/gcs_test_util.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
-    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    auto raylet_client = std::make_shared<FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
-        [this](const rpc::Address &) { return raylet_client_; });
+        [raylet_client = std::move(raylet_client)](const rpc::Address &) {
+          return raylet_client;
+        });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
@@ -41,7 +40,6 @@ class GcsNodeManagerTest : public ::testing::Test {
 
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
