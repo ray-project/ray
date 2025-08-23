@@ -201,7 +201,7 @@ Deploy your Service
 anyscale service deploy -f service.yaml
 ```
 
-> If your model is gated, make sure to pass your HuggingFace Token to the Service with `--env HF_TOKEN=$HF_TOKEN`
+> If your model is gated, make sure to pass your HuggingFace Token to the Service with `--env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>`
 
 **Custom Dockerfile**
 

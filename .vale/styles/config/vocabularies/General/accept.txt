@@ -82,7 +82,7 @@ NumPy
 NVIDIA
 NVLink
 OFF
-off
+[O|o]ff
 OOM
 open-source
 PACK
