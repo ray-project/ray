@@ -4054,7 +4054,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     }
     (*used_resources_map)[resource_name] = allocations;
   }
-  stats->set_actor_title(actor_title_);
   google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
                                                             webui_display_.end());
   (*stats->mutable_webui_display()) = webui_map;
@@ -4386,11 +4385,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
 void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
   absl::MutexLock lock(&mutex_);
   webui_display_[key] = message;
-}
-
-void CoreWorker::SetActorTitle(const std::string &title) {
-  absl::MutexLock lock(&mutex_);
-  actor_title_ = title;
 }
 
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
