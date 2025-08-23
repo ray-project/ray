@@ -17,13 +17,12 @@ class AnyscaleDockerContainer(DockerContainer):
         tag = self._get_canonical_tag()
         ray_image = f"rayproject/{self.image_type}:{tag}"
         anyscale_image = f"{aws_registry}/anyscale/{self.image_type}:{tag}"
-        requirement = self._get_requirement_file()
 
         gce_credentials = get_global_config()["aws2gce_credentials"]
         cmds = [
             # build docker image
             "./ci/build/build-anyscale-docker.sh "
-            + f"{ray_image} {anyscale_image} {requirement} {aws_registry}",
+            + f"{ray_image} {anyscale_image} {aws_registry}",
             # gcloud login
             f"./release/gcloud_docker_login.sh {gce_credentials}",
             "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
@@ -45,14 +44,3 @@ class AnyscaleDockerContainer(DockerContainer):
 
     def _should_upload(self) -> bool:
         return self.upload
-
-    def _get_requirement_file(self) -> str:
-        if self.image_type == "ray-ml":
-            prefix = "requirements_ml"
-        elif self.image_type == "ray-llm":
-            prefix = "requirements_llm"
-        else:
-            prefix = "requirements"
-        postfix = self.python_version
-
-        return f"{prefix}_byod_{postfix}.txt"
