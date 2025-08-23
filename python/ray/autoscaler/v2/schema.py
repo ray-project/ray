@@ -353,8 +353,8 @@ class IPPRStatus:
     def queue_resize_request(
         self,
         raylet_id: str,
-        desired_cpu: float,
-        desired_memory: int,
+        desired_cpu: Optional[float] = None,
+        desired_memory: Optional[int] = None,
     ) -> None:
         """Queue the new desired resources and reset resize tracking state.
 
@@ -369,10 +369,12 @@ class IPPRStatus:
         """
         if desired_cpu == self.desired_cpu and desired_memory == self.desired_memory:
             return
+        if desired_cpu is not None:
+            self.desired_cpu = desired_cpu
+        if desired_memory is not None:
+            self.desired_memory = desired_memory
 
         self.raylet_id = raylet_id
-        self.desired_cpu = desired_cpu
-        self.desired_memory = desired_memory
         self.resized_at = None
         self.resized_status = "new"
         self.resized_message = None

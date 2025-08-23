@@ -7,6 +7,7 @@ import json
 import ray._private.utils
 
 from functools import lru_cache
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from ray._common.network_utils import build_address
 from ray._raylet import GcsClient, NodeID
@@ -314,16 +315,14 @@ class KubeRayIPPRProvider:
         # by adjusting requests proportionally so QoS doesn't change.
         if container_resource["status"]["limits"].get("cpu"):
             # Gap between status limits and requests for CPU.
-            diff = float(
-                parse_quantity(container_resource["status"]["limits"].get("cpu"))
-            ) - float(
-                parse_quantity(container_resource["status"]["requests"].get("cpu"))
-            )
+            diff = parse_quantity(
+                container_resource["status"]["limits"].get("cpu")
+            ) - parse_quantity(container_resource["status"]["requests"].get("cpu"))
             patch.append(replace_patch(f"{path_prefix}/limits/cpu", resize.desired_cpu))
             patch.append(
                 replace_patch(
                     f"{path_prefix}/requests/cpu",
-                    resize.desired_cpu - diff,
+                    float(Decimal(str(resize.desired_cpu)) - diff),
                 )
             )
         else:
@@ -516,13 +515,12 @@ def _get_ippr_status_from_pod(
                 capacity = int(match.group(4))
                 max_request = capacity - used
                 if match.group(1) == "cpu":
-                    diff = float(
-                        parse_quantity(
-                            pod_status_limits.get("cpu")
-                            or pod_status_requests.get("cpu")
-                        )
-                    ) - float(parse_quantity(pod_status_requests.get("cpu")))
-                    ippr_status.suggested_max_cpu = (max_request / 1000) + diff
+                    diff = parse_quantity(
+                        pod_status_limits.get("cpu") or pod_status_requests.get("cpu")
+                    ) - parse_quantity(pod_status_requests.get("cpu"))
+                    ippr_status.suggested_max_cpu = float(
+                        Decimal(str(max_request / 1000)) + diff
+                    )
                     ippr_status.suggested_max_memory = (
                         ippr_status.last_suggested_max_memory
                     )

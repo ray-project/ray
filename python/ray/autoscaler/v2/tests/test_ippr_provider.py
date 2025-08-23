@@ -330,7 +330,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         # Desired upsize: from (cpu:2, mem:4Gi) to (cpu:4, mem:8Gi)
-        st.update(
+        st.queue_resize_request(
             raylet_id="abc", desired_cpu=4.0, desired_memory=8 * 1024 * 1024 * 1024
         )
 
@@ -378,7 +378,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         # Desired upsize: from (cpu:0.5, mem:1Gi) to (cpu:4, mem:8Gi)
-        st.update(
+        st.queue_resize_request(
             raylet_id="abc", desired_cpu=4.0, desired_memory=8 * 1024 * 1024 * 1024
         )
 
@@ -427,7 +427,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         self.provider.sync_ippr_status_from_pods([pod])
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         # Downsize: current (2 cores, 4Gi) -> desired (1 core, 2Gi)
-        st.update(
+        st.queue_resize_request(
             raylet_id="0" * 56, desired_cpu=1.0, desired_memory=2 * 1024 * 1024 * 1024
         )
 
@@ -719,7 +719,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         )
         self.provider.sync_ippr_status_from_pods([pod])
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
-        st.update(
+        st.queue_resize_request(
             raylet_id="0" * 56, desired_cpu=1.0, desired_memory=2 * 1024 * 1024 * 1024
         )
 
@@ -764,7 +764,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         self.provider.sync_ippr_status_from_pods([pod])
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         # Desired memory below spec limit (8Gi)
-        st.update(
+        st.queue_resize_request(
             raylet_id="0" * 56, desired_cpu=2.0, desired_memory=2 * 1024 * 1024 * 1024
         )
 
