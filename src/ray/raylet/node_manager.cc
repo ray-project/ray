@@ -159,9 +159,8 @@ NodeManager::NodeManager(
                       RAY_UNUSED(execute_after(
                           io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
-      node_manager_server_("NodeManager",
-                           config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+      node_manager_server_(
+          "NodeManager", config.node_manager_port, config.node_manager_address),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
