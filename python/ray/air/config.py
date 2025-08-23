@@ -526,6 +526,13 @@ class CheckpointUploadConfig(CheckpointConfig):
     """
 
     max_async_upload_threads: Optional[int] = None
+    # Retry controls for checkpoint uploads (v2 async/sync paths may use these)
+    upload_retry_attempts: int = 3
+    upload_retry_initial_delay_s: float = 1.0
+    upload_retry_backoff_factor: float = 2.0
+    # Optional soft per-attempt timeout seconds. If set, implementations may
+    # abort an attempt that exceeds this duration and retry.
+    upload_attempt_timeout_s: Optional[float] = None
 
     def __post_init__(self):
         super().__post_init__()
@@ -536,6 +543,14 @@ class CheckpointUploadConfig(CheckpointConfig):
             raise ValueError(
                 "max_async_upload_threads must be None or an integer >= 1."
             )
+        if self.upload_retry_attempts < 0:
+            raise ValueError("upload_retry_attempts must be >= 0")
+        if self.upload_retry_initial_delay_s <= 0:
+            raise ValueError("upload_retry_initial_delay_s must be > 0")
+        if self.upload_retry_backoff_factor <= 0:
+            raise ValueError("upload_retry_backoff_factor must be > 0")
+        if self.upload_attempt_timeout_s is not None and self.upload_attempt_timeout_s <= 0:
+            raise ValueError("upload_attempt_timeout_s must be None or > 0")
 
 
 @dataclass

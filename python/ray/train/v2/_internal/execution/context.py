@@ -1,4 +1,5 @@
 import logging
+import time
 import sys
 import threading
 import uuid
@@ -202,14 +203,100 @@ class TrainContext:
         if not checkpoint:
             return _TrainingResult(checkpoint=None, metrics=metrics)
 
-        # Persist the checkpoint to the remote storage path.
-        persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-            checkpoint, checkpoint_dir_name
+        # Extract retry/timeout config if available on the RunConfig.
+        run_cfg = self.train_run_context.get_run_config()
+        upload_attempts = getattr(
+            getattr(run_cfg, "checkpoint_config", None),
+            "upload_retry_attempts",
+            0,
         )
-        # Update latest checkpoint as the persisted checkpoint.
-        self.checkpoint = persisted_checkpoint
+        initial_delay_s = getattr(
+            getattr(run_cfg, "checkpoint_config", None),
+            "upload_retry_initial_delay_s",
+            1.0,
+        )
+        backoff_factor = getattr(
+            getattr(run_cfg, "checkpoint_config", None),
+            "upload_retry_backoff_factor",
+            2.0,
+        )
+        attempt_timeout_s = getattr(
+            getattr(run_cfg, "checkpoint_config", None),
+            "upload_attempt_timeout_s",
+            None,
+        )
 
-        return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+        # We make at most (upload_attempts + 1) tries total.
+        attempt_index = 1
+        total_attempts = max(0, int(upload_attempts)) + 1
+        delay_s = max(0.0, float(initial_delay_s))
+        last_exc: Optional[Exception] = None
+
+        while True:
+            start_ts = time.monotonic()
+            logger.info(
+                "checkpoint_upload_start | attempt=%s/%s | dir=%s",
+                attempt_index,
+                total_attempts,
+                checkpoint_dir_name,
+            )
+            try:
+                # Persist the checkpoint to the remote storage path.
+                persisted_checkpoint = self.storage_context.persist_current_checkpoint(
+                    checkpoint, checkpoint_dir_name
+                )
+                elapsed_s = time.monotonic() - start_ts
+                if attempt_timeout_s is not None and elapsed_s > attempt_timeout_s:
+                    logger.warning(
+                        "checkpoint_upload_timeout_exceeded | attempt=%s/%s | dir=%s | elapsed_s=%.3f | threshold_s=%.3f",
+                        attempt_index,
+                        total_attempts,
+                        checkpoint_dir_name,
+                        elapsed_s,
+                        attempt_timeout_s,
+                    )
+                else:
+                    logger.info(
+                        "checkpoint_upload_success | attempt=%s/%s | dir=%s | elapsed_s=%.3f",
+                        attempt_index,
+                        total_attempts,
+                        checkpoint_dir_name,
+                        elapsed_s,
+                    )
+
+                # Update latest checkpoint as the persisted checkpoint.
+                self.checkpoint = persisted_checkpoint
+                return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+
+            except Exception as exc:  # noqa: BLE001
+                elapsed_s = time.monotonic() - start_ts
+                last_exc = exc
+
+                if attempt_index <= max(0, int(upload_attempts)):
+                    logger.warning(
+                        "checkpoint_upload_failed_retrying | attempt=%s/%s | dir=%s | elapsed_s=%.3f | next_delay_s=%.2f | error=%r",
+                        attempt_index,
+                        total_attempts,
+                        checkpoint_dir_name,
+                        elapsed_s,
+                        delay_s,
+                        exc,
+                    )
+                    # Sleep with backoff and try again.
+                    if delay_s > 0:
+                        time.sleep(delay_s)
+                    attempt_index += 1
+                    delay_s *= max(1.0, float(backoff_factor))
+                    continue
+
+                # Exhausted all attempts.
+                logger.exception(
+                    "checkpoint_upload_failed_exhausted | attempts=%s | dir=%s | last_error=%r",
+                    attempt_index,
+                    checkpoint_dir_name,
+                    last_exc,
+                )
+                raise last_exc
 
     def report(
         self,
