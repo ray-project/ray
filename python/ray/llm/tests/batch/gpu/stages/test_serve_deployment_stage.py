@@ -6,6 +6,7 @@ import pytest
 from ray.llm._internal.batch.stages.serve_deployment_stage import (
     ServeDeploymentStageUDF,
 )
+from ray.serve.llm import ChatCompletionRequest, CompletionRequest
 
 
 @pytest.fixture
@@ -25,12 +26,10 @@ def mock_serve_deployment_handle():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "method,dtype,expected_input_keys,test_data",
+    "method,test_data",
     [
         (
             "completions",
-            "CompletionRequest",
-            ["method", "request_kwargs"],
             [
                 {
                     "method": "completions",
@@ -41,8 +40,6 @@ def mock_serve_deployment_handle():
         ),
         (
             "chat",
-            "ChatCompletionRequest",
-            ["method", "request_kwargs"],
             [
                 {
                     "method": "chat",
@@ -62,7 +59,7 @@ def mock_serve_deployment_handle():
     ],
 )
 async def test_serve_deployment_udf_methods(
-    mock_serve_deployment_handle, method, dtype, expected_input_keys, test_data
+    mock_serve_deployment_handle, method, test_data
 ):
     """Test both completions and chat methods."""
     # Create a mock response that will be returned directly
@@ -78,9 +75,13 @@ async def test_serve_deployment_udf_methods(
 
     udf = ServeDeploymentStageUDF(
         data_column="__data",
-        expected_input_keys=expected_input_keys,
+        expected_input_keys=["method", "request_kwargs"],
         deployment_name="test_deployment",
         app_name="test_app",
+        dtype_mapping={
+            "CompletionRequest": CompletionRequest,
+            "ChatCompletionRequest": ChatCompletionRequest,
+        },
     )
 
     batch = {"__data": test_data}
@@ -115,6 +116,9 @@ async def test_serve_deployment_invalid_method(mock_serve_deployment_handle):
         expected_input_keys=["method", "request_kwargs"],
         deployment_name="test_deployment",
         app_name="test_app",
+        dtype_mapping={
+            "CompletionRequest": CompletionRequest,
+        },
     )
 
     batch = {
@@ -129,6 +133,41 @@ async def test_serve_deployment_invalid_method(mock_serve_deployment_handle):
 
     with pytest.raises(
         ValueError, match="Method invalid_method not found in the serve deployment."
+    ):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "dtype_mapping", [None, {"ChatCompletionRequest": ChatCompletionRequest}]
+)
+async def test_serve_deployment_missing_dtype(
+    mock_serve_deployment_handle, dtype_mapping
+):
+    """Test that missing dtype raises error at runtime."""
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping=dtype_mapping,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "Hello", "temperature": 0.7},
+            }
+        ]
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="CompletionRequest must be provided in ServeDeploymentProcessorConfig's dtype_mapping.",
     ):
         async for _ in udf(batch):
             pass

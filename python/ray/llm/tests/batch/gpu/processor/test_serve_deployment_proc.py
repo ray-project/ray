@@ -9,18 +9,25 @@ from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.serve_deployment_proc import (
     ServeDeploymentProcessorConfig,
 )
+from ray.serve.llm import ChatCompletionRequest, CompletionRequest
 
 
-def test_serve_deployment_processor():
+@pytest.mark.parametrize(
+    "dtype_mapping", [None, {"CompletionRequest": CompletionRequest}]
+)
+def test_serve_deployment_processor(dtype_mapping):
     app_name = "test_serve_deployment_processor_app"
     deployment_name = "test_serve_deployment_name"
 
-    config = ServeDeploymentProcessorConfig(
+    config_kwargs = dict(
         deployment_name=deployment_name,
         app_name=app_name,
         batch_size=16,
         concurrency=1,
     )
+    if dtype_mapping is not None:
+        config_kwargs["dtype_mapping"] = dtype_mapping
+    config = ServeDeploymentProcessorConfig(**config_kwargs)
 
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
@@ -31,6 +38,7 @@ def test_serve_deployment_processor():
     assert stage.fn_constructor_kwargs == {
         "deployment_name": deployment_name,
         "app_name": app_name,
+        "dtype_mapping": dtype_mapping,
     }
 
     assert stage.map_batches_kwargs == {
@@ -85,6 +93,9 @@ def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
     config = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
         app_name=app_name,
+        dtype_mapping={
+            "CompletionRequest": CompletionRequest,
+        },
         batch_size=16,
         concurrency=1,
     )
@@ -120,6 +131,9 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
     config1 = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
         app_name=app_name,
+        dtype_mapping={
+            "CompletionRequest": CompletionRequest,
+        },
         # Use lower batch size to reduce resource usage as there are multiple processors
         batch_size=4,
         concurrency=1,
@@ -144,6 +158,9 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
     config2 = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
         app_name=app_name,
+        dtype_mapping={
+            "CompletionRequest": CompletionRequest,
+        },
         batch_size=4,
         concurrency=1,
     )
@@ -180,6 +197,9 @@ def test_chat_model(model_opt_125m, create_model_opt_125m_deployment):
     config = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
         app_name=app_name,
+        dtype_mapping={
+            "ChatCompletionRequest": ChatCompletionRequest,
+        },
         batch_size=16,
         concurrency=1,
     )

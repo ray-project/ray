@@ -24,6 +24,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         expected_input_keys: List[str],
         deployment_name: str,
         app_name: str,
+        dtype_mapping: Dict[str, Type[Any]],
     ):
         """
         Initialize the ServeDeploymentStageUDF.
@@ -35,18 +36,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             app_name: The name of the deployment app.
         """
         super().__init__(data_column, expected_input_keys)
-
-        from ray.llm._internal.serve.configs.openai_api_models import (
-            ChatCompletionRequest,
-            CompletionRequest,
-            EmbeddingRequest,
-        )
-
-        self._dtype_classes = {
-            "CompletionRequest": CompletionRequest,
-            "ChatCompletionRequest": ChatCompletionRequest,
-            "EmbeddingRequest": EmbeddingRequest,
-        }
+        self._dtype_mapping = dtype_mapping
 
         self._dh = serve.get_deployment_handle(deployment_name, app_name).options(
             stream=True
@@ -68,7 +58,15 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             invoke on the serve deployment.
         """
         method = row.get("method")
-        dtype = self._dtype_classes.get(row.get("dtype"))
+        dtype_name = row.get("dtype")
+
+        dtype = None
+        if dtype_name is not None:
+            if not self._dtype_mapping or dtype_name not in self._dtype_mapping:
+                raise ValueError(
+                    f"{dtype_name} must be provided in ServeDeploymentProcessorConfig's dtype_mapping."
+                )
+            dtype = self._dtype_mapping[dtype_name]
 
         request_kwargs = row.pop("request_kwargs")
         request = {

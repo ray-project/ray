@@ -30,9 +30,8 @@ def build_llm_deployment(
         name_prefix=name_prefix,
     )
 
-    deployment_options["name"] = (
-        override_serve_options and override_serve_options.get("name")
-    ) or deployment_options["name"]
+    if override_serve_options:
+        deployment_options.update(override_serve_options)
 
     return LLMDeployment.options(**deployment_options).bind(
         llm_config=llm_config, **deployment_kwargs

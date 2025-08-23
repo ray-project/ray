@@ -271,8 +271,8 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 
             import ray
             from ray import serve
-            from ray.serve.llm import LLMConfig, ModelLoadingConfig
             from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
+            from ray.serve.llm import CompletionRequest, LLMConfig, ModelLoadingConfig
 
             llm_config = LLMConfig(
                 model_loading_config=ModelLoadingConfig(
@@ -304,8 +304,11 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             config=ServeDeploymentProcessorConfig(
                 deployment_name=DEPLOYMENT_NAME,
                 app_name=APP_NAME,
-                batch_size=1,
+                dtype_mapping={
+                    "CompletionRequest": CompletionRequest,
+                },
                 concurrency=1,
+                batch_size=64,
             )
             processor = build_llm_processor(
                 config,

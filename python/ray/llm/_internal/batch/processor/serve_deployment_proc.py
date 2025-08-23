@@ -1,6 +1,6 @@
 """The processor that runs serve deployment."""
 
-from typing import Optional
+from typing import Any, Dict, Optional, Type
 
 from pydantic import Field
 
@@ -24,6 +24,10 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
     )
     app_name: str = Field(
         description="The name of the serve application to use.",
+    )
+    dtype_mapping: Dict[str, Type[Any]] = Field(
+        description="A dictionary mapping data type names to their corresponding request classes for the serve deployment.",
+        default=None,
     )
 
 
@@ -51,6 +55,7 @@ def build_serve_deployment_processor(
             fn_constructor_kwargs=dict(
                 deployment_name=config.deployment_name,
                 app_name=config.app_name,
+                dtype_mapping=config.dtype_mapping,
             ),
             map_batches_kwargs=dict(
                 concurrency=config.concurrency,

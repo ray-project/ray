@@ -16,6 +16,11 @@ from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter as _LLMRouter,
 )
 
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest as _ChatCompletionRequest,
+    CompletionRequest as _CompletionRequest,
+)
+
 # Using Deprecated from rllib since they are retuning better messages.
 # TODO: Ray core should inherit that.
 from ray.rllib.utils.deprecation import Deprecated
@@ -61,6 +66,20 @@ class CloudMirrorConfig(_CloudMirrorConfig):
 @PublicAPI(stability="alpha")
 class LoraConfig(_LoraConfig):
     """The configuration for loading an LLM model with LoRA."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class ChatCompletionRequest(_ChatCompletionRequest):
+    """The request for a chat completion."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class CompletionRequest(_CompletionRequest):
+    """The request for a completion."""
 
     pass
 
