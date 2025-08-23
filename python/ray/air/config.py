@@ -516,6 +516,26 @@ class CheckpointConfig:
 
 
 @dataclass
+@PublicAPI(stability="alpha")
+class CheckpointUploadConfig(CheckpointConfig):
+    """Extension of CheckpointConfig with async upload controls.
+
+    Args:
+        max_async_upload_threads: Maximum concurrent async checkpoint uploads per
+            worker. If None, Ray will use its internal default.
+    """
+
+    max_async_upload_threads: Optional[int] = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.max_async_upload_threads is not None and self.max_async_upload_threads <= 0:
+            raise ValueError(
+                "max_async_upload_threads must be None or an integer >= 1."
+            )
+
+
+@dataclass
 @PublicAPI(stability="stable")
 class RunConfig:
     """Runtime configuration for training and tuning runs.
