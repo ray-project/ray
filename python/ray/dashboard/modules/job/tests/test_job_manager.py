@@ -378,7 +378,7 @@ async def test_pending_job_timeout_during_raylet_creation(tmp_path, monkeypatch)
 
     # Simulate new raylet created.
     await asyncio.sleep(RAY_JOB_START_TIMEOUT_S)
-    # Restore the monitored jobs of the job supervisor
+    # Allow `_recover_running_jobs` to start monitoring this job by removing it from the set.
     job_manager.monitored_jobs.remove(job_id)
     await job_manager._recover_running_jobs()
 
