@@ -529,7 +529,10 @@ class CheckpointUploadConfig(CheckpointConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        if self.max_async_upload_threads is not None and self.max_async_upload_threads <= 0:
+        if self.max_async_upload_threads is not None and (
+            not isinstance(self.max_async_upload_threads, int)
+            or self.max_async_upload_threads <= 0
+        ):
             raise ValueError(
                 "max_async_upload_threads must be None or an integer >= 1."
             )
