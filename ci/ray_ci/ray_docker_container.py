@@ -14,13 +14,13 @@ class RayDockerContainer(DockerContainer):
     Container for building and publishing ray docker images
     """
 
-    def run(self, use_base_extra: bool = False) -> None:
+    def run(self, use_base_extra_testdeps: bool = False) -> None:
         """
         Build and publish ray docker images
         """
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
-        base_name = "base" if not use_base_extra else "base-extra"
+        base_name = "base" if not use_base_extra_testdeps else "base-extra-testdeps"
         if self.architecture == DEFAULT_ARCHITECTURE:
             suffix = base_name
         else:
