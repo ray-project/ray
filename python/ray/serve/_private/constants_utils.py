@@ -268,7 +268,7 @@ def _name_warning(name: str) -> None:
         warnings.warn(
             f"Got unexpected environment variable name `{name}`! "
             f"Starting from version `{change_version}`, all environments variables related to `Ray Serve` will require prefix `{required_prefix}`. "
-            f"Change `{name}` to `{required_prefix}{name}`.",
+            f"Change the name to start with the `{required_prefix}` prefix.",
             FutureWarning,
             stacklevel=4,
         )
