@@ -178,8 +178,13 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
         return _add_ellipsis_for_string(obj, truncate_length)
     elif isinstance(obj, (Sequence, set)):
         # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
-        taken, dropped = obj[:truncate_length], obj[truncate_length:]
-        return taken + ["..."] if dropped else []
+        res = []
+        for i, v in enumerate(obj):
+            if i >= truncate_length:
+                res.append("...")
+                break
+            res.append(sanitize_for_struct(v, truncate_length))
+        return res
     else:
         try:
             if is_dataclass(obj):
