@@ -356,7 +356,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     ["ray start --head --num-cpus=1"],
     indirect=True,
 )
-async def test_job_starting_timeout(call_ray_start, tmp_path, monkeypatch):
+async def test_job_starting_timeout(tmp_path, monkeypatch):
     """Test the timeout when starting jobs."""
 
     monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
@@ -389,9 +389,7 @@ async def test_job_starting_timeout(call_ray_start, tmp_path, monkeypatch):
     ["ray start --head --num-cpus=1"],
     indirect=True,
 )
-async def test_pending_job_timeout_during_raylet_creation(
-    call_ray_start, tmp_path, monkeypatch
-):
+async def test_pending_job_timeout_during_raylet_creation(tmp_path, monkeypatch):
     """Test the timeout for pending jobs during new raylet creation."""
 
     RAY_JOB_START_TIMEOUT_S = 1

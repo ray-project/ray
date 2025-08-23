@@ -167,9 +167,9 @@ class JobManager:
                 job_status = await self._job_info_client.get_status(job_id)
 
                 # If the job is already in the terminated state, exit the monitor directly
-                if job_status.is_terminal():
-                    is_alive = False
-                    continue
+                # if job_status.is_terminal():
+                #     is_alive = False
+                #     continue
 
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
