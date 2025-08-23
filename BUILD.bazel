@@ -332,6 +332,12 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
+filegroup(
+    name = "python_lock_files",
+    srcs = glob(["python/*.txt"]),
+    visibility = ["//visibility:public"],
+)
+
 # This is a dummy test dependency that causes the python tests to be
 # re-run if any of these files changes.
 py_library(
