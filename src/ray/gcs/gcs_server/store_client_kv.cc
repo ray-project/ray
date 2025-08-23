@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
