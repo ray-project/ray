@@ -733,7 +733,7 @@ class HTTPOptionsSchema(BaseModel):
         default=None,
         description="Path to the CA certificate file for verifying client certificates.",
     )
-    
+
     @validator("ssl_certfile")
     def validate_ssl_certfile(cls, v, values):
         ssl_keyfile = values.get("ssl_keyfile")

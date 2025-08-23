@@ -452,7 +452,7 @@ class HTTPOptions(BaseModel):
             return DeploymentMode.NoServer
 
         return v
-    
+
     @validator("ssl_certfile")
     def validate_ssl_certfile(cls, v, values):
         ssl_keyfile = values.get("ssl_keyfile")

@@ -45,13 +45,15 @@ FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 MESSAGE_PACK_OFFSET = 9
 
 
-def validate_ssl_config(ssl_certfile: Optional[str], ssl_keyfile: Optional[str]) -> None:
+def validate_ssl_config(
+    ssl_certfile: Optional[str], ssl_keyfile: Optional[str]
+) -> None:
     """Validate SSL configuration for HTTPS support.
-    
+
     Args:
         ssl_certfile: Path to SSL certificate file
         ssl_keyfile: Path to SSL private key file
-        
+
     Raises:
         ValueError: If only one of ssl_certfile or ssl_keyfile is provided
     """
@@ -60,6 +62,8 @@ def validate_ssl_config(ssl_certfile: Optional[str], ssl_keyfile: Optional[str])
             "Both ssl_keyfile and ssl_certfile must be provided together "
             "to enable HTTPS."
         )
+
+
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
     "Streaming deployment handle results cannot be passed to "
     "downstream handle calls. If you have a use case requiring "
@@ -628,7 +632,7 @@ def wait_for_interrupt() -> None:
         raise
 
 
-def is_grpc_enabled(grpc_config) -> bool:    
+def is_grpc_enabled(grpc_config) -> bool:
     return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
 
 

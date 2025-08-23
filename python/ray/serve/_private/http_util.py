@@ -725,12 +725,12 @@ async def start_asgi_http_server(
             ssl_kwargs["ssl_keyfile_password"] = http_options.ssl_keyfile_password
         if http_options.ssl_ca_certs:
             ssl_kwargs["ssl_ca_certs"] = http_options.ssl_ca_certs
-        
+
         logger.info(
             f"Starting HTTPS server on {http_options.host}:{http_options.port} "
             f"with SSL certificate: {http_options.ssl_certfile}"
         )
-    
+
     # NOTE: We have to use lower level uvicorn Config and Server
     # class because we want to run the server as a coroutine. The only
     # alternative is to call uvicorn.run which is blocking.
