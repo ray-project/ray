@@ -81,8 +81,6 @@ Nsight
 NumPy
 NVIDIA
 NVLink
-OFF
-[O|o]ff
 OOM
 open-source
 PACK

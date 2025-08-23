@@ -9,12 +9,12 @@ This tutorial walks you through deploying a Hybrid Reasoning LLM using Ray Serve
 ## Distinction with purely reasoning models
 
 *Hybrid reasoning models* are reasoning-capable models that allow you to toggle the thinking process on and off. This means you can enable structured, step-by-step reasoning when needed but skip it for simpler queries to reduce latency. Purely reasoning models always apply their reasoning behavior, while hybrid models give you fine-grained control over when that reasoning is used.
-<!-- vale Vale.Terms = NO -->
+<!-- vale Google.Acronyms = NO -->
 | **Mode**         | **Core Behavior**                            | **Use Case Examples**                                               | **Limitation**                                    |
 | ---------------- | -------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------- |
 | **Thinking ON**  | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used      |
 | **Thinking OFF** | Direct answer generation                   | Casual queries, short instructions, single-step answers              | May struggle with complex reasoning or interpretability |
-<!-- vale Vale.Terms = YES -->
+<!-- vale Google.Acronyms = YES -->
 > Reasoning often benefit from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
 
 To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploying a Reasoning LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/reasoning-llm/notebook.html)
