@@ -234,8 +234,9 @@ class TestDeprecationFunctions:
             result = get_env_float_non_zero_with_warning(env_name, 10.0)
 
         assert result == -2.5
-        assert len(record) == 1
-        assert "will require a positive value" in str(record[0].message)
+        assert len(record) == 2
+        assert "unexpected environment variable name" in str(record[0].message)
+        assert "will require a positive value" in str(record[1].message)
 
     @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
     def test_with_zero_value_before_250(self, mock_environ):
@@ -246,8 +247,9 @@ class TestDeprecationFunctions:
             result = get_env_float_non_zero_with_warning(env_name, 10.0)
 
         assert result == 10.0
-        assert len(record) == 1
-        assert "will require a positive value" in str(record[0].message)
+        assert len(record) == 2
+        assert "unexpected environment variable name" in str(record[0].message)
+        assert "will require a positive value" in str(record[1].message)
 
     @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
     def test_with_no_env_value_before_250(self):

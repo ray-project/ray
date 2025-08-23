@@ -78,6 +78,8 @@ def _get_env_value(
         ValueError: If the environment variable value cannot be converted to the specified
             type, or if it fails the optional validation check.
     """
+    _name_warning(name)
+
     raw = os.environ.get(name, default)
     if raw is None:
         return None
@@ -250,3 +252,21 @@ def get_env_float_non_zero_with_warning(
             stacklevel=2,
         )
     return backward_compatible_result
+
+
+def _name_warning(name: str) -> None:
+    """Warn if a environment variable name doesn't start with `RAY_SERVE_`.
+
+    todo: replace this function for the '2.50.0' release and add `RAY_SERVE_` prefix to all env variables.
+    """
+    change_version = "2.50.0"
+    required_prefix = "RAY_SERVE_"
+
+    if not name.startswith(required_prefix):
+        warnings.warn(
+            f"Got unexpected environment variable name `{name}`! "
+            f"Starting from version `{change_version}`, all environments variables related to `Ray Serve` will require prefix `{required_prefix}`. "
+            f"Change `{name}` to `{required_prefix}{name}`.",
+            FutureWarning,
+            stacklevel=4,
+        )
