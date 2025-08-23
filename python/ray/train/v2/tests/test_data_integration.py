@@ -7,7 +7,8 @@ import ray.train
 from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -87,13 +88,18 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         data_config=data_config,
         scaling_config=scaling_config,
     )
-    dataset_shards = callback.before_init_train_context(worker_group.get_workers())[
-        "dataset_shards"
-    ]
-    assert len(dataset_shards) == NUM_WORKERS
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_shard_provider"]
+    assert len(dataset_manager_for_each_worker) == NUM_WORKERS
 
-    processed_train_ds = dataset_shards[0]["train"]
-    processed_valid_ds = dataset_shards[0]["valid"]
+    dataset_manager = dataset_manager_for_each_worker[0]
+    processed_train_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="train")
+    )
+    processed_valid_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="valid")
+    )
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
     assert not isinstance(processed_valid_ds, StreamSplitDataIterator)

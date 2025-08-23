@@ -17,6 +17,10 @@ from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.data_integration.interfaces import (
+        DatasetShardMetadata,
+        DatasetShardProvider,
+    )
     from ray.train.v2._internal.execution.callback import TrainContextCallback
     from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
 
@@ -92,7 +96,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
-    dataset_shards: Dict[str, DataIterator]
+    dataset_shard_provider: "DatasetShardProvider"
     checkpoint: Optional[Checkpoint] = None
 
     @_copy_doc(session.get_experiment_name)
@@ -133,7 +137,7 @@ class TrainContext:
     def get_checkpoint(self):
         return self.checkpoint
 
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -141,19 +145,13 @@ class TrainContext:
         appropriate framework-specific data type.
 
         Args:
-            dataset_name: Name of the dataset shard.
+            dataset_info: The shard metadata, including the dataset name and worker rank.
         Returns:
             The ``DataIterator`` shard with the given name for this worker.
         Raises:
             KeyError: If the dataset shard with the given name is not found.
         """
-        try:
-            return self.dataset_shards[dataset_name]
-        except KeyError:
-            raise KeyError(
-                f"Dataset {dataset_name} not found. Available datasets: "
-                f"{list(self.dataset_shards.keys())}."
-            )
+        return self.dataset_shard_provider.get_dataset_shard(dataset_info)
 
     def get_context_callbacks(self) -> List["TrainContextCallback"]:
         return self.execution_context.train_context_callbacks
