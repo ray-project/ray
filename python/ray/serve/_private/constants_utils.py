@@ -197,7 +197,7 @@ def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[
     return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
 
 
-def get_env_str(name: str, default: Optional[str]) -> str:
+def get_env_str(name: str, default: Optional[str]) -> Optional[str]:
     """Get environment variable as a string.
 
     Args:
@@ -206,11 +206,12 @@ def get_env_str(name: str, default: Optional[str]) -> str:
 
     Returns:
         The environment variable value as a string.
+        Returns `None` if default is `None` and value not found.
     """
     return _get_env_value(name, default, str)
 
 
-def get_env_bool(name: str, default: Optional[str]) -> bool:
+def get_env_bool(name: str, default: str) -> bool:
     """Get environment variable as a boolean.
 
     Environment variable values of "1" are interpreted as True, all others as False.
@@ -218,6 +219,7 @@ def get_env_bool(name: str, default: Optional[str]) -> bool:
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
+            Expects "0" or "1".
 
     Returns:
         True if the environment variable value is "1", False otherwise.
