@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
@@ -42,9 +41,15 @@ def _create_kinesis_reader(
     kinesis_config: Dict[str, Any],
     start_sequence: Optional[str] = None,
     end_sequence: Optional[str] = None,
-    max_records: int = 1000,
+    max_records: Optional[int] = None,
+    batch_size: int = 1000,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> tuple[callable, callable]:
     """Create a Kinesis reader function with encapsulated state.
+
+    This function creates a closure that encapsulates all state needed for
+    reading from a Kinesis shard, avoiding the use of global variables.
 
     Args:
         stream_name: Kinesis stream name.
@@ -53,22 +58,55 @@ def _create_kinesis_reader(
         start_sequence: Starting sequence number.
         end_sequence: Ending sequence number.
         max_records: Maximum records to read per call.
+        batch_size: Number of records to fetch per API call.
+        max_retries: Maximum number of retries for failed requests.
+        retry_delay: Delay between retries in seconds.
 
     Returns:
         Tuple of (read_function, get_position_function).
 
-    Yields:
-        Dictionary records from Kinesis.
+    Examples:
+        Creating a Kinesis reader:
+
+        .. testcode::
+
+            read_fn, get_pos_fn = _create_kinesis_reader(
+                stream_name="my-stream",
+                shard_id="shardId-000000000000",
+                kinesis_config={"region_name": "us-west-2"},
+                start_sequence="1234567890",
+                max_records=100
+            )
     """
     _check_import(module="boto3", package="boto3")
+    import time
+
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
 
     # State variables encapsulated in closure
-    current_sequence_number = start_sequence
-    kinesis_client = None
-    shard_iterator = None
+    current_sequence = start_sequence
+    records_read = 0
     metrics = StreamingMetrics()
+
+    # Enhanced configuration with security and performance defaults
+    enhanced_config = {
+        # Security defaults
+        "region_name": "us-east-1",  # Can be overridden
+        "aws_access_key_id": None,  # Can be overridden
+        "aws_secret_access_key": None,  # Can be overridden
+        "aws_session_token": None,  # Can be overridden
+        # Performance defaults
+        "max_attempts": 3,
+        "retry_mode": "adaptive",
+        "connect_timeout": 60,
+        "read_timeout": 60,
+        # Override with user config
+        **kinesis_config,
+    }
+
+    # Create Kinesis client with enhanced config
+    kinesis_client = boto3.client("kinesis", **enhanced_config)
 
     # Initialize max_records with default if not provided
     if max_records is None:
@@ -76,121 +114,172 @@ def _create_kinesis_reader(
 
     def read_shard() -> Iterator[Dict[str, Any]]:
         """Read records from Kinesis shard, maintaining position state."""
-        nonlocal current_sequence_number, kinesis_client, shard_iterator
+        nonlocal current_sequence, records_read
 
         try:
-            # Initialize client if needed
-            if kinesis_client is None:
-                kinesis_client = boto3.client("kinesis", **kinesis_config)
-
-            # Initialize shard iterator if needed
-            if shard_iterator is None:
-                if current_sequence_number:
-                    iterator_type = "AT_SEQUENCE_NUMBER"
-                    starting_sequence_number = current_sequence_number
+            # Parse starting position
+            if start_sequence:
+                if start_sequence.startswith("AT_SEQUENCE_NUMBER:"):
+                    starting_position = start_sequence
                 else:
-                    iterator_type = "LATEST"
-                    starting_sequence_number = None
+                    starting_position = f"AT_SEQUENCE_NUMBER:{start_sequence}"
+            else:
+                starting_position = "TRIM_HORIZON"  # Start from oldest record
 
+            # Get shard iterator
+            try:
                 response = kinesis_client.get_shard_iterator(
                     StreamName=stream_name,
                     ShardId=shard_id,
-                    ShardIteratorType=iterator_type,
-                    StartingSequenceNumber=starting_sequence_number,
+                    ShardIteratorType=starting_position,
                 )
                 shard_iterator = response["ShardIterator"]
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "InvalidArgumentException":
+                    # Try with LATEST if AT_SEQUENCE_NUMBER fails
+                    response = kinesis_client.get_shard_iterator(
+                        StreamName=stream_name,
+                        ShardId=shard_id,
+                        ShardIteratorType="LATEST",
+                    )
+                    shard_iterator = response["ShardIterator"]
+                    logger.warning(f"Using LATEST position for shard {shard_id}")
+                else:
+                    raise
 
-            # Read records from shard with optimized batching
-            if shard_iterator:
+            # Read records with retry logic
+            retry_count = 0
+            while records_read < max_records and retry_count < max_retries:
                 try:
-                    # Optimize Kinesis read parameters for better performance
+                    # Get records from Kinesis
                     response = kinesis_client.get_records(
                         ShardIterator=shard_iterator,
-                        Limit=min(max_records, 10000),  # Kinesis max is 10k
-                        StreamARN=None,  # Use stream name instead
+                        Limit=min(batch_size, max_records - records_read),
                     )
 
-                    records = response["Records"]
-                    shard_iterator = response.get("NextShardIterator")
+                    records = response.get("Records", [])
+                    next_shard_iterator = response.get("NextShardIterator")
 
+                    if not records:
+                        # No more records available
+                        break
+
+                    # Process records
                     for record in records:
+                        if records_read >= max_records:
+                            break
+
                         # Check if we've reached the end sequence
-                        if (
-                            end_sequence is not None
-                            and record["SequenceNumber"] >= end_sequence
-                        ):
+                        if end_sequence and record["SequenceNumber"] >= end_sequence:
                             logger.info(
-                                f"Reached end sequence {end_sequence} for "
-                        f"{stream_name}:{shard_id}"
+                                f"Reached end sequence {end_sequence} for shard {shard_id}"
                             )
-                            return  # Stop reading
+                            return
 
-                        # Update current position
-                        current_sequence_number = record["SequenceNumber"]
-
-                        # Convert Kinesis record to dict
+                        # Create record with enhanced metadata
                         record_dict = {
                             "SequenceNumber": record["SequenceNumber"],
-                            "Data": record["Data"].decode("utf-8"),
-                            "PartitionKey": record["PartitionKey"],
-                            "ApproximateArrivalTimestamp": record.get(
-                                "ApproximateArrivalTimestamp", datetime.now()
+                            "Data": (
+                                record["Data"].decode("utf-8")
+                                if record["Data"]
+                                else None
                             ),
+                            "PartitionKey": record["PartitionKey"],
+                            "ApproximateArrivalTimestamp": record[
+                                "ApproximateArrivalTimestamp"
+                            ],
                             "stream_name": stream_name,
                             "shard_id": shard_id,
                         }
 
-                        # Track metrics
-                        metrics.record_read(1, len(record["Data"]))
+                        # Update current position
+                        current_sequence = record["SequenceNumber"]
+
+                        # Record metrics
+                        data_size = len(record["Data"]) if record["Data"] else 0
+                        metrics.record_read(1, data_size)
+                        records_read += 1
 
                         yield record_dict
 
-                except (BotoCoreError, ClientError) as e:
-                    logger.error(f"Error reading from Kinesis shard {shard_id}: {e}")
-                    metrics.record_error()
+                    # Update shard iterator for next batch
+                    if next_shard_iterator:
+                        shard_iterator = next_shard_iterator
+                    else:
+                        # Shard is closed
+                        logger.info(f"Shard {shard_id} is closed")
+                        break
 
-                    # Handle specific Kinesis errors with appropriate retry logic
-                    if "ExpiredIteratorException" in str(e):
-                        logger.warning(
-                            f"Shard iterator expired for {stream_name}:{shard_id}, "
-                            "refreshing..."
-                        )
-                        # Refresh shard iterator
+                    # Reset retry count on success
+                    retry_count = 0
+
+                except ClientError as e:
+                    error_code = e.response["Error"]["Code"]
+                    if error_code == "ExpiredIteratorException":
+                        # Get new shard iterator
                         try:
                             response = kinesis_client.get_shard_iterator(
                                 StreamName=stream_name,
                                 ShardId=shard_id,
-                                ShardIteratorType="LATEST",
+                                ShardIteratorType="AT_SEQUENCE_NUMBER",
+                                StartingSequenceNumber=current_sequence or "0",
                             )
                             shard_iterator = response["ShardIterator"]
-                            # Note: Retry logic is handled by the streaming framework
-                        except Exception as refresh_error:
-                            logger.error(
-                                f"Failed to refresh shard iterator: "
-                                f"{refresh_error}"
-                            )
-                            raise
-                    elif "ProvisionedThroughputExceededException" in str(e):
+                            logger.info(f"Refreshed shard iterator for {shard_id}")
+                            continue
+                        except Exception:
+                            retry_count += 1
+                            time.sleep(retry_delay)
+                    elif error_code in [
+                        "ProvisionedThroughputExceededException",
+                        "ThrottlingException",
+                    ]:
+                        # Rate limiting, wait and retry
+                        retry_count += 1
+                        wait_time = retry_delay * (
+                            2**retry_count
+                        )  # Exponential backoff
                         logger.warning(
-                            f"Throughput exceeded for {stream_name}:{shard_id}, "
-                            "backing off..."
+                            f"Rate limited, waiting {wait_time}s before retry {retry_count}"
                         )
-                        import time
-                        time.sleep(1)  # Back off for 1 second
-                        # Note: Retry logic is handled by the streaming framework
+                        time.sleep(wait_time)
+                    else:
+                        # Other client errors
+                        logger.error(f"Kinesis client error: {e}")
+                        retry_count += 1
+                        time.sleep(retry_delay)
 
-                    # Don't yield anything on error, let the retry logic handle it
+                except BotoCoreError as e:
+                    # Network or configuration errors
+                    logger.error(f"Boto core error: {e}")
+                    retry_count += 1
+                    time.sleep(retry_delay)
+
+                except Exception as e:
+                    # Unexpected errors
+                    logger.error(f"Unexpected error reading from Kinesis: {e}")
+                    retry_count += 1
+                    time.sleep(retry_delay)
+
+            if retry_count >= max_retries:
+                raise RuntimeError(
+                    f"Failed to read from Kinesis after {max_retries} retries"
+                )
 
         except Exception as e:
-            logger.error(f"Unexpected error in Kinesis reader: {e}")
+            logger.error(f"Error reading from Kinesis shard {shard_id}: {e}")
             metrics.record_error()
             raise
 
-    def get_current_position() -> str:
-        """Get current sequence number position."""
-        return f"sequence:{current_sequence_number or 'LATEST'}"
+    def get_position() -> str:
+        """Get current position as sequence number string."""
+        return (
+            f"AT_SEQUENCE_NUMBER:{current_sequence}"
+            if current_sequence
+            else "TRIM_HORIZON"
+        )
 
-    return read_shard, get_current_position
+    return read_shard, get_position
 
 
 @PublicAPI(stability="alpha")
@@ -361,17 +450,57 @@ class KinesisDatasource(StreamingDatasource):
             stream_name=stream_name,
             shard_id=shard_id,
             kinesis_config=self.kinesis_config,
-            start_sequence=_parse_kinesis_position(start_sequence)
-            if start_sequence
-            else None,
-            end_sequence=_parse_kinesis_position(end_sequence)
-            if end_sequence
-            else None,
+            start_sequence=(
+                _parse_kinesis_position(start_sequence) if start_sequence else None
+            ),
+            end_sequence=(
+                _parse_kinesis_position(end_sequence) if end_sequence else None
+            ),
             max_records=self.max_records_per_task,
         )
 
         def get_schema() -> pa.Schema:
-            """Return schema for Kinesis records."""
+            """Return schema for Kinesis records with optional dynamic inference.
+
+            This provides a balance between functionality and maintainability by
+            attempting to infer schema from data when possible, with a reliable
+            fallback to the standard schema.
+            """
+            try:
+                # Try to get a sample record for schema inference
+                sample_reader = read_shard_fn()
+                sample_record = None
+
+                # Get just one sample record for efficiency
+                for record in sample_reader:
+                    sample_record = record
+                    break
+
+                if sample_record:
+                    # Use PyArrow's schema inference on the sample
+                    inferred_schema = pa.infer_schema([sample_record])
+
+                    # Ensure we have the required streaming fields
+                    required_fields = {
+                        "partition_id": pa.string(),
+                        "read_timestamp": pa.string(),
+                        "current_position": pa.string(),
+                    }
+
+                    # Merge inferred schema with required fields
+                    final_fields = list(inferred_schema)
+                    existing_names = {field.name for field in final_fields}
+
+                    for name, field_type in required_fields.items():
+                        if name not in existing_names:
+                            final_fields.append(pa.field(name, field_type))
+
+                    return pa.schema(final_fields)
+
+            except Exception as e:
+                logger.debug(f"Schema inference failed, using standard schema: {e}")
+
+            # Standard schema fallback
             return pa.schema(
                 [
                     ("SequenceNumber", pa.string()),
@@ -380,6 +509,9 @@ class KinesisDatasource(StreamingDatasource):
                     ("ApproximateArrivalTimestamp", pa.timestamp("us")),
                     ("stream_name", pa.string()),
                     ("shard_id", pa.string()),
+                    ("partition_id", pa.string()),
+                    ("read_timestamp", pa.string()),
+                    ("current_position", pa.string()),
                 ]
             )
 
@@ -409,7 +541,7 @@ class KinesisDatasource(StreamingDatasource):
                 ("stream_name", pa.string()),
                 ("shard_id", pa.string()),
                 ("partition_id", pa.string()),
-                ("read_timestamp", pa.timestamp("us")),
+                ("read_timestamp", pa.string()),
                 ("current_position", pa.string()),
             ]
         )

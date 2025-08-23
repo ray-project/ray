@@ -511,9 +511,9 @@ class DataContext:
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
-    actor_task_retry_on_errors: Union[
-        bool, List[BaseException]
-    ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    actor_task_retry_on_errors: Union[bool, List[BaseException]] = (
+        DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    )
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS

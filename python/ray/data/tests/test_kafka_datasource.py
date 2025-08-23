@@ -1,15 +1,14 @@
-import pytest
-import pyarrow as pa
 import importlib.util
-from unittest.mock import Mock, patch, MagicMock
-from typing import Dict, Any, List
+from unittest.mock import Mock, patch
 
-from ray.data.block import BlockMetadata
-from ray.data.datasource import ReadTask
+import pyarrow as pa
+import pytest
+
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaDatasource,
     _parse_kafka_position,
 )
+from ray.data.datasource import ReadTask
 from ray.tests.conftest import *  # noqa
 
 
@@ -40,15 +39,14 @@ class TestKafkaPositionParsing:
 
 
 @pytest.mark.skipif(
-    importlib.util.find_spec("kafka") is None,
-    reason="kafka-python is not installed",
+    importlib.util.find_spec("kafka") is None, reason="kafka-python is not installed"
 )
 class TestKafkaDatasourceWithKafka:
     """Test KafkaDatasource with kafka-python available."""
 
     def test_datasource_initialization(self):
         """Test Kafka datasource initialization."""
-        kafka_config = {"bootstrap.servers": "localhost:9092", "group.id": "test-group"}
+        kafka_config = {"bootstrap_servers": "localhost:9092", "group.id": "test-group"}
 
         ds = KafkaDatasource(
             topics=["test-topic"],
@@ -68,7 +66,7 @@ class TestKafkaDatasourceWithKafka:
 
     def test_datasource_with_multiple_topics(self):
         """Test Kafka datasource with multiple topics."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
 
         ds = KafkaDatasource(
             topics=["topic1", "topic2", "topic3"], kafka_config=kafka_config
@@ -78,7 +76,7 @@ class TestKafkaDatasourceWithKafka:
 
     def test_datasource_with_string_topic(self):
         """Test Kafka datasource with single string topic."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
 
         ds = KafkaDatasource(topics="single-topic", kafka_config=kafka_config)
 
@@ -86,7 +84,7 @@ class TestKafkaDatasourceWithKafka:
 
     def test_get_name(self):
         """Test datasource name generation."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
 
         # Single topic
         ds1 = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
@@ -97,16 +95,16 @@ class TestKafkaDatasourceWithKafka:
         assert ds2.get_name() == "kafka://a,b,c"
 
     def test_validation_missing_bootstrap_servers(self):
-        """Test validation with missing bootstrap.servers."""
-        with pytest.raises(ValueError, match="bootstrap.servers is required"):
+        """Test validation with missing bootstrap_servers."""
+        with pytest.raises(ValueError, match="bootstrap_servers.*is required"):
             KafkaDatasource(
                 topics=["test"],
-                kafka_config={"group.id": "test"},  # Missing bootstrap.servers
+                kafka_config={"group.id": "test"},  # Missing bootstrap_servers
             )
 
     def test_get_streaming_schema(self):
         """Test schema retrieval."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
 
         schema = ds.get_streaming_schema()
@@ -134,7 +132,7 @@ class TestKafkaDatasourceWithoutKafka:
     def test_datasource_initialization_without_kafka(self):
         """Test that datasource can be initialized without kafka-python."""
         # This should work without kafka-python since validation only happens on actual usage
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
 
         ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
         assert ds.topics == ["test"]
@@ -142,15 +140,14 @@ class TestKafkaDatasourceWithoutKafka:
 
 
 @pytest.mark.skipif(
-    importlib.util.find_spec("kafka") is None,
-    reason="kafka-python is not installed",
+    importlib.util.find_spec("kafka") is None, reason="kafka-python is not installed"
 )
 class TestKafkaPartitionReading:
     """Test Kafka partition reading functionality."""
 
     def test_get_streaming_partitions_single_topic(self):
         """Test partition discovery for single topic."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(topics=["test-topic"], kafka_config=kafka_config)
 
         # Mock the partitions_for_topic method
@@ -176,7 +173,7 @@ class TestKafkaPartitionReading:
 
     def test_get_streaming_partitions_multiple_topics(self):
         """Test partition discovery for multiple topics."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(
             topics=["topic1", "topic2"],
             kafka_config=kafka_config,
@@ -211,7 +208,7 @@ class TestKafkaPartitionReading:
 
     def test_get_streaming_partitions_error_handling(self):
         """Test error handling during partition discovery."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
 
         with patch("kafka.KafkaConsumer") as mock_consumer_class:
@@ -222,15 +219,14 @@ class TestKafkaPartitionReading:
 
 
 @pytest.mark.skipif(
-    importlib.util.find_spec("kafka") is None,
-    reason="kafka-python is not installed",
+    importlib.util.find_spec("kafka") is None, reason="kafka-python is not installed"
 )
 class TestKafkaReadTask:
     """Test Kafka read task creation and execution."""
 
     def test_create_read_task(self):
         """Test creating a Kafka read task."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
 
         partition_info = {
@@ -249,7 +245,7 @@ class TestKafkaReadTask:
 
     def test_read_task_execution_mock(self):
         """Test read task execution with mocked Kafka consumer."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
 
         partition_info = {
@@ -312,7 +308,7 @@ class TestKafkaReadTask:
 
     def test_read_task_with_offset_limits(self):
         """Test read task with start and end offset limits."""
-        kafka_config = {"bootstrap.servers": "localhost:9092"}
+        kafka_config = {"bootstrap_servers": "localhost:9092"}
         ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
 
         partition_info = {
@@ -325,11 +321,11 @@ class TestKafkaReadTask:
 
         # Test that the read task is created with correct offset parameters
         read_task = ds._create_streaming_read_task(partition_info)
-        
+
         # Verify the task metadata reflects the offset limits
         assert read_task.metadata.num_rows == 1000  # max_records_per_task
         assert read_task.metadata.size_bytes is None
-        
+
         # Test that the task can be executed (the actual seek logic is tested in integration tests)
         # since the seek happens inside the _create_kafka_reader function which is not easily mockable
         # in this unit test context

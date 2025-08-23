@@ -1,13 +1,13 @@
 import logging
-from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
+    ExecutionResources,
     PhysicalOperator,
     RefBundle,
-    ExecutionResources,
 )
 from ray.data._internal.logical.operators.streaming_data_operator import (
     StreamingTrigger,
@@ -108,12 +108,14 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         system."""
         try:
             from ray.data.context import DataContext
+
             data_context = DataContext.get_current()
             backpressure_threshold = data_context.streaming_backpressure_threshold
 
             # Check memory usage
             try:
                 import psutil
+
                 memory_percent = psutil.virtual_memory().percent / 100.0
 
                 if memory_percent > backpressure_threshold:
@@ -169,21 +171,21 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
                     )
 
                     # Optimize resource allocation based on task characteristics
-                    if hasattr(task, 'metadata') and task.metadata:
+                    if hasattr(task, "metadata") and task.metadata:
                         # Use task metadata to optimize resource allocation
-                        estimated_rows = getattr(task.metadata, 'num_rows', None)
-                        estimated_size = getattr(task.metadata, 'size_bytes', None)
+                        estimated_rows = getattr(task.metadata, "num_rows", None)
+                        estimated_size = getattr(task.metadata, "size_bytes", None)
 
                         # > 100MB
                         if estimated_size and estimated_size > 100 * 1024 * 1024:
                             # Large data tasks get more memory
                             validated_args.setdefault(
-                                'memory', 2 * 1024 * 1024 * 1024
+                                "memory", 2 * 1024 * 1024 * 1024
                             )  # 2GB
 
                         if estimated_rows and estimated_rows > 100000:  # > 100k rows
                             # High-row-count tasks get more CPUs
-                            validated_args.setdefault('num_cpus', 2)
+                            validated_args.setdefault("num_cpus", 2)
 
                     remote_fn = ray.remote(**validated_args)(task.read_fn)
                     task_ref = remote_fn.remote()
@@ -254,6 +256,7 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         """Check for timed-out tasks and clean them up."""
         try:
             from ray.data.context import DataContext
+
             data_context = DataContext.get_current()
             timeout_seconds = data_context.streaming_task_timeout
 
@@ -268,13 +271,12 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
                 # For now, we'll use a simple heuristic based on task creation time
                 # In a more sophisticated implementation, we'd track individual task
                 # start times
-                if (hasattr(self, '_task_start_times') and
-                    i < len(self._task_start_times)):
+                if hasattr(self, "_task_start_times") and i < len(
+                    self._task_start_times
+                ):
                     task_start = self._task_start_times[i]
                     if (now - task_start).total_seconds() > timeout_seconds:
-                        logger.warning(
-                            f"Task {i} timed out after {timeout_seconds}s"
-                        )
+                        logger.warning(f"Task {i} timed out after {timeout_seconds}s")
                         timed_out_tasks.append(i)
 
             # Remove timed-out tasks
@@ -289,8 +291,9 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
 
                         # Remove from our tracking
                         self._current_read_tasks.pop(i)
-                        if (hasattr(self, '_task_start_times') and
-                            i < len(self._task_start_times)):
+                        if hasattr(self, "_task_start_times") and i < len(
+                            self._task_start_times
+                        ):
                             self._task_start_times.pop(i)
 
                 logger.info(f"Cleaned up {len(timed_out_tasks)} timed-out tasks")
@@ -377,8 +380,10 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
 
     def progress_str(self) -> str:
         """Get progress string for monitoring."""
-        return (f"Batch: {self._current_batch_id}, "
-                f"Active tasks: {len(self._current_read_tasks)}")
+        return (
+            f"Batch: {self._current_batch_id}, "
+            f"Active tasks: {len(self._current_read_tasks)}"
+        )
 
     def num_outputs_total(self) -> Optional[int]:
         """Streaming operators have unknown total outputs."""
@@ -541,12 +546,26 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         """
         # Define allowed keys for ray.remote to prevent injection attacks
         allowed_keys = {
-            "num_cpus", "num_gpus", "memory", "object_store_memory",
-            "resources", "runtime_env", "max_calls", "max_retries",
-            "max_restarts", "max_task_retries", "placement_group",
-            "placement_group_bundle_index", "placement_group_capture_child_tasks",
-            "name", "lifetime", "namespace", "max_pending_calls",
-            "num_returns", "_generator_backpressure_num_objects", "_labels"
+            "num_cpus",
+            "num_gpus",
+            "memory",
+            "object_store_memory",
+            "resources",
+            "runtime_env",
+            "max_calls",
+            "max_retries",
+            "max_restarts",
+            "max_task_retries",
+            "placement_group",
+            "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
+            "name",
+            "lifetime",
+            "namespace",
+            "max_pending_calls",
+            "num_returns",
+            "_generator_backpressure_num_objects",
+            "_labels",
         }
 
         validated_args = {}
@@ -554,9 +573,7 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
             if key in allowed_keys:
                 validated_args[key] = value
             else:
-                logger.warning(
-                    f"Ignoring disallowed ray.remote argument: {key}"
-                )
+                logger.warning(f"Ignoring disallowed ray.remote argument: {key}")
 
         return validated_args
 
@@ -598,13 +615,16 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
             "total_bytes_produced": self._bytes_produced,
             "total_rows_produced": self._rows_produced,
             "parallelism": self.parallelism,
-            "last_trigger_time": (self._last_trigger_time.isoformat()
-                                 if self._last_trigger_time else None),
+            "last_trigger_time": (
+                self._last_trigger_time.isoformat() if self._last_trigger_time else None
+            ),
             "trigger_config": {
                 "type": self.trigger.trigger_type,
-                "interval": (str(self.trigger.interval)
-                            if hasattr(self.trigger, "interval") and
-                            self.trigger.interval else None),
+                "interval": (
+                    str(self.trigger.interval)
+                    if hasattr(self.trigger, "interval") and self.trigger.interval
+                    else None
+                ),
                 "cron_expression": getattr(self.trigger, "cron_expression", None),
             },
         }
@@ -660,5 +680,3 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
             validated_args[key] = value
 
         return validated_args
-
-

@@ -31,6 +31,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.flink_datasource import FlinkDatasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
@@ -42,6 +43,7 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
+from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -55,8 +57,6 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
-from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
-from ray.data._internal.datasource.flink_datasource import FlinkDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import (
@@ -68,8 +68,8 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_data_operator import (
-    UnboundedQueueStreamingData,
     StreamingTrigger,
+    UnboundedQueueStreamingData,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -4155,7 +4155,7 @@ def read_kafka(
             # Read all available data from topic once
             ds = ray.data.read_kafka(
                 topics=["my-topic"],
-                kafka_config={"bootstrap.servers": "localhost:9092"},
+                kafka_config={"bootstrap_servers": "localhost:9092"},
                 trigger="once"
             )
 
@@ -4174,7 +4174,7 @@ def read_kafka(
             ds = ray.data.read_kafka(
                 topics=["events"],
                 kafka_config={
-                    "bootstrap.servers": "localhost:9092",
+                    "bootstrap_servers": "localhost:9092",
                     "group.id": "my-consumer-group"
                 },
                 trigger="continuous"
@@ -4190,7 +4190,7 @@ def read_kafka(
             # Process every 30 seconds
             ds = ray.data.read_kafka(
                 topics=["metrics"],
-                kafka_config={"bootstrap.servers": "localhost:9092"},
+                kafka_config={"bootstrap_servers": "localhost:9092"},
                 trigger="interval:30s"
             )
 
@@ -4204,7 +4204,7 @@ def read_kafka(
             # Process every hour at minute 30
             ds = ray.data.read_kafka(
                 topics=["hourly-reports"],
-                kafka_config={"bootstrap.servers": "localhost:9092"},
+                kafka_config={"bootstrap_servers": "localhost:9092"},
                 trigger="cron:30 * * * *"
             )
 
@@ -4218,7 +4218,7 @@ def read_kafka(
             # Read specific offset range
             ds = ray.data.read_kafka(
                 topics=["historical-data"],
-                kafka_config={"bootstrap.servers": "localhost:9092"},
+                kafka_config={"bootstrap_servers": "localhost:9092"},
                 start_offset="1000000",
                 end_offset="2000000",
                 trigger="once"
@@ -4278,17 +4278,13 @@ def read_kafka(
         ValueError: If configuration is invalid or required parameters are missing.
         ImportError: If kafka-python is not installed.
     """
-    from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
-    from ray.data._internal.logical.operators.streaming_data_operator import (
-        StreamingTrigger,
-    )
+    from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.logical.operators.streaming_data_operator import (
         UnboundedQueueStreamingData,
     )
-    from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
-    from ray.data.context import DataContext
     from ray.data._internal.stats import DatasetStats
+    from ray.data.context import DataContext
 
     # Create datasource
     datasource = KafkaDatasource(
@@ -4427,16 +4423,10 @@ def read_kinesis(
         Dataset containing Kinesis records.
     """
     from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
-    from ray.data._internal.logical.operators.streaming_data_operator import (
-        StreamingTrigger,
-    )
-    from ray.data._internal.logical.operators.streaming_data_operator import (
-        UnboundedQueueStreamingData,
-    )
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
-    from ray.data.context import DataContext
     from ray.data._internal.stats import DatasetStats
+    from ray.data.context import DataContext
 
     # Create datasource
     datasource = KinesisDatasource(
@@ -4503,7 +4493,7 @@ def read_flink(
 
     .. note::
         This is an alpha API and may change in future releases.
-        May require ``pyflink`` for certain source types.
+        Requires ``requests`` for REST API connections.
 
     This function creates a dataset that can read from various Flink data sources
     including REST API, SQL queries, checkpoints, and tables.
@@ -4578,17 +4568,10 @@ def read_flink(
     Returns:
         Dataset containing Flink source records.
     """
-    from ray.data._internal.datasource.flink_datasource import FlinkDatasource
-    from ray.data._internal.logical.operators.streaming_data_operator import (
-        StreamingTrigger,
-    )
-    from ray.data._internal.logical.operators.streaming_data_operator import (
-        UnboundedQueueStreamingData,
-    )
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
-    from ray.data.context import DataContext
     from ray.data._internal.stats import DatasetStats
+    from ray.data.context import DataContext
 
     # Create datasource
     datasource = FlinkDatasource(

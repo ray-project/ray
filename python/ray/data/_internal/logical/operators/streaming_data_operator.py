@@ -296,11 +296,13 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
 
         # Get Ray Data context for configuration
         from ray.data.context import DataContext
+
         self._data_context = DataContext.get_current()
 
         # Use context defaults for trigger if not specified
         if trigger.trigger_type == "fixed_interval" and trigger.interval is None:
             from datetime import timedelta
+
             default_interval = self._data_context.streaming_trigger_interval
             if isinstance(default_interval, str):
                 trigger.interval = StreamingTrigger._parse_interval(default_interval)
@@ -328,9 +330,7 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
         try:
             # Use a small, constant number for schema inference to avoid
             # performance issues
-            sample_parallelism = min(
-                3, max(1, self.parallelism if self.parallelism > 0 else 1)
-            )
+            sample_parallelism = 3
             read_tasks = self.datasource.get_read_tasks(sample_parallelism)
 
             if not read_tasks:

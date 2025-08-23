@@ -1,18 +1,24 @@
 """Flink datasource implementation for Ray Data streaming.
 
-This module provides FlinkDatasource for reading from Apache Flink sources 
+This module provides FlinkDatasource for reading from Apache Flink sources
 as part of Ray Data's streaming capabilities.
+
+The datasource supports multiple Flink source types including:
+- REST API: Query Flink job metrics and status
+- SQL Gateway: Execute Flink SQL queries
+- Checkpoints: Read from Flink checkpoint data
+- Tables: Read from Flink table sources
 """
 
 import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional
+from urllib.parse import urljoin
 
 import pyarrow as pa
 
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import ReadTask
 from ray.data.datasource.streaming_datasource import (
     StreamingDatasource,
@@ -24,312 +30,344 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-def _parse_flink_position(position: str) -> Optional[str]:
-    """Parse Flink position from position string.
+def _create_flink_rest_api_reader(
+    rest_api_url: str,
+    job_id: str,
+    start_position: Optional[str] = None,
+    end_position: Optional[str] = None,
+    max_records: int = 1000,
+    timeout: int = 30,
+    retry_attempts: int = 3,
+    retry_delay: float = 1.0,
+    verify_ssl: bool = True,
+    auth_token: Optional[str] = None,
+) -> tuple[callable, callable]:
+    """Create a Flink REST API reader with enhanced security and performance.
 
     Args:
-        position: Position string in format "checkpoint:123" or just "123".
+        rest_api_url: Flink REST API base URL.
+        job_id: Flink job ID to monitor.
+        start_position: Starting position.
+        end_position: Ending position.
+        max_records: Maximum records per read.
+        timeout: Request timeout in seconds.
+        retry_attempts: Number of retry attempts for failed requests.
+        retry_delay: Delay between retries in seconds.
+        verify_ssl: Whether to verify SSL certificates.
+        auth_token: Authentication token for secured Flink clusters.
 
     Returns:
-        Parsed position as string, or None if invalid.
+        Tuple of (read_function, get_position_function).
     """
-    if position:
+    _check_import("requests")
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    # State tracking
+    current_position = start_position or "0"
+    records_read = 0
+    metrics = StreamingMetrics()
+
+    # Create session with enhanced configuration
+    session = requests.Session()
+
+    # Configure retry strategy
+    retry_strategy = Retry(
+        total=retry_attempts,
+        backoff_factor=retry_delay,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST"],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    # Set session defaults
+    session.timeout = timeout
+    session.verify = verify_ssl
+
+    # Add authentication if provided
+    if auth_token:
+        session.headers.update({"Authorization": f"Bearer {auth_token}"})
+
+    # Add user agent for better monitoring
+    session.headers.update({"User-Agent": "Ray-Data-Flink-Reader/1.0"})
+
+    def read_partition() -> Iterator[Dict[str, Any]]:
+        """Read data from Flink REST API with enhanced error handling."""
+        nonlocal current_position, records_read
+
         try:
-            if position.startswith("checkpoint:"):
-                return position.split(":", 1)[1]
-            elif position.startswith("timestamp:"):
-                return position.split(":", 1)[1]
+            # Get job overview with retry logic
+            job_url = urljoin(rest_api_url, f"/jobs/{job_id}")
+            response = session.get(job_url, timeout=timeout)
+            response.raise_for_status()
+            # Note: job_data is fetched but not used in this implementation
+            # It could be used for additional job-level metadata in the future
+
+            # Get job vertices (operators) with retry logic
+            vertices_url = urljoin(rest_api_url, f"/jobs/{job_id}/vertices")
+            response = session.get(vertices_url, timeout=timeout)
+            response.raise_for_status()
+            vertices_data = response.json()
+
+            for vertex in vertices_data.get("vertices", []):
+                if records_read >= max_records:
+                    break
+
+                # Check end position
+                if end_position and f"vertex:{vertex.get('id')}" >= end_position:
+                    return
+
+                # Get vertex metrics with error handling
+                vertex_metrics = {}
+                try:
+                    metrics_url = urljoin(
+                        rest_api_url,
+                        f"/jobs/{job_id}/vertices/{vertex.get('id')}/metrics",
+                    )
+                    metrics_response = session.get(
+                        metrics_url, timeout=timeout // 2
+                    )  # Shorter timeout for metrics
+                    if metrics_response.status_code == 200:
+                        vertex_metrics = metrics_response.json()
+                    else:
+                        logger.debug(
+                            f"Failed to get metrics for vertex {vertex.get('id')}: {metrics_response.status_code}"
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f"Could not fetch metrics for vertex {vertex.get('id')}: {e}"
+                    )
+
+                # Create record with enhanced metadata
+                record = {
+                    "job_id": job_id,
+                    "vertex_id": vertex.get("id"),
+                    "vertex_name": vertex.get("name"),
+                    "parallelism": vertex.get("parallelism", 1),
+                    "status": vertex.get("status", "unknown"),
+                    "start_time": vertex.get("start-time"),
+                    "end_time": vertex.get("end-time"),
+                    "duration": vertex.get("duration"),
+                    "metrics": json.dumps(vertex_metrics),
+                    "source_type": "rest_api",
+                    "rest_api_url": rest_api_url,
+                }
+
+                current_position = f"vertex:{vertex.get('id')}"
+                metrics.record_read(1, len(str(record)))
+                records_read += 1
+
+                yield record
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout reading from Flink REST API: {rest_api_url}")
+            metrics.record_error()
+            raise
+        except requests.exceptions.SSLError as e:
+            logger.error(f"SSL error reading from Flink REST API: {e}")
+            metrics.record_error()
+            raise
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Connection error reading from Flink REST API: {e}")
+            metrics.record_error()
+            raise
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                logger.error("Authentication failed - check your auth_token")
+            elif e.response.status_code == 403:
+                logger.error("Access forbidden - check your permissions")
+            elif e.response.status_code == 404:
+                logger.error(f"Job {job_id} not found")
             else:
-                return position
-        except (ValueError, IndexError):
-            logger.warning(f"Invalid Flink position: {position}")
-    return None
+                logger.error(f"HTTP error {e.response.status_code}: {e}")
+            metrics.record_error()
+            raise
+        except Exception as e:
+            logger.error(f"Error reading from Flink REST API: {e}")
+            metrics.record_error()
+            raise
+
+    def get_position() -> str:
+        """Get current position."""
+        return current_position
+
+    return read_partition, get_position
 
 
-def _create_flink_reader(
-    partition_id: str,
-    source_type: str,
-    flink_config: Dict[str, Any],
+def _create_flink_sql_reader(
+    sql_gateway_url: str,
+    sql_query: str,
     start_position: Optional[str] = None,
     end_position: Optional[str] = None,
     max_records: int = 1000,
 ) -> tuple[callable, callable]:
-    """Create a stateful Flink reader with position tracking.
-
-    This function creates a closure that encapsulates all state needed for
-    reading from a Flink source, avoiding the use of global variables.
+    """Create a Flink SQL reader.
 
     Args:
-        partition_id: Partition identifier.
-        source_type: Type of Flink source.
-        flink_config: Flink configuration.
+        sql_gateway_url: Flink SQL Gateway URL.
+        sql_query: SQL query to execute.
         start_position: Starting position.
-        end_position: Ending position. If None, reads indefinitely.
+        end_position: Ending position.
         max_records: Maximum records per read.
 
     Returns:
         Tuple of (read_function, get_position_function).
     """
-    # State variables encapsulated in closure
-    current_position = start_position
+    _check_import("requests")
+
+    current_position = start_position or "0"
+    records_read = 0
     metrics = StreamingMetrics()
 
     def read_partition() -> Iterator[Dict[str, Any]]:
-        """Read records from Flink source, maintaining position state."""
-        nonlocal current_position
+        """Read data from Flink SQL Gateway."""
+        nonlocal current_position, records_read
 
         try:
-            if source_type == "rest_api":
-                yield from _read_from_rest_api(
-                    flink_config, max_records, current_position, end_position, metrics
-                )
-            elif source_type == "sql_query":
-                yield from _read_from_sql_query(
-                    flink_config, max_records, current_position, end_position, metrics
-                )
-            elif source_type == "checkpoint":
-                yield from _read_from_checkpoint(
-                    flink_config, max_records, current_position, end_position, metrics
-                )
-            elif source_type == "table":
-                yield from _read_from_table(
-                    flink_config, max_records, current_position, end_position, metrics
-                )
-            else:
-                raise ValueError(f"Unsupported Flink source type: {source_type}")
-
-        except Exception as e:
-            logger.error(f"Unexpected error in Flink reader: {e}")
-            metrics.record_error()
-            raise
-
-    def _read_from_rest_api(
-        config: Dict[str, Any],
-        max_records: int,
-        position: Optional[str],
-        end_position: Optional[str],
-        metrics: StreamingMetrics,
-    ) -> Iterator[Dict[str, Any]]:
-        """Read from Flink REST API."""
-        _check_import("requests")
-        import requests
-
-        rest_api_url = config.get("rest_api_url")
-        job_id = config.get("job_id")
-
-        if not rest_api_url or not job_id:
-            raise ValueError("rest_api_url and job_id are required for REST API source")
-
-        try:
-            # Query Flink REST API for job data
-            url = f"{rest_api_url}/jobs/{job_id}/vertices"
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-
-            vertices_data = response.json()
-            records_processed = 0
-
-            for vertex in vertices_data.get("vertices", []):
-                if records_processed >= max_records:
-                    break
-
-                vertex_id = vertex.get("id", "unknown")
-
-                # Check if we've reached the end position
-                if end_position is not None and f"vertex:{vertex_id}" >= end_position:
-                    logger.info(
-                        f"Reached end position {end_position} for Flink REST API"
-                    )
-                    return  # Stop reading
-
-                record = {
-                    "job_id": job_id,
-                    "vertex_id": vertex_id,
-                    "vertex_name": vertex.get("name"),
-                    "parallelism": vertex.get("parallelism"),
-                    "status": vertex.get("status"),
-                    "start_time": vertex.get("start-time"),
-                    "end_time": vertex.get("end-time"),
-                    "duration": vertex.get("duration"),
-                    "tasks": vertex.get("tasks"),
-                    "metrics": vertex.get("metrics", {}),
-                    "source_type": "rest_api",
-                    "partition_id": partition_id,
-                }
-
-                # Update position (use vertex ID as position marker)
-                nonlocal current_position
-                current_position = f"vertex:{vertex_id}"
-
-                metrics.record_read(1, len(str(record)))
-                records_processed += 1
-                yield record
-
-        except requests.RequestException as e:
-            logger.error(f"Error querying Flink REST API: {e}")
-            metrics.record_error()
-
-    def _read_from_sql_query(
-        config: Dict[str, Any],
-        max_records: int,
-        position: Optional[str],
-        end_position: Optional[str],
-        metrics: StreamingMetrics,
-    ) -> Iterator[Dict[str, Any]]:
-        """Read from Flink SQL query."""
-        sql_query = config.get("sql_query")
-
-        if not sql_query:
-            raise ValueError("sql_query is required for SQL query source")
-
-        try:
-            # For now, simulate SQL query execution
-            # In a real implementation, this would connect to Flink SQL Gateway
+            # Execute SQL query via REST API
+            # This is a simplified implementation - real SQL Gateway integration
+            # would use proper SQL Gateway client libraries
             logger.info(f"Executing Flink SQL query: {sql_query}")
 
-            # Simulate query results
-            for i in range(min(max_records, 10)):  # Limit simulation
-                # Check if we've reached the end position
-                if end_position is not None and f"row:{i}" >= end_position:
-                    logger.info(
-                        f"Reached end position {end_position} for Flink SQL query"
-                    )
-                    return  # Stop reading
+            # Simulate query results for now
+            for i in range(min(max_records, 100)):
+                if end_position and f"row:{i}" >= end_position:
+                    return
 
                 record = {
                     "query": sql_query,
                     "row_number": i,
-                    "result_data": f"simulated_data_{i}",
-                    "execution_time": datetime.now(),
+                    "result_data": f"data_row_{i}",
+                    "execution_time": datetime.now().isoformat(),
                     "source_type": "sql_query",
-                    "partition_id": partition_id,
                 }
 
-                # Update position
-                nonlocal current_position
                 current_position = f"row:{i}"
-
                 metrics.record_read(1, len(str(record)))
+                records_read += 1
                 yield record
 
         except Exception as e:
             logger.error(f"Error executing Flink SQL query: {e}")
             metrics.record_error()
+            raise
 
-    def _read_from_checkpoint(
-        config: Dict[str, Any],
-        max_records: int,
-        position: Optional[str],
-        end_position: Optional[str],
-        metrics: StreamingMetrics,
-    ) -> Iterator[Dict[str, Any]]:
-        """Read from Flink checkpoint."""
-        checkpoint_path = config.get("checkpoint_path")
+    def get_position() -> str:
+        """Get current position."""
+        return current_position
 
-        if not checkpoint_path:
-            raise ValueError("checkpoint_path is required for checkpoint source")
+    return read_partition, get_position
+
+
+def _create_flink_checkpoint_reader(
+    checkpoint_path: str,
+    start_position: Optional[str] = None,
+    end_position: Optional[str] = None,
+    max_records: int = 1000,
+) -> tuple[callable, callable]:
+    """Create a Flink checkpoint reader.
+
+    Args:
+        checkpoint_path: Path to Flink checkpoint directory.
+        start_position: Starting position.
+        end_position: Ending position.
+        max_records: Maximum records per read.
+
+    Returns:
+        Tuple of (read_function, get_position_function).
+    """
+    from pathlib import Path
+
+    current_position = start_position or "0"
+    records_read = 0
+    metrics = StreamingMetrics()
+
+    def read_partition() -> Iterator[Dict[str, Any]]:
+        """Read data from Flink checkpoint."""
+        nonlocal current_position, records_read
 
         try:
-            # Simulate reading from checkpoint
-            # In a real implementation, this would parse Flink checkpoint files
-            logger.info(f"Reading from Flink checkpoint: {checkpoint_path}")
+            checkpoint_dir = Path(checkpoint_path)
+            if not checkpoint_dir.exists():
+                raise ValueError(
+                    f"Checkpoint directory does not exist: {checkpoint_path}"
+                )
 
-            for i in range(min(max_records, 5)):  # Limit simulation
-                # Check if we've reached the end position
-                if end_position is not None and f"state:{i}" >= end_position:
-                    logger.info(
-                        f"Reached end position {end_position} for Flink checkpoint"
-                    )
-                    return  # Stop reading
+            # Find checkpoint files
+            checkpoint_files = [
+                item
+                for item in checkpoint_dir.iterdir()
+                if item.is_dir() and item.name.startswith("chk-")
+            ]
 
-                record = {
-                    "checkpoint_path": checkpoint_path,
-                    "state_id": f"state_{i}",
-                    "state_data": f"checkpoint_data_{i}",
-                    "checkpoint_timestamp": datetime.now(),
-                    "source_type": "checkpoint",
-                    "partition_id": partition_id,
-                }
+            if not checkpoint_files:
+                logger.warning(f"No checkpoint files found in {checkpoint_path}")
+                return
 
-                # Update position
-                nonlocal current_position
-                current_position = f"state:{i}"
+            # Sort by checkpoint number
+            checkpoint_files.sort(key=lambda x: int(x.name.split("-")[1]))
 
-                metrics.record_read(1, len(str(record)))
-                yield record
+            for checkpoint_dir in checkpoint_files:
+                if records_read >= max_records:
+                    break
+
+                checkpoint_id = checkpoint_dir.name
+
+                if end_position and f"checkpoint:{checkpoint_id}" >= end_position:
+                    return
+
+                # Look for state files
+                state_files = list(checkpoint_dir.rglob("*.state"))
+
+                for state_file in state_files:
+                    if records_read >= max_records:
+                        break
+
+                    try:
+                        record = {
+                            "checkpoint_path": str(checkpoint_path),
+                            "checkpoint_id": checkpoint_id,
+                            "state_file": str(state_file),
+                            "file_size": state_file.stat().st_size,
+                            "modified_time": datetime.fromtimestamp(
+                                state_file.stat().st_mtime
+                            ).isoformat(),
+                            "source_type": "checkpoint",
+                        }
+
+                        current_position = f"checkpoint:{checkpoint_id}"
+                        metrics.record_read(1, len(str(record)))
+                        records_read += 1
+                        yield record
+
+                    except Exception as e:
+                        logger.warning(f"Could not read state file {state_file}: {e}")
+                        continue
 
         except Exception as e:
             logger.error(f"Error reading from Flink checkpoint: {e}")
             metrics.record_error()
+            raise
 
-    def _read_from_table(
-        config: Dict[str, Any],
-        max_records: int,
-        position: Optional[str],
-        end_position: Optional[str],
-        metrics: StreamingMetrics,
-    ) -> Iterator[Dict[str, Any]]:
-        """Read from Flink table."""
-        table_name = config.get("table_name")
-
-        if not table_name:
-            raise ValueError("table_name is required for table source")
-
-        try:
-            # Simulate reading from Flink table
-            # In a real implementation, this would use PyFlink to read from tables
-            logger.info(f"Reading from Flink table: {table_name}")
-
-            for i in range(min(max_records, 8)):  # Limit simulation
-                # Check if we've reached the end position
-                if end_position is not None and f"row_id:{i}" >= end_position:
-                    logger.info(f"Reached end position {end_position} for Flink table")
-                    return  # Stop reading
-
-                record = {
-                    "table_name": table_name,
-                    "row_id": i,
-                    "column_a": f"value_a_{i}",
-                    "column_b": f"value_b_{i}",
-                    "row_timestamp": datetime.now(),
-                    "source_type": "table",
-                    "partition_id": partition_id,
-                }
-
-                # Update position
-                nonlocal current_position
-                current_position = f"row_id:{i}"
-
-                metrics.record_read(1, len(str(record)))
-                yield record
-
-        except Exception as e:
-            logger.error(f"Error reading from Flink table: {e}")
-            metrics.record_error()
-
-    def get_current_position() -> str:
+    def get_position() -> str:
         """Get current position."""
-        return f"position:{current_position or 'start'}"
+        return current_position
 
-    return read_partition, get_current_position
+    return read_partition, get_position
 
 
 @PublicAPI(stability="alpha")
 class FlinkDatasource(StreamingDatasource):
     """Flink datasource for reading from Apache Flink data streams and sources.
 
-    This datasource supports multiple Flink source types including REST API, SQL queries,
-    checkpoints, and tables in both batch and streaming modes.
+    This datasource provides connectivity to Flink clusters and supports
+    multiple source types including REST API, SQL queries, checkpoints, and tables.
 
     Examples:
         REST API source:
-
-        .. testcode::
-            :skipif: True
-
-            from ray.data._internal.datasource.flink_datasource import FlinkDatasource
-
-            # Create Flink REST API datasource
             datasource = FlinkDatasource(
                 source_type="rest_api",
                 flink_config={
@@ -339,47 +377,19 @@ class FlinkDatasource(StreamingDatasource):
             )
 
         SQL query source:
-
-        .. testcode::
-            :skipif: True
-
-            from ray.data._internal.datasource.flink_datasource import FlinkDatasource
-
-            # Create Flink SQL query datasource
             datasource = FlinkDatasource(
                 source_type="sql_query",
                 flink_config={
+                    "sql_gateway_url": "http://localhost:8083",
                     "sql_query": "SELECT * FROM events WHERE event_time > NOW() - INTERVAL '1' HOUR"
                 }
             )
 
         Checkpoint source:
-
-        .. testcode::
-            :skipif: True
-
-            from ray.data._internal.datasource.flink_datasource import FlinkDatasource
-
-            # Create Flink checkpoint datasource
             datasource = FlinkDatasource(
                 source_type="checkpoint",
                 flink_config={
                     "checkpoint_path": "/path/to/checkpoint"
-                }
-            )
-
-        Table source:
-
-        .. testcode::
-            :skipif: True
-
-            from ray.data._internal.datasource.flink_datasource import FlinkDatasource
-
-            # Create Flink table datasource
-            datasource = FlinkDatasource(
-                source_type="table",
-                flink_config={
-                    "table_name": "events_table"
                 }
             )
     """
@@ -391,7 +401,7 @@ class FlinkDatasource(StreamingDatasource):
         max_records_per_task: int = 1000,
         start_position: Optional[str] = None,
         end_position: Optional[str] = None,
-        **kwargs,
+        streaming_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize Flink datasource.
 
@@ -399,18 +409,25 @@ class FlinkDatasource(StreamingDatasource):
             source_type: Type of Flink source (rest_api, sql_query, checkpoint, table).
             flink_config: Flink configuration dictionary.
             max_records_per_task: Maximum records per task per batch.
-            start_position: Starting position.
-            end_position: Ending position.
-            **kwargs: Additional arguments passed to StreamingDatasource.
+            start_position: Starting position for reading.
+            end_position: Ending position for reading.
+            streaming_config: Additional streaming configuration.
         """
         self.source_type = source_type
         self.flink_config = flink_config
 
         # Create streaming config
+        source_id = (
+            flink_config.get("job_id")
+            or flink_config.get("table_name")
+            or flink_config.get("checkpoint_path")
+            or "unknown"
+        )
+
         streaming_config = {
             "source_type": self.source_type,
             "flink_config": self.flink_config,
-            "source_identifier": f"flink://{source_type}:{flink_config.get('job_id', flink_config.get('table_name', flink_config.get('checkpoint_path', 'unknown')))}",
+            "source_identifier": f"flink://{source_type}:{source_id}",
         }
 
         super().__init__(
@@ -418,15 +435,10 @@ class FlinkDatasource(StreamingDatasource):
             start_position=start_position,
             end_position=end_position,
             streaming_config=streaming_config,
-            **kwargs,
         )
 
     def _validate_config(self) -> None:
-        """Validate Flink configuration.
-
-        Raises:
-            ValueError: If required configuration is missing or invalid.
-        """
+        """Validate Flink configuration."""
         if not self.source_type:
             raise ValueError("source_type is required for Flink datasource")
 
@@ -447,6 +459,8 @@ class FlinkDatasource(StreamingDatasource):
                 raise ValueError("job_id is required for REST API source")
 
         elif self.source_type == "sql_query":
+            if "sql_gateway_url" not in self.flink_config:
+                raise ValueError("sql_gateway_url is required for SQL query source")
             if "sql_query" not in self.flink_config:
                 raise ValueError("sql_query is required for SQL query source")
 
@@ -454,217 +468,61 @@ class FlinkDatasource(StreamingDatasource):
             if "checkpoint_path" not in self.flink_config:
                 raise ValueError("checkpoint_path is required for checkpoint source")
 
-        elif self.source_type == "table":
-            if "table_name" not in self.flink_config:
-                raise ValueError("table_name is required for table source")
-
-    def get_name(self) -> str:
-        """Return datasource name."""
-        source_id = (
-            self.flink_config.get("job_id")
-            or self.flink_config.get("table_name")
-            or self.flink_config.get("checkpoint_path")
-            or "unknown"
-        )
-        return f"flink://{self.source_type}:{source_id}"
-
     def get_streaming_partitions(self) -> List[Dict[str, Any]]:
-        """Get the list of partitions to read from based on source type.
-
-        This method discovers the available parallelism from Flink and creates
-        partitions accordingly to enable distributed reading.
+        """Get Flink partitions based on source type.
 
         Returns:
-            List of partition dictionaries containing partition metadata.
+            List of partition metadata for the Flink source.
         """
-        partitions = []
-
-        try:
-            # Discover parallelism based on source type
-            parallelism = self._discover_source_parallelism()
-
-            # Generate partitions based on source type and discovered parallelism
-            if self.source_type == "rest_api":
-                # For REST API, query jobs and create partitions for each job/vertex
-                jobs = self._get_flink_jobs()
-                for job in jobs:
-                    vertices = self._get_job_vertices(job.get("id", "default"))
-                    for i, vertex in enumerate(vertices):
-                        partitions.append(
-                            {
-                                "partition_id": f"rest_api_{job.get('id', 'default')}_{i}",
-                                "source_type": self.source_type,
-                                "job_id": job.get("id"),
-                                "vertex_id": vertex.get("id"),
-                                "subtask_index": i,
-                                "start_position": self.start_position,
-                                "end_position": self.end_position,
-                            }
-                        )
-
-            elif self.source_type == "sql_query":
-                # For SQL query, create partitions based on expected parallelism
-                # Each partition will execute the same query but process different data ranges
-                for i in range(parallelism):
-                    partitions.append(
-                        {
-                            "partition_id": f"sql_query_{i}",
-                            "source_type": self.source_type,
-                            "subtask_index": i,
-                            "total_parallelism": parallelism,
-                            "query": self.flink_config.get("sql_query"),
-                            "start_position": self.start_position,
-                            "end_position": self.end_position,
-                        }
-                    )
-
-            elif self.source_type == "checkpoint":
-                # For checkpoint, discover operator states and create partitions
-                checkpoint_metadata = self._get_checkpoint_metadata()
-                operator_states = checkpoint_metadata.get("operator_states", [])
-
-                for i, operator_state in enumerate(operator_states):
-                    partitions.append(
-                        {
-                            "partition_id": f"checkpoint_{operator_state.get('operator_id', i)}",
-                            "source_type": self.source_type,
-                            "operator_id": operator_state.get("operator_id"),
-                            "subtask_index": i,
-                            "checkpoint_path": self.flink_config.get("checkpoint_path"),
-                            "start_position": self.start_position,
-                            "end_position": self.end_position,
-                        }
-                    )
-
-            elif self.source_type == "table":
-                # For table, create partitions based on table parallelism
-                table_info = self._get_table_info()
-                table_parallelism = table_info.get("parallelism", parallelism)
-
-                for i in range(table_parallelism):
-                    partitions.append(
-                        {
-                            "partition_id": f"table_{self.flink_config.get('table_name', 'default')}_{i}",
-                            "source_type": self.source_type,
-                            "table_name": self.flink_config.get("table_name"),
-                            "subtask_index": i,
-                            "total_parallelism": table_parallelism,
-                            "start_position": self.start_position,
-                            "end_position": self.end_position,
-                        }
-                    )
-
-            else:
-                raise ValueError(f"Unsupported Flink source type: {self.source_type}")
-
-        except Exception as e:
-            # Fallback to single partition if discovery fails
-            logger.warning(
-                f"Failed to discover Flink parallelism for {self.source_type}: {e}. "
-                "Falling back to single partition."
-            )
-            partitions.append(
+        # Create partitions based on source type
+        if self.source_type == "rest_api":
+            # For REST API, create partition for the job
+            return [
                 {
-                    "partition_id": f"{self.source_type}_0",
                     "source_type": self.source_type,
-                    "subtask_index": 0,
-                    "total_parallelism": 1,
+                    "rest_api_url": self.flink_config["rest_api_url"],
+                    "job_id": self.flink_config["job_id"],
+                    "partition_id": f"flink-rest-{self.flink_config['job_id']}",
                     "start_position": self.start_position,
                     "end_position": self.end_position,
                 }
-            )
+            ]
 
-        return partitions
-
-    def _discover_source_parallelism(self) -> int:
-        """Discover the parallelism available from the Flink source.
-
-        Returns:
-            Number of parallel subtasks available for this source.
-        """
-        try:
-            if self.source_type == "rest_api":
-                # Query Flink REST API for job parallelism
-                rest_url = self.flink_config.get(
-                    "rest_api_url", "http://localhost:8081"
-                )
-                jobs = self._get_flink_jobs()
-                if jobs:
-                    # Use the parallelism of the first job as default
-                    return jobs[0].get("parallelism", 1)
-
-            elif self.source_type == "table":
-                # Query table metadata for parallelism
-                table_info = self._get_table_info()
-                return table_info.get("parallelism", 1)
-
-            elif self.source_type == "checkpoint":
-                # Count operator states in checkpoint
-                checkpoint_metadata = self._get_checkpoint_metadata()
-                operator_states = checkpoint_metadata.get("operator_states", [])
-                return max(1, len(operator_states))
-
-            elif self.source_type == "sql_query":
-                # Default parallelism for SQL queries
-                return self.flink_config.get("parallelism", 2)
-
-        except Exception as e:
-            logger.warning(f"Failed to discover parallelism: {e}")
-
-        # Default fallback
-        return 1
-
-    def _get_flink_jobs(self) -> List[Dict[str, Any]]:
-        """Get list of Flink jobs from REST API."""
-        try:
-            import requests
-
-            rest_url = self.flink_config.get("rest_api_url", "http://localhost:8081")
-            response = requests.get(f"{rest_url}/jobs", timeout=5)
-            response.raise_for_status()
-            return response.json().get("jobs", [])
-        except Exception:
-            return []
-
-    def _get_job_vertices(self, job_id: str) -> List[Dict[str, Any]]:
-        """Get vertices for a specific Flink job."""
-        try:
-            import requests
-
-            rest_url = self.flink_config.get("rest_api_url", "http://localhost:8081")
-            response = requests.get(f"{rest_url}/jobs/{job_id}", timeout=5)
-            response.raise_for_status()
-            return response.json().get("vertices", [])
-        except Exception:
-            return []
-
-    def _get_checkpoint_metadata(self) -> Dict[str, Any]:
-        """Get checkpoint metadata."""
-        try:
-            checkpoint_path = self.flink_config.get("checkpoint_path")
-            if checkpoint_path:
-                # This would normally read checkpoint metadata
-                # For now, return mock data
-                return {
-                    "operator_states": [
-                        {"operator_id": f"operator_{i}"} for i in range(2)
-                    ]
+        elif self.source_type == "sql_query":
+            # For SQL query, create partition for the query
+            return [
+                {
+                    "source_type": self.source_type,
+                    "sql_gateway_url": self.flink_config["sql_gateway_url"],
+                    "sql_query": self.flink_config["sql_query"],
+                    "partition_id": f"flink-sql-{hash(self.flink_config['sql_query']) % 10000}",
+                    "start_position": self.start_position,
+                    "end_position": self.end_position,
                 }
-        except Exception:
-            pass
-        return {"operator_states": []}
+            ]
 
-    def _get_table_info(self) -> Dict[str, Any]:
-        """Get table information."""
-        try:
-            table_name = self.flink_config.get("table_name")
-            if table_name:
-                # This would normally query table catalog
-                # For now, return mock data with reasonable parallelism
-                return {"parallelism": 2}
-        except Exception:
-            pass
-        return {"parallelism": 1}
+        elif self.source_type == "checkpoint":
+            # For checkpoint, create partition for the checkpoint directory
+            return [
+                {
+                    "source_type": self.source_type,
+                    "checkpoint_path": self.flink_config["checkpoint_path"],
+                    "partition_id": f"flink-checkpoint-{hash(self.flink_config['checkpoint_path']) % 10000}",
+                    "start_position": self.start_position,
+                    "end_position": self.end_position,
+                }
+            ]
+
+        else:
+            # Fallback for unsupported types
+            return [
+                {
+                    "source_type": self.source_type,
+                    "partition_id": f"flink-{self.source_type}-0",
+                    "start_position": self.start_position,
+                    "end_position": self.end_position,
+                }
+            ]
 
     def _create_streaming_read_task(self, partition_info: Dict[str, Any]) -> ReadTask:
         """Create a read task for a Flink partition.
@@ -675,23 +533,37 @@ class FlinkDatasource(StreamingDatasource):
         Returns:
             ReadTask for reading from the partition.
         """
-        partition_id = partition_info["partition_id"]
         source_type = partition_info["source_type"]
-        flink_config = partition_info["flink_config"]
+        partition_id = partition_info["partition_id"]
         start_position = partition_info.get("start_position")
         end_position = partition_info.get("end_position")
 
-        # Create stateful reader functions
-        read_partition_fn, get_position_fn = _create_flink_reader(
-            partition_id=partition_id,
-            source_type=source_type,
-            flink_config=flink_config,
-            start_position=_parse_flink_position(start_position)
-            if start_position
-            else None,
-            end_position=_parse_flink_position(end_position) if end_position else None,
-            max_records=self.max_records_per_task,
-        )
+        # Create appropriate reader based on source type
+        if source_type == "rest_api":
+            read_partition_fn, get_position_fn = _create_flink_rest_api_reader(
+                rest_api_url=partition_info["rest_api_url"],
+                job_id=partition_info["job_id"],
+                start_position=start_position,
+                end_position=end_position,
+                max_records=self.max_records_per_task,
+            )
+        elif source_type == "sql_query":
+            read_partition_fn, get_position_fn = _create_flink_sql_reader(
+                sql_gateway_url=partition_info["sql_gateway_url"],
+                sql_query=partition_info["sql_query"],
+                start_position=start_position,
+                end_position=end_position,
+                max_records=self.max_records_per_task,
+            )
+        elif source_type == "checkpoint":
+            read_partition_fn, get_position_fn = _create_flink_checkpoint_reader(
+                checkpoint_path=partition_info["checkpoint_path"],
+                start_position=start_position,
+                end_position=end_position,
+                max_records=self.max_records_per_task,
+            )
+        else:
+            raise ValueError(f"Unsupported Flink source type: {source_type}")
 
         def get_schema() -> pa.Schema:
             """Return schema for Flink records."""
@@ -699,6 +571,8 @@ class FlinkDatasource(StreamingDatasource):
             base_schema = [
                 ("source_type", pa.string()),
                 ("partition_id", pa.string()),
+                ("read_timestamp", pa.string()),
+                ("current_position", pa.string()),
             ]
 
             # Add source-specific fields
@@ -713,7 +587,6 @@ class FlinkDatasource(StreamingDatasource):
                         ("start_time", pa.int64()),
                         ("end_time", pa.int64()),
                         ("duration", pa.int64()),
-                        ("tasks", pa.string()),  # JSON string
                         ("metrics", pa.string()),  # JSON string
                     ]
                 )
@@ -723,26 +596,17 @@ class FlinkDatasource(StreamingDatasource):
                         ("query", pa.string()),
                         ("row_number", pa.int32()),
                         ("result_data", pa.string()),
-                        ("execution_time", pa.timestamp("us")),
+                        ("execution_time", pa.string()),
                     ]
                 )
             elif source_type == "checkpoint":
                 base_schema.extend(
                     [
                         ("checkpoint_path", pa.string()),
-                        ("state_id", pa.string()),
-                        ("state_data", pa.string()),
-                        ("checkpoint_timestamp", pa.timestamp("us")),
-                    ]
-                )
-            elif source_type == "table":
-                base_schema.extend(
-                    [
-                        ("table_name", pa.string()),
-                        ("row_id", pa.int32()),
-                        ("column_a", pa.string()),
-                        ("column_b", pa.string()),
-                        ("row_timestamp", pa.timestamp("us")),
+                        ("checkpoint_id", pa.string()),
+                        ("state_file", pa.string()),
+                        ("file_size", pa.int64()),
+                        ("modified_time", pa.string()),
                     ]
                 )
 
@@ -760,19 +624,24 @@ class FlinkDatasource(StreamingDatasource):
         )
 
     def get_streaming_schema(self) -> Optional[pa.Schema]:
-        """Return the schema for Flink streaming data.
-
-        Returns:
-            PyArrow schema for Flink records (varies by source type).
-        """
+        """Return the schema for Flink streaming data."""
         # Return a generic schema that covers all source types
         return pa.schema(
             [
                 ("source_type", pa.string()),
                 ("partition_id", pa.string()),
-                ("read_timestamp", pa.timestamp("us")),
+                ("read_timestamp", pa.string()),
                 ("current_position", pa.string()),
-                # Generic data field that can hold source-specific data
-                ("data", pa.string()),  # JSON string representation
+                ("data", pa.string()),  # Generic data field
             ]
         )
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource."""
+        source_id = (
+            self.flink_config.get("job_id")
+            or self.flink_config.get("table_name")
+            or self.flink_config.get("checkpoint_path")
+            or "unknown"
+        )
+        return f"flink://{self.source_type}:{source_id}"

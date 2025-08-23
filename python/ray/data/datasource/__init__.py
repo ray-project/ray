@@ -1,3 +1,6 @@
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
 from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
@@ -11,12 +14,6 @@ from ray.data.datasource.datasource import (
     RandomIntRowDatasource,
     Reader,
     ReadTask,
-)
-from ray.data.datasource.streaming_datasource import (
-    StreamingDatasource,
-    StreamingMetrics,
-    StreamingPosition,
-    create_streaming_read_task,
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -40,6 +37,12 @@ from ray.data.datasource.partitioning import (
     PartitionStyle,
     PathPartitionFilter,
     PathPartitionParser,
+)
+from ray.data.datasource.streaming_datasource import (
+    StreamingDatasource,
+    StreamingMetrics,
+    StreamingPosition,
+    create_streaming_read_task,
 )
 
 # Note: HuggingFaceDatasource should NOT be imported here, because

@@ -1,5 +1,5 @@
+import json
 import logging
-from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pyarrow as pa
@@ -45,6 +45,8 @@ def _create_kafka_reader(
     max_records: Optional[int] = None,
     batch_timeout_ms: int = 1000,
     fetch_max_wait_ms: int = 500,
+    enable_auto_commit: bool = False,
+    auto_offset_reset: str = "earliest",
 ) -> tuple[callable, callable]:
     """Create a Kafka reader function with encapsulated state.
 
@@ -60,6 +62,8 @@ def _create_kafka_reader(
         max_records: Maximum records to read per call.
         batch_timeout_ms: Timeout for batch polling in milliseconds.
         fetch_max_wait_ms: Maximum wait time for batching in milliseconds.
+        enable_auto_commit: Whether to enable auto-commit of offsets.
+        auto_offset_reset: What to do when there is no initial offset.
 
     Returns:
         Tuple of (read_function, get_position_function).
@@ -72,20 +76,44 @@ def _create_kafka_reader(
             read_fn, get_pos_fn = _create_kafka_reader(
                 topic="my-topic",
                 partition=0,
-                kafka_config={"bootstrap.servers": "localhost:9092"},
+                kafka_config={"bootstrap_servers": "localhost:9092"},
                 start_offset=1000,
                 max_records=100
             )
     """
     _check_import(module="kafka", package="kafka-python")
     from kafka import KafkaConsumer, TopicPartition
-    from kafka.errors import KafkaError
+    from kafka.errors import KafkaError, KafkaTimeoutError
 
     # State variables encapsulated in closure
     current_offset = start_offset
     consumer = None
     topic_partition = TopicPartition(topic, partition)
     metrics = StreamingMetrics()
+
+    # Enhanced security and performance defaults
+    enhanced_config = {
+        # Security defaults
+        "security_protocol": "PLAINTEXT",  # Can be overridden
+        "sasl_mechanism": "PLAIN",  # Can be overridden
+        "ssl_check_hostname": True,
+        "ssl_cafile": None,  # Can be overridden
+        # Performance defaults
+        "fetch_max_bytes": 52428800,  # 50MB
+        "fetch_min_bytes": 1,
+        "fetch_max_wait_ms": fetch_max_wait_ms,
+        "max_partition_fetch_bytes": 1048576,  # 1MB
+        "receive_buffer_bytes": 32768,
+        "send_buffer_bytes": 131072,
+        # Reliability defaults
+        "enable_auto_commit": enable_auto_commit,
+        "auto_offset_reset": auto_offset_reset,
+        "session_timeout_ms": 30000,
+        "heartbeat_interval_ms": 3000,
+        "max_poll_interval_ms": 300000,
+        # Override with user config
+        **kafka_config,
+    }
 
     # Initialize max_records with default if not provided
     if max_records is None:
@@ -98,96 +126,109 @@ def _create_kafka_reader(
         try:
             # Initialize consumer if needed
             if consumer is None:
-                # Optimize Kafka consumer configuration for streaming performance
-                optimized_config = kafka_config.copy()
-
-                # Performance optimizations
-                optimized_config.update({
-                    "enable_auto_commit": False,  # Manual offset management
-                    "fetch.min.bytes": 1,  # Fetch even small batches
-                    "fetch.max.wait.ms": fetch_max_wait_ms,  # Wait for batching
-                    "max.partition.fetch.bytes": 1048576,  # 1MB per partition
-                    "receive.buffer.bytes": 32768,  # 32KB receive buffer
-                    "max.poll.records": 1000,  # Default batch size
-                    "max.poll.interval.ms": 300000,  # 5 min poll interval
-                })
-
                 consumer = KafkaConsumer(
-                    **optimized_config,
+                    **enhanced_config,
                     value_deserializer=lambda x: x.decode("utf-8") if x else None,
                     key_deserializer=lambda x: x.decode("utf-8") if x else None,
                 )
-
-                # Assign specific partition
                 consumer.assign([topic_partition])
 
-                # Seek to starting position
-                if current_offset is not None:
-                    consumer.seek(topic_partition, current_offset)
-                else:
-                    # Default to latest
-                    consumer.seek_to_end(topic_partition)
-
-            # Poll for records with optimized batching
-            # Use fetch.max.wait.ms for better batching efficiency
-            message_batch = consumer.poll(
-                timeout_ms=batch_timeout_ms,
-                max_records=max_records
-            )
-
-            if topic_partition in message_batch:
-                for message in message_batch[topic_partition]:
-                    # Check if we've reached the end offset
-                    if end_offset is not None and message.offset >= end_offset:
-                        logger.info(
-                            f"Reached end offset {end_offset} for {topic}:{partition}"
-                        )
-                        return  # Stop reading
-
-                    # Update current position
-                    current_offset = message.offset + 1  # Next offset to read
-
-                    # Convert Kafka message to dict
-                    record_dict = {
-                        "topic": message.topic,
-                        "partition": message.partition,
-                        "offset": message.offset,
-                        "key": message.key,
-                        "value": message.value,
-                        "timestamp": datetime.fromtimestamp(message.timestamp / 1000.0)
-                        if message.timestamp
-                        else datetime.now(),
-                        "timestamp_type": message.timestamp_type,
-                        "headers": dict(message.headers) if message.headers else {},
-                    }
-
-                    # Track metrics
-                    value_size = (
-                        len(message.value.encode("utf-8")) if message.value else 0
+                # Seek to start position if specified
+                if start_offset is not None:
+                    consumer.seek(topic_partition, start_offset)
+                    current_offset = start_offset
+                    logger.info(
+                        f"Seeking to offset {start_offset} for partition {partition}"
                     )
-                    key_size = len(message.key.encode("utf-8")) if message.key else 0
-                    metrics.record_read(1, value_size + key_size)
 
-                    yield record_dict
+            records_read = 0
 
-        except KafkaError as e:
-            logger.error(f"Kafka error reading from {topic}:{partition}: {e}")
-            metrics.record_error()
-            # Don't yield anything on error, let the retry logic handle it
+            # Poll for messages with timeout
+            while records_read < max_records:
+                try:
+                    # Poll with timeout for better performance
+                    message_batch = consumer.poll(
+                        timeout_ms=batch_timeout_ms,
+                        max_records=max_records - records_read,
+                    )
+
+                    if not message_batch:
+                        # No messages available, yield control
+                        break
+
+                    # Process messages from this partition
+                    partition_messages = message_batch.get(topic_partition, [])
+
+                    for message in partition_messages:
+                        if records_read >= max_records:
+                            break
+
+                        # Check if we've reached the end offset
+                        if end_offset is not None and message.offset >= end_offset:
+                            logger.info(
+                                f"Reached end offset {end_offset} for partition {partition}"
+                            )
+                            return
+
+                        # Create record with enhanced metadata
+                        record = {
+                            "topic": topic,
+                            "partition": partition,
+                            "offset": message.offset,
+                            "key": message.key,
+                            "value": message.value,
+                            "timestamp": message.timestamp,
+                            "timestamp_type": message.timestamp_type,
+                            "headers": (
+                                json.dumps(
+                                    [
+                                        (
+                                            h[0].decode("utf-8") if h[0] else None,
+                                            h[1].decode("utf-8") if h[1] else None,
+                                        )
+                                        for h in message.headers
+                                    ]
+                                )
+                                if message.headers
+                                else "[]"
+                            ),
+                        }
+
+                        # Update current position
+                        current_offset = message.offset
+
+                        # Record metrics
+                        metrics.record_read(1, len(str(record)))
+                        records_read += 1
+
+                        yield record
+
+                except KafkaTimeoutError:
+                    # Timeout is expected, continue
+                    break
+                except KafkaError as e:
+                    logger.error(f"Kafka error reading from partition {partition}: {e}")
+                    metrics.record_error()
+                    raise
 
         except Exception as e:
-            logger.error(f"Unexpected error in Kafka reader: {e}")
+            logger.error(f"Error reading from Kafka partition {partition}: {e}")
             metrics.record_error()
             raise
         finally:
-            # Note: Don't close consumer here as it will be reused across calls
-            pass
+            # Clean up consumer if we're done
+            if consumer and (end_offset is not None and current_offset >= end_offset):
+                try:
+                    consumer.close()
+                    consumer = None
+                except Exception as e:
+                    logger.warning(f"Error closing Kafka consumer: {e}")
 
-    def get_current_position() -> str:
-        """Get current offset position."""
-        return f"offset:{current_offset if current_offset is not None else 'latest'}"
+    def get_position() -> str:
+        """Get current position as offset string."""
+        return f"offset:{current_offset}" if current_offset is not None else "offset:0"
 
-    return read_partition, get_current_position
+    return read_partition, get_position
 
 
 @PublicAPI(stability="alpha")
@@ -211,7 +252,7 @@ class KafkaDatasource(StreamingDatasource):
             ds = ray.data.read_kafka(
                 topics=["my-topic"],
                 kafka_config={
-                    "bootstrap.servers": "localhost:9092"
+                    "bootstrap_servers": "localhost:9092"
                 }
             )
 
@@ -230,7 +271,7 @@ class KafkaDatasource(StreamingDatasource):
             ds = ray.data.read_kafka(
                 topics=["events", "metrics"],
                 kafka_config={
-                    "bootstrap.servers": "kafka1:9092,kafka2:9092",
+                    "bootstrap_servers": "kafka1:9092,kafka2:9092",
                     "group.id": "ray-consumer-group",
                     "security.protocol": "SSL"
                 },
@@ -252,7 +293,7 @@ class KafkaDatasource(StreamingDatasource):
 
         Args:
             topics: Kafka topic(s) to read from. Can be string or list of strings.
-            kafka_config: Kafka consumer configuration (bootstrap.servers, etc.).
+            kafka_config: Kafka consumer configuration (bootstrap_servers, etc.).
             max_records_per_task: Maximum records per partition per task per batch.
             start_offset: Starting offset for reading.
             end_offset: Ending offset for reading.
@@ -266,7 +307,7 @@ class KafkaDatasource(StreamingDatasource):
             "topics": self.topics,
             "kafka_config": self.kafka_config,
             "source_identifier": (
-                f"kafka://{kafka_config.get('bootstrap.servers', 'unknown')}/"
+                f"kafka://{kafka_config.get('bootstrap_servers', 'unknown')}/"
                 f"{','.join(self.topics)}"
             ),
         }
@@ -377,7 +418,47 @@ class KafkaDatasource(StreamingDatasource):
         )
 
         def get_schema() -> pa.Schema:
-            """Return schema for Kafka records."""
+            """Return schema for Kafka records with optional dynamic inference.
+
+            This provides a balance between functionality and maintainability by
+            attempting to infer schema from data when possible, with a reliable
+            fallback to the standard schema.
+            """
+            try:
+                # Try to get a sample record for schema inference
+                sample_reader = read_partition_fn()
+                sample_record = None
+
+                # Get just one sample record for efficiency
+                for record in sample_reader:
+                    sample_record = record
+                    break
+
+                if sample_record:
+                    # Use PyArrow's schema inference on the sample
+                    inferred_schema = pa.infer_schema([sample_record])
+
+                    # Ensure we have the required streaming fields
+                    required_fields = {
+                        "partition_id": pa.string(),
+                        "read_timestamp": pa.string(),
+                        "current_position": pa.string(),
+                    }
+
+                    # Merge inferred schema with required fields
+                    final_fields = list(inferred_schema)
+                    existing_names = {field.name for field in final_fields}
+
+                    for name, field_type in required_fields.items():
+                        if name not in existing_names:
+                            final_fields.append(pa.field(name, field_type))
+
+                    return pa.schema(final_fields)
+
+            except Exception as e:
+                logger.debug(f"Schema inference failed, using standard schema: {e}")
+
+            # Standard schema fallback
             return pa.schema(
                 [
                     ("topic", pa.string()),
@@ -386,8 +467,9 @@ class KafkaDatasource(StreamingDatasource):
                     ("key", pa.string()),
                     ("value", pa.string()),
                     ("timestamp", pa.timestamp("us")),
-                    ("timestamp_type", pa.int32()),
-                    ("headers", pa.string()),  # JSON string representation
+                    ("partition_id", pa.string()),
+                    ("read_timestamp", pa.string()),
+                    ("current_position", pa.string()),
                 ]
             )
 

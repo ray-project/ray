@@ -86,6 +86,7 @@ class StreamingDatasource(Datasource, ABC):
         """
         # Get current Ray Data context for proper integration
         from ray.data.context import DataContext
+
         self._data_context = DataContext.get_current()
 
         # Use context defaults if not specified
@@ -164,8 +165,9 @@ class StreamingDatasource(Datasource, ABC):
                 )
             else:
                 selected_partitions = partitions
-                logger.info(f"Using all {len(selected_partitions)} available "
-                           f"partitions")
+                logger.info(
+                    f"Using all {len(selected_partitions)} available " f"partitions"
+                )
 
             # Create read tasks
             read_tasks = []
@@ -205,7 +207,7 @@ class StreamingDatasource(Datasource, ABC):
             schema = self.get_streaming_schema()
 
             # Validate schema consistency for streaming operations
-            if hasattr(self, '_last_schema') and self._last_schema is not None:
+            if hasattr(self, "_last_schema") and self._last_schema is not None:
                 if not self._schemas_compatible(self._last_schema, schema):
                     logger.warning(
                         "Schema evolution detected - schema has changed from "
@@ -364,6 +366,7 @@ def create_streaming_read_task(
         """Read function that converts source records to blocks."""
         # Get Ray Data context for retry configuration
         from ray.data.context import DataContext
+
         data_context = DataContext.get_current()
         max_retries = data_context.streaming_max_retries
         retry_delay = data_context.streaming_retry_delay
@@ -432,6 +435,7 @@ def create_streaming_read_task(
                         f"{error_context}"
                     )
                     import time
+
                     time.sleep(retry_delay)
                     continue
                 else:
@@ -443,9 +447,7 @@ def create_streaming_read_task(
 
     # Create metadata for this task
     # For streaming, we can estimate records per task
-    estimated_rows = (
-        max_records if max_records is not None and max_records > 0 else None
-    )
+    estimated_rows = max_records if max_records is not None else None
 
     # Provide source identifier for tracking
     input_source = streaming_config.get("source_identifier", partition_id)
@@ -537,8 +539,9 @@ class StreamingPosition:
                 f"{self.position_type} vs {other.position_type}"
             )
 
-        if (isinstance(self.value, (int, float)) and
-            isinstance(other.value, (int, float))):
+        if isinstance(self.value, (int, float)) and isinstance(
+            other.value, (int, float)
+        ):
             return self.value < other.value
         elif isinstance(self.value, datetime) and isinstance(other.value, datetime):
             return self.value < other.value
@@ -584,8 +587,9 @@ class StreamingPosition:
         return {
             "value": self.value,
             "position_type": self.position_type,
-            "timestamp": (self.timestamp.isoformat()
-                         if hasattr(self, 'timestamp') else None)
+            "timestamp": (
+                self.timestamp.isoformat() if hasattr(self, "timestamp") else None
+            ),
         }
 
     @classmethod
@@ -601,6 +605,7 @@ class StreamingPosition:
         position = cls(data["value"], data["position_type"])
         if "timestamp" in data and data["timestamp"]:
             from datetime import datetime
+
             position.timestamp = datetime.fromisoformat(data["timestamp"])
         return position
 
@@ -623,8 +628,8 @@ class StreamingPosition:
                 return StreamingPosition(self.value + increment, self.position_type)
             else:
                 raise ValueError(
-                "Timestamp positions can only be advanced by timedelta"
-            )
+                    "Timestamp positions can only be advanced by timedelta"
+                )
         elif self.position_type == "sequence" and isinstance(self.value, int):
             return StreamingPosition(self.value + increment, self.position_type)
         else:
@@ -722,18 +727,23 @@ class StreamingMetrics:
         stats = self.get_throughput()
 
         if self._batch_sizes:
-            stats.update({
-                "avg_batch_size": sum(self._batch_sizes) / len(self._batch_sizes),
-                "max_batch_size": max(self._batch_sizes),
-                "min_batch_size": min(self._batch_sizes),
-            })
+            stats.update(
+                {
+                    "avg_batch_size": sum(self._batch_sizes) / len(self._batch_sizes),
+                    "max_batch_size": max(self._batch_sizes),
+                    "min_batch_size": min(self._batch_sizes),
+                }
+            )
 
         if self._read_latencies:
-            stats.update({
-                "avg_latency_ms": sum(self._read_latencies) / len(self._read_latencies),
-                "max_latency_ms": max(self._read_latencies),
-                "min_latency_ms": min(self._read_latencies),
-            })
+            stats.update(
+                {
+                    "avg_latency_ms": sum(self._read_latencies)
+                    / len(self._read_latencies),
+                    "max_latency_ms": max(self._read_latencies),
+                    "min_latency_ms": min(self._read_latencies),
+                }
+            )
 
         return stats
 
@@ -751,7 +761,7 @@ class StreamingMetrics:
             self._partition_metrics[partition_id] = {
                 "records_read": 0,
                 "bytes_read": 0,
-                "last_read_time": None
+                "last_read_time": None,
             }
 
         self._partition_metrics[partition_id]["records_read"] += record_count
@@ -759,8 +769,10 @@ class StreamingMetrics:
         self._partition_metrics[partition_id]["last_read_time"] = datetime.now()
 
     def record_error_detail(
-        self, error: Exception, partition_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        self,
+        error: Exception,
+        partition_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Record detailed error information for debugging.
 
@@ -774,7 +786,7 @@ class StreamingMetrics:
             "error_type": type(error).__name__,
             "error_message": str(error),
             "partition_id": partition_id,
-            "context": context or {}
+            "context": context or {},
         }
         self._error_details.append(error_detail)
 
@@ -808,7 +820,7 @@ class StreamingMetrics:
             "total_errors": len(self._error_details),
             "error_types": error_types,
             "recent_errors": self._error_details[-10:],  # Last 10 errors
-            "error_rate": self.read_errors / max(1, self.records_read)
+            "error_rate": self.read_errors / max(1, self.records_read),
         }
 
     def get_comprehensive_stats(self) -> Dict[str, Any]:
@@ -822,16 +834,20 @@ class StreamingMetrics:
         stats.update(self.get_partition_metrics())
 
         # Add operational metrics
-        if hasattr(self, 'start_time'):
+        if hasattr(self, "start_time"):
             uptime = (datetime.now() - self.start_time).total_seconds()
-            stats.update({
-                "uptime_seconds": uptime,
-                "uptime_hours": uptime / 3600,
-                "records_per_hour": (self.records_read / uptime * 3600)
-                if uptime > 0 else 0,
-                "bytes_per_hour": (self.bytes_read / uptime * 3600)
-                if uptime > 0 else 0,
-            })
+            stats.update(
+                {
+                    "uptime_seconds": uptime,
+                    "uptime_hours": uptime / 3600,
+                    "records_per_hour": (
+                        (self.records_read / uptime * 3600) if uptime > 0 else 0
+                    ),
+                    "bytes_per_hour": (
+                        (self.bytes_read / uptime * 3600) if uptime > 0 else 0
+                    ),
+                }
+            )
 
         # Add health indicators
         if self.records_read > 0:
@@ -861,20 +877,20 @@ class StreamingMetrics:
             return self.get_comprehensive_stats()
         elif format == "json":
             import json
+
             return json.dumps(self.get_comprehensive_stats(), default=str)
         elif format == "prometheus":
             return self._to_prometheus_format()
         else:
             raise ValueError(
-                f"Unsupported format: {format}. "
-                f"Supported: dict, json, prometheus"
+                f"Unsupported format: {format}. " f"Supported: dict, json, prometheus"
             )
 
     def _to_prometheus_format(self) -> str:
         """Convert metrics to Prometheus format for monitoring systems."""
         lines = []
 
-                # Basic metrics
+        # Basic metrics
         lines.append("# HELP ray_streaming_records_read Total records read")
         lines.append("# TYPE ray_streaming_records_read counter")
         lines.append(f"ray_streaming_records_read {self.records_read}")
