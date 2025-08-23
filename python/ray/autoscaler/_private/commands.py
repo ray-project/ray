@@ -824,8 +824,8 @@ def get_or_create_head_node(
 
         # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
         # to avoid accidentally enabling autoscaler v2 for ray up
-        # due to env inheritance.
-        if os.getenv("RAY_UP_enable_autoscaler_v2", "0") == "1":
+        # due to env inheritance. The default value is 1 since Ray 2.50.0.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "1") == "1":
             ray_start_commands = with_envs(
                 ray_start_commands,
                 {
