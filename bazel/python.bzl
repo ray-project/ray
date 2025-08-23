@@ -17,6 +17,24 @@ def _convert_target_to_import_path(t):
     # 3) Replace '/' with '.' to form an import path.
     return t.replace("/", ".")
 
+def doctest_each(files, gpu = False, deps=[], srcs=[], data=[], args=[], size="medium", tags=[], pytest_plugin_file="//bazel:default_doctest_pytest_plugin.py", **kwargs):
+    # Unlike the `doctest` macro, `doctest_each` runs `pytest` on each file separately.
+    # This is useful to run tests in parallel and more clearly report the test results.
+    for file in files:
+        doctest(
+            files = [file],
+            gpu = gpu,
+            name = paths.split_extension(file)[0],
+            deps = deps,
+            srcs = srcs,
+            data = data,
+            args = args,
+            size = size,
+            tags = tags,
+            pytest_plugin_file = pytest_plugin_file,
+            **kwargs
+        )
+
 def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], pytest_plugin_file="//bazel:default_doctest_pytest_plugin.py", **kwargs):
     # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
     # package. We don't want that, so we exclude it from the list of input files.
