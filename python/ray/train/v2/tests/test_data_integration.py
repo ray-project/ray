@@ -36,8 +36,6 @@ def test_e2e_single_dataset(ray_start_4_cpus, restore_data_context):  # noqa: F8
         data_context = DataContext.get_current()
         assert data_context.get_config("foo") == "bar"
 
-        ray.train.get_dataset_shard("val")
-
         try:
             ray.train.get_dataset_shard("val")
             assert False, "Should raise an error if the dataset is not found"
