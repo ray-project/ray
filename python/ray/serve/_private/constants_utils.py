@@ -47,13 +47,38 @@ def parse_latency_buckets(bucket_str: str, default_buckets: List[float]) -> List
 
 T = TypeVar("T")
 
+# todo: remove for the '3.0.0' release.
+_wrong_names_white_set = {
+    "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
+    "MAX_PER_REPLICA_RETRY_COUNT",
+    "REQUEST_LATENCY_BUCKETS_MS",
+    "MODEL_LOAD_LATENCY_BUCKETS_MS",
+    "MAX_CACHED_HANDLES",
+    "CONTROLLER_MAX_CONCURRENCY",
+    "SERVE_REQUEST_PROCESSING_TIMEOUT_S",
+}
+
+
+def _validate_name(name: str) -> None:
+    """Validate Ray Serve environment variable name."""
+    required_prefix = "RAY_SERVE_"
+
+    if not name.startswith(required_prefix):
+        if name in _wrong_names_white_set:
+            return
+
+        raise ValueError(
+            f"Got unexpected environment variable name `{name}`! "
+            f"Ray Serve environment variables require prefix `{required_prefix}`. "
+        )
+
 
 def _get_env_value(
     name: str,
     default: Optional[T],
     value_type: Type[T],
     validation_func: Optional[Callable[[T], bool]] = None,
-    expected_value_description: str = None,
+    expected_value_description: Optional[str] = None,
 ) -> Optional[T]:
     """Get environment variable with type conversion and validation.
 
@@ -63,12 +88,13 @@ def _get_env_value(
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
-               If None, the function will return None without validation.
+            If None, the function will return None without validation.
         value_type: Type to convert the environment variable value to (e.g., int, float, str).
         validation_func: Optional function that takes the converted value and returns
-                       a boolean indicating whether the value is valid.
+            a boolean indicating whether the value is valid.
         expected_value_description: Description of the expected value characteristics
-                                 (e.g., "positive", "non negative") used in error messages.
+            (e.g., "positive", "non-negative") used in error messages.
+            Optional, expected only if validation_func is provided.
 
     Returns:
         The environment variable value converted to the specified type and validated,
@@ -76,11 +102,19 @@ def _get_env_value(
 
     Raises:
         ValueError: If the environment variable value cannot be converted to the specified
-            type, or if it fails the optional validation check.
+            type, or if it fails the optional validation check. Also, if name validation fails.
     """
-    raw = os.environ.get(name, default)
-    if raw is None:
-        return None
+    _validate_name(name)
+
+    explicitly_defined_value = os.environ.get(name)
+    if explicitly_defined_value is None:
+        if default is None:
+            return None
+        else:
+            raw = default
+    else:
+        _deprecation_warning(name)
+        raw = explicitly_defined_value
 
     try:
         value = value_type(raw)
@@ -194,7 +228,7 @@ def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[
     return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
 
 
-def get_env_str(name: str, default: Optional[str]) -> str:
+def get_env_str(name: str, default: Optional[str]) -> Optional[str]:
     """Get environment variable as a string.
 
     Args:
@@ -203,11 +237,12 @@ def get_env_str(name: str, default: Optional[str]) -> str:
 
     Returns:
         The environment variable value as a string.
+        Returns `None` if default is `None` and value not found.
     """
-    return os.environ.get(name, default)
+    return _get_env_value(name, default, str)
 
 
-def get_env_bool(name: str, default: Optional[str]) -> bool:
+def get_env_bool(name: str, default: str) -> bool:
     """Get environment variable as a boolean.
 
     Environment variable values of "1" are interpreted as True, all others as False.
@@ -215,11 +250,13 @@ def get_env_bool(name: str, default: Optional[str]) -> bool:
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
+            Expects "0" or "1".
 
     Returns:
         True if the environment variable value is "1", False otherwise.
     """
-    return os.environ.get(name, default) == "1"
+    env_value_str = _get_env_value(name, default, str)
+    return env_value_str == "1"
 
 
 def get_env_float_non_zero_with_warning(
@@ -233,7 +270,7 @@ def get_env_float_non_zero_with_warning(
     PROXY_MIN_DRAINING_PERIOD_S
     RAY_SERVE_KV_TIMEOUT_S
 
-    todo: replace this function with 'get_env_float_positive' for the '2.50.0' release.
+    TODO: replace this function with 'get_env_float_positive' for the '2.50.0' release.
     """
     removal_version = "2.50.0"
 
@@ -250,3 +287,33 @@ def get_env_float_non_zero_with_warning(
             stacklevel=2,
         )
     return backward_compatible_result
+
+
+def _deprecation_warning(name: str) -> None:
+    """Log replacement warning for wrong or legacy environment variables.
+
+    TODO: remove this function for the '3.0.0' release.
+
+    :param name: environment variable name
+    """
+    change_version = "3.0.0"
+    required_prefix = "RAY_SERVE_"
+
+    if name in _wrong_names_white_set:
+        warnings.warn(
+            f"Got unexpected environment variable name `{name}`! "
+            f"Starting from version `{change_version}`, all environments "
+            f"variables related to `Ray Serve` will require prefix `{required_prefix}`. "
+            f"Change the name to start with the `{required_prefix}` prefix.",
+            FutureWarning,
+            stacklevel=4,
+        )
+    elif name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S":
+        warnings.warn(
+            f"Got unexpected environment variable name `{name}`! "
+            f"Starting from version `{change_version}` environment variables "
+            f"`{name}` will be deprecated. "
+            f"Please use `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` instead.",
+            FutureWarning,
+            stacklevel=4,
+        )

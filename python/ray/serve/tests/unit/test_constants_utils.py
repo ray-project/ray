@@ -5,6 +5,7 @@ import pytest
 from testfixtures import mock
 
 from ray.serve._private.constants_utils import (
+    _validate_name,
     get_env_bool,
     get_env_float,
     get_env_float_non_negative,
@@ -97,128 +98,131 @@ def mock_environ():
 
 class TestEnvValueFunctions:
     def test_get_env_int(self, mock_environ):
-        assert get_env_int("TEST_VAR", 0) == 0
+        assert get_env_int("RAY_SERVE_TEST_VAR", 0) == 0
 
-        mock_environ["TEST_VAR"] = "42"
-        assert get_env_int("TEST_VAR", 0) == 42
+        mock_environ["RAY_SERVE_TEST_VAR"] = "42"
+        assert get_env_int("RAY_SERVE_TEST_VAR", 0) == 42
 
-        mock_environ["TEST_VAR"] = "-1"
-        assert get_env_int("TEST_VAR", 0) == -1
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1"
+        assert get_env_int("RAY_SERVE_TEST_VAR", 0) == -1
 
-        mock_environ["TEST_VAR"] = "0.1"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "0.1"
         with pytest.raises(ValueError, match=".*`0.1` cannot be converted to `int`!*"):
-            get_env_int_positive("TEST_VAR", 5)
+            get_env_int_positive("RAY_SERVE_TEST_VAR", 5)
 
-        mock_environ["TEST_VAR"] = "abc"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "abc"
         with pytest.raises(ValueError, match=".*`abc` cannot be converted to `int`!*"):
-            get_env_int_positive("TEST_VAR", 5)
+            get_env_int_positive("RAY_SERVE_TEST_VAR", 5)
+
+        with pytest.raises(ValueError, match=".*require prefix `RAY_SERVE_`*"):
+            get_env_int_positive("NO_PREFIX", 5)
 
     def test_get_env_int_positive(self, mock_environ):
-        assert get_env_int_positive("TEST_VAR", 1) == 1
+        assert get_env_int_positive("RAY_SERVE_TEST_VAR", 1) == 1
 
-        mock_environ["TEST_VAR"] = "42"
-        assert get_env_int_positive("TEST_VAR", 1) == 42
+        mock_environ["RAY_SERVE_TEST_VAR"] = "42"
+        assert get_env_int_positive("RAY_SERVE_TEST_VAR", 1) == 42
 
-        mock_environ["TEST_VAR"] = "-1"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1"
         with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
-            get_env_int_positive("TEST_VAR", 5)
+            get_env_int_positive("RAY_SERVE_TEST_VAR", 5)
 
     def test_get_env_int_non_negative(self, mock_environ):
-        assert get_env_int_non_negative("TEST_VAR", 0) == 0
-        assert get_env_int_non_negative("TEST_VAR", 1) == 1
+        assert get_env_int_non_negative("RAY_SERVE_TEST_VAR", 0) == 0
+        assert get_env_int_non_negative("RAY_SERVE_TEST_VAR", 1) == 1
 
-        mock_environ["TEST_VAR"] = "42"
-        assert get_env_int_non_negative("TEST_VAR", 0) == 42
+        mock_environ["RAY_SERVE_TEST_VAR"] = "42"
+        assert get_env_int_non_negative("RAY_SERVE_TEST_VAR", 0) == 42
 
-        mock_environ["TEST_VAR"] = "-1"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1"
         with pytest.raises(ValueError, match=".*Expected non negative `int`.*"):
-            get_env_int_non_negative("TEST_VAR", 5)
+            get_env_int_non_negative("RAY_SERVE_TEST_VAR", 5)
 
         with pytest.raises(ValueError, match=".*Expected non negative `int`.*"):
-            get_env_int_non_negative("TEST_VAR_FROM_DEFAULT", -1)
+            get_env_int_non_negative("RAY_SERVE_TEST_VAR_FROM_DEFAULT", -1)
 
     def test_get_env_float(self, mock_environ):
-        assert get_env_float("TEST_VAR", 0.0) == 0.0
+        assert get_env_float("RAY_SERVE_TEST_VAR", 0.0) == 0.0
 
-        mock_environ["TEST_VAR"] = "3.14"
-        assert get_env_float("TEST_VAR", 0.0) == 3.14
+        mock_environ["RAY_SERVE_TEST_VAR"] = "3.14"
+        assert get_env_float("RAY_SERVE_TEST_VAR", 0.0) == 3.14
 
-        mock_environ["TEST_VAR"] = "-2.5"
-        assert get_env_float("TEST_VAR", 0.0) == -2.5
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-2.5"
+        assert get_env_float("RAY_SERVE_TEST_VAR", 0.0) == -2.5
 
-        mock_environ["TEST_VAR"] = "abc"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "abc"
         with pytest.raises(
             ValueError, match=".*`abc` cannot be converted to `float`!*"
         ):
-            get_env_float("TEST_VAR", 0.0)
+            get_env_float("RAY_SERVE_TEST_VAR", 0.0)
 
     def test_get_env_float_positive(self, mock_environ):
-        assert get_env_float_positive("TEST_VAR", 1.5) == 1.5
-        assert get_env_float_positive("TEST_VAR", None) is None
+        assert get_env_float_positive("RAY_SERVE_TEST_VAR", 1.5) == 1.5
+        assert get_env_float_positive("RAY_SERVE_TEST_VAR", None) is None
 
-        mock_environ["TEST_VAR"] = "42.5"
-        assert get_env_float_positive("TEST_VAR", 1.0) == 42.5
+        mock_environ["RAY_SERVE_TEST_VAR"] = "42.5"
+        assert get_env_float_positive("RAY_SERVE_TEST_VAR", 1.0) == 42.5
 
-        mock_environ["TEST_VAR"] = "-1.2"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1.2"
         with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
-            get_env_float_positive("TEST_VAR", 5.0)
-
-        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
-            get_env_float_positive("TEST_VAR_FROM_DEFAULT", 0.0)
+            get_env_float_positive("RAY_SERVE_TEST_VAR", 5.0)
 
         with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
-            get_env_float_positive("TEST_VAR_FROM_DEFAULT", -1)
+            get_env_float_positive("RAY_SERVE_TEST_VAR_FROM_DEFAULT", 0.0)
+
+        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
+            get_env_float_positive("RAY_SERVE_TEST_VAR_FROM_DEFAULT", -1)
 
     def test_get_env_float_non_negative(self, mock_environ):
-        assert get_env_float_non_negative("TEST_VAR", 0.0) == 0.0
-        assert get_env_float_non_negative("TEST_VAR", 1.5) == 1.5
+        assert get_env_float_non_negative("RAY_SERVE_TEST_VAR", 0.0) == 0.0
+        assert get_env_float_non_negative("RAY_SERVE_TEST_VAR", 1.5) == 1.5
 
-        mock_environ["TEST_VAR"] = "42.5"
-        assert get_env_float_non_negative("TEST_VAR", 0.0) == 42.5
+        mock_environ["RAY_SERVE_TEST_VAR"] = "42.5"
+        assert get_env_float_non_negative("RAY_SERVE_TEST_VAR", 0.0) == 42.5
 
-        mock_environ["TEST_VAR"] = "-1.2"
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1.2"
         with pytest.raises(ValueError, match=".*Expected non negative `float`.*"):
-            get_env_float_non_negative("TEST_VAR", 5.0)
+            get_env_float_non_negative("RAY_SERVE_TEST_VAR", 5.0)
 
     def test_get_env_str(self, mock_environ):
-        mock_environ["TEST_STR"] = "hello"
-        assert get_env_str("TEST_STR", "default") == "hello"
+        mock_environ["RAY_SERVE_TEST_STR"] = "hello"
+        assert get_env_str("RAY_SERVE_TEST_STR", "default") == "hello"
 
-        assert get_env_str("NONEXISTENT_VAR", "default_str") == "default_str"
+        assert get_env_str("RAY_SERVE_NONEXISTENT_VAR", "default_str") == "default_str"
 
-        assert get_env_str("NONEXISTENT_VAR", None) is None
+        assert get_env_str("RAY_SERVE_NONEXISTENT_VAR", None) is None
 
     def test_get_env_bool(self, mock_environ):
-        mock_environ["TEST_BOOL_TRUE"] = "1"
-        assert get_env_bool("TEST_BOOL_TRUE", "0") is True
+        mock_environ["RAY_SERVE_TEST_BOOL_TRUE"] = "1"
+        assert get_env_bool("RAY_SERVE_TEST_BOOL_TRUE", "0") is True
 
         # Test with any other value (False)
-        mock_environ["TEST_BOOL_FALSE"] = "true"
-        assert get_env_bool("TEST_BOOL_FALSE", "0") is False
-        mock_environ["TEST_BOOL_FALSE2"] = "yes"
-        assert get_env_bool("TEST_BOOL_FALSE2", "0") is False
+        mock_environ["RAY_SERVE_TEST_BOOL_FALSE"] = "true"
+        assert get_env_bool("RAY_SERVE_TEST_BOOL_FALSE", "0") is False
+        mock_environ["RAY_SERVE_TEST_BOOL_FALSE2"] = "yes"
+        assert get_env_bool("RAY_SERVE_TEST_BOOL_FALSE2", "0") is False
 
         # Test with default when environment variable not set
-        assert get_env_bool("NONEXISTENT_VAR", "1") is True
-        assert get_env_bool("NONEXISTENT_VAR", "0") is False
+        assert get_env_bool("RAY_SERVE_NONEXISTENT_VAR", "1") is True
+        assert get_env_bool("RAY_SERVE_NONEXISTENT_VAR", "0") is False
 
 
 class TestDeprecationFunctions:
     def test_current_behavior(self, mock_environ):
-        mock_environ["OLD_VAR_NEG"] = "-1"
-        assert get_env_float("OLD_VAR_NEG", 10.0) or 10.0 == -1.0
-        assert (get_env_float("OLD_VAR_NEG", 0.0) or None) == -1.0
+        mock_environ["RAY_SERVE_OLD_VAR_NEG"] = "-1"
+        assert get_env_float("RAY_SERVE_OLD_VAR_NEG", 10.0) or 10.0 == -1.0
+        assert (get_env_float("RAY_SERVE_OLD_VAR_NEG", 0.0) or None) == -1.0
 
-        mock_environ["OLD_VAR_ZERO"] = "0"
-        assert get_env_float("OLD_VAR_ZERO", 10.0) or 10.0 == 10.0
+        mock_environ["RAY_SERVE_OLD_VAR_ZERO"] = "0"
+        assert get_env_float("RAY_SERVE_OLD_VAR_ZERO", 10.0) or 10.0 == 10.0
 
-        assert get_env_float("NOT_SET", 10.0) or 10.0 == 10.0
+        assert get_env_float("RAY_SERVE_NOT_SET", 10.0) or 10.0 == 10.0
 
-        assert (get_env_float("NOT_SET", 0.0) or None) is None
+        assert (get_env_float("RAY_SERVE_NOT_SET", 0.0) or None) is None
 
     @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
     def test_with_positive_value_before_250(self, mock_environ):
-        env_name = "TEST_POSITIVE_FLOAT"
+        env_name = "RAY_SERVE_TEST_POSITIVE_FLOAT"
         mock_environ[env_name] = "5.5"
 
         result = get_env_float_non_zero_with_warning(env_name, 10.0)
@@ -227,7 +231,7 @@ class TestDeprecationFunctions:
 
     @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
     def test_with_non_positive_value_before_250(self, mock_environ):
-        env_name = "TEST_NON_POSITIVE_FLOAT"
+        env_name = "RAY_SERVE_TEST_NON_POSITIVE_FLOAT"
         mock_environ[env_name] = "-2.5"
 
         with pytest.warns(FutureWarning) as record:
@@ -239,7 +243,7 @@ class TestDeprecationFunctions:
 
     @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
     def test_with_zero_value_before_250(self, mock_environ):
-        env_name = "TEST_ZERO_FLOAT"
+        env_name = "RAY_SERVE_TEST_ZERO_FLOAT"
         mock_environ[env_name] = "0.0"
 
         with pytest.warns(FutureWarning) as record:
@@ -251,7 +255,7 @@ class TestDeprecationFunctions:
 
     @mock.patch("ray.__version__", "2.49.0")  # Version before 2.50.0
     def test_with_no_env_value_before_250(self):
-        env_name = "TEST_MISSING_FLOAT"
+        env_name = "RAY_SERVE_TEST_MISSING_FLOAT"
         # Don't set environment variable
 
         result = get_env_float_non_zero_with_warning(env_name, 1.0)
@@ -260,29 +264,58 @@ class TestDeprecationFunctions:
 
     @mock.patch("ray.__version__", "2.50.0")  # Version at 2.50.0
     def test_remain_the_same_behavior_at_2_50(self, mock_environ):
-        env_name = "TEST_FLOAT"
+        env_name = "RAY_SERVE_TEST_FLOAT"
         mock_environ[env_name] = "2.0"
 
         assert get_env_float_non_zero_with_warning(env_name, 1.0) == 2.0
 
-        mock_environ["TEST_VAR"] = "-1.2"
-        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == -1.2
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1.2"
+        assert get_env_float_non_zero_with_warning("RAY_SERVE_TEST_VAR", 5.0) == -1.2
 
-        mock_environ["TEST_VAR"] = "0.0"
-        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == 5.0
+        mock_environ["RAY_SERVE_TEST_VAR"] = "0.0"
+        assert get_env_float_non_zero_with_warning("RAY_SERVE_TEST_VAR", 5.0) == 5.0
 
     @mock.patch("ray.__version__", "2.51.0")  # Version after 2.50.0
     def test_remain_the_same_behavior_after_2_50(self, mock_environ):
-        env_name = "TEST_FLOAT"
+        env_name = "RAY_SERVE_TEST_FLOAT"
         mock_environ[env_name] = "2.0"
 
         assert get_env_float_non_zero_with_warning(env_name, 1.0) == 2.0
 
-        mock_environ["TEST_VAR"] = "-1.2"
-        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == -1.2
+        mock_environ["RAY_SERVE_TEST_VAR"] = "-1.2"
+        assert get_env_float_non_zero_with_warning("RAY_SERVE_TEST_VAR", 5.0) == -1.2
 
-        mock_environ["TEST_VAR"] = "0.0"
-        assert get_env_float_non_zero_with_warning("TEST_VAR", 5.0) == 5.0
+        mock_environ["RAY_SERVE_TEST_VAR"] = "0.0"
+        assert get_env_float_non_zero_with_warning("RAY_SERVE_TEST_VAR", 5.0) == 5.0
+
+
+class TestValidation:
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "RAY_SERVE_FOO",
+            "RAY_SERVE__DOUBLE_UNDERSCORE",
+            "RAY_SERVE_123",
+            "RAY_SERVE_VAR_NAME",
+        ],
+    )
+    def test_validate_name_accepts_valid_prefix(self, name):
+        # Should not raise
+        assert _validate_name(name) is None
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "",
+            "RAY_SERVE",  # missing trailing underscore and name
+            "SERVE_VAR",
+            "ray_SERVE_BAR",
+            "RAY_service_VAR",
+        ],
+    )
+    def test_validate_name_rejects_invalid_prefix(self, name):
+        with pytest.raises(ValueError, match=".*require prefix `RAY_SERVE_`*"):
+            _validate_name(name)
 
 
 if __name__ == "__main__":

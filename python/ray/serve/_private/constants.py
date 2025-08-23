@@ -52,15 +52,20 @@ HTTP_PROXY_TIMEOUT = 60
 
 #: Max retry count for allowing failures in replica constructor.
 #: If no replicas at target version is running by the time we're at
-#: max construtor retry count, deploy() is considered failed.
+#: max constructor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
-    "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", 20
+    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
+    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", 20),
 )
 
 # Max retry on deployment constructor is
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
-MAX_PER_REPLICA_RETRY_COUNT = get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3)
+MAX_PER_REPLICA_RETRY_COUNT = get_env_int(
+    "RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT",
+    get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3),
+)
+
 
 # If you are wondering why we are using histogram buckets, please refer to
 # https://prometheus.io/docs/practices/histograms/
@@ -101,11 +106,19 @@ DEFAULT_LATENCY_BUCKET_MS = [
 # RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
 #: Histogram buckets for request latency.
 REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
-    get_env_str("REQUEST_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+    get_env_str(
+        "RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS",
+        get_env_str("REQUEST_LATENCY_BUCKETS_MS", ""),
+    ),
+    DEFAULT_LATENCY_BUCKET_MS,
 )
 #: Histogram buckets for model load/unload latency.
 MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
-    get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+    get_env_str(
+        "RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS",
+        get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""),
+    ),
+    DEFAULT_LATENCY_BUCKET_MS,
 )
 
 #: Name of deployment health check method implemented by user.
@@ -118,11 +131,16 @@ SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = get_env_int_positive("MAX_CACHED_HANDLES", 100)
+MAX_CACHED_HANDLES = get_env_int_positive(
+    "RAY_SERVE_MAX_CACHED_HANDLES", get_env_int_positive("MAX_CACHED_HANDLES", 100)
+)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000)
+CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY",
+    get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000),
+)
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
@@ -233,8 +251,10 @@ RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int(
 )
 
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0)
-    or get_env_float("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0)
+    get_env_float(
+        "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S",
+        get_env_float("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
+    )
     or None
 )
 
