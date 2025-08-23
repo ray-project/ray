@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from pydantic import Field
 
@@ -45,9 +45,14 @@ class ProcessorConfig(BaseModelExtended):
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: Optional[int] = Field(
+    concurrency: Union[int, Tuple[int, int]] = Field(
         default=1,
-        description="The number of workers for data parallelism. Default to 1.",
+        description="The number of workers for data parallelism. Default to 1. "
+        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use "
+        "an autoscaling actor pool from ``m`` to ``n`` workers. "
+        "If ``concurrency`` is an integer ``n``, it depends on "
+        "the processor and stage what number of workers will be used. "
+        "Possible values are ``n, (1, n), or (n, n)``.",
     )
 
     experimental: Dict[str, Any] = Field(
@@ -56,6 +61,73 @@ class ProcessorConfig(BaseModelExtended):
         "Supported keys:\n"
         "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
     )
+
+    def concurrency_tuple(self, static: bool = False):
+        """Validate and normalize `concurrency` into a `(min, max)` scaling pair.
+
+        Behavior:
+          - If `concurrency` is an int `n`:
+            - When `static` is True, return `(n, n)` (fixed-size pool).
+            - When `static` is False, return `(1, n)` (autoscaling from 1 to `n`).
+          - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged. The `static` flag is ignored.
+
+        Args:
+            static: When True, treat an integer `concurrency` as fixed `(n, n)`;
+                otherwise treat it as a range `(1, n)`. Defaults to False.
+
+        Returns:
+            A tuple `(min, max)` representing the allowed worker range.
+
+        Raises:
+            ValueError: If `concurrency` validation fails.
+
+        Examples:
+            >>> self.concurrency = (2, 4)
+            >>> self.concurrency_tuple()
+            (2, 4)
+            >>> self.concurrency = 4
+            >>> self.concurrency_tuple()
+            (1, 4)
+            >>> self.concurrency = 4
+            >>> self.concurrency_tuple(static=True)
+            (4, 4)
+        """
+        self._validate_concurrency(self.concurrency)
+        if isinstance(self.concurrency, int):
+            if static:
+                return self.concurrency, self.concurrency
+            else:
+                return 1, self.concurrency
+        return self.concurrency
+
+    @staticmethod
+    def _validate_concurrency(concurrency: Union[int, Tuple[int, int]]) -> None:
+        """Validate that `concurrency` is either:
+        - a positive int, or
+        - a 2-tuple `(min, max)` of positive ints with `min <= max`.
+        """
+        if isinstance(concurrency, int):
+            if concurrency <= 0:
+                raise ValueError(
+                    f"A positive integer for `concurrency` is expected! Got: `{concurrency}`."
+                )
+        elif isinstance(concurrency, tuple):
+            if len(concurrency) != 2:
+                raise ValueError(
+                    f"`concurrency` tuple must have exactly `2` items! Got: `{len(concurrency)}`."
+                )
+            elif not all(isinstance(c, int) and c > 0 for c in concurrency):
+                raise ValueError(
+                    f"`concurrency` tuple items must be positive integers! Got: `{concurrency}`."
+                )
+            min_concurrency, max_concurrency = concurrency
+            if min_concurrency > max_concurrency:
+                raise ValueError(f"min > max in the concurrency tuple `{concurrency}`!")
+        else:
+            raise ValueError(
+                f"Unexpected type `{type(concurrency).__name__}` for `concurrency`! "
+                f"Expected: `{int.__name__}` or `{tuple.__name__}`."
+            )
 
     class Config:
         validate_assignment = True
@@ -263,7 +335,7 @@ class ProcessorBuilder:
 
     @classmethod
     def register(cls, config_type: Type[ProcessorConfig], builder: Callable) -> None:
-        """A decorator to assoicate a particular pipeline config
+        """A decorator to associate a particular pipeline config
         with its build function.
         """
         type_name = config_type.__name__
