@@ -79,46 +79,45 @@ def build(
         diff_lock_files(manager)
 
 
-def execute_and_verify(manager: "DependencySetManager", name):
-    manager.execute()
-    copy_lock_files_to_temp_dir(manager)
-    if name:
-        manager.execute_single(_get_depset(manager.config.depsets, name))
-    else:
-        manager.execute()
-    diff_lock_files(manager)
-
-
 def copy_lock_files_to_temp_dir(manager: "DependencySetManager"):
     """Test the dependency set manager."""
-    manager.execute_single(_get_depset(manager.config.depsets, "ray"))
     # TODO: verify the compiled dependencies are valid
     # create temp directory
     manager.temp_dir = tempfile.mkdtemp()
     # copy existing lock files to temp directory
     for depset in manager.config.depsets:
-        shutil.copy(depset.output, manager.temp_dir / depset.output)
+        existing_lock_file_path = Path(depset.output)
+        new_lock_file_path = manager.temp_dir / existing_lock_file_path
+        new_lock_file_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(existing_lock_file_path, new_lock_file_path)
 
 
 def diff_lock_files(manager: "DependencySetManager"):
     """Diff the lock files."""
     for depset in manager.config.depsets:
+        current_lock_file_path = depset.output
+        if not Path(current_lock_file_path).exists():
+            raise RuntimeError(f"Lock file {current_lock_file_path} does not exist")
+        with open(current_lock_file_path, "r") as f:
+            current_lock_file_contents = f.read()
         new_lock_file_path = Path(manager.temp_dir) / depset.output
         if not new_lock_file_path.exists():
             raise RuntimeError(f"Lock file {new_lock_file_path} does not exist")
         with open(new_lock_file_path, "r") as f:
-            lock_file_contents = f.read()
-        with open(depset.output, "r") as f:
-            old_lock_file_contents = f.read()
-        diff = difflib.unified_diff(old_lock_file_contents, lock_file_contents)
-        click.echo(diff)
-    # if they are different, print the diff
-    # if they are the same, print "all good"
-    # cleanup temp directory
-    for depset in manager.config.depsets:
-        new_lock_file_path = manager.temp_dir / depset.output
-        if not new_lock_file_path.exists():
-            raise RuntimeError(f"Lock file {new_lock_file_path} does not exist")
+            new_lock_file_contents = f.read()
+        diff = difflib.unified_diff(
+            current_lock_file_contents.splitlines(),
+            new_lock_file_contents.splitlines(),
+        )
+        diffs = list(diff)
+        if len(diffs) > 0:
+            click.echo("".join(diffs))
+            return
+        else:
+            click.echo(f"Lock file {current_lock_file_path} is the same.")
+
+    click.echo("Verification complete.")
+    shutil.rmtree(manager.temp_dir)
 
 
 class DependencySetManager:

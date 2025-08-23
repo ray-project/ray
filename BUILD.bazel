@@ -343,6 +343,12 @@ py_library(
     visibility = ["__subpackages__"],
 )
 
+filegroup(
+    name = "python_lock_files",
+    srcs = glob(["python/*.txt"]),
+    visibility = ["//visibility:public"],
+)
+
 pkg_files(
     name = "raylet_so_files",
     srcs = ["python/ray/_raylet.so"],
