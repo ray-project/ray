@@ -306,16 +306,22 @@ def test_mix_cpu_gpu_data(ray_start_regular):
     create_collective_group(actors, backend="torch_gloo")
 
     tensor = torch.randn((1,))
-    cpu_data = random.randint(0, 100)
+    # cpu_data = random.randint(0, 100)
+    cpu_data = b"1" * 1000 * 1000
     data = [tensor, cpu_data]
 
     sender, receiver = actors[0], actors[1]
     ref = sender.echo.remote(data)
+    print("ref", ref)
     ref = receiver.double.remote(ref)
     result = ray.get(ref)
 
     assert result[0] == pytest.approx(tensor * 2)
     assert result[1] == cpu_data * 2
+
+    import time
+
+    time.sleep(3)
 
 
 def test_multiple_tensors(ray_start_regular):

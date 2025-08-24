@@ -66,6 +66,7 @@ class TaskArgByReference : public TaskArg {
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
     ref->set_call_site(call_site_);
+    // TODO(kevin85421): Pass tensor_transport to `ref`
   }
 
  private:
