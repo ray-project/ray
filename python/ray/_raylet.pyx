@@ -946,7 +946,8 @@ cdef prepare_args_internal(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    arg.call_site())))
+                    arg.call_site(),
+                    arg.tensor_transport())))
 
         else:
             try:
@@ -1003,7 +1004,8 @@ cdef prepare_args_internal(
                     new CTaskArgByReference(
                             put_id,
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                            put_arg_call_site
+                            put_arg_call_site,
+                            0
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 

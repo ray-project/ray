@@ -77,6 +77,10 @@ void InlineDependencies(
             mutable_arg->add_nested_inlined_refs()->CopyFrom(nested_ref);
             contained_ids->push_back(ObjectID::FromBinary(nested_ref.object_id()));
           }
+        } else {
+          auto tensor_transport = mutable_arg->object_ref().tensor_transport();
+          RAY_LOG(INFO) << "Dependency is in plasma " << id.Hex() << " tensor_transport: " << tensor_transport;
+          mutable_arg->set_tensor_transport(tensor_transport);
         }
         found++;
       }

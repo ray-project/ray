@@ -312,7 +312,7 @@ def test_mix_cpu_gpu_data(ray_start_regular):
 
     sender, receiver = actors[0], actors[1]
     ref = sender.echo.remote(data)
-    print("ref", ref)
+    print("sender.echo ref", ref, ref.tensor_transport())
     ref = receiver.double.remote(ref)
     result = ray.get(ref)
 

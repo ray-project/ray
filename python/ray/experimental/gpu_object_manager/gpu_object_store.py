@@ -52,6 +52,7 @@ def __ray_send__(
     communicator_meta: CommunicatorMetadata,
 ):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
+    print("__ray_send__", obj_id, tensor_transport_meta, communicator_meta)
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
@@ -82,6 +83,7 @@ def __ray_recv__(
     communicator_meta: CommunicatorMetadata,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
+    print("__ray_recv__", obj_id, tensor_transport_meta, communicator_meta)
     from ray._private.worker import global_worker
 
     from ray.experimental.collective import get_tensor_transport_manager
@@ -104,6 +106,7 @@ def __ray_recv__(
         tensor_transport_meta,
         communicator_meta,
     )
+    print("__ray_recv__", "obj_id", obj_id, "tensors", tensors)
 
     gpu_object_store.add_object(obj_id, tensors)
 

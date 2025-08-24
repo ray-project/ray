@@ -872,6 +872,26 @@ class Worker:
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
+            # if obj_ref is not None and obj_ref.tensor_transport() != TensorTransportEnum.OBJECT_STORE:
+            #     tensor_transport = obj_ref.tensor_transport()
+            print(
+                "deserialize_objects",
+                "obj_id",
+                obj_ref.hex(),
+                "tensor_transport before update",
+                tensor_transport,
+            )
+            if tensor_transport == TensorTransportEnum.OBJECT_STORE:
+                if obj_ref is not None:
+                    tensor_transport = TensorTransportEnum(obj_ref.tensor_transport())
+                    print(
+                        "deserialize_objects",
+                        "obj_id",
+                        obj_ref.hex(),
+                        "tensor_transport after update",
+                        tensor_transport,
+                    )
+
             if (
                 tensor_transport is None
                 or tensor_transport == TensorTransportEnum.OBJECT_STORE

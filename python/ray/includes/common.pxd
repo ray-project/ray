@@ -319,7 +319,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
         CTaskArgByReference(const CObjectID &object_id,
                             const CAddress &owner_address,
-                            const c_string &call_site)
+                            const c_string &call_site,
+                            const int &tensor_transport_val)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)

@@ -2074,6 +2074,10 @@ class ActorHandle(Generic[T]):
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
 
+        print("_actor_method_call")
+        for arg in list_args:
+            if isinstance(arg, ObjectRef):
+                print(f"arg: {arg}, tensor_transport: {arg.tensor_transport()}")
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
