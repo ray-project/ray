@@ -247,13 +247,13 @@ class BatchIterator:
             if self._stats:
                 # Always track total blocked time
                 total_timer = self._stats.iter_total_blocked_s.timer()
-                # Also track first batch blocked time if this is the first batch
-                first_batch_timer = (
-                    self._stats.iter_first_batch_blocked_s.timer()
+                # Also track the time until the first batch is ready
+                first_batch_ready_timer = (
+                    self._stats.iter_time_to_first_batch_s.timer()
                     if not self._yielded_first_batch
                     else nullcontext()
                 )
-                with total_timer, first_batch_timer:
+                with total_timer, first_batch_ready_timer:
                     yield
             else:
                 yield
