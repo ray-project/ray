@@ -63,6 +63,12 @@ class LocalModeTrainFnUtils(TrainFnUtils):
     def is_running_in_distributed_mode(self) -> bool:
         return False
 
+    def barrier(self) -> None:
+        pass
+
+    def broadcast_from_rank_zero(self, data: Any) -> Any:
+        return data
+
     def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
         """Return the last metrics reported by the training function.
         This function should only be called by LocalController
