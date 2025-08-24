@@ -110,6 +110,7 @@ cdef class ObjectRef(BaseID):
         # it up.
         c_bool in_core_worker
         c_string call_site_data
+        int tensor_transport_val
 
     cdef CObjectID native(self)
 
