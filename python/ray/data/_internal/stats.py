@@ -475,9 +475,7 @@ class _StatsActor:
     ):
         tags = self._create_tags(dataset_tag)
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
-        self.iter_first_batch_blocked_s.set(
-            stats.iter_first_batch_blocked_s.get(), tags
-        )
+        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
@@ -1013,7 +1011,7 @@ class DatasetStats:
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
             self.iter_finalize_batch_s,
-            self.iter_first_batch_blocked_s,
+            self.iter_time_to_first_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_initialize_s,
