@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/common/buffer.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -106,7 +107,7 @@ class ShutdownCoordinatorTest : public ::testing::Test {
  protected:
   // Helper to create coordinator with specific worker type
   std::unique_ptr<ShutdownCoordinator> CreateCoordinator(
-      WorkerType worker_type = WorkerType::WORKER) {
+      rpc::WorkerType worker_type = rpc::WorkerType::WORKER) {
     auto fake = std::make_unique<FakeShutdownExecutor>();
     return std::make_unique<ShutdownCoordinator>(std::move(fake), worker_type);
   }
@@ -165,7 +166,7 @@ TEST_F(ShutdownCoordinatorTest,
 TEST_F(ShutdownCoordinatorTest,
        RequestShutdown_Graceful_SetsDisconnecting_ThenTryTransitionToShutdown_Succeeds) {
   auto coordinator = std::make_unique<ShutdownCoordinator>(
-      std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
+      std::make_unique<NoOpShutdownExecutor>(), rpc::WorkerType::WORKER);
 
   // Running -> ShuttingDown -> Disconnecting
   EXPECT_TRUE(
@@ -241,7 +242,7 @@ TEST_F(ShutdownCoordinatorTest,
 }
 
 TEST_F(ShutdownCoordinatorTest, Driver_GracefulReasonRecorded) {
-  auto coordinator = CreateCoordinator(WorkerType::DRIVER);
+  auto coordinator = CreateCoordinator(rpc::WorkerType::DRIVER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
@@ -250,7 +251,7 @@ TEST_F(ShutdownCoordinatorTest, Driver_GracefulReasonRecorded) {
 }
 
 TEST_F(ShutdownCoordinatorTest, Driver_ForceReasonRecorded) {
-  auto coordinator = CreateCoordinator(WorkerType::DRIVER);
+  auto coordinator = CreateCoordinator(rpc::WorkerType::DRIVER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(true,  // force
                                            ShutdownReason::kForcedExit));
@@ -259,21 +260,21 @@ TEST_F(ShutdownCoordinatorTest, Driver_ForceReasonRecorded) {
 }
 
 TEST_F(ShutdownCoordinatorTest, Worker_GracefulInitiates) {
-  auto coordinator = CreateCoordinator(WorkerType::WORKER);
+  auto coordinator = CreateCoordinator(rpc::WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
 }
 
 TEST_F(ShutdownCoordinatorTest, Worker_ExecuteWorkerExit_OnUserError) {
-  auto coordinator = CreateCoordinator(WorkerType::WORKER);
+  auto coordinator = CreateCoordinator(rpc::WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kUserError));
 }
 
 TEST_F(ShutdownCoordinatorTest, Worker_HandleExit_OnIdleTimeout) {
-  auto coordinator = CreateCoordinator(WorkerType::WORKER);
+  auto coordinator = CreateCoordinator(rpc::WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kIdleTimeout));
@@ -366,7 +367,7 @@ TEST_F(ShutdownCoordinatorTest, Concurrent_GracefulVsForce_ForceExecutesOnce) {
   auto fake = std::make_unique<FakeShutdownExecutor>();
   auto *fake_ptr = fake.get();
   auto coordinator =
-      std::make_unique<ShutdownCoordinator>(std::move(fake), WorkerType::WORKER);
+      std::make_unique<ShutdownCoordinator>(std::move(fake), rpc::WorkerType::WORKER);
 
   std::thread t1([&] {
     coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit, "graceful");
@@ -386,7 +387,7 @@ TEST_F(ShutdownCoordinatorTest, Concurrent_DoubleForce_ForceExecutesOnce) {
   auto fake = std::make_unique<FakeShutdownExecutor>();
   auto *fake_ptr = fake.get();
   auto coordinator =
-      std::make_unique<ShutdownCoordinator>(std::move(fake), WorkerType::WORKER);
+      std::make_unique<ShutdownCoordinator>(std::move(fake), rpc::WorkerType::WORKER);
 
   std::thread t1(
       [&] { coordinator->RequestShutdown(true, ShutdownReason::kForcedExit, "force1"); });
