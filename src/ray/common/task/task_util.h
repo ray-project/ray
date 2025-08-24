@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
@@ -24,17 +30,17 @@ namespace ray {
 /// Stores the task failure reason.
 struct TaskFailureEntry {
   /// The task failure details.
-  rpc::RayErrorInfo ray_error_info;
+  rpc::RayErrorInfo ray_error_info_;
 
   /// The creation time of this entry.
-  std::chrono::steady_clock::time_point creation_time;
+  std::chrono::steady_clock::time_point creation_time_;
 
   /// Whether this task should be retried.
-  bool should_retry;
+  bool should_retry_;
   TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
-      : ray_error_info(ray_error_info),
-        creation_time(std::chrono::steady_clock::now()),
-        should_retry(should_retry) {}
+      : ray_error_info_(ray_error_info),
+        creation_time_(std::chrono::steady_clock::now()),
+        should_retry_(should_retry) {}
 };
 
 /// Argument of a task.
@@ -265,10 +271,10 @@ class TaskSpecBuilder {
     actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
     for (const auto &concurrency_group : concurrency_groups) {
       rpc::ConcurrencyGroup *group = actor_creation_spec->add_concurrency_groups();
-      group->set_name(concurrency_group.name);
-      group->set_max_concurrency(concurrency_group.max_concurrency);
+      group->set_name(concurrency_group.name_);
+      group->set_max_concurrency(concurrency_group.max_concurrency_);
       // Fill into function descriptor.
-      for (auto &item : concurrency_group.function_descriptors) {
+      for (auto &item : concurrency_group.function_descriptors_) {
         rpc::FunctionDescriptor *fd = group->add_function_descriptors();
         *fd = item->GetMessage();
       }

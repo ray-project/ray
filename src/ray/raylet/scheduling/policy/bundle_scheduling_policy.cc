@@ -216,7 +216,7 @@ std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
     if (AllocationWillExceedMaxCpuFraction(
             node_resources,
             required_resources,
-            options.max_cpu_fraction_per_node,
+            options.max_cpu_fraction_per_node_,
             available_cpus_before_bundle_scheduling.at(node_id))) {
       continue;
     }
@@ -240,7 +240,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -290,7 +290,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
                                                      // exceed max cpu fraction.
                  node_resources,
                  *iter->second,
-                 options.max_cpu_fraction_per_node,
+                 options.max_cpu_fraction_per_node_,
                  available_cpus_before_bundle_scheduling.at(best_node.first))) {
         // Then allocate it.
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
@@ -329,7 +329,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -399,7 +399,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -431,7 +431,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
                                                       // exceed max cpu fraction.
                     node_resources,
                     aggregated_resource_request,
-                    options.max_cpu_fraction_per_node,
+                    options.max_cpu_fraction_per_node_,
                     available_cpus_before_bundle_scheduling.at(entry.first)));
         return allocatable;
       });
@@ -444,13 +444,13 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
                                                         nullptr);
-  if (!options.bundle_strict_pack_soft_target_node_id.IsNil()) {
-    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id)) {
+  if (!options.bundle_strict_pack_soft_target_node_id_.IsNil()) {
+    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id_)) {
       best_node = GetBestNode(
           aggregated_resource_request,
           absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
-              {options.bundle_strict_pack_soft_target_node_id,
-               candidate_nodes[options.bundle_strict_pack_soft_target_node_id]}},
+              {options.bundle_strict_pack_soft_target_node_id_,
+               candidate_nodes[options.bundle_strict_pack_soft_target_node_id_]}},
           options,
           available_cpus_before_bundle_scheduling);
     }
@@ -485,7 +485,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   RAY_CHECK(!resource_request_list.empty());
 
   // Filter candidate nodes.
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();

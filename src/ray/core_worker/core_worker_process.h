@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -145,19 +146,6 @@ class CoreWorkerProcessImpl {
   /// Shutdown the driver completely at the process level.
   void ShutdownDriver();
 
-  /// Register core worker to worker pool.
-  static Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
-                                       const WorkerID &worker_id,
-                                       rpc::WorkerType worker_type,
-                                       const JobID &job_id,
-                                       int runtime_env_hash,
-                                       const Language &language,
-                                       const std::string &ip_address,
-                                       const std::string &serialized_job_config,
-                                       const StartupToken &startup_token,
-                                       NodeID *raylet_id,
-                                       int *port);
-
  private:
   /// The various options.
   const CoreWorkerOptions options_;
@@ -190,6 +178,9 @@ class CoreWorkerProcessImpl {
 
   /// The proxy service handler that routes the RPC calls to the core worker.
   std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
+
+  /// The client to export metrics to the metrics agent.
+  std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 };
 }  // namespace core
 }  // namespace ray

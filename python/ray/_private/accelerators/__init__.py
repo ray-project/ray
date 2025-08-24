@@ -1,6 +1,9 @@
 from typing import Optional, Set
 
-from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.accelerators.accelerator import (
+    RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+    AcceleratorManager,
+)
 from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
 from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
@@ -82,4 +85,5 @@ __all__ = [
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",
+    "RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR",
 ]
