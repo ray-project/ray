@@ -1,5 +1,9 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest as _ChatCompletionRequest,
+    CompletionRequest as _CompletionRequest,
+)
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
@@ -14,11 +18,6 @@ from ray.llm._internal.serve.deployments.llm.llm_server import (
 )
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter as _LLMRouter,
-)
-
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest as _ChatCompletionRequest,
-    CompletionRequest as _CompletionRequest,
 )
 
 # Using Deprecated from rllib since they are retuning better messages.
