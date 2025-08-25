@@ -17,6 +17,6 @@ set -euo pipefail
 
 SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 
-pip install --no-deps -r python/lock_files/llm/rayllm_test_py311_${RAY_CUDA_CODE}.lock
+pip install --no-deps -r python/deplocks/llm/rayllm_test_py311_${RAY_CUDA_CODE}.lock
 
 EOF
