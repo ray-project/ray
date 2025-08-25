@@ -129,7 +129,6 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
         device: "torch.device",
     ):
