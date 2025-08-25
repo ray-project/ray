@@ -3479,7 +3479,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] wait_ids
             int64_t waitstream_id
             int64_t result_idx = 0
-            int64_t num_done = 0
+            size_t num_done = 0
 
         object_refs = []
         for ref_or_generator in object_refs_or_generators:
