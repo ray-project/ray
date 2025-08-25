@@ -933,53 +933,50 @@ message ResourceAllocations {
 
 // Debug info returned from the core worker.
 message CoreWorkerStats {
-  reserved 1;
   // Number of pending normal and actor tasks.
-  int32 num_pending_tasks = 2;
+  int32 num_pending_tasks = 1;
   // Number of object refs in local scope.
-  int32 num_object_refs_in_scope = 3;
+  int32 num_object_refs_in_scope = 2;
   // IP address of the core worker.
-  string ip_address = 7;
+  string ip_address = 3;
   // Port of the core worker.
-  int64 port = 8;
+  int64 port = 4;
   // Actor ID.
-  bytes actor_id = 9;
+  bytes actor_id = 5;
   // A map from the resource name (e.g. "CPU") to its allocation.
-  map<string, ResourceAllocations> used_resources = 10;
+  map<string, ResourceAllocations> used_resources = 6;
   // A string displayed on Dashboard.
-  map<string, string> webui_display = 11;
+  map<string, string> webui_display = 7;
   // Number of objects that are IN_PLASMA_ERROR in the local memory store.
-  int32 num_in_plasma = 12;
+  int32 num_in_plasma = 8;
   // Number of objects stored in local memory.
-  int32 num_local_objects = 13;
+  int32 num_local_objects = 9;
   // Used local object store memory.
-  int64 used_object_store_memory = 14;
+  int64 used_object_store_memory = 10;
   // Length of the task queue.
-  int32 task_queue_length = 15;
+  int32 task_queue_length = 11;
   // Number of executed tasks.
-  int32 num_executed_tasks = 16;
-  // Actor constructor.
-  string actor_title = 17;
+  int32 num_executed_tasks = 12;
   // Local reference table.
-  repeated ObjectRefInfo object_refs = 18;
+  repeated ObjectRefInfo object_refs = 13;
   // Job ID.
-  bytes job_id = 19;
+  bytes job_id = 14;
   // Worker id of core worker.
-  bytes worker_id = 20;
+  bytes worker_id = 15;
   // Language
-  Language language = 21;
+  Language language = 16;
   // PID of the worker process.
-  uint32 pid = 22;
+  uint32 pid = 17;
   // The worker type.
-  WorkerType worker_type = 23;
+  WorkerType worker_type = 18;
   // Length of the number of objects without truncation.
-  int64 objects_total = 24;
+  int64 objects_total = 19;
   // Number of objects owned by the worker.
-  int64 num_owned_objects = 25;
+  int64 num_owned_objects = 20;
   // Number of actors owned by the worker.
-  int64 num_owned_actors = 26;
+  int64 num_owned_actors = 21;
   // Number of running tasks
-  int64 num_running_tasks = 27;
+  int64 num_running_tasks = 22;
 }
 
 // Resource usage reported by the node reporter.
