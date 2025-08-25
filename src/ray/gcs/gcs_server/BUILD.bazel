@@ -102,8 +102,8 @@ ray_cc_library(
         "//src/ray/util:logging",
     ],
     deps = [
-        ":grpc_service_interfaces",
         ":gcs_init_data",
+        ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_syncer",
@@ -314,10 +314,10 @@ ray_cc_library(
         ":gcs_worker_manager",
     ],
     deps = [
-        ":grpc_service_interfaces",
         ":gcs_server_io_context_policy",
         ":gcs_state_util",
         ":gcs_store_client_kv",
+        ":grpc_service_interfaces",
         ":grpc_services",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/gcs/store_client",
