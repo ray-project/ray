@@ -3212,8 +3212,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
       by_ref_indices[arg_id].push_back(i);
-      // TODO(kevin85421): store tensor_transport
-      RAY_LOG(INFO) << "GetAndPinArgsForExecutor arg_ref " << arg_id.Hex() << " tensor_transport: " << arg_ref.tensor_transport();
       arg_refs->push_back(arg_ref);
       args->emplace_back();
       // Pin all args passed by reference for the duration of the task.  This

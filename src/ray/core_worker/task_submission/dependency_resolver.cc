@@ -79,7 +79,8 @@ void InlineDependencies(
           }
         } else {
           auto tensor_transport = mutable_arg->object_ref().tensor_transport();
-          RAY_LOG(INFO) << "Dependency is in plasma " << id.Hex() << " tensor_transport: " << tensor_transport;
+          RAY_LOG(INFO) << "Dependency is in plasma " << id.Hex()
+                        << " tensor_transport: " << tensor_transport;
           mutable_arg->set_tensor_transport(tensor_transport);
         }
         found++;

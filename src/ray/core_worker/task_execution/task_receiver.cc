@@ -29,15 +29,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::SendReplyCallback send_reply_callback) {
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
-  // 有收到 tensor_transport
-  RAY_LOG(INFO) << "TaskReceiver HandleTask";
-  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
-    const auto &arg = task_spec.GetMessage().args(i);
-    if (arg.has_object_ref()) {
-      RAY_LOG(INFO) << "arg " << task_spec.ArgObjectId(i).Hex() << " tensor_transport: " << arg.object_ref().tensor_transport();
-    }
-  }
-
   if (task_spec.IsActorCreationTask()) {
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
