@@ -72,9 +72,6 @@ class ArrowPythonObjectType(pa.ExtensionType):
         )
 
     def __hash__(self) -> int:
-        """Make the class hashable. Since all instances are functionally equivalent
-        (no instance-specific parameters), return a hash based on the class identity.
-        """
         return hash((self.__class__.__name__, self.storage_type.id, self.extension_name))
 
 @PublicAPI(stability="alpha")
